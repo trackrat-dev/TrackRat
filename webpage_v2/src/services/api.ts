@@ -263,9 +263,11 @@ export class APIService {
     return this.fetch<CongestionResponse>(url, true, signal);
   }
 
-  async getNetworkSummary(signal?: AbortSignal): Promise<OperationsSummaryResponse | null> {
+  async getNetworkSummary(dataSource?: string, signal?: AbortSignal): Promise<OperationsSummaryResponse | null> {
     try {
-      const url = `${BASE_URL}/routes/summary?scope=network`;
+      const params = new URLSearchParams({ scope: 'network' });
+      if (dataSource) params.set('data_source', dataSource);
+      const url = `${BASE_URL}/routes/summary?${params.toString()}`;
       return await this.fetch<OperationsSummaryResponse>(url, true, signal);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') throw err;

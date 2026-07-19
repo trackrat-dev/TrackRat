@@ -339,6 +339,24 @@ describe('getNetworkSummary', () => {
     );
   });
 
+  it('includes data_source when a system is passed', async () => {
+    mockFetch.mockReturnValue(jsonResponse({ headline: 'test' }));
+
+    await api.getNetworkSummary('NJT');
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain('scope=network');
+    expect(url).toContain('data_source=NJT');
+  });
+
+  it('omits data_source when no system is passed', async () => {
+    mockFetch.mockReturnValue(jsonResponse({ headline: 'test' }));
+
+    await api.getNetworkSummary();
+
+    expect(mockFetch.mock.calls[0][0]).not.toContain('data_source');
+  });
+
   it('returns null on failure (fail-silent)', async () => {
     mockFetch.mockReturnValue(jsonResponse(null, 500));
 

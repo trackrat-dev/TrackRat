@@ -12,7 +12,7 @@ interface NavItem {
 
 const NAV_ITEMS: NavItem[] = [
   { to: '/departures', label: 'Departures', Icon: DeparturesIcon, prefixes: ['/trains/', '/train/', '/trip'] },
-  { to: '/status', label: 'Status', Icon: StatusIcon, prefixes: ['/route/'] },
+  { to: '/status', label: 'Status', Icon: StatusIcon, prefixes: ['/route/', '/line/', '/system/'] },
   { to: '/favorites', label: 'Favorites', Icon: StarIcon, prefixes: [] },
   { to: '/history', label: 'History', Icon: HistoryIcon, prefixes: [] },
 ];

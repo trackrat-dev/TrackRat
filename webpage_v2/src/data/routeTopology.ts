@@ -1,6 +1,6 @@
 import { TransitSystem } from '../types';
 
-interface RouteDefinition {
+export interface RouteDefinition {
   id: string;
   name: string;
   dataSource: TransitSystem;
@@ -172,4 +172,14 @@ export function getIntermediateStations(from: string, to: string, dataSource?: T
     return fromIdx < toIdx ? intermediates : [...intermediates].reverse();
   }
   return [];
+}
+
+/** A route by its topology id (e.g. "njt-nec"), or undefined if unknown. */
+export function getRouteById(id: string): RouteDefinition | undefined {
+  return ROUTES.find((r) => r.id === id);
+}
+
+/** All routes belonging to a transit system, in definition order. */
+export function getRoutesForSystem(dataSource: TransitSystem): RouteDefinition[] {
+  return ROUTES.filter((r) => r.dataSource === dataSource);
 }

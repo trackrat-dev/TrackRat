@@ -11,7 +11,7 @@ const getNetworkSummary = vi.fn();
 vi.mock('../services/api', () => ({
   apiService: {
     getCongestion: (signal?: AbortSignal) => getCongestion(signal),
-    getNetworkSummary: (signal?: AbortSignal) => getNetworkSummary(signal),
+    getNetworkSummary: (dataSource?: string, signal?: AbortSignal) => getNetworkSummary(dataSource, signal),
   },
 }));
 
