@@ -113,6 +113,8 @@ async def get_route_history(
         "WMATA",
         "BART",
         "MBTA",
+        "SEPTA_RR",
+        "SEPTA_METRO",
     ]
     if data_source not in valid_sources:
         raise HTTPException(
