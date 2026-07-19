@@ -35,7 +35,8 @@ TrackRat/
 ├── Shared/           # Stations, StationData, StationCoordinates, StationDepartures, LiveActivityModels, RouteTopology, RouteShapes, SubwayLines
 ├── Theme/            # TrackRatTheme.swift
 ├── Utilities/        # Extensions.swift, Logger.swift
-└── Resources/        # Assets, Info.plist
+├── Assets.xcassets   # Asset catalog
+└── Info.plist
 TrainLiveActivityExtension/  # Live Activity widget
 TrackRatTests/               # Unit tests
 ```
@@ -62,7 +63,7 @@ TrackRatTests/               # Unit tests
 
 ## API Endpoints
 
-Base URL: `https://apiv2.trackrat.net/api`
+Base URL: `https://apiv2.trackrat.net/api` (production; staging and local base URLs are defined by `ServerEnvironment` in `Services/StorageService.swift` and switchable in-app)
 
 Key endpoints:
 - `GET /v2/trains/departures?from=X&to=Y` - Search trains

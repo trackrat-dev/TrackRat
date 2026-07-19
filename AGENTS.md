@@ -429,7 +429,7 @@ pip install cffi cryptography --force-reinstall --target=/tmp/pylibs 2>&1 | tail
 - **Staging & Production**: GCE instances via Managed Instance Groups (Docker Compose, not Cloud Run)
 - **Hostnames**: `trackrat-staging-XXXX` / `trackrat-production-XXXX` (suffix is random, changes on instance recreation)
 - **Resource type**: `gce_instance` (NOT `cloud_run_revision`)
-- **Cloud Run services**: `feedback-notifier`, `train-follow-notifier` (auxiliary only)
+- **Auxiliary services**: `feedback-notifier`, `train-follow-notifier` — Pub/Sub-triggered Cloud Functions (source in `infra_v2/functions/`; both post to Slack, feedback also files GitHub issues)
 - **Containers**: `trackrat-api` (FastAPI), PostgreSQL
 
 ### Log Structure
@@ -486,7 +486,8 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 # Time range
 'timestamp>="2025-01-01T00:00:00Z" AND timestamp<="2025-01-02T00:00:00Z"'
 
-# Cloud Run auxiliary services
+# Auxiliary notifier functions (gen-1 functions log under cloud_function; if redeployed as gen-2 they appear under cloud_run_revision instead)
+'resource.type="cloud_function" AND resource.labels.function_name="train-follow-notifier"'
 'resource.type="cloud_run_revision" AND resource.labels.service_name="train-follow-notifier"'
 ```
 

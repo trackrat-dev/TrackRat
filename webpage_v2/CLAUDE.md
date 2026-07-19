@@ -48,6 +48,7 @@ API Service (fetch + cache)
   - `trackrat:workStation` - work station for quick access
   - `trackrat:tripHistory` - trip search history
   - `trackrat:mapExpanded` - route map expand/collapse preference (default collapsed)
+  - `trackrat:homeWorkNudgeDismissed` - Home/Work setup nudge dismissal flag
 - **Pattern**: Store serializes/deserializes, handles errors gracefully
 
 ## Design System
@@ -57,7 +58,7 @@ API Service (fetch + cache)
 - **Accent**: Burnt orange (`#CC5500`)
 - **Background**: Light cream (`#F5F1E8`)
 - **Surface**: Darker cream (`#EAE3D2`)
-- **Success**: Olive green (`#6B8E23`), **Warning**: Orange (`#D4753E`), **Error**: Dark red (`#A52A2A`)
+- **Success**: Olive green (`#6B8E23`), **Warning**: Orange (`#D4753E`), **Error**: Dark red (`#A52A2A`), **Info**: Slate blue (`#3A6787`)
 - **Text**: Warm dark tones (`#2D1B0E` primary, `#4A3728` secondary, `#7B6C5D` muted)
 
 ### Glassmorphism Pattern
@@ -105,6 +106,7 @@ usePolling(async (signal) => {
 
 ### Endpoints Used
 1. `GET /trips/search?from={code}&to={code}&limit=50&hide_departed=true&date={YYYY-MM-DD}` (departure/trip list, optional date)
+   - `GET /trains/departures?station={code}&to={code}` (station departure board — StationDetailsPage / DeparturesTimeline)
    - `GET /trains/recent-departures?from={code}&to={code}&window_minutes=120&data_sources={src}&limit={n}` (recently-departed trains for the Route Status timeline; uncached, 30s polling)
 2. `GET /trains/{trainId}?date={YYYY-MM-DD}` (train details, polled every 30s)
 3. `GET /trains/{trainId}/history?days=365&from_station={code}&to_station={code}` (historical performance)
@@ -113,9 +115,10 @@ usePolling(async (signal) => {
 6. `GET /predictions/delay?train_id={id}&station_code={code}&journey_date={date}` (delay forecast, fail-silent)
 7. `GET /routes/summary?scope=route&from_station={code}&to_station={code}` (optional, fail-silent)
 8. `GET /routes/summary?scope=network` (network-wide summary for status page)
+   - `GET /routes/summary?scope=train&train_id={id}&journey_date={date}` (per-train summary)
 9. `GET /routes/history?from_station={code}&to_station={code}&data_source={src}&days={n}` (route performance)
 10. `GET /routes/congestion` (network congestion, 60s polling on status page)
-11. `GET /alerts/service?data_source={src}` (MTA service alerts, cached 2min)
+11. `GET /alerts/service?data_source={src}&alert_type={type?}` (service alerts for MTA systems + NJT — see `ALERT_CAPABLE_SYSTEMS` in `data/stations.ts`; cached 2min)
 12. `POST /feedback` (user feedback submission)
 
 ## Key File Locations
@@ -125,7 +128,7 @@ webpage_v2/
 ├── src/
 │   ├── components/          # Reusable UI components
 │   │   ├── Layout.tsx       # App shell with header + navigation
-│   │   ├── Navigation.tsx   # Bottom tab bar (mobile-first)
+│   │   ├── Navigation.tsx   # Nav tabs (`variant: 'header' | 'bottom'` — inline header links on desktop, fixed bottom bar on mobile)
 │   │   ├── StationPicker.tsx # Searchable station selector (grouped by system)
 │   │   ├── TrainCard.tsx    # Departure list item (visual states: departed/boarding/cancelled/scheduled)
 │   │   ├── StopCard.tsx     # Individual stop in train details (timing hierarchy)
@@ -136,7 +139,7 @@ webpage_v2/
 │   │   ├── DelayForecastCard.tsx  # Delay/cancellation forecast
 │   │   ├── FeedbackModal.tsx     # In-app feedback submission
 │   │   ├── HistoricalPerformance.tsx # Train history + track distribution
-│   │   ├── ServiceAlertBanner.tsx # MTA service alerts (collapsible)
+│   │   ├── ServiceAlertBanner.tsx # Service alerts, MTA + NJT (collapsible)
 │   │   ├── TransferTripCard.tsx  # Multi-leg trip result card
 │   │   ├── RouteMap.tsx          # MapLibre GL route map
 │   │   ├── CongestionMap.tsx     # MapLibre GL network congestion map
@@ -159,7 +162,7 @@ webpage_v2/
 │   │   ├── NetworkStatusPage.tsx  # System-wide congestion overview
 │   │   ├── TripDetailsPage.tsx    # Multi-leg trip details view
 │   │   ├── TripHistoryPage.tsx    # Trip search history
-│   │   └── FavoritesPage.tsx      # Manage favorite stations
+│   │   └── FavoritesPage.tsx      # Manage favorite stations and routes
 │   ├── services/
 │   │   ├── api.ts          # API client with caching
 │   │   └── storage.ts      # localStorage wrapper
@@ -175,7 +178,7 @@ webpage_v2/
 │       ├── congestion.ts   # Congestion map data helpers
 │       ├── date.ts         # date-fns wrappers
 │       ├── formatting.ts   # Status badge classes
-│       ├── ratsense.ts     # AI journey predictions (RatSense)
+│       ├── ratsense.ts     # RatSense rule-based route suggestions (recent-trip window + home/work commute time-of-day)
 │       ├── routes.ts       # Route path helpers + compact /trip URL builders
 │       ├── share.ts        # Web Share API helper + train URL builder
 │       ├── stationSelection.ts # Personalized "Your stations" picker (Home/Work/favorite/recent)
@@ -199,7 +202,7 @@ webpage_v2/
 - `/trip` - Multi-leg trip details view (transfer connections); compact URL `?date&legs&walk` with `legs` as `dataSource:trainId:boardingCode:alightingCode` (legacy `?trip=<JSON>` still parsed)
 - `/route/:from/:to` - Route performance history (7d/30d/90d)
 - `/status` - Network-wide congestion overview by system
-- `/favorites` - Manage favorite stations
+- `/favorites` - Manage favorite stations and routes
 - `/history` - Trip search history
 
 **Base Path**: `/` (hosted at `trackrat.net`)
@@ -267,7 +270,7 @@ Use `getStatusBadgeClass()` from `utils/formatting.ts`:
 ### What This App Does NOT Have
 - **No WebSocket** - Simple 30-second polling instead
 - **No Push Notifications** - Browser notifications not implemented
-- **Minimal Maps** - Inline route map via MapLibre GL JS on TrainListPage (CARTO Positron light tiles, no API key; collapsed by default)
+- **Minimal Maps** - Two MapLibre GL JS maps (CARTO Positron light tiles, no API key): inline route map on TrainListPage (collapsed by default) and the lazy-loaded CongestionMap on NetworkStatusPage
 - **No Backend Auth** - Stateless, no user accounts
 
 ### Intentional Simplifications
@@ -378,7 +381,7 @@ npm run test:watch  # Watch mode for development
 ## Mobile-First Approach
 
 - Design for 375px viewport first (iPhone SE)
-- Bottom navigation (not top tabs)
+- Bottom navigation on mobile (inline header nav on desktop via `Navigation` `variant`)
 - Large touch targets (min 44px height)
 - Sticky headers on scroll
 - Safe area insets for notched devices
@@ -416,7 +419,7 @@ npm run test:watch  # Watch mode for development
 | **Notifications** | APNs/FCM push | None |
 | **Live Activities** | WidgetKit/Widgets | None |
 | **Offline Mode** | Core Data cache | PWA service worker (Workbox) |
-| **Maps** | MapKit/Google Maps | MapLibre GL (inline route map) |
+| **Maps** | MapKit/Google Maps | MapLibre GL (inline route map + congestion map) |
 | **Background Refresh** | Yes | No |
 | **Install** | App Store | PWA install prompt |
 | **Auth** | Potential | None |

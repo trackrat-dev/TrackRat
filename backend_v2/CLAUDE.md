@@ -78,10 +78,9 @@ The V2 backend eliminates the complexity of V1 by:
    - **Amtrak**: Polls major stations for active trains
    - Updates journey records from SCHEDULED to OBSERVED when trains appear
 
-3. **Collection Phase** (Every 15 minutes, configurable)
-   - Collects full journey details via `getTrainStopList` (NJT) or station APIs (Amtrak)
-   - Updates all stops with actual times and tracks
-   - Only collects trains discovered in last 90 minutes
+3. **Journey Collection & Maintenance**
+   - Full journey details (via `getTrainStopList` for NJT, station APIs for Amtrak) are collected through discovery batch scheduling plus the 5-minute `journey_update_check` job — the old standalone 15-minute `JourneyCollector.collect()` pipeline was deleted as dead code (issue #1497)
+   - **Every 15 minutes**: `njt_journey_maintenance` runs the two surviving sweeps re-homed from that pipeline — expire-stale journeys and reconcile silently-cancelled (unobserved) trains, with a 50-train spike guard
 
 4. **JIT Update Phase** (On-demand)
    - Refreshes data when requested by users
@@ -162,6 +161,11 @@ scheduler_task_runs (
     task_name, last_successful_run, last_attempt, run_count,
     average_duration_ms, last_duration_ms, last_instance_id,
     created_at, updated_at
+)
+
+-- Legacy partition backfill progress (see "Partitioning" below)
+partition_backfill_state (
+    legacy_table, last_copied_id, completed, rows_copied, updated_at
 )
 
 -- Live Activity tokens
@@ -307,7 +311,7 @@ GET /predictions/supported-stations                   # Stations with prediction
 POST /devices/register                               # Register APNS device token
 PUT  /alerts/subscriptions                           # Sync route alert subscriptions
 GET  /alerts/subscriptions/{device_id}               # Get current alert subscriptions
-GET  /alerts/service                                 # MTA service alerts (planned work, delays)
+GET  /alerts/service                                 # Service alerts, MTA + NJT (planned work, delays, elevator outages)
 
 # Validation
 GET /validation/status                               # Validation status and recent results
@@ -366,6 +370,8 @@ The APScheduler runs in-process and handles:
 - **Every 15 min**: Congestion cache pre-computation
 - **Every 15 min**: Resource usage check (logs data-disk and database size for Cloud Monitoring alerting)
 - **Every 15 min**: Service alerts collection (MTA + NJT)
+- **Every 15 min**: NJT journey maintenance (`njt_journey_maintenance` — expire-stale + reconcile-cancelled sweeps, issue #1497)
+- **Every 2 min**: Legacy partition backfill (`legacy_partition_backfill`, idempotent; self-completes once `*_legacy` tables are drained)
 - **Every 1 min**: Live Activity push notification updates
 - **Hourly**: Live Activity token cleanup
 - **Hourly**: Train validation across key routes
@@ -604,7 +610,7 @@ Comprehensive error handling with:
 - **Prometheus metrics** at `/metrics`
 - **Structured JSON logging** with correlation IDs
 - **Health checks** with detailed scheduler and database status
-- **Request middleware** for correlation ID propagation
+- **Request middleware** for correlation ID propagation, request stats (`request_stats_middleware`), and HSTS headers (`hsts_header_middleware`)
 
 ## Common Tasks
 
@@ -616,10 +622,9 @@ poetry run uvicorn trackrat.main:app --reload
 
 # Use a custom database URL
 TRACKRAT_DATABASE_URL=postgresql+asyncpg://user:pass@localhost:5432/custom_db poetry run uvicorn trackrat.main:app
-
-# Run scheduler only
-poetry run python -m trackrat.scheduler
 ```
+
+The scheduler only runs in-process via the FastAPI lifespan (`main.py`) — there is no standalone scheduler entrypoint.
 
 ### Database Operations
 
@@ -842,6 +847,8 @@ The backend is organized into service classes for better maintainability:
 ## Recent Improvements & Known Issues
 
 ### Recent Improvements (July 2026)
+- ✅ NJT/Amtrak lifecycle reliability batch from a systematic latent-bug review (issues #1496–#1508, PRs #1509–#1520): NJT same-journey matching compares immutable `SCHED_DEP_DATE` instead of the origin's live `DEP_TIME` (#1496); nightly schedule generation derives `journey_date` from each train's earliest departure (#1499); Amtrak stale-stop deletion preserves passed stops with recorded actuals and `journey.actual_departure` is recorded write-once in both stop-sync paths (#1501/#1502); expired-but-reobserved Amtrak rows are requeued (#1500); the NJT TIME/DEP_TIME inversion correction is single-sourced through `utils/train.effective_njt_updated_times` across Live Activities, congestion, and departure boards (#1503–#1505); completion-on-expiry uses `nulls_last()` (#1506); freshness-wrapped scheduler tasks re-raise failures so a failed run no longer stamps `last_successful_run` (#1507)
+- ✅ Deleted the dead NJT `JourneyCollector.collect()` pipeline and re-homed its two sweeps (expire-stale, reconcile-silently-cancelled) as the 15-minute `njt_journey_maintenance` scheduler task with a 50-train spike guard (issue #1497, PR #1520, `services/scheduler.py`)
 - ✅ Closed a disabled-source serving leak: `active_data_sources()` was only wired into the departure / recent-departure / trip-search paths, so the **analytics and train_id-scoped endpoints still served residual rows** from a disabled feed (present until they age out of the retention window). `/routes/congestion` was the standout — `CONGESTION_PROVIDERS` hard-listed the disabled sources, so the 15-min precompute kept re-warming their caches and the all-systems merge kept serving their `train_positions`. Fixes: precompute + merge now iterate `active_data_sources(CONGESTION_PROVIDERS)` and the congestion endpoint normalizes `requested_systems` to the active set (empty ⇒ empty map); `get_network_congestion_with_trains`, `_query_line_stats_sql`/route-summary, and `/routes/segments/.../trains` constrain `data_source` to the active set even when unscoped; a shared `api/utils.ensure_source_enabled()` 404s the train_id/source-scoped endpoints (`/trains/{id}`, `/trains/{id}/history`, `/predictions/track|delay`, `/routes/history`). (`api/utils.py`, `api/routes.py`, `api/trains.py`, `api/predictions.py`, `services/api_cache.py`, `services/congestion.py`, `services/summary.py`)
 - ✅ Added `TRACKRAT_DISABLED_DATA_SOURCES` feature flag to fully disable train systems — a disabled source is skipped for real-time collection, schedule generation, GTFS refresh, and service-alert polling, and is filtered out of departure / trip-search API responses (`DepartureService.active_data_sources()`) so no stale data is served. Currently `BART,WMATA,MBTA,METRA` in staging/production via `infra_v2/terraform/compute.tf`; iOS mirrors the set in `TrainSystem.disabledSystems`, web in `DISABLED_SYSTEMS` (`webpage_v2/src/data/stations.ts`) (PR #1401, `settings.py`, `services/scheduler.py`, `services/departure.py`, `collectors/service_alerts.py`)
 - ✅ Partitioned `journey_stops` (RANGE on `journey_date`) and `segment_transit_times` (RANGE on `departure_time`) by month so retention can `DROP TABLE` an aged-out partition instead of relying on `DELETE` + autovacuum, which never returned space to the filesystem (`journey_stops` alone was ~33 GB / ~70% of journey storage on production). Existing rows are not rewritten in place: the prior tables are renamed to `*_legacy`, an idempotent background task (`SchedulerService.backfill_legacy_partitions`) copies the last `retention_days` of rows into the new partitions, and each `*_legacy` table is dropped once its backfill completes — so recent history stays readable and the reclaimed space comes back in one shot instead of over a 60-day drain. See "Partitioning" in the Database Schema section above for the full design. (issue #1343, `db/partitioning.py`, `models/database.py`, `services/scheduler.py`, migration `03db10760b28`)

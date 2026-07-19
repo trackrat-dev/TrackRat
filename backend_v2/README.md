@@ -2,7 +2,7 @@
 
 A simplified, efficient train tracking system for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, and WMATA built with FastAPI, PostgreSQL, and modern Python.
 
-**Version:** 2.0.0 (April 2026)
+**Version:** 2.0.0 (July 2026)
 **Database:** PostgreSQL with asyncpg (production-ready)
 **Python:** 3.11+ with strict type checking
 
@@ -79,7 +79,8 @@ poetry run uvicorn trackrat.main:app --reload
 - **Daily 12:30 AM ET**: NJT 27-hour schedule collection
 - **Daily 12:45 AM ET**: Amtrak pattern-based schedule generation
 - **Every 30 minutes**: Train discovery for NJT and Amtrak
-- **Every 15 minutes**: Journey collection for active NJT/Amtrak trains
+- **Every 15 minutes**: NJT journey maintenance (expire-stale + reconcile-cancelled sweeps; issue #1497 re-homed these from the deleted `JourneyCollector.collect()` pipeline)
+- **Every 15 minutes**: Service alerts collection (MTA + NJT)
 - **Every 4 minutes**: PATH train collection (unified discovery + updates)
 - **Every 4 minutes**: LIRR train collection (unified GTFS-RT collector)
 - **Every 4 minutes**: Metro-North train collection (unified GTFS-RT collector)
@@ -90,7 +91,11 @@ poetry run uvicorn trackrat.main:app --reload
 - **Every 3 minutes**: WMATA/DC Metro collection (REST API, requires API key)
 - **Every 5 minutes**: Update checks for active journeys
 - **Every 5 minutes**: Route alert evaluation and push notifications
+- **Every 5 minutes**: Morning-digest evaluation
+- **Every 1 minute**: Live Activity updates (hourly token cleanup)
+- **Cache pre-computation**: departures every 90s, route history every 5 min, congestion every 15 min
 - **Hourly at :05**: Validation across key routes
+- **Daily 3:00 AM ET**: GTFS static feed refresh
 - **Daily 3:30 AM ET**: Data retention cleanup (deletes journeys, discovery runs, validation results, and inactive service alerts older than `TRACKRAT_RETENTION_DAYS`, default 60 days; active service alerts are kept regardless of age)
 - Monitor scheduler status at `/scheduler/status` endpoint
 
@@ -126,6 +131,9 @@ All configuration is done via environment variables. See `.env.example` for avai
 - `TRACKRAT_USE_OPTIMIZED_AMTRAK_PATTERN_ANALYSIS`: Use database-aggregated pattern analysis (default: true)
 - `TRACKRAT_MBTA_API_KEY`: MBTA API key for higher rate limits (optional, public feed works without)
 - `TRACKRAT_DISABLED_DATA_SOURCES`: Comma-separated data sources to fully disable — collection, service alerts, and API serving (e.g. `BART,WMATA,MBTA,METRA`; default: none)
+- `TRACKRAT_SUBWAY_RETENTION_DAYS`: Shorter retention window for SUBWAY data (default: 14; other sources use `TRACKRAT_RETENTION_DAYS`)
+- `TRACKRAT_HOT_DATA_STALENESS_SECONDS` / `TRACKRAT_HOT_TRAIN_WINDOW_MINUTES` / `TRACKRAT_HOT_TRAIN_UPDATE_INTERVAL_SECONDS`: Hot-train fast-refresh tuning
+- `TRACKRAT_DATA_DISK_PATH`: Mount path checked by the resource-usage monitor
 - `TRACKRAT_ENABLE_SQL_LOGGING`: Enable SQLAlchemy query logging (default: false)
 
 ### APNS Certificate Setup
@@ -308,11 +316,16 @@ PUT /api/v2/alerts/subscriptions
 ```
 Sync route alert subscriptions for delay/cancellation push notifications
 
+#### Get Current Subscriptions
+```
+GET /api/v2/alerts/subscriptions/{device_id}
+```
+
 #### Service Alerts
 ```
 GET /api/v2/alerts/service
 ```
-MTA service alerts (planned work, delays) for Subway, LIRR, and Metro-North
+Service alerts (planned work, delays, elevator outages) for Subway, LIRR, Metro-North, and NJT
 
 ### Feedback
 ```

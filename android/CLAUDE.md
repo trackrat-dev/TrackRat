@@ -58,7 +58,7 @@ android/app/src/main/java/com/trackrat/android/
 │   ├── preferences/            # DataStore preferences, EnvironmentManager
 │   ├── repository/             # Data repository pattern
 │   ├── services/               # TrackPrediction, BackendHealth
-│   └── Stations.kt             # Station data
+│   └── Stations.kt             # Station data with LatLng (used by the map; a second list, models/Stations.kt, matches iOS — known duplication)
 ├── di/                         # Hilt DI modules
 ├── navigation/                 # TrackRatDestinations, Navigator
 ├── services/                   # TrainTrackingService, RatSense, Notifications, TrackingStateRepository, TrainUpdateReceiver
@@ -84,7 +84,7 @@ android/app/src/main/java/com/trackrat/android/
 Key endpoints:
 - `GET /trains/departures?from={from}&to={to}` - Departures
 - `GET /trains/{trainId}?date={date}` - Train details
-- `GET /predictions/track?train_id={trainId}` - Track predictions
+- `GET /predictions/track?station_code={code}&train_id={trainId}&journey_date={date}` - Track predictions
 - `GET /routes/congestion` - Network congestion
 
 All times are Eastern Time (handled by `ZonedDateTimeAdapter`).
@@ -97,7 +97,7 @@ All times are Eastern Time (handled by `ZonedDateTimeAdapter`).
 | TrainDetailV2 | Full journey data |
 | DepartureV2 | Enhanced departure with position |
 | StatusV2 | Status with location context |
-| Progress | Journey tracking |
+| Progress | Journey tracking (duplicated as `ProgressV2` in TrainDetailV2.kt — known model confusion) |
 | PlatformPrediction | ML platform predictions |
 | CongestionSegment | Network congestion |
 

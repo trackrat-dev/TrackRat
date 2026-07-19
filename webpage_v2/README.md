@@ -6,15 +6,26 @@ A mobile-first web application for tracking trains across 11 transit systems (NJ
 
 - Real-time train departures and details
 - Search trains by origin and destination across 11 transit systems
+- Multi-leg trip search with transfers (transfer trip cards + `/trip` details view)
+- Direct train-number search (type a train number on `/departures` to jump to its details)
 - 1,500+ stations with system-grouped picker
+- Single-station departure board (`/station/:code`)
 - Visual train states: departed (dimmed), boarding (highlighted), cancelled (strikethrough), scheduled
 - Train number filter on departure list
-- Route operations summary
-- Track/platform predictions
+- Route operations summary and network-wide status page with congestion map
+- Route performance history (7d/30d/90d)
+- Track/platform predictions and delay/cancellation forecasts
+- Historical train performance with track distribution charts
+- Service alerts (MTA + NJT, collapsible banner)
 - Stop timing hierarchy (actual > updated > scheduled) with predicted arrivals
-- Favorite stations for quick access
+- Inline route map and network congestion map (MapLibre GL)
+- Favorite stations and favorite routes for quick access
+- Home/Work station personalization with RatSense rule-based route suggestions
+- Trip search history
 - Last route auto-restoration
 - Data freshness indicators and journey date display
+- In-app feedback submission
+- Similar trains suggestions
 - iOS smart app banner
 - Mobile-first warm light theme with glassmorphism UI
 - Auto-refresh every 30 seconds
@@ -24,11 +35,12 @@ A mobile-first web application for tracking trains across 11 transit systems (NJ
 ## Tech Stack
 
 - React 19 + TypeScript
-- Vite 8 (build tool)
+- Vite 8 (build tool) + vite-plugin-pwa
 - Tailwind CSS 4 (styling)
 - Zustand 5 (state management)
 - React Router v7 (routing)
 - date-fns 4 (date formatting)
+- MapLibre GL + react-map-gl (route and congestion maps)
 
 ## Getting Started
 
@@ -61,7 +73,7 @@ src/
 ├── services/        # API client (with caching) and localStorage wrapper
 ├── store/           # Zustand global state
 ├── types/           # TypeScript type definitions
-├── utils/           # Date formatting, status badges, share helpers
+├── utils/           # Date/status/share helpers, congestion, RatSense suggestions, route/trip URL builders, train search, polling + back-navigation hooks
 ├── data/            # Station data, route topology, subway lines (1,500+ stations, 11 transit systems)
 ├── App.tsx          # Main app component with route definitions
 ├── main.tsx         # Entry point
@@ -75,9 +87,16 @@ The app connects to the TrackRat backend API at `https://apiv2.trackrat.net/api/
 ### Key Endpoints
 
 - `GET /trips/search` - Search trips between stations (primary departure endpoint)
+- `GET /trains/departures` - Station departure board
 - `GET /trains/{id}` - Get train details with all stops
-- `GET /predictions/track` - Track/platform predictions
-- `GET /routes/summary` - Route operations summary
+- `GET /trains/{id}/history` - Historical train performance
+- `GET /predictions/track` / `GET /predictions/delay` - Track and delay predictions
+- `GET /routes/summary` - Operations summary (network/route/train scopes)
+- `GET /routes/history` / `GET /routes/congestion` - Route performance and network congestion
+- `GET /alerts/service` - Service alerts (MTA + NJT)
+- `POST /feedback` - In-app feedback
+
+See `webpage_v2/CLAUDE.md` for the full endpoint list with parameters.
 
 ## Development
 

@@ -154,7 +154,11 @@ TrackRat/
 │       ├── components/  # Shared UI components
 │       └── store/       # Zustand state management
 ├── infra_v2/terraform/  # GCP backend infrastructure (Terraform)
-└── infra_v2/terraform-webpage/  # GCP webpage infrastructure (Terraform)
+├── infra_v2/terraform-webpage/  # GCP webpage infrastructure (Terraform)
+├── infra_v2/functions/  # Pub/Sub-triggered Cloud Functions (feedback + train-follow Slack notifiers)
+├── scripts/             # Deployment, validation, and data-generation scripts
+├── .github/workflows/   # CI (backend/web/terraform: ci-cd-v2.yml, iOS: ios-ci.yml)
+└── .claude/             # AI agent config (agents, rules, PM commands, log-query scripts)
 ```
 
 ## Running Tests

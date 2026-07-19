@@ -20,12 +20,12 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metr
 - **LIRR**: All branches via MTA GTFS-RT
 - **Metro-North**: All branches via MTA GTFS-RT
 - **NYC Subway**: 36 routes, 472 stations via MTA GTFS-RT
-- **BART**: All lines via BART GTFS-RT
-- **MBTA**: Commuter Rail via MBTA GTFS-RT
-- **Metra**: All lines (Chicago) via Metra GTFS-RT
-- **WMATA (DC Metro)**: All 6 lines, 98 stations via WMATA REST API
+- **BART**: All lines via BART GTFS-RT *(currently disabled app-wide)*
+- **MBTA**: Commuter Rail via MBTA GTFS-RT *(currently disabled app-wide)*
+- **Metra**: All lines (Chicago) via Metra GTFS-RT *(currently disabled app-wide)*
+- **WMATA (DC Metro)**: All 6 lines, 98 stations via WMATA REST API *(currently disabled app-wide)*
 - **Total Coverage**: 1,500+ stations across the United States
-- **Train Services**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA
+- **Train Services**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway (BART, MBTA, Metra, and WMATA are implemented but disabled app-wide — see Train System Filtering below)
 
 ### Route Alerts
 - **Push Notifications**: Get alerted when subscribed routes experience delays or cancellations
@@ -52,7 +52,7 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metr
 ### Train System Filtering
 - **App-Wide Disabled Systems**: `TrainSystem.disabledSystems` (currently BART, WMATA, MBTA, Metra) removes systems from every surface — onboarding, Settings, maps, route alerts — mirroring the backend's `TRACKRAT_DISABLED_DATA_SOURCES` flag
 - **Per-System Toggles**: Users can enable/disable each transit system in Settings
-- **Default Systems**: NJT and Amtrak enabled by default; others require opt-in
+- **Default Systems**: none pre-enabled — `TrainSystem.defaultEnabled` is empty and onboarding forces users to pick their systems
 - **Simple Toggles**: Each system is on or off (Amtrak shows all routes when enabled)
 - **Map Layer Filtering**: Disabled systems hidden from congestion map and route overlays
 - **Station Filtering**: Disabled systems excluded from station picker and onboarding
@@ -63,7 +63,7 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metr
 - **Haptic Feedback**: Tactile responses for important interactions
 - **Pull-to-Refresh**: Natural gesture support throughout
 - **Deep Linking**: Direct access to trains and journeys from external apps
-- **Offline Support**: Recent trips and favorites available without connection
+- **Offline Support**: Recent trips and favorites available without connection; train details render instantly from stale cache (`TrainCacheService` with `allowStale`), overlay pushed Live Activity state, and show a stale-data banner while refreshes fail
 
 ## 📱 Screenshots & UI
 
@@ -204,7 +204,8 @@ TrackRatTests/                   # Test suite
 ├── Models/                     # Model tests
 ├── Services/                   # Service tests
 ├── ViewModels/                 # ViewModel tests
-├── Views/                      # View tests (AlertConfiguration, LineSelection)
+├── Views/                      # View tests (AlertConfiguration, LineSelection, ServiceAlertsSection)
+├── Utilities/                  # Utility tests
 ├── TestUtilities/              # Test helpers
 └── TestFixtures/               # Swift test data (TrainTestData)
 ```
@@ -242,9 +243,10 @@ TrackRatTests/                   # Test suite
 ### Configuration
 
 #### API Endpoints
-The app connects to the TrackRat backend API. Configure in `APIService.swift`:
+The app connects to the TrackRat backend API. Environments are defined by the `ServerEnvironment` enum in `Services/StorageService.swift` (selectable in-app; `APIService` reads `environment.baseURL`):
 - **Production**: `https://apiv2.trackrat.net/api`
-- **Development**: `http://localhost:8000/api`
+- **Staging**: `https://staging.apiv2.trackrat.net/api`
+- **Local**: `http://localhost:8000/api`
 
 #### Push Notifications
 For Live Activities with push updates:
@@ -352,14 +354,13 @@ See [CLAUDE.md](CLAUDE.md) for complete technical details and improvement areas.
 
 ## 📈 Future Roadmap
 
-### Near Term (v2.x)
+### Near Term
 - [ ] Widget Extension for Home Screen
 - [ ] Apple Watch companion app
-- [ ] Offline mode with caching
 - [ ] Siri Shortcuts integration
 - [ ] Improved accessibility
 
-### Long Term (v3.x)
+### Long Term
 - [ ] iPad optimization
 - [ ] macOS Catalyst app
 - [ ] CarPlay support

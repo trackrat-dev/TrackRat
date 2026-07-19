@@ -47,6 +47,8 @@ Simplified GCP infrastructure using Managed Instance Groups with Container-Optim
                    └──────────────────────────────────────────────────────────┘
 ```
 
+> **Load-balancer consolidation (July 2026):** the diagram above shows the historical per-environment layout. In **production**, the dedicated API load balancer has been torn down (`consolidate_api_lb = true` in `terraform/variables.tf`): `apiv2.trackrat.net` is now host-routed through the consolidated **webpage** LB defined in `terraform-webpage/main.tf`, which fronts both `trackrat.net` (GCS bucket backend) and the API (`trackrat-production-backend`). Staging keeps its own dedicated API LB. The staging *webpage* LB was also decommissioned — `gs://trackrat-webpage-staging` is bucket-only and `staging.trackrat.net` no longer resolves to it. Cutover procedure: `infra_v2/RUNBOOK-lb-consolidation.md`.
+
 ## Prerequisites
 
 ### Required Secrets (create manually before terraform apply)
@@ -62,6 +64,8 @@ gcloud secrets create trackrat-apns-auth-key --data-file=-
 gcloud secrets create trackrat-wmata-api-key --data-file=-
 gcloud secrets create trackrat-metra-api-token --data-file=-
 ```
+
+The Cloud Functions need two additional secrets (not referenced by `terraform/secrets.tf`): `slack-feedback-webhook` and `github-feedback-token` (used by `feedback_notifier` to create GitHub issues — see Cloud Functions below).
 
 ### Terraform State Bucket
 
@@ -117,7 +121,7 @@ gcloud builds submit --config=cloudbuild.yaml .
 ### Webpage Deployment
 
 The React webpage (`webpage_v2/`) deploys separately from the API via its own Cloud Build triggers (defined in `terraform-webpage/`):
-- **Push to `main`** (with `webpage_v2/` changes) → `trackrat-webpage-staging` trigger → `gs://trackrat-webpage-staging` (`staging.trackrat.net`)
+- **Push to `main`** (with `webpage_v2/` changes) → `trackrat-webpage-staging` trigger → `gs://trackrat-webpage-staging` (bucket-only — the staging webpage LB was decommissioned and `staging.trackrat.net` no longer points at it)
 - **Push to `production`** (with `webpage_v2/` changes) → `trackrat-webpage-production` trigger → `gs://trackrat-webpage-production` (`trackrat.net` / `www.trackrat.net`)
 
 Manual deploy from the repo root:
@@ -135,16 +139,19 @@ Manual deploy from the repo root:
 | `project_id` | trackrat-v2 | GCP project |
 | `region` | us-east4 | GCP region |
 | `zone` | us-east4-a | GCP zone |
-| `machine_type` | t2d-standard-2 | VM machine type |
+| `machine_type` | t2d-standard-2 | VM machine type (Tau/AMD, dedicated cores; reverted from e2-custom after latency regression) |
 | `disk_size_gb` | 40 | Persistent disk size |
 | `snapshot_retention_days` | 7 | Snapshot retention period |
+| `domain` | "" (per-environment default) | API domain (`apiv2.trackrat.net` / `staging.apiv2.trackrat.net`) |
+| `consolidate_api_lb` | true | Production cutover switch: tears down the dedicated API frontend; `apiv2.trackrat.net` rides the consolidated webpage LB. No effect on staging. See `RUNBOOK-lb-consolidation.md` |
+| `alert_email` | trackrat@andymartin.cc | Email for uptime monitoring alerts |
 
 **Note:** Staging uses spot VMs for cost savings; production uses on-demand VMs for stability.
 
 ### Outputs
 
 ```bash
-terraform output load_balancer_ip    # IP for DNS configuration
+terraform output load_balancer_ip    # IP for DNS configuration (staging only; production returns "consolidated-into-webpage-lb")
 terraform output api_url             # HTTPS API endpoint
 terraform output artifact_registry_url  # Docker registry URL
 ```
@@ -309,10 +316,10 @@ gcloud compute instance-groups managed rolling-action replace \
 ## Cloud Functions
 
 ### feedback_notifier (Cloud Function)
-Sends user feedback to Slack via webhook.
+Sends user feedback to Slack via webhook **and creates a GitHub issue** in `trackrat-dev/TrackRat` (label `user-feedback`) for each submission.
 
 **Trigger**: Pub/Sub message from application logs
-**Secret Required**: `slack-feedback-webhook`
+**Secrets Required**: `slack-feedback-webhook`, `github-feedback-token`
 
 ```bash
 # Deploy function
@@ -323,10 +330,11 @@ gcloud functions deploy feedback-notifier \
   --entry-point=notify_feedback
 ```
 
-### train-follow-notifier (Cloud Run)
-Sends push notifications when followed trains have status updates.
+### train_follow_notifier (Cloud Function)
+Posts a Slack message when a user follows a train (same Pub/Sub → Slack-webhook pattern as `feedback_notifier`). It does **not** send push notifications — train push updates are handled by the backend's Live Activity scheduler job.
 
-Deployed as a Cloud Run service, triggered by Pub/Sub messages from the backend.
+**Trigger**: Pub/Sub message from application logs
+**Secret Required**: Slack webhook
 
 ## Cost Optimization
 
@@ -376,6 +384,7 @@ cat /var/log/startup.log | grep -i disk
 ```
 infra_v2/
 ├── README.md                    # This file
+├── RUNBOOK-lb-consolidation.md  # API→webpage LB consolidation cutover runbook
 ├── cloudbuild.yaml              # Production deployment pipeline
 ├── cloudbuild-staging.yaml      # Staging deployment pipeline
 ├── cloudbuild-terraform.yaml    # Terraform automation
@@ -385,9 +394,9 @@ infra_v2/
 │   ├── feedback_notifier/       # Slack notification function
 │   │   ├── main.py
 │   │   └── requirements.txt
-│   └── train_follow_notifier/   # Train follow push notification service
+│   └── train_follow_notifier/   # Train-follow Slack notification function
 ├── terraform-webpage/
-│   └── main.tf                  # Webpage hosting (staging + production): GCS buckets, LB, SSL certs, CDN, Cloud Build triggers
+│   └── main.tf                  # Webpage hosting: production LB (also fronts apiv2.trackrat.net post-consolidation), SSL certs, CDN, Cloud Build triggers; staging is bucket-only
 └── terraform/
     ├── main.tf                  # Provider and backend config
     ├── variables.tf             # Input variables

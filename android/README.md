@@ -16,15 +16,19 @@
 - **V2 API Endpoints**: Correctly configured for production backend (https://apiv2.trackrat.net/api/v2/)
 - **Custom DateTime Adapter**: Proper handling of Eastern Time zone with ZonedDateTime
 - **Error Handling**: ApiResult wrapper for consistent error management
-- **Network Logging**: Debug logging for API calls in development builds
+- **Network Logging**: OkHttp `Level.BODY` logging for API calls (currently enabled in all build types)
 
 #### Data Models
 - **Complete V2 Models**: TrainV2, StatusV2, Progress, PredictionData, Stop models matching backend
 - **Response Models**: DeparturesResponse, TrainDetailsResponse for API responses
-- **Station Data**: Major NJ Transit stations (NY, NP, TR, PJ, MP) plus Amtrak, PATH, and PATCO stations
+- **Station Data**: Major NJ Transit stations (NY, NP, TR, PJ, MP) plus Amtrak Northeast Corridor and Keystone stations (no PATH/PATCO station data yet; note there are two station lists — `data/Stations.kt` for the map and `data/models/Stations.kt` matching iOS)
 - **Proper Field Mapping**: JSON annotations for snake_case to camelCase conversion
 
 #### User Interface
+- **Map Container (app root)**:
+  - Google Maps screen with real-time congestion overlay
+  - Draggable bottom sheet hosting the other screens (`ui/map/MapContainerScreen.kt`; `startDestination = "map_container"` in `MainActivity.kt`)
+
 - **Station Selection Screen**: 
   - Origin/destination selection with recent trips
   - Search by train number functionality
@@ -43,8 +47,12 @@
   - Journey visualization with stops
   - Real-time status updates
   - Progress indicators
-  - Historical data modal (bottom sheet)
+  - Segmented track prediction bar (`SegmentedTrackPredictionBar`)
   - Support for both train IDs and numbers
+
+- **Supporting Screens**:
+  - Onboarding (`ui/onboarding/`), Favorites (`ui/favorites/`), Profile/Settings (`ui/profile/`), Advanced config with runtime environment switching (`ui/advanced/`)
+  - Ongoing train-tracking notifications via foreground service (`services/TrainTrackingService.kt`, AlarmManager 30s updates)
 
 #### User Experience
 - **Haptic Feedback**: Tactile responses on user interactions
@@ -65,7 +73,7 @@
 #### Track Predictions (Owl)
 - ✅ Confidence-based UI styling
 - ✅ Display in train list
-- ❌ Not available in train details
+- ✅ Segmented prediction bar in train details (`SegmentedTrackPredictionBar`)
 - ❌ Platform aggregation not shown
 
 #### StatusV2 Integration
@@ -76,10 +84,11 @@
 
 ### ❌ Not Yet Implemented
 
-1. **Push Notifications** (FCM) - not needed yet
-2. **Route History Screen** - backend endpoint exists, UI not built
-3. **Home Screen Widgets** (Glance API)
-4. **Offline Mode** - no local caching
+1. **Push Notifications** (FCM) - not needed yet (ongoing foreground-service notifications exist; no remote push)
+2. **Route History** - backend endpoint exists, but nothing is wired client-side (no API method, no UI)
+3. **Historical data view** - no history UI (iOS has `HistoricalDataView`)
+4. **Home Screen Widgets** (Glance API)
+5. **Offline Mode** - no local caching
 
 ## Getting Started - Development Setup
 
@@ -87,7 +96,7 @@
 
 1. **Android Studio**: Latest stable version (Hedgehog or newer)
 2. **JDK**: Version 17 or higher
-3. **Android SDK**: API 34 (Android 14)
+3. **Android SDK**: API 34 (Android 14) compile/target; `minSdk` 26 (Android 8.0)
 4. **Git**: For version control
 5. **Maps**: Will need a Google Cloud Account with a configured Maps API Key
 
@@ -104,19 +113,12 @@
    - Let Gradle sync complete
 
 3. **Configure local development (optional)**
-   
-   For local backend testing, update `NetworkModule.kt`:
-   ```kotlin
-   // For emulator connecting to localhost
-   val BASE_URL = "http://10.0.2.2:8000/api/v2/"
-   
-   // For physical device on same network
-   val BASE_URL = "http://YOUR_LOCAL_IP:8000/api/v2/"
-   ```
-   
-4. ** Add Google Maps API Key **
-    - Navigate to local.properties
-    - Add a key `mapsApiKey=`
+
+   The base URL is resolved at runtime from `EnvironmentManager` (see `di/NetworkModule.kt` — there is no hardcoded `BASE_URL`). Environment URLs come from `buildConfigField` values in `app/build.gradle.kts`, and the environment can be switched in-app via the Advanced config screen (`ui/advanced/AdvancedConfigScreen.kt`). For an emulator hitting a local backend, use `http://10.0.2.2:8000/api/v2/`.
+
+4. **Add Google Maps API Key**
+    - Navigate to `local.properties`
+    - Add a key `maps.apiKey=` (read via `project.findProperty("maps.apiKey")` in `app/build.gradle.kts`)
     - Set the value equal to your Google Maps SDK API Key
 
 ### Building and Running
@@ -188,7 +190,7 @@ val LightColorScheme = lightColorScheme(
 
 #### Debugging Network Requests
 
-1. Enable verbose logging in `NetworkModule.kt`
+1. OkHttp logging is always on at `Level.BODY` (`NetworkModule.kt` — not gated to debug builds)
 2. Use Android Studio's Profiler → Network tab
 3. Check Logcat with filter: `OkHttp`
 
@@ -265,9 +267,9 @@ The Android app uses the TrackRat V2 API. Key endpoints:
 
 - `GET /api/v2/trains/departures` - Get departures between stations
 - `GET /api/v2/trains/{trainId}` - Get train details
-- `GET /api/v2/routes/history` - Historical route performance
+- `GET /api/v2/predictions/track` - Track/platform predictions (requires `station_code`, `train_id`, `journey_date`)
 - `GET /api/v2/routes/congestion` - Real-time congestion data
-- `POST /api/v2/live-activities/register` - Register for notifications
+- `GET /health` - Backend health check
 
 See `backend_v2/CLAUDE.md` for complete API documentation.
 
