@@ -230,12 +230,16 @@ bash scripts/create-and-restore-db-then-train-model.sh
 5. Validation (hourly) - ensures coverage
 
 > **⚠️ NJT `updated_arrival` / `updated_departure` semantic mismatch:**
-> On `JourneyStop`, these fields are raw NJT API passthroughs with *inverted* meanings
-> depending on stop type. At **intermediate stops**, `updated_departure` = original schedule
-> (DEP_TIME) while `updated_arrival` = live delayed estimate (TIME). Consumers must use
-> `max(updated_departure, updated_arrival)` to get the true delayed time. For all other
-> providers (Amtrak, GTFS-RT, PATH, WMATA), both fields are genuine live estimates and
-> the `max()` is harmless. See `database.py` JourneyStop model for the authoritative docs.
+> On `JourneyStop`, these fields are raw NJT TIME/DEP_TIME passthroughs whose meaning
+> depends on stop position. At **intermediate stops**, `updated_departure` = original
+> schedule (DEP_TIME) and `updated_arrival` = live delayed estimate (TIME). At the
+> **origin** it's the reverse (`updated_departure` is the live estimate). At the
+> **terminal**, `updated_departure` can be a later *turnaround* departure that must not
+> be shown as the arrival (issue #1492). NEVER read these raw for NJT — use
+> `utils/train.effective_njt_updated_times` + `terminal_stop_index` (SQL twin:
+> `GREATEST(updated_departure, updated_arrival)` guarded to NJT). This family shipped as
+> a bug five times before being single-sourced. For all other providers both fields are
+> genuine live estimates. Full reference: `backend_v2/docs/journey-lifecycle.md`.
 
 **Backend Data Collection (PATH - Unified):**
 - Single collector runs every 4 minutes using native RidePATH API
