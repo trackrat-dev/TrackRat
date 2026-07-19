@@ -4,7 +4,7 @@ User feedback API endpoint.
 Collects user feedback about data issues and logs it for review.
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
@@ -53,7 +53,7 @@ async def submit_feedback(
         app_version=request.app_version,
         device_model=request.device_model,
         client_ip=get_client_ip(http_request),
-        timestamp=datetime.utcnow().isoformat(),
+        timestamp=datetime.now(timezone.utc).isoformat(),
     )
 
     return FeedbackResponse()
