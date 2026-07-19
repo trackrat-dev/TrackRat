@@ -42,6 +42,7 @@ from trackrat.services.congestion import CongestionAnalyzer
 from trackrat.services.departure import DepartureService, active_data_sources
 from trackrat.services.summary import TrainDelaySummary
 from trackrat.utils.time import ensure_timezone_aware, now_et
+from trackrat.utils.train import stop_sequence_sort_key
 
 logger = get_logger()
 
@@ -1319,7 +1320,7 @@ async def _extract_segment_detail(
     if not from_stop or not to_stop:
         return None
 
-    if (from_stop.stop_sequence or 0) >= (to_stop.stop_sequence or 0):
+    if stop_sequence_sort_key(from_stop) >= stop_sequence_sort_key(to_stop):
         return None
 
     # Calculate times and delays

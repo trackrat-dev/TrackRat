@@ -44,6 +44,7 @@ from trackrat.utils.train import (
     is_amtrak_train,
     is_njt_stop_cancelled,
     normalize_njt_destination,
+    stop_sequence_sort_key,
     terminal_stop_index,
 )
 
@@ -196,6 +197,13 @@ def _detect_at_station(journey: TrainJourney) -> str | None:
     if not journey.stops:
         return None
 
+    # Deliberately NOT stop_sequence_sort_key (nulls-last) here. This detection
+    # keys off the FIRST undeparted stop and breaks immediately. A discovery-
+    # created stop with a track but no assigned stop_sequence yet (NULL) is the
+    # strongest "train is at this station right now" signal; nulls-last would
+    # sort it behind the sequenced stops, so the break would return before ever
+    # reaching it and at_station_code would be lost until the next collection
+    # resequences. The `or 0` front-floating is correct for this one function.
     sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
 
     next_station_found = False
@@ -517,13 +525,13 @@ class DepartureService:
             # Find from and to stops
             from_stop = None
             to_stop = None
-            sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+            sorted_stops = sorted(journey.stops, key=stop_sequence_sort_key)
             for stop in sorted_stops:
                 if stop.station_code in from_codes and not from_stop:
                     from_stop = stop
                 elif to_station and stop.station_code in to_codes and from_stop:
                     # Ensure to_stop comes AFTER from_stop in the journey sequence
-                    if (stop.stop_sequence or 0) > (from_stop.stop_sequence or 0):
+                    if stop_sequence_sort_key(stop) > stop_sequence_sort_key(from_stop):
                         to_stop = stop
                         break
 
@@ -799,12 +807,12 @@ class DepartureService:
         for journey in unique_journeys:
             from_stop = None
             to_stop = None
-            sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+            sorted_stops = sorted(journey.stops, key=stop_sequence_sort_key)
             for stop in sorted_stops:
                 if stop.station_code in from_codes and not from_stop:
                     from_stop = stop
                 elif to_station and stop.station_code in to_codes and from_stop:
-                    if (stop.stop_sequence or 0) > (from_stop.stop_sequence or 0):
+                    if stop_sequence_sort_key(stop) > stop_sequence_sort_key(from_stop):
                         to_stop = stop
                         break
 
@@ -956,7 +964,7 @@ class DepartureService:
         if not stops_available:
             return TrainPosition()
 
-        sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+        sorted_stops = sorted(journey.stops, key=stop_sequence_sort_key)
 
         last_departed_station_code = None
         next_station_code = None

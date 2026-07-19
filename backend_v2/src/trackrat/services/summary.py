@@ -23,7 +23,10 @@ from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.congestion_types import FREQUENCY_FIRST_SOURCES
 from trackrat.services.departure import active_data_sources
 from trackrat.utils.time import now_et
-from trackrat.utils.train import effective_njt_updated_times
+from trackrat.utils.train import (
+    effective_njt_updated_times,
+    stop_sequence_sort_key,
+)
 
 logger = get_logger(__name__)
 
@@ -457,7 +460,7 @@ class SummaryService:
             if (
                 from_stop
                 and to_stop
-                and (from_stop.stop_sequence or 0) < (to_stop.stop_sequence or 0)
+                and stop_sequence_sort_key(from_stop) < stop_sequence_sort_key(to_stop)
             ):
                 route_journeys.append(journey)
                 if journey.train_id:
@@ -563,7 +566,7 @@ class SummaryService:
             if (
                 from_stop
                 and to_stop
-                and (from_stop.stop_sequence or 0) < (to_stop.stop_sequence or 0)
+                and stop_sequence_sort_key(from_stop) < stop_sequence_sort_key(to_stop)
             ):
                 route_journeys.append(journey)
                 if journey.train_id:
@@ -1436,7 +1439,7 @@ class SummaryService:
                 continue
 
             # Use the first stop (origin) for departure delay
-            first_stop = min(journey.stops, key=lambda s: s.stop_sequence or 0)
+            first_stop = min(journey.stops, key=stop_sequence_sort_key)
 
             if first_stop and first_stop.scheduled_departure:
                 counted_trains += 1

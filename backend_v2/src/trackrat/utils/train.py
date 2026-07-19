@@ -66,7 +66,7 @@ def get_effective_observation_type(journey: "TrainJourney") -> str:
     if not _stops_loaded(journey) or not journey.stops:
         return "SCHEDULED"
 
-    sorted_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
+    sorted_stops = sorted(journey.stops, key=stop_sequence_sort_key)
     first_stop = sorted_stops[0]
 
     origin_departure = first_stop.scheduled_departure or first_stop.scheduled_arrival
@@ -109,21 +109,47 @@ def get_train_data_source(train_id: str) -> str:
     return "AMTRAK" if is_amtrak_train(train_id) else "NJT"
 
 
+def stop_sequence_sort_key(stop: "JourneyStop") -> tuple[bool, int]:
+    """Ordering key for a ``JourneyStop`` that sorts a NULL ``stop_sequence`` last.
+
+    Discovery-created stops (and schedule-only rows) carry
+    ``stop_sequence = NULL`` until a full collection assigns one. The historical
+    ``key=lambda s: s.stop_sequence or 0`` idiom collapsed NULL to ``0``, tying an
+    unsequenced stop with the origin (sequence 0) so it floated to the top of a
+    stops list and misclassified from/to direction checks (issue #1536).
+
+    Returning ``(stop.stop_sequence is None, stop.stop_sequence or 0)`` keeps every
+    fully-sequenced journey ordered exactly as before — for non-NULL sequences
+    ``(False, a) < (False, b)`` iff ``a < b`` — while ordering any NULL-sequence
+    stop *after* all known ones (nulls-last). Use it wherever stops are sorted,
+    ``min()``-ed for the origin, or compared for from/to direction (tuple keys
+    compare lexicographically, so ``stop_sequence_sort_key(a) > stop_sequence_sort_key(b)``
+    is the nulls-last equivalent of ``(a.stop_sequence or 0) > (b.stop_sequence or 0)``).
+
+    Terminal/last-stop detection deliberately does **not** use this key: a
+    nulls-last ``max()`` would pick the unsequenced stop as the terminal. Those
+    callers keep the ``or 0`` form — where a NULL collapses to 0 and can never win
+    the ``max()`` over a real terminal — or the fully-sequenced guard in
+    :func:`terminal_stop_index`.
+    """
+    return (stop.stop_sequence is None, stop.stop_sequence or 0)
+
+
 def terminal_stop_index(
     sorted_stops: "list[JourneyStop]", terminal_station_code: str | None
 ) -> int | None:
     """Index of the genuine terminal stop in a ``stop_sequence``-sorted list,
     or ``None`` when positional detection can't be trusted.
 
-    Callers sort stops with ``key=lambda s: s.stop_sequence or 0``, so the last
-    element is only reliably the terminal once a journey is **fully collected**.
-    NJT discovery/schedule rows carry ``stop_sequence = NULL`` (collapsed to 0 by
-    that sort key, leaving them in load order) and the journey's
-    ``terminal_station_code`` is still an origin/discovery placeholder until full
-    collection rewrites it to the last API stop. On such a partially-collected
-    journey ``sorted_stops[-1]`` can be an intermediate stop; flagging it terminal
-    would skip ``effective_njt_updated_times``'s ``max()`` and expose NJT's raw
-    scheduled ``DEP_TIME``, hiding that stop's delay (PR #1495 review).
+    Callers sort stops with :func:`stop_sequence_sort_key` (nulls-last), so the
+    last element is only reliably the terminal once a journey is **fully
+    collected**. NJT discovery/schedule rows carry ``stop_sequence = NULL`` (sorted
+    to the *end* by that key) and the journey's ``terminal_station_code`` is still
+    an origin/discovery placeholder until full collection rewrites it to the last
+    API stop. On such a partially-collected journey ``sorted_stops[-1]`` can be an
+    unsequenced or intermediate stop; flagging it terminal would skip
+    ``effective_njt_updated_times``'s ``max()`` and expose NJT's raw scheduled
+    ``DEP_TIME``, hiding that stop's delay (PR #1495 review).
 
     Guard against that by only accepting the last stop as terminal when every stop
     has a non-null ``stop_sequence`` (i.e. the journey has been fully sequenced)

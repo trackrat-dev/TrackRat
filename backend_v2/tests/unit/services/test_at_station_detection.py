@@ -128,6 +128,32 @@ class TestDetectAtStation:
             f"got '{result}'"
         )
 
+    def test_njt_discovery_stop_null_sequence_with_track_is_detected(self):
+        """NJT: a discovery-created stop with a track but NULL stop_sequence is
+        the "train is here now" signal and must be detected (PR #1539 codex review).
+
+        Discovery adds a mid-journey stop (Secaucus) with only live data and no
+        assigned stop_sequence until the next full collection. If _detect_at_station
+        sorts nulls-last, that unsequenced track stop lands behind the sequenced
+        stops; the loop hits the first sequenced undeparted stop (NP, no track),
+        breaks, and never reaches Secaucus -> at_station_code lost. Front-floating
+        the NULL stop (stop_sequence or 0) keeps it visible.
+        """
+        stops = [
+            _make_stop("NY", 0, has_departed_station=True, track="9"),
+            _make_stop("SE", None, has_departed_station=False, track="5"),
+            _make_stop("NP", 3, has_departed_station=False, track=None),
+        ]
+        journey = _make_journey("NJT", stops)
+
+        result = _detect_at_station(journey)
+
+        assert result == "SE", (
+            f"Expected at_station_code='SE' for a discovery stop with a track and "
+            f"NULL stop_sequence (train is currently there), got '{result}'. "
+            f"Nulls-last sorting would hide it behind the sequenced stops."
+        )
+
     def test_amtrak_at_station_status(self):
         """Amtrak: raw_amtrak_status='Station' -> at_station_code."""
         stops = [
