@@ -132,7 +132,7 @@ struct FeedbackButton: View {
                     Text(label)
                         .font(font)
                 }
-                Text("What you write here helps!")
+                Text("What you write here is automatically worked on!")
                     .font(.caption2)
                     .opacity(0.8)
             }
