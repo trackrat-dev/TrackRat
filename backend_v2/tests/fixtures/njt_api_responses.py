@@ -401,6 +401,76 @@ def create_mixed_spelling_cancelled_response() -> MagicMock:
     )
 
 
+def create_schedule_less_secaucus_response(train_id: str = "3701") -> MagicMock:
+    """getTrainStopList replay where an intermediate stop carries TIME only.
+
+    Models the issue #1530 production trigger for train 3701 (New York Penn ->
+    Matawan). Secaucus Junction was added by the discovery phase, so at
+    collection time its stop-list row carries only a live TIME (arrival)
+    estimate — NO DEP_TIME and NO SCHED_ARR_DATE / SCHED_DEP_DATE. After
+    ``update_journey_stops`` overwrites ``updated_arrival`` / ``updated_departure``
+    from this row, the persisted Secaucus stop has ``updated_arrival`` only and
+    still no ``scheduled_*`` times.
+
+    That is the state the schedule-less resequencing fallback must order
+    geographically (NY -> SE -> NP -> MP). Without the #1530 fix, Secaucus is
+    bucketed to the journey end and renders after Newark Penn — the reported bug.
+
+    Unlike the direct ``_resequence_stops`` unit test (which sets BOTH
+    ``updated_arrival`` and ``updated_departure``), this row cannot produce a
+    populated ``updated_departure``: DEP_TIME is absent, so the collection pass
+    sets ``updated_departure`` to ``None``. This is the path that actually
+    reached production.
+
+    Origin NY and downstream NP / MP carry a schedule via SCHED_DEP_DATE;
+    Secaucus is TIME-only.
+    """
+    builder = StopBuilder()
+
+    stops = [
+        # Origin — departed, schedule via immutable SCHED_DEP_DATE.
+        builder.build_stop(
+            "NY",
+            "New York Penn",
+            "06:00:00 PM",
+            departed=True,
+            track="7",
+            sched_dep_date="06:00:00 PM",
+        ),
+        # Secaucus — discovery-added, live TIME (arrival estimate) only:
+        # no DEP_TIME, no SCHED_*_DATE. dep_time=None -> DEP_TIME is None.
+        builder.build_stop(
+            "SE",
+            "Secaucus Junction",
+            None,
+            arr_time="06:08:00 PM",
+            departed=False,
+        ),
+        # Newark Penn — fully scheduled downstream stop.
+        builder.build_stop(
+            "NP",
+            "Newark Penn",
+            "06:20:00 PM",
+            arr_time="06:18:00 PM",
+            departed=False,
+            sched_dep_date="06:20:00 PM",
+        ),
+        # Matawan — terminal (arrival estimate + immutable schedule).
+        builder.build_stop(
+            "MP",
+            "Matawan",
+            None,
+            arr_time="06:55:00 PM",
+            departed=False,
+            sched_dep_date="06:55:00 PM",
+        ),
+    ]
+
+    return create_stop_list_response(
+        train_id=train_id, line_code="NC", destination="Matawan", stops=stops
+    )
+
+
 def create_train_not_found_response() -> MagicMock:
     """Create a response for when train is not found.
 
