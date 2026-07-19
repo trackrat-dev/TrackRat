@@ -1509,8 +1509,23 @@ class JourneyCollector:
                         time = stop.scheduled_departure
                 return (0, time)
 
-            # Stop has no times - track it for logging
+            # Stop has no scheduled times - track it for logging.
             stops_without_times.append(stop.station_code or "unknown")
+
+            # A stop discovered mid-journey (e.g. Secaucus added by the discovery
+            # phase before a full collection) carries only updated_arrival /
+            # updated_departure and no scheduled_* times. Without this fallback it
+            # would be bucketed to DATETIME_MAX_ET below and sort to the end of the
+            # journey, rendering out of order (e.g. Newark Penn before Secaucus,
+            # issue #1530). Order it by its earliest live time so it lands in the
+            # correct geographic position among the scheduled stops.
+            if stop.updated_arrival or stop.updated_departure:
+                updated_times = [
+                    t
+                    for t in (stop.updated_arrival, stop.updated_departure)
+                    if t is not None
+                ]
+                return (0, min(updated_times))
 
             # Use timezone-aware max to place after all timed stops,
             # but preserve relative order using existing sequence
