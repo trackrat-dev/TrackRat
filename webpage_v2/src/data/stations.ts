@@ -2458,6 +2458,8 @@ export const SYSTEM_COLORS: Record<TransitSystem, string> = {
   WMATA: '#004E8C',  // WMATA blue
   BART: '#009BDA',   // BART blue
   MBTA: '#80276C',   // MBTA Commuter Rail purple
+  SEPTA_RR: '#4F758B',    // SEPTA Regional Rail blue
+  SEPTA_METRO: '#F26100', // SEPTA Metro (Broad St orange)
 };
 
 // System display order
