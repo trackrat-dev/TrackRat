@@ -131,9 +131,26 @@ describe('RouteStatusPage', () => {
       // Header shows the line's name, not the generic "Route Status".
       expect(await screen.findByRole('heading', { name: 'Northeast Corridor' })).toBeInTheDocument();
 
-      // History is fetched for the line's first→last stations (NY → TR) on NJT.
-      // Default period is 24h → days undefined, hours 24.
-      expect(apiService.getRouteHistory).toHaveBeenCalledWith('NY', 'TR', 'NJT', undefined, 24);
+      // History is fetched for the line's first→last stations (NY → TR) on NJT,
+      // scoped to the line's own codes. Default period is 24h → days undefined, hours 24.
+      expect(apiService.getRouteHistory).toHaveBeenCalledWith('NY', 'TR', 'NJT', undefined, 24, ['NE']);
+    });
+
+    it('scopes history to line codes so lines sharing terminals differ', async () => {
+      // NJT Main and Bergen both run HB → SF, so without line-code scoping the
+      // two line pages would issue identical history queries. Each must pass its
+      // own lineCodes to disambiguate.
+      vi.mocked(apiService.getRouteHistory).mockResolvedValue(makeHistory(90));
+
+      const { unmount } = renderLine('njt-main');
+      await screen.findByRole('heading', { name: 'Main Line' });
+      expect(apiService.getRouteHistory).toHaveBeenLastCalledWith('HB', 'SF', 'NJT', undefined, 24, ['MA', 'Ma']);
+      unmount();
+
+      vi.mocked(apiService.getRouteHistory).mockClear();
+      renderLine('njt-bergen');
+      await screen.findByRole('heading', { name: 'Bergen County Line' });
+      expect(apiService.getRouteHistory).toHaveBeenLastCalledWith('HB', 'SF', 'NJT', undefined, 24, ['BE', 'Be']);
     });
 
     it('shows an error for an unknown line id', () => {

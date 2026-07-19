@@ -80,7 +80,10 @@ export function RouteStatusPage() {
 
     const { days, hours } = periodToApiParams(period);
     Promise.all([
-      apiService.getRouteHistory(from, to, dataSource, days, hours),
+      // In line mode, scope history to the line's codes so lines that share
+      // terminal stations (e.g. NJT Main/Bergen, PATH JSQ-33/JSQ-33H) don't
+      // return identical combined stats for the same from/to pair.
+      apiService.getRouteHistory(from, to, dataSource, days, hours, line?.lineCodes),
       // Summary is optional context; a failure here must not blank the whole page.
       apiService.getRouteSummary(from, to).catch(() => null),
     ])
@@ -95,7 +98,10 @@ export function RouteStatusPage() {
         setInitialLoading(false);
         setRefreshing(false);
       });
-  }, [from, to, period, dataSource]);
+    // `line` is included so switching between two lines that share the same
+    // first/last stations (identical from/to) still triggers a refetch with the
+    // new line codes. getRouteById returns a stable reference per line id.
+  }, [from, to, period, dataSource, line]);
 
   useEffect(() => {
     loadData();

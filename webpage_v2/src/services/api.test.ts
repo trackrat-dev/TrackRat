@@ -312,6 +312,24 @@ describe('getRouteHistory', () => {
     expect(url).toContain('data_source=NJT');
     expect(url).toContain('days=90');
   });
+
+  it('appends lines filter when line codes are provided', async () => {
+    mockFetch.mockReturnValue(jsonResponse({ route: {}, aggregate_stats: {} }));
+
+    await api.getRouteHistory('HB', 'SF', 'NJT', 30, undefined, ['MA', 'Ma']);
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain('lines=MA%2CMa');
+  });
+
+  it('omits lines filter when line codes are absent or empty', async () => {
+    mockFetch.mockReturnValue(jsonResponse({ route: {}, aggregate_stats: {} }));
+
+    await api.getRouteHistory('NY', 'NP', 'NJT', 30, undefined, []);
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).not.toContain('lines=');
+  });
 });
 
 describe('getCongestion', () => {
