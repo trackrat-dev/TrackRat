@@ -67,8 +67,10 @@ REALTIME_SOURCES = {
 # Data sources where train_id is stable and represents the same daily service
 STABLE_TRAIN_ID_SOURCES = {"NJT", "AMTRAK", "LIRR", "MNR", "MBTA", "SEPTA_RR"}
 
-# Data sources that support service alerts
-SERVICE_ALERT_SOURCES = {"SUBWAY", "LIRR", "MNR", "NJT"}
+# Data sources that support service alerts (feeds collected by
+# collectors/service_alerts.py). Must include every source whose alerts are
+# upserted there, or planned-work/service notifications for it never fire.
+SERVICE_ALERT_SOURCES = {"SUBWAY", "LIRR", "MNR", "NJT", "SEPTA_RR", "SEPTA_METRO"}
 
 # Build route-ID lookup once at import time
 _ROUTES_BY_ID = {route.id: route for route in ALL_ROUTES}

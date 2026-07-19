@@ -420,6 +420,8 @@ class JustInTimeUpdateService:
         "WMATA",
         "BART",
         "MBTA",
+        "SEPTA_RR",
+        "SEPTA_METRO",
     }
     _HIGH_FREQ_STALENESS_SECONDS = 240  # 4 minutes, matches collector interval
 

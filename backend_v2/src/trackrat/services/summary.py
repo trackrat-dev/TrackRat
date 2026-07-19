@@ -1662,7 +1662,16 @@ class SummaryService:
         if train_stats.has_data:
             if (
                 data_source
-                in ("PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA", "MBTA")
+                in (
+                    "PATH",
+                    "PATCO",
+                    "LIRR",
+                    "MNR",
+                    "SUBWAY",
+                    "METRA",
+                    "MBTA",
+                    "SEPTA_METRO",
+                )
                 and destination
             ):
                 train_display = f"This {destination} train"
