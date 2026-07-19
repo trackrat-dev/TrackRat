@@ -97,7 +97,18 @@ services:
     image: cloudflare/cloudflared:2026.7.1
     container_name: trackrat-cloudflared
     profiles: ["tunnel"]
-    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    # Pass the token via the TUNNEL_TOKEN env var, NOT a --token flag on a string
+    # command. docker-compose parses a string `command:` with shell-word splitting,
+    # and a real tunnel token interpolated inline trips that parser
+    # ("invalid command line string"), which aborts the WHOLE compose file — so
+    # `pull`/`up` fail and the MIG startup script crash-loops (staging outage
+    # 2026-07-19; production was spared only because it has no tunnel token, so the
+    # value interpolated to empty and parsed). cloudflared reads TUNNEL_TOKEN for
+    # `tunnel run`; the env var never goes through shell-word splitting and keeps
+    # the secret out of the process arg list.
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
     depends_on:
       - api
     restart: unless-stopped
