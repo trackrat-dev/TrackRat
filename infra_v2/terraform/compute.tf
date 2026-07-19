@@ -169,6 +169,12 @@ resource "google_compute_instance_template" "trackrat" {
         --secret=trackrat-wmata-api-key --project="$PROJECT_ID" 2>/dev/null)
       METRA_API_TOKEN=$(toolbox --quiet gcloud secrets versions access latest \
         --secret=trackrat-metra-api-token --project="$PROJECT_ID" 2>/dev/null) || true
+      # Cloudflare Tunnel token (optional, per-environment). Absent/unreadable ->
+      # empty -> the tunnel stays off (see .env block below). Only the staging
+      # secret exists during the Cloudflare pilot; production reads a nonexistent
+      # secret and keeps using its load balancer.
+      CLOUDFLARE_TUNNEL_TOKEN=$(toolbox --quiet gcloud secrets versions access latest \
+        --secret="trackrat-cloudflare-tunnel-token-$ENVIRONMENT" --project="$PROJECT_ID" 2>/dev/null) || true
       echo "Secrets fetched successfully"
 
       # ===========================================
@@ -216,6 +222,18 @@ TRACKRAT_ENVIRONMENT=$ENVIRONMENT
 TRACKRAT_LOG_LEVEL=INFO
 TRACKRAT_DISABLED_DATA_SOURCES=BART,WMATA,MBTA,METRA
 ENVEOF
+
+      # Activate the Cloudflare Tunnel connector only when a token is present.
+      # COMPOSE_PROFILES applies to every compose invocation below (pull/down/up),
+      # so cloudflared is pulled and started consistently. Without a token the
+      # profile stays off and the cloudflared service is never created.
+      if [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
+        echo "Cloudflare tunnel token present — activating tunnel profile"
+        cat >> "$APP_DIR/.env" <<TUNNELEOF
+CLOUDFLARE_TUNNEL_TOKEN=$CLOUDFLARE_TUNNEL_TOKEN
+COMPOSE_PROFILES=tunnel
+TUNNELEOF
+      fi
       chmod 600 "$APP_DIR/.env"
 
       # ===========================================

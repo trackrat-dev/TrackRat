@@ -49,6 +49,11 @@ locals {
   # (default false) because infra_v2/cloudbuild-terraform.yaml auto-applies
   # this root on every deploy-branch push — the teardown must be an explicit
   # runbook Phase-4 action, never a side effect of an unrelated deploy.
-  # Staging always keeps its own dedicated API LB.
-  create_api_frontend = !(var.environment == "production" && var.consolidate_api_lb)
+  #
+  # var.frontend_via_cloudflare drops this workspace's dedicated API frontend
+  # once the environment's API is fronted by a Cloudflare Tunnel instead (see
+  # infra_v2/RUNBOOK-cloudflare-cutover.md). Same committed-default discipline
+  # as consolidate_api_lb: flip it to true ONLY after the tunnel is up and DNS
+  # is cut over, or the push-triggered apply takes the API offline.
+  create_api_frontend = !var.frontend_via_cloudflare && !(var.environment == "production" && var.consolidate_api_lb)
 }
