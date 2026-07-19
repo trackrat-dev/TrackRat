@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.collectors.service_alerts import (
     ParsedAlert,
+    _remap_septa_alert,
     classify_alert_type,
     extract_english_text,
     fetch_and_parse_njt_alerts,
@@ -238,10 +239,10 @@ class TestFetchAndParseAlertsDedupe:
         """
         from unittest.mock import AsyncMock, patch
 
-        from trackrat.collectors.service_alerts import fetch_and_parse_alerts
-
         # Build a protobuf feed with duplicate entity IDs
         from google.transit import gtfs_realtime_pb2
+
+        from trackrat.collectors.service_alerts import fetch_and_parse_alerts
 
         feed = gtfs_realtime_pb2.FeedMessage()
         feed.header.gtfs_realtime_version = "2.0"
@@ -806,6 +807,95 @@ class TestParseNjtMessage:
         assert result.affected_route_ids == ["ME", "GL"]
         assert "suspended" in result.header_text
         assert "Maplewood" in result.header_text
+
+
+class TestRemapSeptaAlert:
+    """Tests for _remap_septa_alert() SEPTA route/type adaptation.
+
+    SEPTA's GTFS-RT alert feeds carry raw GTFS route_ids (e.g. "AIR", "B1")
+    rather than our line_codes ("SEPTA-AIR"), and the shared Metro feed
+    ("septa-pa-us") mixes in ~130 bus routes we don't track. This function
+    maps route_ids to our codes and drops bus-only alerts.
+    """
+
+    def _alert(
+        self,
+        route_ids: list[str],
+        header: str = "Service adjustment",
+        alert_id: str = "septa-1",
+    ) -> ParsedAlert:
+        return ParsedAlert(
+            alert_id=alert_id,
+            alert_type="unknown",  # SEPTA entity IDs are opaque; remap reclassifies
+            affected_route_ids=route_ids,
+            header_text=header,
+            description_text=None,
+            active_periods=[],
+        )
+
+    def test_rr_route_id_maps_to_line_code(self):
+        """A Regional Rail route_id becomes our SEPTA-<code> line code."""
+        result = _remap_septa_alert(self._alert(["AIR"]), "SEPTA_RR")
+        assert result is not None
+        assert result.affected_route_ids == ["SEPTA-AIR"]
+        assert result.alert_type == "alert"
+
+    def test_metro_route_id_maps_to_line_code(self):
+        """A Metro route_id (Broad St) becomes our SEPTA-<code> line code."""
+        result = _remap_septa_alert(self._alert(["B1"]), "SEPTA_METRO")
+        assert result is not None
+        assert result.affected_route_ids == ["SEPTA-B1"]
+
+    def test_bus_only_alert_dropped(self):
+        """An alert whose only routes are untracked (bus) routes is dropped."""
+        # "17", "44" are SEPTA bus routes, not in SEPTA_METRO_ROUTES.
+        assert _remap_septa_alert(self._alert(["17", "44"]), "SEPTA_METRO") is None
+
+    def test_mixed_routes_keeps_only_tracked(self):
+        """Bus routes are stripped but tracked rail routes are retained."""
+        result = _remap_septa_alert(
+            self._alert(["17", "B1", "44", "G1"]), "SEPTA_METRO"
+        )
+        assert result is not None
+        assert result.affected_route_ids == ["SEPTA-B1", "SEPTA-G1"]
+
+    def test_system_wide_alert_kept(self):
+        """A route-less (system-wide) alert is kept with no affected routes."""
+        result = _remap_septa_alert(self._alert([]), "SEPTA_RR")
+        assert result is not None
+        assert result.affected_route_ids == []
+
+    def test_elevator_header_classifies_as_elevator(self):
+        """Headers mentioning an elevator classify as 'elevator'."""
+        result = _remap_septa_alert(
+            self._alert(["B1"], header="Elevator out of service at City Hall"),
+            "SEPTA_METRO",
+        )
+        assert result is not None
+        assert result.alert_type == "elevator"
+
+    def test_escalator_header_classifies_as_elevator(self):
+        """Headers mentioning an escalator also classify as 'elevator'."""
+        result = _remap_septa_alert(
+            self._alert(["AIR"], header="Escalator outage at Jefferson Station"),
+            "SEPTA_RR",
+        )
+        assert result is not None
+        assert result.alert_type == "elevator"
+
+    def test_deduplicates_mapped_codes(self):
+        """Repeated raw route_ids don't produce duplicate line codes."""
+        result = _remap_septa_alert(self._alert(["AIR", "AIR"]), "SEPTA_RR")
+        assert result is not None
+        assert result.affected_route_ids == ["SEPTA-AIR"]
+
+    def test_preserves_other_fields(self):
+        """Non-route/type fields (id, header, periods) pass through unchanged."""
+        alert = self._alert(["B1"], header="Weekend detour", alert_id="septa-xyz")
+        result = _remap_septa_alert(alert, "SEPTA_METRO")
+        assert result is not None
+        assert result.alert_id == "septa-xyz"
+        assert result.header_text == "Weekend detour"
 
 
 @pytest.mark.asyncio

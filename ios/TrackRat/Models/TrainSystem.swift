@@ -125,7 +125,9 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     /// (planned work, elevator outages, real-time service changes).
     /// Distinct from `supportsAlerts`, which gates delay/cancellation push
     /// notifications and is true for many systems without an alerts feed.
-    static let serviceAlertFeedSources: Set<String> = ["SUBWAY", "LIRR", "MNR", "NJT"]
+    static let serviceAlertFeedSources: Set<String> = [
+        "SUBWAY", "LIRR", "MNR", "NJT", "SEPTA_RR", "SEPTA_METRO",
+    ]
 
     var hasServiceAlertFeed: Bool {
         Self.serviceAlertFeedSources.contains(dataSource)
