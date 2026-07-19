@@ -6,8 +6,13 @@ carries a ``delay`` (seconds relative to the published schedule) keyed by
 are reconstructed by the collector, which joins the GTFS static schedule by
 ``(trip_id, stop_sequence)`` and applies the delay.
 
-The feed is public (no authentication). trip_ids match the static feed exactly
-(e.g. ``CHW8312_20260718_SID189411``), so the join is a direct lookup.
+The feed is public (no authentication). A trip_id matches the static feed's
+trip_id exactly (e.g. ``CHW8312_20260718_SID189411``), but its embedded
+``_YYYYMMDD_`` segment is a schedule-version tag bound to the ``service_id`` — NOT
+the operating date (it is served for weeks and is identical across many days). The
+collector therefore joins against the static schedule for the current operating
+day, never the trip_id's date (see
+``SeptaRailCollector._resolve_static_schedule``).
 """
 
 from datetime import UTC, datetime

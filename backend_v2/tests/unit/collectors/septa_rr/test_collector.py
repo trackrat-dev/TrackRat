@@ -4,8 +4,10 @@ The heart of these tests is :func:`resolve_arrivals`, which reconstructs
 absolute stop times by applying the feed's per-stop *delays* to the GTFS static
 schedule using GTFS-RT propagation semantics (a delay applies to its stop and
 every later stop until the next update; stops before the first update are
-already-passed and excluded). ``_generate_train_id`` and ``_parse_journey_date``
-extract identifiers from SEPTA's ``<short_name>_<YYYYMMDD>_<SID...>`` trip_ids.
+already-passed and excluded). ``_generate_train_id`` extracts the train number
+from SEPTA's ``<short_name>_<YYYYMMDD>_<SID...>`` trip_ids, while
+``_resolve_static_schedule`` joins a delay-only trip to the GTFS static schedule
+using the *operating* day (wall clock), not the stale version date in the trip_id.
 """
 
 from datetime import date, datetime, timedelta
@@ -22,7 +24,6 @@ from trackrat.collectors.septa_rr.client import (
 from trackrat.collectors.septa_rr.collector import (
     SeptaRailCollector,
     _generate_train_id,
-    _parse_journey_date,
     resolve_arrivals,
 )
 from trackrat.utils.time import ET
@@ -75,30 +76,91 @@ class TestGenerateTrainId:
         assert _generate_train_id("") == ""
 
 
-class TestParseJourneyDate:
-    """The middle _YYYYMMDD_ segment is the service date; else fall back to today."""
+class TestResolveStaticSchedule:
+    """The operating day comes from the wall clock, NOT the trip_id's version date.
 
-    def test_standard_trip_id(self):
-        assert _parse_journey_date("CHW8312_20260718_SID189411") == date(2026, 7, 18)
+    SEPTA RR trip_ids embed a stale schedule-version date bound to the service_id
+    (e.g. ``_20260621_`` served weeks later); using it to look up active GTFS
+    services returns nothing, which silently dropped ~90% of live trains. These
+    tests pin that the join uses today (then yesterday for post-midnight service
+    days) and never the embedded date.
+    """
 
-    def test_different_date(self):
-        assert _parse_journey_date("TRE1000_20251231_SID9") == date(2025, 12, 31)
+    @pytest.fixture
+    def collector(self):
+        return SeptaRailCollector(client=AsyncMock(spec=SeptaRailClient))
 
+    @pytest.mark.asyncio
     @patch("trackrat.collectors.septa_rr.collector.now_et")
-    def test_malformed_date_falls_back_to_today(self, mock_now):
-        mock_now.return_value = ET.localize(datetime(2026, 3, 4, 9, 0, 0))
-        # 7 digits, not 8 → unparseable → today.
-        assert _parse_journey_date("CHW8312_2026071_SID1") == date(2026, 3, 4)
+    async def test_uses_today_not_trip_id_version_date(self, mock_now, collector):
+        """A trip_id embedding a month-old version date still resolves via today."""
+        mock_now.return_value = ET.localize(datetime(2026, 7, 19, 15, 0, 0))
+        stops = [_static_stop("SEPR90801", 1, _BASE)]
+        seen_dates: list[date] = []
 
-    @patch("trackrat.collectors.septa_rr.collector.now_et")
-    def test_non_numeric_date_falls_back_to_today(self, mock_now):
-        mock_now.return_value = ET.localize(datetime(2026, 3, 4, 9, 0, 0))
-        assert _parse_journey_date("CHW8312_notadate_SID1") == date(2026, 3, 4)
+        async def fake_get(_session, _source, _trip_id, target_date):
+            seen_dates.append(target_date)
+            return stops if target_date == date(2026, 7, 19) else []
 
+        collector._gtfs_service = MagicMock()
+        collector._gtfs_service.get_static_stop_times = AsyncMock(side_effect=fake_get)
+
+        # Version date in the trip_id is 2026-06-21 — must never be queried.
+        trip = _trip(
+            [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=0, departure_delay=0)],
+            trip_id="AIR2453_20260621_SID189896",
+        )
+        resolved_date, resolved_stops = await collector._resolve_static_schedule(
+            AsyncMock(), trip
+        )
+
+        assert resolved_date == date(2026, 7, 19)
+        assert resolved_stops == stops
+        assert date(2026, 6, 21) not in seen_dates, "must not use the version date"
+        assert seen_dates == [date(2026, 7, 19)], "today matches → no extra lookup"
+
+    @pytest.mark.asyncio
     @patch("trackrat.collectors.septa_rr.collector.now_et")
-    def test_single_segment_falls_back_to_today(self, mock_now):
-        mock_now.return_value = ET.localize(datetime(2026, 3, 4, 9, 0, 0))
-        assert _parse_journey_date("CHW8312") == date(2026, 3, 4)
+    async def test_falls_back_to_yesterday_for_post_midnight(self, mock_now, collector):
+        """A train still in the feed after midnight belongs to yesterday's service."""
+        mock_now.return_value = ET.localize(datetime(2026, 7, 19, 0, 15, 0))
+        stops = [_static_stop("SEPR90801", 1, _BASE)]
+
+        async def fake_get(_session, _source, _trip_id, target_date):
+            return stops if target_date == date(2026, 7, 18) else []
+
+        collector._gtfs_service = MagicMock()
+        collector._gtfs_service.get_static_stop_times = AsyncMock(side_effect=fake_get)
+
+        trip = _trip(
+            [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=0, departure_delay=0)]
+        )
+        resolved_date, resolved_stops = await collector._resolve_static_schedule(
+            AsyncMock(), trip
+        )
+
+        assert resolved_date == date(2026, 7, 18)
+        assert resolved_stops == stops
+
+    @pytest.mark.asyncio
+    @patch("trackrat.collectors.septa_rr.collector.now_et")
+    async def test_returns_none_when_neither_day_matches(self, mock_now, collector):
+        """No static match on today or yesterday → (None, None)."""
+        mock_now.return_value = ET.localize(datetime(2026, 7, 19, 15, 0, 0))
+        collector._gtfs_service = MagicMock()
+        collector._gtfs_service.get_static_stop_times = AsyncMock(return_value=[])
+
+        trip = _trip(
+            [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=0, departure_delay=0)]
+        )
+        resolved_date, resolved_stops = await collector._resolve_static_schedule(
+            AsyncMock(), trip
+        )
+
+        assert resolved_date is None
+        assert resolved_stops is None
+        # Both today and yesterday were attempted before giving up.
+        assert collector._gtfs_service.get_static_stop_times.await_count == 2
 
 
 class TestResolveArrivals:
@@ -324,7 +386,7 @@ class TestProcessTrip:
 
     @pytest.mark.asyncio
     async def test_skips_when_no_static_schedule(self, collector):
-        """No GTFS static schedule → nothing to reconstruct from → (None, None)."""
+        """No GTFS static schedule on today or yesterday → counted skip signal."""
         collector._gtfs_service = MagicMock()
         collector._gtfs_service.get_static_stop_times = AsyncMock(return_value=[])
         session = AsyncMock()
@@ -333,7 +395,7 @@ class TestProcessTrip:
             [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=60, departure_delay=60)]
         )
         result, journey = await collector._process_trip(session, trip)
-        assert result is None
+        assert result == "skipped_no_static"
         assert journey is None
 
     @pytest.mark.asyncio
