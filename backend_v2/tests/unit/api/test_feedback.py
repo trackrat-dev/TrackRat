@@ -47,9 +47,7 @@ class TestGetClientIp:
         must not be trusted; only the LB's recorded client IP (position -2)
         counts."""
         request = _make_request(
-            headers={
-                "x-forwarded-for": "1.2.3.4, 5.6.7.8, 203.0.113.7, 35.191.0.1"
-            },
+            headers={"x-forwarded-for": "1.2.3.4, 5.6.7.8, 203.0.113.7, 35.191.0.1"},
             client=("10.0.0.1", 5000),
         )
         assert get_client_ip(request) == "203.0.113.7"
@@ -82,6 +80,42 @@ class TestGetClientIp:
     def test_returns_unknown_when_nothing_available(self) -> None:
         request = _make_request()
         assert get_client_ip(request) == "unknown"
+
+    def test_prefers_cf_connecting_ip_behind_cloudflare(self) -> None:
+        """Behind Cloudflare Tunnel the app sees the tunnel peer and a
+        single-entry XFF; the true client IP is in CF-Connecting-IP and must be
+        used instead of collapsing every visitor to the tunnel peer."""
+        request = _make_request(
+            headers={
+                "cf-connecting-ip": "203.0.113.7",
+                "x-forwarded-for": "203.0.113.7",
+            },
+            client=("172.18.0.5", 5000),
+        )
+        assert get_client_ip(request) == "203.0.113.7"
+
+    def test_cf_connecting_ip_takes_precedence_over_xff_pair(self) -> None:
+        """When both a CF header and a GCP-style XFF pair are present, the
+        Cloudflare header wins (Cloudflare is the active front)."""
+        request = _make_request(
+            headers={
+                "cf-connecting-ip": "198.51.100.9",
+                "x-forwarded-for": "203.0.113.7, 35.191.0.1",
+            },
+            client=("10.0.0.1", 5000),
+        )
+        assert get_client_ip(request) == "198.51.100.9"
+
+    def test_blank_cf_connecting_ip_falls_through_to_xff(self) -> None:
+        """An empty CF header must not shadow the GCP LB path."""
+        request = _make_request(
+            headers={
+                "cf-connecting-ip": "  ",
+                "x-forwarded-for": "203.0.113.7, 35.191.0.1",
+            },
+            client=("10.0.0.1", 5000),
+        )
+        assert get_client_ip(request) == "203.0.113.7"
 
 
 class TestSubmitFeedback:

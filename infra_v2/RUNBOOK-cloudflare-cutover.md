@@ -41,8 +41,10 @@ static IPs.
   `trackrat-cloudflare-tunnel-token-$ENVIRONMENT` from Secret Manager. If present,
   it appends `CLOUDFLARE_TUNNEL_TOKEN` + `COMPOSE_PROFILES=tunnel` to `.env`, so
   `cloudflared` starts. If absent (e.g. production today), the tunnel stays off.
-- `infra_v2/terraform/secrets.tf` — staging-gated IAM grant so the staging VM SA
-  can read the tunnel-token secret.
+- `infra_v2/terraform/secrets.tf` — a NOTE only; the tunnel-token secret and its
+  IAM grant are intentionally **not** Terraform-managed during the pilot (an IAM
+  binding on a not-yet-created secret would fail the apply). The staging VM SA is
+  granted read access out-of-band via `gcloud` in step 1b.
 - `infra_v2/terraform/variables.tf` — `frontend_via_cloudflare` (default `false`).
   Flipping the committed default to `true` tears down the dedicated API frontend
   (IP, url map, proxies, forwarding rules). **This is the teardown trigger.**
@@ -143,10 +145,20 @@ site until Phase 4.
 1. Create a second tunnel `trackrat-production`, public hostname
    `apiv2.trackrat.net` → `HTTP` → `api:8000`. Store its token as
    `trackrat-cloudflare-tunnel-token-production`.
-2. In `secrets.tf`, generalize the IAM grant to production too (drop the
-   `count = var.environment == "staging"` gate, or add a production copy). The
-   startup script already reads the `-$ENVIRONMENT` secret, so no compute.tf
-   change is needed.
+2. Grant the **production** VM service account read access to the production
+   secret, exactly as step 1b did for staging (there is no Terraform grant to
+   generalize — the pilot keeps this out-of-band):
+
+   ```bash
+   gcloud secrets add-iam-policy-binding trackrat-cloudflare-tunnel-token-production \
+     --project=trackrat-v2 \
+     --member="serviceAccount:trackrat-production@trackrat-v2.iam.gserviceaccount.com" \
+     --role="roles/secretmanager.secretAccessor"
+   ```
+
+   The startup script already reads the `-$ENVIRONMENT` secret, so no compute.tf
+   change is needed. (Fold both grants into `secrets.tf` once the tunnel is
+   permanent and both secrets exist — see the note in that file.)
 3. Deploy to production, confirm the connector is HEALTHY.
 4. Flip `apiv2.trackrat.net` DNS to the production tunnel and verify.
 5. Set `frontend_via_cloudflare = true` for production as well — but note
@@ -156,6 +168,16 @@ site until Phase 4.
 
 **Rollback:** repoint `apiv2` DNS at `136.110.151.144` (grey). The webpage LB
 still host-routes it.
+
+> **⚠️ Observability follow-up (required before relying on the daily usage report).**
+> `scripts/server-usage.py::fetch_lb_logs` queries only
+> `resource.type="http_load_balancer"`. Once API traffic rides the tunnel it no
+> longer traverses the GCP HTTP LB, so the usage report and the daily-report
+> routine will silently show **zero API traffic** even while users are active.
+> Before this phase, add a post-cutover traffic source — a Cloudflare log source
+> (Logpush / GraphQL Analytics) or the backend's own request stats / `cos_containers`
+> app logs — so the report keeps working. (Client-IP attribution itself is already
+> handled: `api/utils.get_client_ip` reads Cloudflare's `CF-Connecting-IP`.)
 
 ---
 

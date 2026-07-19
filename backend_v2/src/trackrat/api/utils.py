@@ -40,15 +40,30 @@ def ensure_source_enabled(data_source: str | None) -> None:
 def get_client_ip(request: Request) -> str:
     """Return the originating client IP for a request.
 
-    Behind GCP's external HTTP(S) load balancer the LB appends
-    ``"<client-ip>,<lb-ip>"`` to any existing ``X-Forwarded-For`` header rather
-    than overwriting it, so the trusted client IP is the second-to-last entry.
-    Earlier entries can be forged by the client. When the header is missing or
-    has only one entry (e.g. local dev — the LB would always have added its own
-    pair in production), fall back to the direct peer.
+    Two front-end shapes are supported:
 
-    See https://cloud.google.com/load-balancing/docs/https#x-forwarded-for_header
+    * **Cloudflare Tunnel** sets ``CF-Connecting-IP`` to the true visitor IP.
+      When the API is fronted by Cloudflare the request reaches the app over the
+      private tunnel/Docker network, so ``X-Forwarded-For`` no longer carries the
+      GCP LB's trusted pair and ``request.client.host`` is just the tunnel peer.
+      Prefer this header when present.
+    * **GCP external HTTP(S) load balancer** appends ``"<client-ip>,<lb-ip>"`` to
+      any existing ``X-Forwarded-For`` header rather than overwriting it, so the
+      trusted client IP is the second-to-last entry. Earlier entries can be
+      forged by the client. A missing/single-entry header (e.g. local dev — the
+      LB always adds its own pair in production) falls back to the direct peer.
+
+    This value is used only for analytics/attribution (feedback logs,
+    ``/admin/stats`` unique-user counts), never for access control, so trusting
+    ``CF-Connecting-IP`` is acceptable even though a request sent directly to the
+    GCP LB could forge it during the dual-front pilot.
+
+    See https://developers.cloudflare.com/fundamentals/reference/http-headers/
+    and https://cloud.google.com/load-balancing/docs/https#x-forwarded-for_header
     """
+    cf_connecting_ip = request.headers.get("cf-connecting-ip", "").strip()
+    if cf_connecting_ip:
+        return cf_connecting_ip
     forwarded = [
         part.strip()
         for part in request.headers.get("x-forwarded-for", "").split(",")
