@@ -27,6 +27,8 @@ from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.discovery import TrainDiscoveryCollector
 from trackrat.collectors.njt.schedule import NJTScheduleCollector
 from trackrat.collectors.path.collector import PathCollector
+from trackrat.collectors.septa_metro.collector import SeptaMetroCollector
+from trackrat.collectors.septa_rr.collector import SeptaRailCollector
 from trackrat.collectors.service_alerts import collect_service_alerts
 from trackrat.collectors.subway.collector import SubwayCollector
 from trackrat.collectors.wmata.collector import WMATACollector
@@ -262,6 +264,30 @@ class SchedulerService:
             ),
             id="mbta_collection",
             name="MBTA Collection",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=120,
+        )
+
+        self.scheduler.add_job(
+            self.run_septa_rr_collection,
+            trigger=IntervalTrigger(
+                minutes=4, start_date=now + timedelta(seconds=240), jitter=30
+            ),
+            id="septa_rr_collection",
+            name="SEPTA Regional Rail Collection",
+            replace_existing=True,
+            max_instances=1,
+            misfire_grace_time=120,
+        )
+
+        self.scheduler.add_job(
+            self.run_septa_metro_collection,
+            trigger=IntervalTrigger(
+                minutes=4, start_date=now + timedelta(seconds=270), jitter=30
+            ),
+            id="septa_metro_collection",
+            name="SEPTA Metro Collection",
             replace_existing=True,
             max_instances=1,
             misfire_grace_time=120,
@@ -513,6 +539,8 @@ class SchedulerService:
             ("wmata_collection", self.run_wmata_collection),
             ("bart_collection", self.run_bart_collection),
             ("mbta_collection", self.run_mbta_collection),
+            ("septa_rr_collection", self.run_septa_rr_collection),
+            ("septa_metro_collection", self.run_septa_metro_collection),
         ]
         for name, collector in collectors:
             logger.info("startup_collector_launch", collector=name)
@@ -1067,6 +1095,84 @@ class SchedulerService:
 
             if not executed:
                 logger.debug("mbta_collection_skipped_still_fresh")
+
+    async def run_septa_rr_collection(self) -> None:
+        """Run unified SEPTA Regional Rail collection (discovery + updates)."""
+        if self.settings.is_data_source_disabled("SEPTA_RR"):
+            return
+        task_id = f"septa_rr_collection_{now_et().isoformat()}"
+
+        async def do_septa_rr_collection_work() -> dict[str, Any]:
+            try:
+                logger.info("starting_septa_rr_collection")
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+                collector = SeptaRailCollector()
+                try:
+                    result = await collector.run()
+                    logger.info(
+                        "septa_rr_collection_completed",
+                        trips=result.get("trips", 0),
+                        discovered=result.get("discovered", 0),
+                        updated=result.get("updated", 0),
+                        errors=result.get("errors", 0),
+                    )
+                    return result
+                finally:
+                    await collector.close()
+            finally:
+                self._running_tasks.pop(task_id, None)
+
+        async with get_session() as db:
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="septa_rr_collection",
+                minimum_interval_seconds=calculate_safe_interval(4),
+                task_func=do_septa_rr_collection_work,
+                timeout_seconds=calculate_task_timeout(4),
+            )
+            if not executed:
+                logger.debug("septa_rr_collection_skipped_still_fresh")
+
+    async def run_septa_metro_collection(self) -> None:
+        """Run unified SEPTA Metro collection (subway + trolley)."""
+        if self.settings.is_data_source_disabled("SEPTA_METRO"):
+            return
+        task_id = f"septa_metro_collection_{now_et().isoformat()}"
+
+        async def do_septa_metro_collection_work() -> dict[str, Any]:
+            try:
+                logger.info("starting_septa_metro_collection")
+                task = asyncio.current_task()
+                if task:
+                    self._running_tasks[task_id] = task
+                collector = SeptaMetroCollector()
+                try:
+                    result = await collector.run()
+                    logger.info(
+                        "septa_metro_collection_completed",
+                        total_arrivals=result.get("total_arrivals", 0),
+                        discovered=result.get("discovered", 0),
+                        updated=result.get("updated", 0),
+                        errors=result.get("errors", 0),
+                    )
+                    return result
+                finally:
+                    await collector.close()
+            finally:
+                self._running_tasks.pop(task_id, None)
+
+        async with get_session() as db:
+            executed = await run_with_freshness_check(
+                db=db,
+                task_name="septa_metro_collection",
+                minimum_interval_seconds=calculate_safe_interval(4),
+                task_func=do_septa_metro_collection_work,
+                timeout_seconds=calculate_task_timeout(4),
+            )
+            if not executed:
+                logger.debug("septa_metro_collection_skipped_still_fresh")
 
     async def check_journey_updates(self) -> None:
         """Check for trains needing journey updates."""
@@ -3062,6 +3168,8 @@ class SchedulerService:
         "WMATA",
         "BART",
         "MBTA",
+        "SEPTA_RR",
+        "SEPTA_METRO",
     )
 
     async def refresh_gtfs_feeds(self) -> None:

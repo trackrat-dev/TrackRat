@@ -38,6 +38,8 @@ CONGESTION_PROVIDERS = [
     "METRA",
     "BART",
     "MBTA",
+    "SEPTA_RR",
+    "SEPTA_METRO",
 ]
 
 

@@ -142,6 +142,29 @@ class TestJustInTimeUpdateService:
 
         assert jit_service.needs_refresh(sample_journey) is True
 
+    @pytest.mark.parametrize("data_source", ["SEPTA_RR", "SEPTA_METRO"])
+    def test_septa_uses_high_freq_collector_staleness(
+        self, jit_service, sample_journey, data_source
+    ):
+        """SEPTA journeys must use the 240s high-frequency staleness window.
+
+        Both SEPTA collectors run every 4 minutes like the other unified GTFS-RT
+        systems, so they belong in _HIGH_FREQ_COLLECTOR_SOURCES. Regression guard:
+        a journey stale by 120s (>60s default, <240s high-freq) must NOT be
+        flagged for refresh — otherwise JIT re-runs the whole-feed collector on
+        every train view and contends with the background collector's locks.
+        """
+        assert data_source in jit_service._HIGH_FREQ_COLLECTOR_SOURCES
+        sample_journey.data_source = data_source
+
+        # 120s stale: below the 240s high-freq threshold -> no refresh needed.
+        sample_journey.last_updated_at = datetime.now(UTC) - timedelta(seconds=120)
+        assert jit_service.needs_refresh(sample_journey) is False
+
+        # 300s stale: past the 240s threshold -> refresh needed.
+        sample_journey.last_updated_at = datetime.now(UTC) - timedelta(seconds=300)
+        assert jit_service.needs_refresh(sample_journey) is True
+
     def test_needs_refresh_when_fresh(self, jit_service, sample_journey):
         """Test that fresh data doesn't need refresh."""
         # Make journey fresh (<60 seconds old)

@@ -44,6 +44,16 @@ from trackrat.config.stations.path import (
     PATH_STATION_NAMES,
     PATH_TRANSITER_TO_INTERNAL_MAP,
 )
+from trackrat.config.stations.septa_metro import (
+    SEPTA_METRO_STATION_COORDINATES,
+    SEPTA_METRO_STATION_NAMES,
+    map_septa_metro_gtfs_stop,
+)
+from trackrat.config.stations.septa_rr import (
+    SEPTA_RR_STATION_COORDINATES,
+    SEPTA_RR_STATION_NAMES,
+    map_septa_rr_gtfs_stop,
+)
 from trackrat.config.stations.subway import (
     SUBWAY_STATION_COMPLEXES,
     SUBWAY_STATION_COORDINATES,
@@ -69,6 +79,8 @@ STATION_NAMES: dict[str, str] = {
     **WMATA_STATION_NAMES,
     **BART_STATION_NAMES,
     **MBTA_STATION_NAMES,
+    **SEPTA_RR_STATION_NAMES,
+    **SEPTA_METRO_STATION_NAMES,
 }
 
 
@@ -1320,6 +1332,10 @@ for _code, (_lat, _lon) in BART_STATION_COORDINATES.items():
 # Merge MBTA coordinates (stored as {"lat": float, "lon": float} dicts)
 STATION_COORDINATES.update(MBTA_STATION_COORDINATES)
 
+# Merge SEPTA coordinates (stored as {"lat": float, "lon": float} dicts)
+STATION_COORDINATES.update(SEPTA_RR_STATION_COORDINATES)
+STATION_COORDINATES.update(SEPTA_METRO_STATION_COORDINATES)
+
 
 def get_station_coordinates(code: str) -> dict[str, float] | None:
     """Get station coordinates for mapping.
@@ -1409,6 +1425,14 @@ def map_gtfs_stop_to_station_code(
     if data_source == "MBTA":
         # MBTA uses child stop_ids like "NEC-2287", "BNT-0000"
         return MBTA_GTFS_STOP_TO_INTERNAL_MAP.get(gtfs_stop_id)
+
+    if data_source == "SEPTA_RR":
+        # SEPTA Regional Rail: internal code is the GTFS stop_id prefixed "SEPR"
+        return map_septa_rr_gtfs_stop(gtfs_stop_id)
+
+    if data_source == "SEPTA_METRO":
+        # SEPTA Metro: many GTFS platform stop_ids map to one "SEPM" station code
+        return map_septa_metro_gtfs_stop(gtfs_stop_id)
 
     if data_source == "SUBWAY":
         # NYC Subway stop IDs have N/S directional suffix

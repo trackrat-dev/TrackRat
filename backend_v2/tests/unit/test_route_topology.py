@@ -439,6 +439,8 @@ class TestAllRoutesConsistency:
             "WMATA",
             "BART",
             "MBTA",
+            "SEPTA_RR",
+            "SEPTA_METRO",
         }
         for route in ALL_ROUTES:
             assert (

@@ -142,7 +142,7 @@ Open an issue first if you're planning to add a new system — we'll help you ge
 
 ## Where Help Is Wanted
 
-- **New transit systems** — SEPTA, NJ Light Rail, NJ Bus, and beyond
+- **New transit systems** — NJ Light Rail, NJ Bus, and beyond
 - **Test coverage** — Especially for collectors and services
 - **Web app features** — PWA improvements, accessibility, data visualization
 - **Documentation** — API docs, architecture guides, onboarding improvements

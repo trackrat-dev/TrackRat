@@ -14,6 +14,8 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     case wmata = "WMATA"
     case bart = "BART"
     case mbta = "MBTA"
+    case septaRegionalRail = "SEPTA_RR"
+    case septaMetro = "SEPTA_METRO"
 
     var id: String { rawValue }
 
@@ -55,6 +57,8 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .wmata: return "DC Metro"
         case .bart: return "BART"
         case .mbta: return "MBTA"
+        case .septaRegionalRail: return "SEPTA Regional Rail"
+        case .septaMetro: return "SEPTA Metro"
         }
     }
 
@@ -72,6 +76,8 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .wmata: return "tram.fill"
         case .bart: return "tram"
         case .mbta: return "train.side.front.car"
+        case .septaRegionalRail: return "train.side.front.car"
+        case .septaMetro: return "tram.fill"
         }
     }
 
@@ -89,22 +95,26 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .wmata: return "#004E8C"  // WMATA blue
         case .bart: return "#009BDA"   // BART blue
         case .mbta: return "#80276C"   // MBTA Commuter Rail purple
+        case .septaRegionalRail: return "#4F758B"  // SEPTA Regional Rail blue
+        case .septaMetro: return "#F26100"  // SEPTA Metro (Broad St orange)
         }
     }
 
     /// Whether this system uses synthetic (non-user-facing) train IDs.
     /// These systems should display destination or line name instead of raw train ID.
-    static let syntheticTrainIdSources: Set<String> = ["PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA", "BART", "MBTA"]
+    /// SEPTA Metro uses opaque GTFS trip ids; Regional Rail has real train numbers.
+    static let syntheticTrainIdSources: Set<String> = ["PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA", "BART", "MBTA", "SEPTA_METRO"]
 
     /// Systems where boarding track numbers are not meaningful to display.
-    /// Subway and PATH use fixed platforms, not assignable tracks.
-    static let noTrackDisplaySources: Set<String> = ["PATH", "SUBWAY", "WMATA", "BART"]
+    /// Subway and PATH use fixed platforms, not assignable tracks (SEPTA Metro too).
+    static let noTrackDisplaySources: Set<String> = ["PATH", "SUBWAY", "WMATA", "BART", "SEPTA_METRO"]
 
     /// Whether this system has real-time data capable of generating meaningful route alerts.
     /// Schedule-only systems (e.g., PATCO) cannot detect delays or cancellations.
     var supportsAlerts: Bool {
         switch self {
-        case .njt, .amtrak, .path, .lirr, .mnr, .subway, .metra, .wmata, .bart, .mbta:
+        case .njt, .amtrak, .path, .lirr, .mnr, .subway, .metra, .wmata, .bart, .mbta,
+             .septaRegionalRail, .septaMetro:
             return true
         case .patco:
             return false
@@ -115,7 +125,9 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     /// (planned work, elevator outages, real-time service changes).
     /// Distinct from `supportsAlerts`, which gates delay/cancellation push
     /// notifications and is true for many systems without an alerts feed.
-    static let serviceAlertFeedSources: Set<String> = ["SUBWAY", "LIRR", "MNR", "NJT"]
+    static let serviceAlertFeedSources: Set<String> = [
+        "SUBWAY", "LIRR", "MNR", "NJT", "SEPTA_RR", "SEPTA_METRO",
+    ]
 
     var hasServiceAlertFeed: Bool {
         Self.serviceAlertFeedSources.contains(dataSource)
@@ -135,6 +147,8 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         case .wmata: return "DC"
         case .bart: return "BART"
         case .mbta: return "MBTA"
+        case .septaRegionalRail: return "SEPR"
+        case .septaMetro: return "SEPM"
         }
     }
 
@@ -151,8 +165,8 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     /// Commuter/intercity rail → Travel Time (delays are more variable and meaningful).
     var preferredHighlightMode: SegmentHighlightMode {
         switch self {
-        case .subway, .path, .patco, .wmata, .bart: return .health
-        case .njt, .amtrak, .lirr, .mnr, .metra, .mbta: return .delays
+        case .subway, .path, .patco, .wmata, .bart, .septaMetro: return .health
+        case .njt, .amtrak, .lirr, .mnr, .metra, .mbta, .septaRegionalRail: return .delays
         }
     }
 }
@@ -356,6 +370,16 @@ extension TrainSystem {
             return MKCoordinateRegion(
                 center: CLLocationCoordinate2D(latitude: 42.36, longitude: -71.06),
                 span: MKCoordinateSpan(latitudeDelta: 2.5, longitudeDelta: 2.5)
+            )
+        case .septaRegionalRail:
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 40.00, longitude: -75.20),
+                span: MKCoordinateSpan(latitudeDelta: 1.10, longitudeDelta: 1.30)
+            )
+        case .septaMetro:
+            return MKCoordinateRegion(
+                center: CLLocationCoordinate2D(latitude: 39.98, longitude: -75.16),
+                span: MKCoordinateSpan(latitudeDelta: 0.35, longitudeDelta: 0.45)
             )
         }
     }

@@ -221,6 +221,16 @@ struct Stations {
         if metraStations.contains(code) {
             return ["METRA"]
         }
+        // SEPTA station codes deterministically encode their system in the prefix
+        // (SEPR = Regional Rail, SEPM = Metro). Regional Rail stations are all on
+        // routes, but many Metro trolley curb stops are not, so fall back to the
+        // prefix for any SEPTA code not attributed above.
+        if code.hasPrefix("SEPR") {
+            return ["SEPTA_RR"]
+        }
+        if code.hasPrefix("SEPM") {
+            return ["SEPTA_METRO"]
+        }
         // Unknown station code — this is a bug. Add the code to the appropriate mapping.
         return []
     }

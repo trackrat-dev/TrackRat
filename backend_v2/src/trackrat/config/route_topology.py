@@ -16,6 +16,14 @@ from collections import defaultdict, deque
 from dataclasses import dataclass
 
 from trackrat.config.stations.metra import METRA_ROUTE_STATIONS, METRA_ROUTES
+from trackrat.config.stations.septa_metro import (
+    SEPTA_METRO_ROUTE_STATIONS,
+    SEPTA_METRO_ROUTES,
+)
+from trackrat.config.stations.septa_rr import (
+    SEPTA_RR_ROUTE_STATIONS,
+    SEPTA_RR_ROUTES,
+)
 
 
 @dataclass(frozen=True)
@@ -4197,6 +4205,40 @@ MBTA_CAPEFLYER = Route(
     stations=("BOS", "BBRN", "BBRO", "BLKV", "BWRV", "BBZB", "BBNE", "BHYN"),
 )
 
+# =============================================================================
+# SEPTA (Regional Rail + Metro)
+# Routes are built from the station config so the ordered station sequences live
+# in exactly one place (config/stations/septa_*.py).
+# =============================================================================
+
+
+def _build_septa_routes(
+    data_source: str,
+    routes: dict[str, tuple[str, str, str]],
+    route_stations: dict[str, tuple[str, ...]],
+    id_prefix: str,
+) -> tuple[Route, ...]:
+    return tuple(
+        Route(
+            id=f"{id_prefix}-{route_id.lower()}",
+            name=routes[route_id][1],
+            data_source=data_source,
+            line_codes=frozenset({routes[route_id][0]}),
+            stations=stations,
+        )
+        for route_id, stations in route_stations.items()
+        if stations
+    )
+
+
+SEPTA_RR_ROUTE_LIST = _build_septa_routes(
+    "SEPTA_RR", SEPTA_RR_ROUTES, SEPTA_RR_ROUTE_STATIONS, "septa-rr"
+)
+SEPTA_METRO_ROUTE_LIST = _build_septa_routes(
+    "SEPTA_METRO", SEPTA_METRO_ROUTES, SEPTA_METRO_ROUTE_STATIONS, "septa-metro"
+)
+
+
 ALL_ROUTES: tuple[Route, ...] = (
     # NJT
     NJT_NORTHEAST_CORRIDOR,
@@ -4361,6 +4403,9 @@ ALL_ROUTES: tuple[Route, ...] = (
     MBTA_STOUGHTON,
     MBTA_WORCESTER,
     MBTA_CAPEFLYER,
+    # SEPTA (built above from station config)
+    *SEPTA_RR_ROUTE_LIST,
+    *SEPTA_METRO_ROUTE_LIST,
 )
 
 # Lookup indexes for fast access

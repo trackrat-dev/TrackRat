@@ -34,6 +34,8 @@ GTFS_FEEDS = {
     "LIRR": "https://rrgtfsfeeds.s3.amazonaws.com/gtfslirr.zip",
     "MNR": "https://rrgtfsfeeds.s3.amazonaws.com/gtfsmnr.zip",
     "SUBWAY": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip",
+    "SEPTA_RR": "https://www3.septa.org/developer/google_rail.zip",
+    "SEPTA_METRO": "https://www3.septa.org/developer/google_bus.zip",
 }
 
 # Import station code mapping from backend to map GTFS stop_ids to our codes.
@@ -96,8 +98,12 @@ def parse_gtfs_file(zip_path: str, filename: str) -> list[dict]:
     """Parse a CSV file from a GTFS zip. Returns empty list if file not found."""
     try:
         with zipfile.ZipFile(zip_path) as zf:
-            # Some feeds nest files in subdirectories
-            matching = [n for n in zf.namelist() if n.endswith(filename)]
+            # Match the exact file, or the same file nested in a subdirectory.
+            # A plain endswith() would wrongly match e.g. "route_stops.txt" when
+            # asked for "stops.txt" (SEPTA ships both).
+            matching = [
+                n for n in zf.namelist() if n == filename or n.endswith("/" + filename)
+            ]
             if not matching:
                 return []
             with zf.open(matching[0]) as f:
@@ -224,11 +230,13 @@ def extract_segment_shapes(
     stop_coords: dict[str, tuple[float, float]] = {}
     stop_names: dict[str, str] = {}
     for stop in stops:
-        stop_coords[stop["stop_id"]] = (
-            float(stop["stop_lat"]),
-            float(stop["stop_lon"]),
-        )
         stop_names[stop["stop_id"]] = stop.get("stop_name", "")
+        # Some feeds include stops with no coordinates (station complexes,
+        # entrances). Skip those — they can't anchor a shape segment.
+        lat, lon = stop.get("stop_lat", ""), stop.get("stop_lon", "")
+        if not lat or not lon:
+            continue
+        stop_coords[stop["stop_id"]] = (float(lat), float(lon))
 
     # Build trip -> shape_id mapping
     trip_shape: dict[str, str] = {}

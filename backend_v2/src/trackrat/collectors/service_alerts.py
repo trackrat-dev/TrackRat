@@ -27,6 +27,10 @@ from trackrat.collectors.njt.client import NJTransitAPIError, NJTransitClient
 from trackrat.config.stations import (
     LIRR_ALERTS_FEED_URL,
     MNR_ALERTS_FEED_URL,
+    SEPTA_METRO_ALERTS_FEED_URL,
+    SEPTA_METRO_ROUTES,
+    SEPTA_RR_ALERTS_FEED_URL,
+    SEPTA_RR_ROUTES,
     SUBWAY_ALERTS_FEED_URL,
 )
 from trackrat.db.engine import get_session
@@ -40,6 +44,50 @@ MTA_ALERT_FEEDS: dict[str, str] = {
     "LIRR": LIRR_ALERTS_FEED_URL,
     "MNR": MNR_ALERTS_FEED_URL,
 }
+
+# SEPTA GTFS-RT alert feeds (standard format, no auth). The Metro feed
+# ("septa-pa-us") also carries bus alerts; _remap_septa_alert drops any alert
+# whose only affected routes are ones we don't track.
+SEPTA_ALERT_FEEDS: dict[str, str] = {
+    "SEPTA_RR": SEPTA_RR_ALERTS_FEED_URL,
+    "SEPTA_METRO": SEPTA_METRO_ALERTS_FEED_URL,
+}
+
+# Raw SEPTA GTFS route_id -> our line_code, per source (e.g. "WTR" -> "SEPTA-WTR").
+_SEPTA_ROUTE_TO_LINE_CODE: dict[str, dict[str, str]] = {
+    "SEPTA_RR": {rid: info[0] for rid, info in SEPTA_RR_ROUTES.items()},
+    "SEPTA_METRO": {rid: info[0] for rid, info in SEPTA_METRO_ROUTES.items()},
+}
+
+
+def _remap_septa_alert(alert: "ParsedAlert", data_source: str) -> "ParsedAlert | None":
+    """Adapt a generically-parsed SEPTA alert to our conventions.
+
+    - Maps raw SEPTA route_ids to our line_codes (``"M1"`` -> ``"SEPTA-M1"``).
+    - Drops alerts whose only affected routes are ones we don't track (the Metro
+      feed carries bus alerts); route-less system-wide alerts are kept.
+    - SEPTA entity_ids are opaque numbers, so classify by header keyword instead
+      of the MTA ``lmm:`` prefix convention.
+    """
+    code_map = _SEPTA_ROUTE_TO_LINE_CODE[data_source]
+    mapped: list[str] = []
+    for r in alert.affected_route_ids:
+        code = code_map.get(r)
+        if code is not None and code not in mapped:
+            mapped.append(code)
+    if alert.affected_route_ids and not mapped:
+        return None  # only concerns untracked (e.g. bus) routes
+
+    header = (alert.header_text or "").lower()
+    if "elevator" in header or "escalator" in header:
+        alert_type = "elevator"
+    else:
+        alert_type = "alert"
+
+    return alert.model_copy(
+        update={"affected_route_ids": mapped, "alert_type": alert_type}
+    )
+
 
 # NJT MSG_LINE_SCOPE name -> internal line code(s)
 # The API returns names like "*Northeast Corridor Line" in MSG_LINE_SCOPE.
@@ -492,6 +540,34 @@ async def collect_service_alerts() -> dict[str, Any]:
                     data_source,
                     stats,
                 )
+            except httpx.HTTPError as e:
+                logger.warning("Failed to fetch %s service alerts: %s", data_source, e)
+                all_stats[data_source] = {"error": str(e)}
+            except Exception as e:
+                logger.error(
+                    "Error collecting %s service alerts: %s",
+                    data_source,
+                    e,
+                    exc_info=True,
+                )
+                all_stats[data_source] = {"error": str(e)}
+
+        # SEPTA feeds (GTFS-RT). Reuse the generic parser, then remap route_ids
+        # to our line_codes and drop bus-only alerts from the Metro feed.
+        for data_source, feed_url in SEPTA_ALERT_FEEDS.items():
+            if settings.is_data_source_disabled(data_source):
+                continue
+            try:
+                raw_alerts = await fetch_and_parse_alerts(feed_url, data_source)
+                alerts = [
+                    remapped
+                    for a in raw_alerts
+                    if (remapped := _remap_septa_alert(a, data_source)) is not None
+                ]
+                async with session.begin_nested():
+                    stats = await upsert_service_alerts(session, alerts, data_source)
+                all_stats[data_source] = {"total_parsed": len(alerts), **stats}
+                logger.info("Service alerts collected for %s: %s", data_source, stats)
             except httpx.HTTPError as e:
                 logger.warning("Failed to fetch %s service alerts: %s", data_source, e)
                 all_stats[data_source] = {"error": str(e)}

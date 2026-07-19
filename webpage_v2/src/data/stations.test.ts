@@ -252,8 +252,10 @@ describe('AVAILABLE_SYSTEMS', () => {
 });
 
 describe('ALERT_CAPABLE_SYSTEMS', () => {
-  it('is the MTA systems plus NJT', () => {
-    expect([...ALERT_CAPABLE_SYSTEMS].sort()).toEqual(['LIRR', 'MNR', 'NJT', 'SUBWAY']);
+  it('is the MTA systems plus NJT and SEPTA', () => {
+    expect([...ALERT_CAPABLE_SYSTEMS].sort()).toEqual([
+      'LIRR', 'MNR', 'NJT', 'SEPTA_METRO', 'SEPTA_RR', 'SUBWAY',
+    ]);
   });
 
   it('contains no app-wide-disabled systems', () => {

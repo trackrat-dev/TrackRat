@@ -106,7 +106,7 @@ The E2E script prints response bodies on HTTP errors and flags slow responses (>
 **Ground Truth Validation:**
 
 Compares TrackRat departures against raw transit provider APIs to verify data quality.
-Run from `backend_v2/` using poetry. Supports PATH, NJT, AMTRAK, LIRR, MNR, SUBWAY, WMATA.
+Run from `backend_v2/` using poetry. Supports PATH, NJT, AMTRAK, LIRR, MNR, SUBWAY, WMATA, SEPTA_RR.
 
 ```bash
 cd backend_v2
@@ -131,6 +131,11 @@ poetry run python3 ../scripts/ground-truth-validate.py --provider SUBWAY --verbo
 
 # WMATA (needs token via TRACKRAT_WMATA_API_KEY or WMATA_API_KEY env var)
 poetry run python3 ../scripts/ground-truth-validate.py --provider WMATA --verbose
+
+# SEPTA Regional Rail (no auth; ground truth is SEPTA's rider-facing Arrivals REST
+# API, since the GTFS-RT feed TrackRat consumes is delay-only. SEPTA Metro is
+# schedule-first with no independent real-time departure API, so it is not covered.)
+poetry run python3 ../scripts/ground-truth-validate.py --provider SEPTA_RR --verbose
 
 # All providers at once
 poetry run python3 ../scripts/ground-truth-validate.py --all --verbose
@@ -274,6 +279,16 @@ bash scripts/create-and-restore-db-then-train-model.sh
 **Backend Data Collection (PATCO - Schedule-only):**
 - Uses GTFS static schedules from National RTAP feed
 - No real-time API available; times are scheduled only
+
+**Backend Data Collection (SEPTA Regional Rail - Unified GTFS-RT, delay-based):**
+- Single collector runs every 4 minutes over SEPTA's public `septarail-pa-us` GTFS-RT feed (no auth)
+- Feed is **delay-based**: each stop_time_update carries a `delay` (seconds) keyed by `stop_sequence`, with no stop_id/absolute times — the collector joins the GTFS static schedule by exact `(trip_id, stop_sequence)` and applies the propagated delay to reconstruct absolute times, then reuses `mta_common` (`collectors/septa_rr/`)
+- Real-time, on-time-first; stable rider-facing train numbers (`trip_short_name`)
+
+**Backend Data Collection (SEPTA Metro - Unified GTFS-RT, schedule-first):**
+- Single collector runs every 4 minutes over the shared `septa-pa-us` feed, filtered to Metro rail routes (route_type 0/1: Broad St, Market-Frankford, Norristown HSL, trolleys); GTFS static load is route-filtered so the `google_bus.zip` bundle's ~131 bus routes are excluded (`GTFS_ROUTE_TYPE_FILTER`)
+- Frequency-first; served **schedule-first** (kept out of `REAL_TIME_DATA_SOURCES`) so Broad St / Market-Frankford — which SEPTA does not feed in real time — show from the timetable like PATCO, while the collector upgrades to OBSERVED whatever lines SEPTA does feed (NHSL, trolleys). No config change is needed if that real-time coverage grows (`collectors/septa_metro/`)
+- Two data sources: `SEPTA_RR` and `SEPTA_METRO`
 
 **MTA Service Alerts Collection:**
 - Collector in `backend_v2/src/trackrat/collectors/service_alerts.py`
@@ -504,7 +519,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Backend API endpoints: `backend_v2/src/trackrat/api/`
 - Backend models: `backend_v2/src/trackrat/models/`
 - Backend entrypoint: `backend_v2/src/trackrat/main.py`, `backend_v2/src/trackrat/settings.py`
-- Backend collectors: `backend_v2/src/trackrat/collectors/` (base.py, mta_common.py, mta_extensions.py, service_alerts.py at root; njt/, amtrak/, path/, lirr/, mnr/, subway/, bart/, mbta/, metra/, wmata/ as packages)
+- Backend collectors: `backend_v2/src/trackrat/collectors/` (base.py, mta_common.py, mta_extensions.py, service_alerts.py at root; njt/, amtrak/, path/, lirr/, mnr/, subway/, bart/, mbta/, metra/, wmata/, septa_rr/, septa_metro/ as packages)
 - Backend config: `backend_v2/src/trackrat/config/` (stations/ package, route_topology, station_configs, platform_mappings, transfer_points)
 - Backend utilities: `backend_v2/src/trackrat/utils/` (logging, metrics, request_stats, locks, time, train, sanitize, scheduler_utils, system_stats)
 - Backend database: `backend_v2/src/trackrat/db/` (database.py, engine.py, migrations_runner.py, partitioning.py, migrations/)

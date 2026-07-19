@@ -32,6 +32,8 @@ PROVIDER_TIMEZONE: dict[str, pytz.BaseTzInfo] = {
     "BART": PT,
     "MBTA": ET,
     "WMATA": ET,
+    "SEPTA_RR": ET,
+    "SEPTA_METRO": ET,
 }
 
 

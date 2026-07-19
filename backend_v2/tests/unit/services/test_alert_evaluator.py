@@ -12,18 +12,20 @@ from zoneinfo import ZoneInfo
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+
+from trackrat.config.route_topology import Route
 from trackrat.models.database import (
     DeviceToken,
     JourneyStop,
     RouteAlertSubscription,
     TrainJourney,
 )
-from trackrat.config.route_topology import Route
 from trackrat.services.alert_evaluator import (
     COOLDOWN_MINUTES,
     DELAY_THRESHOLD_MINUTES,
     FREQUENCY_FIRST_SOURCES,
     MIN_BASELINE_DAYS,
+    SERVICE_ALERT_SOURCES,
     _build_alert_message,
     _build_train_alert_message,
     _compute_alert_hash,
@@ -900,15 +902,57 @@ class TestSystemAwareAlertPriority:
         print(f"  Verified: SUBWAY cancellation fires correctly — {title}")
 
     async def test_frequency_first_sources_constant(self):
-        """FREQUENCY_FIRST_SOURCES should match iOS preferredHighlightMode == .health."""
-        assert FREQUENCY_FIRST_SOURCES == {"SUBWAY", "PATH", "PATCO", "WMATA", "BART"}
+        """FREQUENCY_FIRST_SOURCES should match iOS preferredHighlightMode == .health.
+
+        SEPTA Metro (subway + trolley) is frequency-first like the other rapid-transit
+        systems; SEPTA Regional Rail is NOT — it is a delay-first commuter railroad and
+        must stay out of this set.
+        """
+        assert FREQUENCY_FIRST_SOURCES == {
+            "SUBWAY",
+            "PATH",
+            "PATCO",
+            "WMATA",
+            "BART",
+            "SEPTA_METRO",
+        }
+        assert "SEPTA_METRO" in FREQUENCY_FIRST_SOURCES
+        assert "SEPTA_RR" not in FREQUENCY_FIRST_SOURCES
         # Verify no overlap: frequency-first should not include delay-first systems
-        delay_first = {"NJT", "AMTRAK", "LIRR", "MNR"}
+        delay_first = {"NJT", "AMTRAK", "LIRR", "MNR", "SEPTA_RR"}
         assert FREQUENCY_FIRST_SOURCES.isdisjoint(
             delay_first
         ), "Frequency-first and delay-first sets must not overlap"
         print(f"  FREQUENCY_FIRST_SOURCES = {FREQUENCY_FIRST_SOURCES}")
         print(f"  Delay-first systems = {delay_first}")
+
+    async def test_service_alert_sources_cover_collected_feeds(self):
+        """SERVICE_ALERT_SOURCES must include every source the collector upserts.
+
+        The evaluator only loads and notifies on service alerts whose data_source
+        is in SERVICE_ALERT_SOURCES (see evaluate_planned_work_alerts). If a source
+        is collected into the service_alerts table but missing here, its planned-
+        work / service-change notifications silently never fire. SEPTA_RR and
+        SEPTA_METRO are the regression guard: their feeds are collected in
+        collectors/service_alerts.py (SEPTA_ALERT_FEEDS), so subscribers must be
+        eligible for their alerts.
+        """
+        from trackrat.collectors.service_alerts import (
+            MTA_ALERT_FEEDS,
+            SEPTA_ALERT_FEEDS,
+        )
+
+        # Every GTFS-RT feed the collector upserts (MTA + SEPTA) plus NJT must be
+        # notifiable. (WMATA alerts are also collected but WMATA is a disabled
+        # source, so it is intentionally not in this notification allow-list.)
+        expected = set(MTA_ALERT_FEEDS) | set(SEPTA_ALERT_FEEDS) | {"NJT"}
+        missing = expected - SERVICE_ALERT_SOURCES
+        assert not missing, (
+            f"Collected alert sources missing from SERVICE_ALERT_SOURCES: {missing}. "
+            f"Their planned-work notifications will never fire."
+        )
+        assert {"SEPTA_RR", "SEPTA_METRO"} <= SERVICE_ALERT_SOURCES
+        print(f"  SERVICE_ALERT_SOURCES = {SERVICE_ALERT_SOURCES}")
 
 
 class TestIsSignificantlyDelayed:

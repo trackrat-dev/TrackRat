@@ -116,8 +116,24 @@ NJT_LINE_CANONICALIZATION: dict[str, str] = {
 # Data sources that have real-time discovery systems.
 # SCHEDULED trains from these sources should be hidden when close to departure
 # if they haven't been upgraded to OBSERVED by discovery.
+# SEPTA_METRO is intentionally absent: it is served schedule-first (like PATCO),
+# with a collector that upgrades to OBSERVED only the lines SEPTA feeds in real
+# time. Listing it here would hide the schedule-only lines (Broad St / MFL) near
+# departure. SEPTA_RR is a normal real-time commuter source.
 REAL_TIME_DATA_SOURCES: frozenset[str] = frozenset(
-    {"NJT", "AMTRAK", "PATH", "LIRR", "MNR", "SUBWAY", "METRA", "WMATA", "BART", "MBTA"}
+    {
+        "NJT",
+        "AMTRAK",
+        "PATH",
+        "LIRR",
+        "MNR",
+        "SUBWAY",
+        "METRA",
+        "WMATA",
+        "BART",
+        "MBTA",
+        "SEPTA_RR",
+    }
 )
 
 # Per-source minutes before departure to hide SCHEDULED trains that weren't discovered.
@@ -134,6 +150,7 @@ SCHEDULED_VISIBILITY_THRESHOLDS: dict[str, int] = {
     "MBTA": 5,  # 4-min discovery
     "METRA": 5,  # 4-min discovery
     "WMATA": 4,  # 3-min discovery
+    "SEPTA_RR": 5,  # 4-min collection
 }
 DEFAULT_SCHEDULED_VISIBILITY_THRESHOLD_MINUTES: int = 15
 
@@ -150,6 +167,8 @@ ALL_DATA_SOURCES: list[str] = [
     "WMATA",
     "BART",
     "MBTA",
+    "SEPTA_RR",
+    "SEPTA_METRO",
 ]
 
 

@@ -454,6 +454,8 @@ class HistoricalRouteInfo(BaseModel):
         "WMATA",
         "BART",
         "MBTA",
+        "SEPTA_RR",
+        "SEPTA_METRO",
     ]
     baseline_train_count: float | None = Field(
         default=None,
@@ -550,6 +552,8 @@ class TrainLocationData(BaseModel):
         "WMATA",
         "BART",
         "MBTA",
+        "SEPTA_RR",
+        "SEPTA_METRO",
     ]
 
     # GPS coordinates (Amtrak only)

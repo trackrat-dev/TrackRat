@@ -363,7 +363,7 @@ See [CLAUDE.md](CLAUDE.md) for complete technical details and improvement areas.
 - [ ] iPad optimization
 - [ ] macOS Catalyst app
 - [ ] CarPlay support
-- [ ] Additional transit systems (SEPTA, NJ Light Rail)
+- [ ] Additional transit systems (NJ Light Rail)
 - [ ] Social features (trip sharing)
 
 ## 📝 License

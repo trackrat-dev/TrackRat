@@ -51,7 +51,7 @@ class TrainJourney(Base):
     destination = Column(String(100), nullable=False)
     origin_station_code = Column(String(10), nullable=False)
     terminal_station_code = Column(String(10), nullable=False)
-    data_source = Column(String(10), nullable=False, default="NJT")
+    data_source = Column(String(20), nullable=False, default="NJT")
     observation_type = Column(String(10), nullable=False, default="OBSERVED")
 
     # Discovery metadata
@@ -428,7 +428,7 @@ class RouteAlertSubscription(Base):
         ForeignKey("device_tokens.device_id", ondelete="CASCADE"),
         nullable=False,
     )
-    data_source = Column(String(10), nullable=False)
+    data_source = Column(String(20), nullable=False)
     line_id = Column(String(30), nullable=True)
     from_station_code = Column(String(10), nullable=True)
     to_station_code = Column(String(10), nullable=True)
@@ -496,7 +496,7 @@ class ServiceAlert(Base):
     alert_id = Column(
         String(100), nullable=False
     )  # MTA entity ID (e.g. "lmm:planned_work:30497")
-    data_source = Column(String(10), nullable=False)  # SUBWAY, LIRR, MNR
+    data_source = Column(String(20), nullable=False)  # SUBWAY, LIRR, MNR
     alert_type = Column(String(20), nullable=False)  # planned_work, alert, elevator
     affected_route_ids = Column(JSON, nullable=False)  # ["G", "4"] - GTFS route_ids
     header_text = Column(Text, nullable=False)  # English plain text header
@@ -529,7 +529,7 @@ class SegmentTransitTime(Base):
     )
     from_station_code = Column(String(10), nullable=False)
     to_station_code = Column(String(10), nullable=False)
-    data_source = Column(String(10), nullable=False)
+    data_source = Column(String(20), nullable=False)
     line_code = Column(String(15))
 
     # Timing data
@@ -631,7 +631,7 @@ class StationDwellTime(Base):
         Integer, ForeignKey("train_journeys.id", ondelete="CASCADE"), nullable=False
     )
     station_code = Column(String(10), nullable=False)
-    data_source = Column(String(10), nullable=False)
+    data_source = Column(String(20), nullable=False)
     line_code = Column(String(15))
 
     # Timing data
@@ -762,7 +762,7 @@ class ValidationResult(Base):
 
     # Route and source information
     route = Column(String(10), nullable=False)  # e.g., "NY->PJ"
-    source = Column(String(10), nullable=False)  # e.g., "NJT", "AMTRAK"
+    source = Column(String(20), nullable=False)  # e.g., "NJT", "AMTRAK"
 
     # Coverage metrics
     transit_train_count = Column(Integer, nullable=False)
@@ -788,7 +788,7 @@ class GTFSFeedInfo(Base):
     __tablename__ = "gtfs_feed_info"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    data_source = Column(String(10), nullable=False, unique=True)  # "NJT" or "AMTRAK"
+    data_source = Column(String(20), nullable=False, unique=True)  # "NJT" or "AMTRAK"
     feed_url = Column(String(500), nullable=False)
     last_downloaded_at = Column(DateTime(timezone=True))
     last_successful_parse_at = Column(DateTime(timezone=True))
@@ -806,7 +806,7 @@ class GTFSRoute(Base):
     __tablename__ = "gtfs_routes"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    data_source = Column(String(10), nullable=False)
+    data_source = Column(String(20), nullable=False)
     route_id = Column(String(50), nullable=False)  # GTFS route_id
     route_short_name = Column(String(50))  # Line code (e.g., "NEC", "MOBO")
     route_long_name = Column(String(200))  # Full name
@@ -833,7 +833,7 @@ class GTFSTrip(Base):
     __tablename__ = "gtfs_trips"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    data_source = Column(String(10), nullable=False)
+    data_source = Column(String(20), nullable=False)
     trip_id = Column(String(100), nullable=False)  # GTFS trip_id
     route_id = Column(
         Integer, ForeignKey("gtfs_routes.id", ondelete="CASCADE"), nullable=False
@@ -902,7 +902,7 @@ class GTFSCalendar(Base):
     __tablename__ = "gtfs_calendar"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    data_source = Column(String(10), nullable=False)
+    data_source = Column(String(20), nullable=False)
     service_id = Column(String(50), nullable=False)
 
     # Day of week flags
@@ -930,7 +930,7 @@ class GTFSCalendarDate(Base):
     __tablename__ = "gtfs_calendar_dates"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    data_source = Column(String(10), nullable=False)
+    data_source = Column(String(20), nullable=False)
     service_id = Column(String(50), nullable=False)
     date = Column(Date, nullable=False)
     exception_type = Column(

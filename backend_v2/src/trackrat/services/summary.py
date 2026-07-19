@@ -68,6 +68,8 @@ CARRIER_DISPLAY_NAMES: dict[str, str] = {
     "WMATA": "DC Metro",
     "BART": "BART",
     "MBTA": "MBTA Commuter Rail",
+    "SEPTA_RR": "SEPTA Regional Rail",
+    "SEPTA_METRO": "SEPTA Metro",
 }
 
 
@@ -1663,7 +1665,16 @@ class SummaryService:
         if train_stats.has_data:
             if (
                 data_source
-                in ("PATH", "PATCO", "LIRR", "MNR", "SUBWAY", "METRA", "MBTA")
+                in (
+                    "PATH",
+                    "PATCO",
+                    "LIRR",
+                    "MNR",
+                    "SUBWAY",
+                    "METRA",
+                    "MBTA",
+                    "SEPTA_METRO",
+                )
                 and destination
             ):
                 train_display = f"This {destination} train"
