@@ -45,6 +45,12 @@ variable "consolidate_api_lb" {
   default     = true
 }
 
+variable "frontend_via_cloudflare" {
+  description = "Cloudflare cutover switch: when true, tear down this workspace's dedicated API frontend (IP, url map, proxies, forwarding rules) because the API is fronted by a Cloudflare Tunnel (cloudflared container) instead of a Google load balancer. This is what removes the 'Cloud Load Balancer Forwarding Rule Minimum Global' charge. Flip to true (committed default, not -var, so push-triggered applies stay consistent) ONLY after the tunnel connector is healthy and the hostname's DNS is cut over to it — see infra_v2/RUNBOOK-cloudflare-cutover.md. Applies to whichever workspace it is set in; during the staging pilot only staging has a tunnel."
+  type        = bool
+  default     = false
+}
+
 variable "disk_size_gb" {
   description = "Persistent disk size in GB"
   type        = number

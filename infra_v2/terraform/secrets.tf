@@ -10,6 +10,8 @@
 #   - trackrat-apns-auth-key: APNS Auth Key (P8 content)
 #   - trackrat-wmata-api-key: WMATA developer API key
 #   - trackrat-metra-api-token: Metra GTFS-RT API token
+# Optional (Cloudflare pilot, staging only for now):
+#   - trackrat-cloudflare-tunnel-token-staging: staging Cloudflare Tunnel token
 
 data "google_secret_manager_secret" "db_password" {
   secret_id  = "trackrat-db-password"
@@ -106,6 +108,14 @@ resource "google_secret_manager_secret_iam_member" "apns_auth_key" {
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.trackrat.email}"
 }
+
+# NOTE: the optional Cloudflare Tunnel token secret
+# (trackrat-cloudflare-tunnel-token-<env>) is intentionally NOT managed here.
+# During the pilot the VM service account is granted read access via the runbook
+# (infra_v2/RUNBOOK-cloudflare-cutover.md, step 1b) at the same time the secret
+# is created, so this Terraform root stays inert on merge (an IAM binding here
+# would fail the apply until the secret existed). Fold it in once the tunnel is
+# permanent and both environments have their secret.
 
 # Artifact Registry read access
 resource "google_artifact_registry_repository_iam_member" "trackrat_reader" {

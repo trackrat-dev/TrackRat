@@ -7,6 +7,12 @@
 #   DB_PASSWORD    - PostgreSQL password (from Secret Manager)
 #   NJT_API_TOKEN  - NJ Transit API token (from Secret Manager)
 #   APNS_TEAM_ID, APNS_KEY_ID, APNS_BUNDLE_ID, APNS_ENVIRONMENT - APNS config
+#
+# Optional (Cloudflare Tunnel — replaces the Google load balancer as the API's
+# front door so no global forwarding rule is billed):
+#   COMPOSE_PROFILES=tunnel   - activates the cloudflared service below
+#   CLOUDFLARE_TUNNEL_TOKEN   - remotely-managed tunnel token (from Secret Manager)
+# Both are set by the startup script only when the tunnel-token secret exists.
 
 services:
   db:
@@ -78,6 +84,22 @@ services:
       - ${DATA_DIR:-/mnt/disks/data}:${DATA_DIR:-/mnt/disks/data}:ro
     ports:
       - "8000:8000"
+    restart: unless-stopped
+    networks:
+      - trackrat
+
+  # Cloudflare Tunnel connector. Dormant unless the "tunnel" compose profile is
+  # active (the startup script sets COMPOSE_PROFILES=tunnel + CLOUDFLARE_TUNNEL_TOKEN
+  # only when the tunnel-token secret is present). When active, Cloudflare terminates
+  # TLS at its edge and routes the API hostname to http://api:8000 over this private
+  # network, so the API needs no Google load balancer or global forwarding rule.
+  cloudflared:
+    image: cloudflare/cloudflared:2026.7.1
+    container_name: trackrat-cloudflared
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - api
     restart: unless-stopped
     networks:
       - trackrat
