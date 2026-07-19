@@ -1116,6 +1116,7 @@ class SchedulerService:
                         trips=result.get("trips", 0),
                         discovered=result.get("discovered", 0),
                         updated=result.get("updated", 0),
+                        skipped_no_static=result.get("skipped_no_static", 0),
                         errors=result.get("errors", 0),
                     )
                     return result

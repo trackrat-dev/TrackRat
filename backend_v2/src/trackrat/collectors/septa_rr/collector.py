@@ -8,7 +8,7 @@ matching static schedule is skipped — there is nothing to reconstruct from.
 
 import asyncio
 import logging
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -51,17 +51,6 @@ def _generate_train_id(trip_id: str) -> str:
     ``trip_short_name`` (``CHW8312``), unique per service day.
     """
     return trip_id.split("_", 1)[0] or trip_id
-
-
-def _parse_journey_date(trip_id: str) -> date:
-    """Extract the service date embedded in a SEPTA trip_id (``_YYYYMMDD_``)."""
-    parts = trip_id.split("_")
-    if len(parts) >= 2 and len(parts[1]) == 8 and parts[1].isdigit():
-        try:
-            return datetime.strptime(parts[1], "%Y%m%d").date()
-        except ValueError:
-            pass
-    return now_et().date()
 
 
 def resolve_arrivals(
@@ -137,7 +126,14 @@ class SeptaRailCollector:
                 await self.client.close()
 
     async def collect(self, session: AsyncSession) -> dict[str, Any]:
-        stats = {"discovered": 0, "updated": 0, "expired": 0, "errors": 0, "trips": 0}
+        stats = {
+            "discovered": 0,
+            "updated": 0,
+            "expired": 0,
+            "errors": 0,
+            "trips": 0,
+            "skipped_no_static": 0,
+        }
 
         try:
             collection_start = now_et()
@@ -169,6 +165,8 @@ class SeptaRailCollector:
                             stats["discovered"] += 1
                         elif result == "updated":
                             stats["updated"] += 1
+                        elif result == "skipped_no_static":
+                            stats["skipped_no_static"] += 1
                         if journey is not None and journey.id is not None:
                             analyzed_journeys.append(journey)
                 except Exception as e:
@@ -210,6 +208,7 @@ class SeptaRailCollector:
             logger.info(
                 f"SEPTA RR collection complete: {stats['discovered']} discovered, "
                 f"{stats['updated']} updated, {stats['expired']} expired, "
+                f"{stats['skipped_no_static']} skipped (no static match), "
                 f"{stats['errors']} errors"
             )
         except Exception as e:
@@ -219,11 +218,33 @@ class SeptaRailCollector:
 
         return stats
 
+    async def _resolve_static_schedule(
+        self, session: AsyncSession, trip: SeptaRailTripUpdate
+    ) -> tuple[date, list[dict[str, Any]]] | tuple[None, None]:
+        """Join a delay-only trip to its GTFS static schedule for the operating day.
+
+        The date embedded in a SEPTA RR trip_id (``<short>_<YYYYMMDD>_<SID>``) is a
+        schedule-version tag bound to the ``service_id``, *not* the operating date —
+        it is weeks stale and identical across many days, so it must never be used to
+        look up active services. The feed also carries no ``start_date``, so the
+        operating day comes from the wall clock. A trip still in the feed just after
+        midnight belongs to the previous service day (SEPTA RR runs past midnight), so
+        today is tried first, then yesterday. Returns the matched date and its stops,
+        or ``(None, None)`` when neither day has the trip in the static schedule.
+        """
+        today = now_et().date()
+        for candidate in (today, today - timedelta(days=1)):
+            static_stops = await self._gtfs_service.get_static_stop_times(
+                session, DATA_SOURCE, trip.trip_id, candidate
+            )
+            if static_stops:
+                return candidate, static_stops
+        return None, None
+
     async def _process_trip(
         self, session: AsyncSession, trip: SeptaRailTripUpdate
     ) -> tuple[str | None, TrainJourney | None]:
         train_id = _generate_train_id(trip.trip_id)
-        journey_date = _parse_journey_date(trip.trip_id)
 
         route_info = get_septa_rr_route_info(trip.route_id)
         if route_info:
@@ -235,15 +256,13 @@ class SeptaRailCollector:
 
         # Regional Rail's feed carries no absolute times — the static schedule is
         # mandatory. Without it there is nothing to reconstruct, so skip.
-        static_stops = await self._gtfs_service.get_static_stop_times(
-            session, DATA_SOURCE, trip.trip_id, journey_date
-        )
-        if not static_stops:
+        journey_date, static_stops = await self._resolve_static_schedule(session, trip)
+        if journey_date is None or static_stops is None:
             logger.debug(
                 "SEPTA RR static schedule unavailable for trip %s; skipping",
                 trip.trip_id,
             )
-            return None, None
+            return "skipped_no_static", None
 
         arrivals = resolve_arrivals(trip, static_stops)
         if not arrivals:
