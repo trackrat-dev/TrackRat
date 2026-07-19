@@ -14,9 +14,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.journey import JourneyCollector
 from trackrat.models.database import JourneyStop, TrainJourney
-from trackrat.utils.time import now_et
+from trackrat.utils.time import now_et, parse_njt_time
 
-from tests.fixtures.njt_api_responses import StopBuilder, create_stop_list_response
+from tests.fixtures.njt_api_responses import (
+    StopBuilder,
+    create_schedule_less_secaucus_response,
+    create_stop_list_response,
+)
 
 
 @pytest.fixture
@@ -1128,3 +1132,318 @@ class TestCorruptedTimeDataHandling:
             "PJ",
             "NB",
         ], f"Expected TR, HL, PJ, NB order after sorting by min time, got {station_codes}"
+
+
+class TestScheduleLessStopProductionPath:
+    """Production-path regression tests for schedule-less NJT stops (issue #1533).
+
+    The direct ``_resequence_stops`` unit test
+    (``test_discovery_stop_with_only_updated_times_sorts_by_live_time``) seeds a
+    Secaucus stop with BOTH ``updated_arrival`` and ``updated_departure``. That
+    state cannot reach ``_resequence_stops`` in production: the enclosing
+    ``update_journey_stops`` pass first overwrites both fields from the current
+    getTrainStopList row (``updated_arrival = TIME``, ``updated_departure =
+    DEP_TIME``). The real #1530 trigger is an API row carrying **TIME only** —
+    at resequence time the stop then has ``updated_arrival`` only and no
+    ``scheduled_*`` times.
+
+    These tests drive the full ``update_journey_stops`` pass (overwrite ->
+    backfill -> phantom deletion -> resequence -> ``_validate_stop_sequences``)
+    so the #1530 fix is exercised on the path that actually produced the bug,
+    and cover the adjacent interplay cases (backfill when the API supplies a
+    schedule, phantom deletion when the discovery stop is absent from the API).
+    """
+
+    async def _seed_ny_mp_journey(self, db_session: AsyncSession) -> TrainJourney:
+        """Seed the #1530 journey: train 3701 NY -> Matawan.
+
+        Pre-creates the schedule-generated stops (NY origin, Newark Penn,
+        Matawan terminal) with full scheduled times, plus a discovery-populated
+        Secaucus stop that has only live (updated) times and no schedule — the
+        state that produced the bug. All times use ``parse_njt_time`` so they
+        share today's date/timezone with the API-parsed stop-list times the
+        tests feed in (a mismatched date would silently break the ordering the
+        tests assert).
+        """
+        journey = TrainJourney(
+            train_id="3701",
+            journey_date=date.today(),
+            line_code="NC",
+            line_name="North Jersey Coast",
+            destination="Matawan",
+            origin_station_code="NY",
+            terminal_station_code="MP",
+            data_source="NJT",
+            scheduled_departure=now_et(),
+            has_complete_journey=False,
+            is_completed=False,
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Origin: New York Penn — departure only (scheduled).
+        db_session.add(
+            JourneyStop(
+                journey_id=journey.id,
+                journey_date=journey.journey_date,
+                station_code="NY",
+                station_name="New York Penn Station",
+                stop_sequence=0,
+                scheduled_arrival=None,
+                scheduled_departure=parse_njt_time("06:00:00 PM"),
+            )
+        )
+        # Newark Penn — fully scheduled downstream stop.
+        db_session.add(
+            JourneyStop(
+                journey_id=journey.id,
+                journey_date=journey.journey_date,
+                station_code="NP",
+                station_name="Newark Penn Station",
+                stop_sequence=1,
+                scheduled_arrival=parse_njt_time("06:18:00 PM"),
+                scheduled_departure=parse_njt_time("06:20:00 PM"),
+            )
+        )
+        # Matawan — terminal, arrival only.
+        db_session.add(
+            JourneyStop(
+                journey_id=journey.id,
+                journey_date=journey.journey_date,
+                station_code="MP",
+                station_name="Matawan Station",
+                stop_sequence=2,
+                scheduled_arrival=parse_njt_time("06:55:00 PM"),
+                scheduled_departure=None,
+            )
+        )
+        # Secaucus — discovery-populated: live (updated) times only, no
+        # schedule, no assigned sequence. Discovery wrote BOTH updated fields;
+        # the collection pass will overwrite them from the API row.
+        db_session.add(
+            JourneyStop(
+                journey_id=journey.id,
+                journey_date=journey.journey_date,
+                station_code="SE",
+                station_name="Secaucus Junction",
+                stop_sequence=None,
+                scheduled_arrival=None,
+                scheduled_departure=None,
+                updated_arrival=parse_njt_time("06:05:00 PM"),
+                updated_departure=parse_njt_time("06:06:00 PM"),
+            )
+        )
+        await db_session.flush()
+        return journey
+
+    @pytest.mark.asyncio
+    async def test_time_only_intermediate_stop_orders_via_update_journey_stops(
+        self, db_session: AsyncSession, journey_collector, mock_njt_client
+    ):
+        """Full pass: a TIME-only Secaucus row must land in NY -> SE -> NP -> MP.
+
+        This is the #1530 regression guard on the production path. It fails if
+        the ``updated_*`` fallback in ``_resequence_stops.get_sort_key`` is
+        reverted — without it, schedule-less Secaucus is bucketed to
+        DATETIME_MAX_ET and persists AFTER Newark Penn (NY -> NP -> MP -> SE),
+        the exact reported bug — yet it never calls ``_resequence_stops``
+        directly.
+        """
+        journey = await self._seed_ny_mp_journey(db_session)
+
+        api_response = create_schedule_less_secaucus_response(train_id="3701")
+        mock_njt_client.get_train_stop_list.return_value = api_response
+
+        await journey_collector.update_journey_stops(
+            db_session, journey, api_response.ITEMS
+        )
+        await db_session.flush()
+
+        stmt = (
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence)
+        )
+        stops = (await db_session.scalars(stmt)).all()
+        stops_by_code = {s.station_code: s for s in stops}
+
+        station_codes = [s.station_code for s in stops]
+        assert station_codes == ["NY", "SE", "NP", "MP"], (
+            "TIME-only Secaucus must sort by its live time between NY and NP, "
+            f"but persisted order was {station_codes}"
+        )
+
+        # Sequences must be a clean 0..N-1 with no duplicates.
+        sequences = [s.stop_sequence for s in stops]
+        assert sequences == [0, 1, 2, 3], f"Expected [0, 1, 2, 3], got {sequences}"
+        assert len(sequences) == len(
+            set(sequences)
+        ), f"Found duplicate stop_sequence values: {sequences}"
+
+        # Secaucus is the real production state, distinct from the direct unit
+        # test: schedule-less, and its discovery-written updated_departure was
+        # zeroed by the overwrite of the DEP_TIME-less API row.
+        secaucus = stops_by_code["SE"]
+        assert secaucus.scheduled_arrival is None, (
+            "Secaucus must remain schedule-less (no scheduled_arrival) — this is "
+            "what makes the resequencing fallback the code under test."
+        )
+        assert (
+            secaucus.scheduled_departure is None
+        ), "Secaucus must remain schedule-less (no scheduled_departure)."
+        assert secaucus.updated_departure is None, (
+            "The DEP_TIME-less API row must overwrite the discovery-written "
+            "updated_departure to None — proving this path differs from the "
+            "direct _resequence_stops unit test."
+        )
+        assert secaucus.updated_arrival == parse_njt_time("06:08:00 PM"), (
+            "Secaucus updated_arrival must be overwritten to the live TIME "
+            f"(06:08 PM), got {secaucus.updated_arrival}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_discovery_stop_backfilled_when_api_supplies_schedule(
+        self, db_session: AsyncSession, journey_collector, mock_njt_client
+    ):
+        """Adjacent case: a later API row that carries a schedule backfills it.
+
+        A discovery-populated (schedule-less) Secaucus whose collection-time API
+        row supplies SCHED_DEP_DATE must have ``scheduled_departure`` backfilled
+        and then sort by that immutable schedule, still landing NY -> SE -> NP.
+        """
+        journey = await self._seed_ny_mp_journey(db_session)
+
+        builder = StopBuilder()
+        api_response = create_stop_list_response(
+            train_id="3701",
+            line_code="NC",
+            destination="Matawan",
+            stops=[
+                builder.build_stop(
+                    "NY",
+                    "New York Penn",
+                    "06:00:00 PM",
+                    departed=True,
+                    sched_dep_date="06:00:00 PM",
+                ),
+                # Secaucus now carries an immutable schedule (SCHED_DEP_DATE).
+                builder.build_stop(
+                    "SE",
+                    "Secaucus Junction",
+                    "06:09:00 PM",
+                    arr_time="06:08:00 PM",
+                    departed=False,
+                    sched_dep_date="06:07:00 PM",
+                ),
+                builder.build_stop(
+                    "NP",
+                    "Newark Penn",
+                    "06:20:00 PM",
+                    arr_time="06:18:00 PM",
+                    departed=False,
+                    sched_dep_date="06:20:00 PM",
+                ),
+                builder.build_stop(
+                    "MP",
+                    "Matawan",
+                    None,
+                    arr_time="06:55:00 PM",
+                    departed=False,
+                    sched_dep_date="06:55:00 PM",
+                ),
+            ],
+        )
+        mock_njt_client.get_train_stop_list.return_value = api_response
+
+        await journey_collector.update_journey_stops(
+            db_session, journey, api_response.ITEMS
+        )
+        await db_session.flush()
+
+        stmt = (
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence)
+        )
+        stops = (await db_session.scalars(stmt)).all()
+        stops_by_code = {s.station_code: s for s in stops}
+
+        station_codes = [s.station_code for s in stops]
+        assert station_codes == [
+            "NY",
+            "SE",
+            "NP",
+            "MP",
+        ], f"Backfilled Secaucus must order correctly, got {station_codes}"
+        assert stops_by_code["SE"].scheduled_departure == parse_njt_time(
+            "06:07:00 PM"
+        ), (
+            "Secaucus scheduled_departure must be backfilled from SCHED_DEP_DATE, "
+            f"got {stops_by_code['SE'].scheduled_departure}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_discovery_stop_phantom_deleted_when_absent_from_api(
+        self, db_session: AsyncSession, journey_collector, mock_njt_client
+    ):
+        """Adjacent case: a discovery stop absent from the API is phantom-deleted.
+
+        If the collection-time stop list omits the discovery-populated Secaucus,
+        it is a phantom placeholder and must be removed, leaving NY -> NP -> MP.
+        """
+        journey = await self._seed_ny_mp_journey(db_session)
+
+        builder = StopBuilder()
+        api_response = create_stop_list_response(
+            train_id="3701",
+            line_code="NC",
+            destination="Matawan",
+            stops=[
+                builder.build_stop(
+                    "NY",
+                    "New York Penn",
+                    "06:00:00 PM",
+                    departed=True,
+                    sched_dep_date="06:00:00 PM",
+                ),
+                builder.build_stop(
+                    "NP",
+                    "Newark Penn",
+                    "06:20:00 PM",
+                    arr_time="06:18:00 PM",
+                    departed=False,
+                    sched_dep_date="06:20:00 PM",
+                ),
+                builder.build_stop(
+                    "MP",
+                    "Matawan",
+                    None,
+                    arr_time="06:55:00 PM",
+                    departed=False,
+                    sched_dep_date="06:55:00 PM",
+                ),
+            ],
+        )
+        mock_njt_client.get_train_stop_list.return_value = api_response
+
+        await journey_collector.update_journey_stops(
+            db_session, journey, api_response.ITEMS
+        )
+        await db_session.flush()
+
+        stmt = (
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence)
+        )
+        stops = (await db_session.scalars(stmt)).all()
+
+        station_codes = [s.station_code for s in stops]
+        assert (
+            "SE" not in station_codes
+        ), f"Discovery Secaucus absent from the API must be phantom-deleted, got {station_codes}"
+        assert station_codes == [
+            "NY",
+            "NP",
+            "MP",
+        ], f"Expected NY -> NP -> MP after phantom deletion, got {station_codes}"
