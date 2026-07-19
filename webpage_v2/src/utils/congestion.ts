@@ -68,6 +68,40 @@ export const CONGESTION_HEX: Record<CongestionLevel, string> = {
 /** Congestion levels in ascending severity — legend + iteration order. */
 export const CONGESTION_LEVELS: CongestionLevel[] = ['normal', 'moderate', 'heavy', 'severe'];
 
+/**
+ * Average delay (minutes) across the segments that make up a route, or `null`
+ * when no segment covers any of the route's consecutive station pairs.
+ *
+ * Congestion segments are undirected: the backend may return a pair as A→B or
+ * B→A, so both collapse to a single canonical key (alphabetical order). On a
+ * duplicate key we keep the segment with the larger sample count. Mirrors the
+ * iOS `TrainSystemDetailView.averageDelay` computation so the two apps agree.
+ */
+export function averageRouteDelay(
+  stationCodes: string[],
+  segments: SegmentCongestion[],
+): number | null {
+  if (stationCodes.length < 2) return null;
+
+  const canonicalKey = (a: string, b: string) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+
+  const byPair = new Map<string, SegmentCongestion>();
+  for (const segment of segments) {
+    const key = canonicalKey(segment.from_station, segment.to_station);
+    const existing = byPair.get(key);
+    if (existing && existing.sample_count >= segment.sample_count) continue;
+    byPair.set(key, segment);
+  }
+
+  const delays: number[] = [];
+  for (let i = 0; i < stationCodes.length - 1; i++) {
+    const segment = byPair.get(canonicalKey(stationCodes[i], stationCodes[i + 1]));
+    if (segment) delays.push(segment.average_delay_minutes);
+  }
+  if (delays.length === 0) return null;
+  return delays.reduce((sum, d) => sum + d, 0) / delays.length;
+}
+
 // ---------------------------------------------------------------------------
 // Map data preparation (pure — kept out of the component so it's unit-testable
 // without a WebGL/MapLibre context).

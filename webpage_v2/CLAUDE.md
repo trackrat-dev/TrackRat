@@ -112,7 +112,7 @@ usePolling(async (signal) => {
 5. `GET /predictions/supported-stations` (cached, determines which stations show predictions)
 6. `GET /predictions/delay?train_id={id}&station_code={code}&journey_date={date}` (delay forecast, fail-silent)
 7. `GET /routes/summary?scope=route&from_station={code}&to_station={code}` (optional, fail-silent)
-8. `GET /routes/summary?scope=network` (network-wide summary for status page)
+8. `GET /routes/summary?scope=network[&data_source={src}]` (network-wide summary; optional `data_source` scopes it to one system for the system detail page)
 9. `GET /routes/history?from_station={code}&to_station={code}&data_source={src}&days={n}` (route performance)
 10. `GET /routes/congestion` (network congestion, 60s polling on status page)
 11. `GET /alerts/service?data_source={src}` (MTA service alerts, cached 2min)
@@ -155,7 +155,8 @@ webpage_v2/
 │   │   ├── TrainListPage.tsx      # Departures for route (filter, summary, date picker)
 │   │   ├── TrainDetailsPage.tsx   # Stop-by-stop view (predictions, history, alerts)
 │   │   ├── StationDetailsPage.tsx # Single-station view (/station/:code)
-│   │   ├── RouteStatusPage.tsx    # Route performance over time
+│   │   ├── RouteStatusPage.tsx    # Route/line performance over time (/route/:from/:to and /line/:lineId)
+│   │   ├── SystemDetailPage.tsx   # Per-system details: map, summary, alerts, routes list (/system/:system)
 │   │   ├── NetworkStatusPage.tsx  # System-wide congestion overview
 │   │   ├── TripDetailsPage.tsx    # Multi-leg trip details view
 │   │   ├── TripHistoryPage.tsx    # Trip search history
@@ -198,7 +199,9 @@ webpage_v2/
 - `/station/:code` - Single-station details view
 - `/trip` - Multi-leg trip details view (transfer connections); compact URL `?date&legs&walk` with `legs` as `dataSource:trainId:boardingCode:alightingCode` (legacy `?trip=<JSON>` still parsed)
 - `/route/:from/:to` - Route performance history (7d/30d/90d)
-- `/status` - Network-wide congestion overview by system
+- `/line/:lineId` - Line performance (same view as `/route`, driven by a topology line id; uses the line's first/last stations as endpoints)
+- `/system/:system` - System details (system-scoped congestion map, operations summary, service alerts, tappable routes list → `/line/:lineId`)
+- `/status` - Network-wide congestion overview by system (each system links to `/system/:system`)
 - `/favorites` - Manage favorite stations
 - `/history` - Trip search history
 

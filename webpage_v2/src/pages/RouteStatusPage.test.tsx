@@ -49,6 +49,16 @@ function renderPage() {
   );
 }
 
+function renderLine(lineId: string) {
+  return render(
+    <MemoryRouter initialEntries={[`/line/${lineId}`]}>
+      <Routes>
+        <Route path="/line/:lineId" element={<RouteStatusPage />} />
+      </Routes>
+    </MemoryRouter>
+  );
+}
+
 describe('RouteStatusPage', () => {
   beforeEach(() => {
     vi.mocked(apiService.getRouteHistory).mockReset();
@@ -110,5 +120,43 @@ describe('RouteStatusPage', () => {
     resolveFirst(makeHistory(87));
     expect(await screen.findByText('87%')).toBeInTheDocument();
     expect(screen.queryByRole('status', { name: 'Loading route status' })).not.toBeInTheDocument();
+  });
+
+  describe('line mode (/line/:lineId)', () => {
+    it('titles the page with the line name and queries its endpoints', async () => {
+      vi.mocked(apiService.getRouteHistory).mockResolvedValue(makeHistory(90));
+
+      renderLine('njt-nec');
+
+      // Header shows the line's name, not the generic "Route Status".
+      expect(await screen.findByRole('heading', { name: 'Northeast Corridor' })).toBeInTheDocument();
+
+      // History is fetched for the line's first→last stations (NY → TR) on NJT,
+      // scoped to the line's own codes. Default period is 24h → days undefined, hours 24.
+      expect(apiService.getRouteHistory).toHaveBeenCalledWith('NY', 'TR', 'NJT', undefined, 24, ['NE']);
+    });
+
+    it('scopes history to line codes so lines sharing terminals differ', async () => {
+      // NJT Main and Bergen both run HB → SF, so without line-code scoping the
+      // two line pages would issue identical history queries. Each must pass its
+      // own lineCodes to disambiguate.
+      vi.mocked(apiService.getRouteHistory).mockResolvedValue(makeHistory(90));
+
+      const { unmount } = renderLine('njt-main');
+      await screen.findByRole('heading', { name: 'Main Line' });
+      expect(apiService.getRouteHistory).toHaveBeenLastCalledWith('HB', 'SF', 'NJT', undefined, 24, ['MA', 'Ma']);
+      unmount();
+
+      vi.mocked(apiService.getRouteHistory).mockClear();
+      renderLine('njt-bergen');
+      await screen.findByRole('heading', { name: 'Bergen County Line' });
+      expect(apiService.getRouteHistory).toHaveBeenLastCalledWith('HB', 'SF', 'NJT', undefined, 24, ['BE', 'Be']);
+    });
+
+    it('shows an error for an unknown line id', () => {
+      renderLine('does-not-exist');
+      expect(screen.getByText(/Unknown line/)).toBeInTheDocument();
+      expect(apiService.getRouteHistory).not.toHaveBeenCalled();
+    });
   });
 });

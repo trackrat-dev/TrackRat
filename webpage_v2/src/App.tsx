@@ -9,6 +9,7 @@ import { TripDetailsPage } from './pages/TripDetailsPage';
 import { FavoritesPage } from './pages/FavoritesPage';
 import { StationDetailsPage } from './pages/StationDetailsPage';
 import { RouteStatusPage } from './pages/RouteStatusPage';
+import { SystemDetailPage } from './pages/SystemDetailPage';
 import { NetworkStatusPage } from './pages/NetworkStatusPage';
 import { TripHistoryPage } from './pages/TripHistoryPage';
 
@@ -23,6 +24,8 @@ function App() {
           <Route path="/station/:code" element={<StationDetailsPage />} />
           <Route path="/trains/:from/:to" element={<TrainListPage />} />
           <Route path="/route/:from/:to" element={<RouteStatusPage />} />
+          <Route path="/line/:lineId" element={<RouteStatusPage />} />
+          <Route path="/system/:system" element={<SystemDetailPage />} />
           <Route path="/trip" element={<TripDetailsPage />} />
           <Route path="/train/:trainId/:from?/:to?" element={<TrainDetailsPage />} />
           <Route path="/status" element={<NetworkStatusPage />} />

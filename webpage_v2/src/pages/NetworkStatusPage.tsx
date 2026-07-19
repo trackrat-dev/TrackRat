@@ -34,7 +34,7 @@ export function NetworkStatusPage() {
     try {
       const [congestion, networkSummary] = await Promise.all([
         apiService.getCongestion(signal),
-        apiService.getNetworkSummary(signal),
+        apiService.getNetworkSummary(undefined, signal),
       ]);
       // Drop segments for systems disabled app-wide (mirrors backend
       // TRACKRAT_DISABLED_DATA_SOURCES). Filtering here cascades to every
@@ -148,6 +148,15 @@ export function NetworkStatusPage() {
 
               {isExpanded && (
                 <div className="border-t border-text-muted/10 divide-y divide-text-muted/10">
+                  <button
+                    onClick={() => navigate(`/system/${system}`)}
+                    className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-surface/50 transition-colors"
+                  >
+                    <span className="text-sm font-medium text-accent">
+                      View {SYSTEM_NAMES[system as TransitSystem] || system} details
+                    </span>
+                    <ChevronIcon direction="right" size={16} className="text-accent shrink-0" />
+                  </button>
                   {segs.map(seg => (
                     <button
                       key={`${seg.from_station}-${seg.to_station}`}

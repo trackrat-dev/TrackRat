@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { getIntermediateStations } from './routeTopology';
+import { getIntermediateStations, getRouteById, getRoutesForSystem, ROUTES } from './routeTopology';
 
 describe('getIntermediateStations', () => {
   it('returns intermediate NEC stations between Trenton and NY Penn', () => {
@@ -70,5 +70,38 @@ describe('getIntermediateStations', () => {
     // Jamaica to Babylon (BTA) on LIRR
     const intermediates = getIntermediateStations('JAM', 'BTA', 'LIRR');
     expect(intermediates.length).toBeGreaterThan(0);
+  });
+});
+
+describe('getRouteById', () => {
+  it('returns the route with the matching id', () => {
+    const route = getRouteById('njt-nec');
+    expect(route).toBeDefined();
+    expect(route!.name).toBe('Northeast Corridor');
+    expect(route!.dataSource).toBe('NJT');
+    expect(route!.stations[0]).toBe('NY');
+    expect(route!.stations[route!.stations.length - 1]).toBe('TR');
+  });
+
+  it('returns undefined for an unknown id', () => {
+    expect(getRouteById('does-not-exist')).toBeUndefined();
+  });
+});
+
+describe('getRoutesForSystem', () => {
+  it('returns only routes for the requested system', () => {
+    const njt = getRoutesForSystem('NJT');
+    expect(njt.length).toBeGreaterThan(0);
+    expect(njt.every((r) => r.dataSource === 'NJT')).toBe(true);
+  });
+
+  it('preserves ROUTES definition order', () => {
+    const path = getRoutesForSystem('PATH');
+    const inOrder = ROUTES.filter((r) => r.dataSource === 'PATH');
+    expect(path).toEqual(inOrder);
+  });
+
+  it('returns an empty array for an unrecognized system', () => {
+    expect(getRoutesForSystem('NOPE' as never)).toEqual([]);
   });
 });

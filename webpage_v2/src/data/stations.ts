@@ -2444,6 +2444,22 @@ export const SYSTEM_NAMES: Record<TransitSystem, string> = {
   SEPTA_METRO: 'SEPTA Metro',
 };
 
+// Per-system brand colors (hex), mirroring iOS TrainSystem.color. Used for the
+// route swatch on the system detail page.
+export const SYSTEM_COLORS: Record<TransitSystem, string> = {
+  NJT: '#B61D8E',    // NJ Transit magenta
+  AMTRAK: '#004B87', // Amtrak blue
+  PATH: '#0072CE',   // PATH blue
+  PATCO: '#CC0C3B',  // PATCO red
+  LIRR: '#0039A6',   // MTA LIRR blue
+  MNR: '#000000',    // MTA Metro-North black
+  SUBWAY: '#00933C', // NYC Subway green
+  METRA: '#00558A',  // Metra blue
+  WMATA: '#004E8C',  // WMATA blue
+  BART: '#009BDA',   // BART blue
+  MBTA: '#80276C',   // MBTA Commuter Rail purple
+};
+
 // System display order
 export const SYSTEM_ORDER: TransitSystem[] = ['NJT', 'PATH', 'LIRR', 'MNR', 'SUBWAY', 'WMATA', 'BART', 'AMTRAK', 'MBTA', 'PATCO', 'METRA', 'SEPTA_RR', 'SEPTA_METRO'];
 

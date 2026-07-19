@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { RouteHistoryResponse, OperationsSummaryResponse } from '../types';
 import { apiService } from '../services/api';
 import { getStationByCode } from '../data/stations';
+import { getRouteById } from '../data/routeTopology';
 import { Skeleton } from '../components/Skeleton';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
@@ -38,10 +39,17 @@ function periodLabel(period: Period): string {
 }
 
 export function RouteStatusPage() {
-  const { from, to } = useParams<{ from: string; to: string }>();
+  // Reached two ways, mirroring iOS's single RouteStatusView driven by a
+  // context that is either a station pair or a line id:
+  //   /route/:from/:to  — a specific origin → destination
+  //   /line/:lineId     — a whole line, using its first/last stations as endpoints
+  const { from: fromParam, to: toParam, lineId } = useParams<{ from?: string; to?: string; lineId?: string }>();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const goBack = useBackNavigation(from && to ? `/trains/${from}/${to}` : '/departures');
+
+  const line = lineId ? getRouteById(lineId) : undefined;
+  const from = line ? line.stations[0] : fromParam;
+  const to = line ? line.stations[line.stations.length - 1] : toParam;
 
   const [history, setHistory] = useState<RouteHistoryResponse | null>(null);
   const [summary, setSummary] = useState<OperationsSummaryResponse | null>(null);
@@ -54,7 +62,15 @@ export function RouteStatusPage() {
 
   const fromStation = from ? getStationByCode(from) : null;
   const toStation = to ? getStationByCode(to) : null;
-  const dataSource = searchParams.get('data_source') || fromStation?.system || toStation?.system || 'NJT';
+  const dataSource = searchParams.get('data_source') || line?.dataSource || fromStation?.system || toStation?.system || 'NJT';
+
+  // Display names fall back to the raw code so line endpoints missing from the
+  // station list still render a sensible header.
+  const fromName = fromStation?.name ?? from;
+  const toName = toStation?.name ?? to;
+
+  const backFallback = line ? `/system/${line.dataSource}` : from && to ? `/trains/${from}/${to}` : '/departures';
+  const goBack = useBackNavigation(backFallback);
 
   const loadData = useCallback(() => {
     if (!from || !to) return;
@@ -64,7 +80,10 @@ export function RouteStatusPage() {
 
     const { days, hours } = periodToApiParams(period);
     Promise.all([
-      apiService.getRouteHistory(from, to, dataSource, days, hours),
+      // In line mode, scope history to the line's codes so lines that share
+      // terminal stations (e.g. NJT Main/Bergen, PATH JSQ-33/JSQ-33H) don't
+      // return identical combined stats for the same from/to pair.
+      apiService.getRouteHistory(from, to, dataSource, days, hours, line?.lineCodes),
       // Summary is optional context; a failure here must not blank the whole page.
       apiService.getRouteSummary(from, to).catch(() => null),
     ])
@@ -79,13 +98,19 @@ export function RouteStatusPage() {
         setInitialLoading(false);
         setRefreshing(false);
       });
-  }, [from, to, period, dataSource]);
+    // `line` is included so switching between two lines that share the same
+    // first/last stations (identical from/to) still triggers a refetch with the
+    // new line codes. getRouteById returns a stable reference per line id.
+  }, [from, to, period, dataSource, line]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
-  if (!from || !to || !fromStation || !toStation) {
+  if (lineId && !line) {
+    return <ErrorMessage message="Unknown line" onRetry={() => navigate('/status')} />;
+  }
+  if (!from || !to || (!line && (!fromStation || !toStation))) {
     return <ErrorMessage message="Invalid route" onRetry={() => navigate('/departures')} />;
   }
 
@@ -98,13 +123,13 @@ export function RouteStatusPage() {
           onClick={goBack}
           className="text-accent hover:text-accent/80 mb-4 flex items-center gap-2 font-semibold"
         >
-          ← Back to departures
+          ← Back
         </button>
         <h2 className="text-2xl font-bold text-text-primary text-center">
-          Route Status
+          {line ? line.name : 'Route Status'}
         </h2>
         <p className="text-sm text-text-muted text-center mt-1">
-          {fromStation.name} → {toStation.name}
+          {fromName} → {toName}
         </p>
         <p className="text-xs text-text-muted text-center mt-1">
           {dataSource} route context
@@ -202,7 +227,7 @@ export function RouteStatusPage() {
           {/* Track usage at origin */}
           {Object.keys(stats.track_usage_at_origin).length > 0 && (
             <div className="bg-surface/70 backdrop-blur-xl border border-text-muted/20 rounded-2xl p-4">
-              <h4 className="text-sm font-semibold text-text-primary mb-3">Track Usage at {fromStation.name}</h4>
+              <h4 className="text-sm font-semibold text-text-primary mb-3">Track Usage at {fromName}</h4>
               <div className="flex h-4 rounded-full overflow-hidden mb-2">
                 {Object.entries(stats.track_usage_at_origin)
                   .sort((a, b) => b[1] - a[1])

@@ -11,6 +11,7 @@ import {
   partitionRenderableSegments,
   buildSegmentFeatureCollection,
   computeSegmentBounds,
+  averageRouteDelay,
 } from './congestion';
 
 // Real stations (all carry coordinates in data/stations.ts) so the tests
@@ -216,5 +217,45 @@ describe('computeSegmentBounds', () => {
       [Math.min(NY.lon, HB.lon), Math.min(NY.lat, HB.lat)],
       [Math.max(NY.lon, HB.lon), Math.max(NY.lat, HB.lat)],
     ]);
+  });
+});
+
+describe('averageRouteDelay', () => {
+  const seg = (from: string, to: string, delay: number, samples = 10) =>
+    makeSegment({ from_station: from, to_station: to, average_delay_minutes: delay, sample_count: samples });
+
+  it('returns null for a route with fewer than two stations', () => {
+    expect(averageRouteDelay([], [])).toBeNull();
+    expect(averageRouteDelay(['NY'], [seg('NY', 'NP', 5)])).toBeNull();
+  });
+
+  it('returns null when no segment covers a consecutive pair', () => {
+    expect(averageRouteDelay(['NY', 'NP', 'HB'], [seg('AA', 'BB', 5)])).toBeNull();
+  });
+
+  it('averages delays across the route’s consecutive pairs', () => {
+    // NY→NP = 4, NP→HB = 8  → mean 6
+    const delay = averageRouteDelay(['NY', 'NP', 'HB'], [seg('NY', 'NP', 4), seg('NP', 'HB', 8)]);
+    expect(delay).toBeCloseTo(6, 6);
+  });
+
+  it('matches segments regardless of direction (undirected pairs)', () => {
+    // Route is NY→NP but the segment is reported as NP→NY; it must still match.
+    const delay = averageRouteDelay(['NY', 'NP'], [seg('NP', 'NY', 5)]);
+    expect(delay).toBeCloseTo(5, 6);
+  });
+
+  it('prefers the segment with more samples on a duplicate pair', () => {
+    const delay = averageRouteDelay(
+      ['NY', 'NP'],
+      [seg('NY', 'NP', 2, 5), seg('NP', 'NY', 9, 50)],
+    );
+    expect(delay).toBeCloseTo(9, 6);
+  });
+
+  it('ignores pairs with no segment and averages only the covered ones', () => {
+    // Only NY→NP is covered (delay 6); NP→HB has no segment.
+    const delay = averageRouteDelay(['NY', 'NP', 'HB'], [seg('NY', 'NP', 6)]);
+    expect(delay).toBeCloseTo(6, 6);
   });
 });

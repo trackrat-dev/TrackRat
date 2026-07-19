@@ -239,7 +239,7 @@ export class APIService {
     }
   }
 
-  async getRouteHistory(from: string, to: string, dataSource: string, days = 30, hours?: number): Promise<RouteHistoryResponse | null> {
+  async getRouteHistory(from: string, to: string, dataSource: string, days = 30, hours?: number, lines?: string[]): Promise<RouteHistoryResponse | null> {
     try {
       const params = new URLSearchParams({
         from_station: from,
@@ -250,6 +250,12 @@ export class APIService {
         params.set('hours', hours.toString());
       } else {
         params.set('days', days.toString());
+      }
+      // Scope to specific line codes when known (line-detail view). Lines that
+      // share terminal stations (e.g. NJT Main/Bergen HB↔SF, PATH JSQ-33/JSQ-33H)
+      // would otherwise return combined history for the same from/to pair.
+      if (lines && lines.length > 0) {
+        params.set('lines', lines.join(','));
       }
       const url = `${BASE_URL}/routes/history?${params.toString()}`;
       return await this.fetch<RouteHistoryResponse>(url);
@@ -263,9 +269,11 @@ export class APIService {
     return this.fetch<CongestionResponse>(url, true, signal);
   }
 
-  async getNetworkSummary(signal?: AbortSignal): Promise<OperationsSummaryResponse | null> {
+  async getNetworkSummary(dataSource?: string, signal?: AbortSignal): Promise<OperationsSummaryResponse | null> {
     try {
-      const url = `${BASE_URL}/routes/summary?scope=network`;
+      const params = new URLSearchParams({ scope: 'network' });
+      if (dataSource) params.set('data_source', dataSource);
+      const url = `${BASE_URL}/routes/summary?${params.toString()}`;
       return await this.fetch<OperationsSummaryResponse>(url, true, signal);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') throw err;
