@@ -82,6 +82,8 @@ class CongestionMapViewModelTests: XCTestCase {
                 "congestion_factor": 1.1,
                 "average_delay_minutes": 2.0,
                 "sample_count": 12,
+                "cancellation_count": 0,
+                "cancellation_rate": 0.0,
                 "baseline_minutes": 28.0,
                 "current_average_minutes": 30.0,
                 "real_from_station": "TR",
@@ -124,6 +126,8 @@ class CongestionMapViewModelTests: XCTestCase {
                 "congestion_factor": 1.1,
                 "average_delay_minutes": 0.5,
                 "sample_count": 10,
+                "cancellation_count": 0,
+                "cancellation_rate": 0.0,
                 "baseline_minutes": 4.5,
                 "current_average_minutes": 5.0
             }],
