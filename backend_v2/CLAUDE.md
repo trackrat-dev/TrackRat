@@ -52,6 +52,7 @@ The V2 backend eliminates the complexity of V1 by:
 │ • MBTA (GTFS-RT)│     │ • Validation    │
 │ • Metra(GTFS-RT)│     └────────┬────────┘
 │ • WMATA (REST)  │              │
+│ • SEPTA(GTFS-RT)│              │
 └─────────────────┘     ┌────────▼────────┐
                         │   PostgreSQL    │
                         │ • Train Data    │
@@ -100,7 +101,7 @@ The V2 backend eliminates the complexity of V1 by:
 train_journeys (
     id, train_id, journey_date, line_code, line_name, line_color,
     destination, origin_station_code, terminal_station_code,
-    data_source (NJT/AMTRAK/PATH/PATCO/LIRR/MNR/SUBWAY/BART/MBTA/METRA/WMATA), observation_type (OBSERVED/SCHEDULED),
+    data_source (NJT/AMTRAK/PATH/PATCO/LIRR/MNR/SUBWAY/BART/MBTA/METRA/WMATA/SEPTA_RR/SEPTA_METRO), observation_type (OBSERVED/SCHEDULED),
     first_seen_at, last_updated_at, update_count,
     scheduled_departure, scheduled_arrival, actual_departure, actual_arrival,
     has_complete_journey, stops_count, is_cancelled, cancellation_reason, is_completed,
@@ -364,12 +365,14 @@ The APScheduler runs in-process and handles:
 - **Every 4 min**: MBTA Commuter Rail collection (unified, GTFS-RT)
 - **Every 4 min**: Metra collection (unified, GTFS-RT, requires API token)
 - **Every 3 min**: WMATA/DC Metro collection (REST API, requires API key)
+- **Every 4 min**: SEPTA Regional Rail collection (unified, delay-based GTFS-RT)
+- **Every 4 min**: SEPTA Metro collection (unified, route-filtered GTFS-RT, schedule-first)
 - **Every 5 min**: Journey update checks for active trains
 - **Every 90 sec**: Departure cache pre-computation
 - **Every 5 min**: Route history cache pre-computation
 - **Every 15 min**: Congestion cache pre-computation
 - **Every 15 min**: Resource usage check (logs data-disk and database size for Cloud Monitoring alerting)
-- **Every 15 min**: Service alerts collection (MTA + NJT)
+- **Every 15 min**: Service alerts collection (MTA + NJT + SEPTA)
 - **Every 1 min**: Live Activity push notification updates
 - **Hourly**: Live Activity token cleanup
 - **Hourly**: Train validation across key routes

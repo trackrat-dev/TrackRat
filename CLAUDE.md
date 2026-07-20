@@ -543,7 +543,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Web services: `webpage_v2/src/services/`
 - Web store: `webpage_v2/src/store/appStore.ts`
 - Web data: `webpage_v2/src/data/` (routeTopology, stations, subwayLines)
-- Web utilities: `webpage_v2/src/utils/` (date, share, formatting, routes, ratsense, trainSearch)
+- Web utilities: `webpage_v2/src/utils/` (date, share, formatting, routes, ratsense, trainSearch, congestion, stationSelection, trips, usePolling, useBackNavigation)
 - Web types: `webpage_v2/src/types/`
 - Web tests: `webpage_v2/src/` (colocated `*.test.ts` and `*.test.tsx` files, Vitest + React Testing Library)
 - Test fixtures: `backend_v2/tests/fixtures/` (mock API responses)

@@ -1,6 +1,6 @@
 # TrackRat iOS App 🚂
 
-A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, and WMATA (DC Metro) trains with Live Activities, real-time updates, intelligent track predictions, route alerts, and innovative navigation features.
+A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA (DC Metro), and SEPTA (Regional Rail + Metro) trains with Live Activities, real-time updates, intelligent track predictions, route alerts, and innovative navigation features.
 
 ## 🎯 Key Features
 
@@ -24,8 +24,10 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metr
 - **MBTA**: Commuter Rail via MBTA GTFS-RT
 - **Metra**: All lines (Chicago) via Metra GTFS-RT
 - **WMATA (DC Metro)**: All 6 lines, 98 stations via WMATA REST API
+- **SEPTA Regional Rail**: All lines via SEPTA GTFS-RT (delay-based)
+- **SEPTA Metro**: Broad St, Market-Frankford, Norristown HSL, and trolleys via SEPTA GTFS-RT (schedule-first)
 - **Total Coverage**: 1,500+ stations across the United States
-- **Train Services**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA
+- **Train Services**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA, SEPTA (Regional Rail + Metro)
 
 ### Route Alerts
 - **Push Notifications**: Get alerted when subscribed routes experience delays or cancellations
@@ -100,7 +102,7 @@ TrackRat/
 ├── Models/                      # Data layer
 │   ├── TrainV2.swift           # Pure data model with context-aware calculations
 │   ├── V2APIModels.swift       # Backend V2 API models
-│   ├── TrainSystem.swift       # Train system enum (NJT, Amtrak, PATH, PATCO, LIRR, MNR, Subway, BART, MBTA, Metra, WMATA)
+│   ├── TrainSystem.swift       # Train system enum (NJT, Amtrak, PATH, PATCO, LIRR, MNR, Subway, BART, MBTA, Metra, WMATA, SEPTA_RR, SEPTA_METRO)
 │   ├── TripOption.swift        # Trip search result model
 │   ├── CompletedTrip.swift     # Completed trip model for trip history
 │   ├── DeepLink.swift          # URL scheme handling

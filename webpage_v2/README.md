@@ -1,11 +1,11 @@
 # TrackRat Web
 
-A mobile-first web application for tracking trains across 11 transit systems (NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA) in real-time. BART, WMATA, MBTA, and Metra are currently disabled app-wide via `DISABLED_SYSTEMS` in `src/data/stations.ts` (mirroring the backend's `TRACKRAT_DISABLED_DATA_SOURCES` flag).
+A mobile-first web application for tracking trains across 13 transit systems (NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA, SEPTA Regional Rail, SEPTA Metro) in real-time. BART, WMATA, MBTA, and Metra are currently disabled app-wide via `DISABLED_SYSTEMS` in `src/data/stations.ts` (mirroring the backend's `TRACKRAT_DISABLED_DATA_SOURCES` flag).
 
 ## Features
 
 - Real-time train departures and details
-- Search trains by origin and destination across 11 transit systems
+- Search trains by origin and destination across 13 transit systems
 - 1,500+ stations with system-grouped picker
 - Visual train states: departed (dimmed), boarding (highlighted), cancelled (strikethrough), scheduled
 - Train number filter on departure list
@@ -57,12 +57,12 @@ npm run preview
 ```
 src/
 ├── components/       # Reusable UI components
-├── pages/           # Page components (Landing, TripSelection, TrainList, TrainDetails, StationDetails, TripDetails, TripHistory, RouteStatus, NetworkStatus, Favorites)
+├── pages/           # Page components (Landing, TripSelection, TrainList, TrainDetails, StationDetails, SystemDetail, TripDetails, TripHistory, RouteStatus, NetworkStatus, Favorites)
 ├── services/        # API client (with caching) and localStorage wrapper
 ├── store/           # Zustand global state
 ├── types/           # TypeScript type definitions
 ├── utils/           # Date formatting, status badges, share helpers
-├── data/            # Station data, route topology, subway lines (1,500+ stations, 11 transit systems)
+├── data/            # Station data, route topology, subway lines (1,500+ stations, 13 transit systems)
 ├── App.tsx          # Main app component with route definitions
 ├── main.tsx         # Entry point
 └── index.css        # Global styles

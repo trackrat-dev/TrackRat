@@ -6,7 +6,7 @@
 [![Web App](https://img.shields.io/badge/Web_App-Live-orange)](https://trackrat.net)
 [![License](https://img.shields.io/badge/License-GPLv3-green.svg)](LICENSE)
 
-TrackRat tracks trains across eleven transit systems in real time, predicts platform assignments, and forecasts delays — all from a unified interface. It runs on iOS, Android (NOT FINISHED), the [web](https://trackrat.net), and the backend is written in Python.
+TrackRat tracks trains across thirteen transit systems in real time, predicts platform assignments, and forecasts delays — all from a unified interface. It runs on iOS, Android (NOT FINISHED), the [web](https://trackrat.net), and the backend is written in Python.
 
 ## Supported Transit Systems
 
@@ -22,6 +22,8 @@ TrackRat tracks trains across eleven transit systems in real time, predicts plat
 | BART | All lines | BART GTFS-RT | Yes |
 | MBTA | Commuter Rail | MBTA GTFS-RT | Yes |
 | Metra | All lines (Chicago) | Metra GTFS-RT | Yes |
+| SEPTA Regional Rail | All lines | SEPTA GTFS-RT (delay-based) | Yes |
+| SEPTA Metro | Broad St, Market-Frankford, Norristown HSL, trolleys | SEPTA GTFS-RT | Partial (schedule-first) |
 | PATCO | Lindenwold–15-16th & Locust | GTFS Static | Schedule only |
 
 > **Note:** Any system can be disabled deployment-wide via the `TRACKRAT_DISABLED_DATA_SOURCES` env var (skips collection and filters API responses). The hosted TrackRat apps currently have BART, WMATA, MBTA, and Metra disabled; self-hosted deployments can enable them.
@@ -33,7 +35,7 @@ TrackRat tracks trains across eleven transit systems in real time, predicts plat
 - **Delay Forecasting** — Delay and cancellation probability predictions
 - **Live Activities** — Real-time iOS Lock Screen and Dynamic Island updates
 - **Route Alerts** — Push notifications for delays, cancellations, and service changes on subscribed routes, with customizable schedules, thresholds, and per-type toggles
-- **Service Alerts** — Planned work and service change notifications for Subway, LIRR, and Metro-North
+- **Service Alerts** — Planned work and service change notifications for Subway, LIRR, Metro-North, and SEPTA (Regional Rail + Metro)
 - **Congestion Maps** — Live network congestion monitoring
 - **1,500+ Stations** across the US
 
@@ -50,7 +52,7 @@ TrackRat tracks trains across eleven transit systems in real time, predicts plat
 │ • NYC Subway    │     └─────────────────┘     └─────────────────┘
 │ • WMATA (DC)    │             │
 │ • BART / MBTA   │     ┌───────▼────────┐
-│ • Metra         │     │   GCP Infra    │
+│ • Metra / SEPTA │     │   GCP Infra    │
 └─────────────────┘     │ • GCE (MIG)   │
                         │ • PostgreSQL   │
                         │ • Monitoring   │
@@ -65,6 +67,7 @@ Each transit system uses a collection pattern suited to its data source:
 - **NYC Subway** — Unified GTFS-RT collector processing 8 feeds covering 36 routes and 472 stations
 - **Metra** — Unified GTFS-RT collector every 4 minutes (Central Time, requires API token)
 - **WMATA** — REST API collector every 3 minutes with synthetic train IDs and estimated stop times
+- **SEPTA** — Unified GTFS-RT collector every 4 minutes: Regional Rail is delay-based (joins the static schedule to reconstruct times); Metro (Broad St, Market-Frankford, Norristown HSL, trolleys) is served schedule-first
 - **PATCO** — GTFS static schedules (no real-time API available)
 
 ## Getting Started
@@ -135,7 +138,7 @@ TrackRat/
 ├── backend_v2/          # Python FastAPI backend
 │   ├── src/trackrat/
 │   │   ├── api/         # API endpoints (FastAPI routers)
-│   │   ├── collectors/  # Transit data collectors (njt, amtrak, path, lirr, mnr, subway, bart, mbta, metra, wmata)
+│   │   ├── collectors/  # Transit data collectors (njt, amtrak, path, lirr, mnr, subway, bart, mbta, metra, wmata, septa_rr, septa_metro)
 │   │   ├── config/      # Station configs, route topology, platform mappings
 │   │   ├── models/      # SQLAlchemy + Pydantic models
 │   │   ├── services/    # Business logic, ML predictions, scheduling
