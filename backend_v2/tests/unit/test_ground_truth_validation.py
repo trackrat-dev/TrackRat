@@ -27,6 +27,8 @@ parse_arrival_seconds = gtv.parse_arrival_seconds
 find_stop_order_inversions = gtv.find_stop_order_inversions
 check_njt_stop_order = gtv.check_njt_stop_order
 fetch_trackrat_train_stop_order = gtv.fetch_trackrat_train_stop_order
+compare_by_train_number = gtv.compare_by_train_number
+_norm_train_number = gtv._norm_train_number
 
 
 # --- Helpers ---
@@ -866,3 +868,305 @@ class TestFetchTrackratTrainStopOrder:
             _FakeClient({}), "http://test", "3701"
         )
         assert order == []
+
+
+# --- Tests for _norm_train_number (issue #1575) ---
+
+
+class TestNormTrainNumber:
+    """SEPTA RR train numbers are unique per service day; the digit sequence
+    identifies the train regardless of the inconsistent line prefix between
+    SEPTA's Arrivals board and TrackRat's trip_short_name-derived id."""
+
+    def test_strips_line_prefix(self):
+        assert _norm_train_number("CHW8312") == "8312"
+
+    def test_bare_number(self):
+        assert _norm_train_number("8312") == "8312"
+
+    def test_different_prefixes_same_number_match(self):
+        # SEPTA board 'WTR8360' and TrackRat 'CHW8360' must normalize identically.
+        assert _norm_train_number("WTR8360") == _norm_train_number("CHW8360") == "8360"
+
+    def test_empty(self):
+        assert _norm_train_number("") == ""
+
+    def test_non_numeric_falls_back_to_upper(self):
+        assert _norm_train_number("abc") == "ABC"
+
+    def test_non_numeric_whitespace_stripped(self):
+        assert _norm_train_number("  ab ") == "AB"
+
+
+# --- Tests for compare_by_train_number (issue #1575) ---
+
+
+class TestCompareByTrainNumber:
+    """Per-station matching keyed on train number (not route topology).
+
+    This is the core of the #1575 fix: SEPTA RR trips short-turn / through-route,
+    so matching by (origin, terminal) pair yielded 0 PASS. Matching on the train
+    number at one station guarantees overlap whenever both sources see the train.
+    """
+
+    def test_matches_on_number_within_tolerance(self):
+        gt = [_gt(minutes_offset=10, train_id="8312")]
+        tr = [_tr(minutes_offset=11, train_id="CHW8312")]  # +1min, prefix differs
+        result = compare_by_train_number(gt, tr, "SEPR90004", tolerance_minutes=2.0)
+
+        assert len(result.matches) == 1
+        m = result.matches[0]
+        assert m.delta_seconds == 60
+        assert m.within_tolerance is True
+        assert result.gt_only == []
+        assert result.tr_only == []
+
+    def test_match_outside_tolerance_flagged(self):
+        gt = [_gt(minutes_offset=10, train_id="8312")]
+        tr = [_tr(minutes_offset=15, train_id="8312")]  # +5 min, over 2-min tolerance
+        result = compare_by_train_number(gt, tr, "S", tolerance_minutes=2.0)
+
+        assert len(result.matches) == 1
+        assert result.matches[0].delta_seconds == 300
+        assert result.matches[0].within_tolerance is False
+
+    def test_signed_delta_negative_when_tr_earlier(self):
+        gt = [_gt(minutes_offset=10, train_id="8312")]
+        tr = [_tr(minutes_offset=9, train_id="8312")]  # 1 min earlier
+        result = compare_by_train_number(gt, tr, "S", tolerance_minutes=2.0)
+
+        assert result.matches[0].delta_seconds == -60
+        assert result.matches[0].within_tolerance is True
+
+    def test_gt_train_not_in_trackrat_is_gt_only(self):
+        """The old 0-PASS killer: a GT train TrackRat lacks is non-overlap, not FAIL."""
+        gt = [_gt(minutes_offset=10, train_id="8312")]
+        tr = [_tr(minutes_offset=10, train_id="9999")]
+        result = compare_by_train_number(gt, tr, "S", tolerance_minutes=2.0)
+
+        assert result.matches == []
+        assert len(result.gt_only) == 1
+        assert result.gt_only[0].train_id == "8312"
+        assert len(result.tr_only) == 1
+        assert result.tr_only[0].train_id == "9999"
+
+    def test_trackrat_train_not_in_gt_is_tr_only(self):
+        gt = [_gt(minutes_offset=10, train_id="8312")]
+        tr = [
+            _tr(minutes_offset=10, train_id="8312"),
+            _tr(minutes_offset=20, train_id="7777"),
+        ]
+        result = compare_by_train_number(gt, tr, "S", tolerance_minutes=2.0)
+
+        assert len(result.matches) == 1
+        assert len(result.tr_only) == 1
+        assert result.tr_only[0].train_id == "7777"
+
+    def test_gt_without_train_number_is_gt_only(self):
+        gt = [_gt(minutes_offset=10, train_id="")]
+        tr = [_tr(minutes_offset=10, train_id="8312")]
+        result = compare_by_train_number(gt, tr, "S", tolerance_minutes=2.0)
+
+        assert result.matches == []
+        assert len(result.gt_only) == 1
+        assert len(result.tr_only) == 1  # the numbered TR nobody referenced
+
+    def test_duplicate_tr_number_surfaces_extra_in_tr_only(self):
+        gt = [_gt(minutes_offset=10, train_id="8312")]
+        tr = [
+            _tr(minutes_offset=10, train_id="8312", dest="A"),
+            _tr(minutes_offset=12, train_id="CHW8312", dest="B"),  # same number, dup
+        ]
+        result = compare_by_train_number(gt, tr, "S", tolerance_minutes=2.0)
+
+        assert len(result.matches) == 1
+        assert len(result.tr_only) == 1  # the duplicate isn't silently dropped
+
+    def test_empty_gt(self):
+        tr = [_tr(minutes_offset=10, train_id="8312")]
+        result = compare_by_train_number([], tr, "S", tolerance_minutes=2.0)
+
+        assert result.matches == []
+        assert result.gt_only == []
+        assert len(result.tr_only) == 1
+
+    def test_empty_tr(self):
+        gt = [_gt(minutes_offset=10, train_id="8312")]
+        result = compare_by_train_number(gt, [], "S", tolerance_minutes=2.0)
+
+        assert result.matches == []
+        assert len(result.gt_only) == 1
+        assert result.tr_only == []
+
+    def test_station_recorded_on_result(self):
+        result = compare_by_train_number([], [], "SEPR90228", tolerance_minutes=2.0)
+        assert result.station == "SEPR90228"
+
+
+# --- Tests for _parse_trackrat_departures (issue #1575 refactor) ---
+
+
+class TestParseTrackratDepartures:
+    """The shared /trains/departures response parser, extracted so
+    fetch_trackrat_station_departures can reuse it."""
+
+    def test_parses_departure_shape(self):
+        payload = {
+            "departures": [
+                {
+                    "train_id": "CHW8312",
+                    "destination": "Chestnut Hill West",
+                    "observation_type": "OBSERVED",
+                    "is_cancelled": False,
+                    "line": {"code": "CHW", "color": "#006600"},
+                    "arrival": {"code": "SEPR90801"},
+                    "departure": {
+                        "scheduled_time": "2026-02-22T15:10:00+00:00",
+                        "updated_time": "2026-02-22T15:12:00+00:00",
+                        "actual_time": None,
+                        "track": "3",
+                    },
+                }
+            ]
+        }
+        deps = gtv._parse_trackrat_departures(payload)
+
+        assert len(deps) == 1
+        d = deps[0]
+        assert d.train_id == "CHW8312"
+        assert d.destination_code == "SEPR90801"
+        assert d.observation_type == "OBSERVED"
+        assert d.track == "3"
+        # Best-available time is updated (actual absent); scheduled preserved too.
+        assert d.departure_time == d.updated_time
+        assert d.scheduled_time is not None
+
+    def test_skips_entries_without_any_time(self):
+        payload = {"departures": [{"train_id": "X", "departure": {}}]}
+        assert gtv._parse_trackrat_departures(payload) == []
+
+    def test_empty_payload(self):
+        assert gtv._parse_trackrat_departures({}) == []
+
+
+# --- Tests for run_septa_rr_by_train_number classification (issue #1575) ---
+
+
+class TestRunSeptaRrByTrainNumber:
+    """End-to-end classification: PASS on time-agreement, FAIL only on a genuine
+    time disagreement, and near-term non-overlap as WARN (never the old FAIL)."""
+
+    @pytest.fixture(autouse=True)
+    def reset_counters(self, monkeypatch):
+        monkeypatch.setattr(gtv, "PASS_COUNT", 0)
+        monkeypatch.setattr(gtv, "FAIL_COUNT", 0)
+        monkeypatch.setattr(gtv, "WARN_COUNT", 0)
+        monkeypatch.setattr(gtv, "SKIP_COUNT", 0)
+        monkeypatch.setattr(gtv, "httpx", _StubHttpx())
+
+    def test_matched_in_tolerance_is_pass(self, monkeypatch):
+        gt = [_gt(minutes_offset=10, station="SEPR90004", train_id="8312")]
+        monkeypatch.setattr(
+            gtv,
+            "fetch_trackrat_station_departures",
+            lambda *_a, **_kw: [_tr(minutes_offset=11, train_id="CHW8312")],
+        )
+
+        stations = gtv.run_septa_rr_by_train_number(gt, "http://test", 2.0, False)
+
+        assert stations == 1
+        assert gtv.PASS_COUNT == 1
+        assert gtv.FAIL_COUNT == 0
+
+    def test_matched_outside_tolerance_is_fail(self, monkeypatch):
+        gt = [_gt(minutes_offset=10, station="SEPR90004", train_id="8312")]
+        monkeypatch.setattr(
+            gtv,
+            "fetch_trackrat_station_departures",
+            lambda *_a, **_kw: [_tr(minutes_offset=20, train_id="8312")],
+        )
+
+        gtv.run_septa_rr_by_train_number(gt, "http://test", 2.0, False)
+
+        assert gtv.FAIL_COUNT == 1
+        assert gtv.PASS_COUNT == 0
+
+    def test_near_term_non_overlap_is_warn_not_fail(self, monkeypatch):
+        """The regression this issue is about: a near-term GT train TrackRat
+        doesn't have is now WARN, not FAIL."""
+        gt = [_gt(minutes_offset=5, station="SEPR90004", train_id="8312")]
+        gt[0].minutes_away = 5
+        monkeypatch.setattr(
+            gtv, "fetch_trackrat_station_departures", lambda *_a, **_kw: []
+        )
+
+        gtv.run_septa_rr_by_train_number(
+            gt, "http://test", 2.0, False, far_future_minutes=12
+        )
+
+        assert gtv.FAIL_COUNT == 0
+        assert gtv.WARN_COUNT == 1
+
+    def test_far_future_non_overlap_is_silent_non_verbose(self, monkeypatch):
+        gt = [_gt(minutes_offset=40, station="SEPR90004", train_id="8312")]
+        gt[0].minutes_away = 40
+        monkeypatch.setattr(
+            gtv, "fetch_trackrat_station_departures", lambda *_a, **_kw: []
+        )
+
+        gtv.run_septa_rr_by_train_number(
+            gt, "http://test", 2.0, False, far_future_minutes=12
+        )
+
+        assert gtv.FAIL_COUNT == 0
+        assert gtv.WARN_COUNT == 0
+
+    def test_window_filters_far_future_gt_before_fetch(self, monkeypatch):
+        """GT beyond the time window is dropped before a station is even fetched."""
+        future = datetime.now(timezone.utc) + timedelta(minutes=200)
+        gt = [
+            GroundTruthArrival(
+                station_code="SEPR90004",
+                destination_code="",
+                expected_time=future,
+                line_color="",
+                headsign="8312",
+                minutes_away=200,
+                train_id="8312",
+            )
+        ]
+        called = {"fetch": False}
+
+        def _fetch(*_a, **_kw):
+            called["fetch"] = True
+            return []
+
+        monkeypatch.setattr(gtv, "fetch_trackrat_station_departures", _fetch)
+
+        stations = gtv.run_septa_rr_by_train_number(
+            gt, "http://test", 2.0, False, gt_window_minutes=120
+        )
+
+        assert stations == 0
+        assert called["fetch"] is False
+
+    def test_two_stations_tested_independently(self, monkeypatch):
+        gt = [
+            _gt(minutes_offset=10, station="SEPR90004", train_id="8312"),
+            _gt(minutes_offset=10, station="SEPR90228", train_id="4256"),
+        ]
+
+        def _fetch(_client, _base, station, _ds):
+            # Only the first station's train is present in TrackRat.
+            if station == "SEPR90004":
+                return [_tr(minutes_offset=10, train_id="8312")]
+            return []
+
+        monkeypatch.setattr(gtv, "fetch_trackrat_station_departures", _fetch)
+
+        stations = gtv.run_septa_rr_by_train_number(gt, "http://test", 2.0, False)
+
+        assert stations == 2
+        assert gtv.PASS_COUNT == 1  # SEPR90004 matched
+        assert gtv.WARN_COUNT == 1  # SEPR90228 near-term non-overlap
+        assert gtv.FAIL_COUNT == 0
