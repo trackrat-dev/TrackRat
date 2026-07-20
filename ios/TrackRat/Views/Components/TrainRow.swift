@@ -7,9 +7,20 @@ struct TrainRow: View {
     let train: TrainV2
     let dataSource: String
 
+    /// Minimum destination-arrival delay before the badge flags an en-route
+    /// slip; matches TrainCard.DELAY_THRESHOLD_MINUTES so the overview row
+    /// and the trip list flag the same trains.
+    private static let ARRIVAL_DELAY_THRESHOLD_MINUTES = 3
+
     /// Whether this transit system uses synthetic train IDs (e.g., subway, PATCO)
     private var useSyntheticId: Bool {
         TrainSystem.syntheticTrainIdSources.contains(dataSource)
+    }
+
+    /// Delay at the rider's destination; 0 on station boards, where the row
+    /// has no destination context (`train.arrival` is nil).
+    private var arrivalDelayMinutes: Int {
+        train.arrival?.delayMinutes ?? 0
     }
 
     var body: some View {
@@ -63,6 +74,12 @@ struct TrainRow: View {
         return formatter.string(from: time)
     }
 
+    // A train can leave its origin on time and still slip en route
+    // (issue #1527): with only the origin-departure delta this row claimed
+    // "On Time" while the detail screen showed the destination running late.
+    // Departure delay stays dominant (it decides whether the rider catches
+    // the train); otherwise the destination-arrival slip is surfaced in
+    // orange, mirroring TrainCard's arrival-delay color.
     @ViewBuilder
     private var delayBadge: some View {
         if train.isCancelled {
@@ -71,6 +88,10 @@ struct TrainRow: View {
             Text("+\(train.departure.delayMinutes)m")
                 .font(.caption.bold())
                 .foregroundColor(.red)
+        } else if arrivalDelayMinutes >= TrainRow.ARRIVAL_DELAY_THRESHOLD_MINUTES {
+            Text("Arr +\(arrivalDelayMinutes)m")
+                .font(.caption.bold())
+                .foregroundColor(.orange)
         } else {
             Text("On Time")
                 .font(.caption)

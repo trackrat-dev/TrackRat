@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatDelayText, getStatusBadgeClass } from './formatting';
+import { formatArrivalDelayText, formatDelayText, getStatusBadgeClass } from './formatting';
 
 describe('formatDelayText', () => {
   it('returns "On time" for zero delay', () => {
@@ -17,6 +17,17 @@ describe('formatDelayText', () => {
   it('returns plural "X mins late" for delays > 1', () => {
     expect(formatDelayText(5)).toBe('5 mins late');
     expect(formatDelayText(30)).toBe('30 mins late');
+  });
+});
+
+describe('formatArrivalDelayText', () => {
+  it('returns singular "Arrives 1 min late" for exactly 1 minute', () => {
+    expect(formatArrivalDelayText(1)).toBe('Arrives 1 min late');
+  });
+
+  it('returns plural "Arrives X mins late" for delays > 1', () => {
+    expect(formatArrivalDelayText(9)).toBe('Arrives 9 mins late');
+    expect(formatArrivalDelayText(30)).toBe('Arrives 30 mins late');
   });
 });
 
