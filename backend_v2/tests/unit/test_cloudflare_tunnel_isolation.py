@@ -120,6 +120,21 @@ def test_startup_script_dropped_secret_only_profile_activation():
     assert "COMPOSE_PROFILES=tunnel" not in text
 
 
+def test_startup_script_teardown_removes_orphaned_connector():
+    """Disabling the tunnel must actually stop a previously-started connector.
+
+    The pre-`up` teardown loads only docker-compose.yml, so cloudflared (defined
+    only in the tunnel file) is an orphan there. Without --remove-orphans a
+    connector started on a prior boot keeps running/restarting after the tunnel
+    is turned off, which is exactly the state issue #1578 is meant to prevent.
+    """
+    text = _COMPUTE_TF.read_text()
+    assert "$COMPOSE_PATH down --remove-orphans" in text, (
+        "the pre-up teardown must use `down --remove-orphans` so a stray "
+        "cloudflared from a prior boot is stopped when the tunnel is disabled"
+    )
+
+
 def test_startup_script_brings_connector_up_isolated_and_nonfatal():
     text = _COMPUTE_TF.read_text()
     assert (

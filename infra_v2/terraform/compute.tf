@@ -265,8 +265,14 @@ TUNNELEOF
       echo "=== Starting containers ==="
       cd "$APP_DIR"
 
-      # Stop existing containers (if any)
-      $COMPOSE_PATH down 2>/dev/null || true
+      # Stop existing containers (if any). --remove-orphans is required because
+      # this loads only docker-compose.yml: a cloudflared connector started on a
+      # prior boot (when the tunnel was enabled) is not defined here, so a plain
+      # `down` would leave it running/restarting after the tunnel is disabled via
+      # enable_cloudflare_tunnel=false or a removed token (issue #1578). Removing
+      # orphans clears that stray connector; when the tunnel is still enabled it
+      # is recreated by the isolated connector bring-up further below.
+      $COMPOSE_PATH down --remove-orphans 2>/dev/null || true
 
       # Pull latest images (DOCKER_CONFIG is exported, so compose uses it)
       $COMPOSE_PATH pull
