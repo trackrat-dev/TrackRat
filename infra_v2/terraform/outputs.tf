@@ -10,6 +10,11 @@ output "api_url" {
   value       = "https://${var.domain != "" ? var.domain : local.domain}"
 }
 
+output "staging_webpage_url" {
+  description = "Staging webpage URL, served by this LB. Point staging.trackrat.net DNS (Cloudflare, DNS-only/grey-cloud) at load_balancer_ip so the managed cert can provision. Empty outside staging."
+  value       = local.serve_webpage_on_api_lb ? "https://${local.webpage_staging_domain}" : ""
+}
+
 output "mig_name" {
   description = "Name of the managed instance group"
   value       = google_compute_instance_group_manager.trackrat.name

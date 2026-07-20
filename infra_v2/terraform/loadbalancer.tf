@@ -22,6 +22,46 @@ resource "google_compute_managed_ssl_certificate" "trackrat" {
   depends_on = [google_project_service.apis]
 }
 
+# ---------------------------------------------------------------------------
+# Staging webpage serving (consolidated onto this API LB — staging only).
+# The staging webpage bucket (trackrat-webpage-staging) is owned by the
+# infra_v2/terraform-webpage root; here we only add the LB pieces needed to
+# serve it at staging.trackrat.net through the existing staging frontend: a
+# CDN-backed backend bucket, a managed cert (attached to the HTTPS proxy via
+# SNI alongside the apiv2 cert), and a host rule on the url map below. Mirrors
+# production's consolidated LB, minus the apex HSTS/preload header (never
+# preload a staging subdomain).
+# ---------------------------------------------------------------------------
+
+# Managed SSL certificate for the staging webpage host.
+resource "google_compute_managed_ssl_certificate" "webpage_staging" {
+  count = local.serve_webpage_on_api_lb ? 1 : 0
+  name  = "trackrat-webpage-staging-cert"
+
+  managed {
+    domains = [local.webpage_staging_domain]
+  }
+
+  depends_on = [google_project_service.apis]
+}
+
+# CDN backend bucket wrapping the staging webpage GCS bucket.
+resource "google_compute_backend_bucket" "webpage_staging" {
+  count       = local.serve_webpage_on_api_lb ? 1 : 0
+  name        = "trackrat-webpage-staging-backend"
+  description = "Backend bucket for TrackRat staging webpage"
+  bucket_name = local.webpage_staging_bucket
+  enable_cdn  = true
+
+  cdn_policy {
+    cache_mode       = "CACHE_ALL_STATIC"
+    default_ttl      = 3600  # 1 hour fallback (objects' own Cache-Control wins)
+    max_ttl          = 86400 # 24 hours
+    client_ttl       = 3600
+    negative_caching = true
+  }
+}
+
 # Backend service (referenced by the consolidated webpage url map in production
 # via a google_compute_backend_service data source keyed on this stable name).
 resource "google_compute_backend_service" "trackrat" {
@@ -102,21 +142,43 @@ resource "google_compute_global_address" "trackrat" {
   depends_on = [google_project_service.apis]
 }
 
-# URL map
+# URL map. Default host (staging.apiv2.trackrat.net) -> API backend. In staging,
+# staging.trackrat.net is host-routed to the webpage backend bucket.
 resource "google_compute_url_map" "trackrat" {
   count           = local.create_api_frontend ? 1 : 0
   name            = "trackrat-${var.environment}-urlmap"
   default_service = google_compute_backend_service.trackrat.id
 
+  dynamic "host_rule" {
+    for_each = local.serve_webpage_on_api_lb ? [1] : []
+    content {
+      hosts        = [local.webpage_staging_domain]
+      path_matcher = "webpage"
+    }
+  }
+
+  dynamic "path_matcher" {
+    for_each = local.serve_webpage_on_api_lb ? [1] : []
+    content {
+      name            = "webpage"
+      default_service = google_compute_backend_bucket.webpage_staging[0].id
+    }
+  }
+
   depends_on = [google_compute_backend_service.trackrat]
 }
 
-# HTTPS proxy
+# HTTPS proxy. Serves the apiv2 cert always, plus the staging webpage cert via
+# SNI when the webpage is consolidated onto this LB (mirrors production's proxy,
+# which serves the webpage + apiv2 certs together).
 resource "google_compute_target_https_proxy" "trackrat" {
-  count            = local.create_api_frontend ? 1 : 0
-  name             = "trackrat-${var.environment}-https-proxy"
-  url_map          = google_compute_url_map.trackrat[0].id
-  ssl_certificates = [google_compute_managed_ssl_certificate.trackrat.id]
+  count   = local.create_api_frontend ? 1 : 0
+  name    = "trackrat-${var.environment}-https-proxy"
+  url_map = google_compute_url_map.trackrat[0].id
+  ssl_certificates = concat(
+    [google_compute_managed_ssl_certificate.trackrat.id],
+    local.serve_webpage_on_api_lb ? [google_compute_managed_ssl_certificate.webpage_staging[0].id] : [],
+  )
 
   depends_on = [
     google_compute_url_map.trackrat,
