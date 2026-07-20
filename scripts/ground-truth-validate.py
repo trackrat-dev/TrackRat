@@ -145,6 +145,24 @@ class ComparisonResult:
     cancelled_in_tr: list[TrackRatDeparture] = field(default_factory=list)  # Cancelled in TR but not in GT
 
 
+@dataclass
+class TrainNumberMatch:
+    gt: GroundTruthArrival
+    tr: TrackRatDeparture
+    delta_seconds: int  # signed: TR departure_time - GT expected_time
+    within_tolerance: bool  # abs(delta) <= tolerance
+
+
+@dataclass
+class TrainNumberComparison:
+    """Per-station GT-vs-TrackRat comparison keyed on train number (#1575)."""
+
+    station: str
+    matches: list[TrainNumberMatch] = field(default_factory=list)
+    gt_only: list[GroundTruthArrival] = field(default_factory=list)  # SEPTA train TrackRat has no record of at this station
+    tr_only: list[TrackRatDeparture] = field(default_factory=list)  # TrackRat train SEPTA's board omits
+
+
 # --- RidePATH parsing (copied from RidePathClient._parse_minutes) ---
 
 
@@ -584,7 +602,11 @@ def fetch_trackrat_departures(
         log_fail(f"TrackRat API request failed ({origin}->{destination}): {e}")
         return []
 
-    data = resp.json()
+    return _parse_trackrat_departures(resp.json())
+
+
+def _parse_trackrat_departures(data: dict) -> list[TrackRatDeparture]:
+    """Parse a /trains/departures (or /recent-departures) response body."""
     departures: list[TrackRatDeparture] = []
 
     for dep in data.get("departures", []):
@@ -628,6 +650,35 @@ def fetch_trackrat_departures(
         )
 
     return departures
+
+
+def fetch_trackrat_station_departures(
+    client: httpx.Client, base_url: str, station: str, data_source: str
+) -> list[TrackRatDeparture]:
+    """Fetch every upcoming departure from a station, regardless of destination.
+
+    Unlike ``fetch_trackrat_departures`` (which filters to one origin->terminal
+    pair), this queries /trains/departures with only ``from`` set, returning all
+    trains TrackRat has departing ``station`` for ``data_source``. Used by the
+    SEPTA_RR per-station train-number validation (#1575), where a fixed
+    origin->terminal pair misses the short-turn / through-routed trips that
+    actually serve the station.
+    """
+    url = f"{base_url.rstrip('/')}/api/v2/trains/departures"
+    params = {
+        "from": station,
+        "limit": 100,
+        "hide_departed": "false",
+        "data_sources": data_source,
+    }
+    try:
+        resp = client.get(url, params=params, timeout=15)
+        resp.raise_for_status()
+    except httpx.HTTPError as e:
+        log_fail(f"TrackRat API request failed ({station}): {e}")
+        return []
+
+    return _parse_trackrat_departures(resp.json())
 
 
 # --- Stop-order validation (issue #1538) ---
@@ -913,6 +964,90 @@ def compare_route(
                 result.cancelled_in_tr.append(tr)
             else:
                 result.phantoms.append(tr)
+
+    return result
+
+
+# --- Train-number matching (SEPTA Regional Rail, issue #1575) ---
+
+
+def _norm_train_number(train_id: str) -> str:
+    """Normalize a rider-facing train number for cross-source matching.
+
+    SEPTA's Arrivals API and TrackRat both identify SEPTA Regional Rail trains by
+    the GTFS ``trip_short_name``, but the line prefix is inconsistent between them
+    (TrackRat keeps ``CHW8312`` from the trip_id; SEPTA's board may report the
+    bare ``8312`` or a differently-prefixed ``WTR8360``). SEPTA RR train numbers
+    are unique per service day, so the digit sequence identifies the train
+    regardless of prefix. Falls back to the uppercased string when there are no
+    digits so non-numeric ids still compare sanely.
+    """
+    if not train_id:
+        return ""
+    digits = "".join(ch for ch in train_id if ch.isdigit())
+    return digits or train_id.strip().upper()
+
+
+def compare_by_train_number(
+    gt_arrivals: list[GroundTruthArrival],
+    tr_departures: list[TrackRatDeparture],
+    station: str,
+    tolerance_minutes: float,
+) -> TrainNumberComparison:
+    """Match GT vs TrackRat departures at a single station on train number.
+
+    Unlike ``compare_route`` (which pairs by origin->terminal and matches on time
+    within a static route topology), this keys on the rider-facing train number
+    at one station and ignores destination. SEPTA Regional Rail trips short-turn
+    and through-route mid-line, so route-topology (origin, terminal) pairs rarely
+    coincide with the trains a given station actually serves (#1575); matching on
+    the train number guarantees overlap whenever both sources see the same
+    physical train.
+
+    A GT and TR entry sharing a normalized train number form a match, with
+    ``delta_seconds`` = TR departure minus GT expected time (signed) and
+    ``within_tolerance`` set from ``tolerance_minutes``. GT trains with no
+    TrackRat record, and TrackRat trains SEPTA's board omits, are reported
+    separately as non-overlap rather than forced into a misleading time
+    comparison.
+    """
+    result = TrainNumberComparison(station=station)
+
+    # Index TrackRat departures by normalized train number. First occurrence
+    # wins; any extras (duplicate numbers, or entries with no number) are
+    # surfaced as tr_only so nothing is silently dropped.
+    tr_by_number: dict[str, TrackRatDeparture] = {}
+    tr_leftover: list[TrackRatDeparture] = []
+    for tr in tr_departures:
+        key = _norm_train_number(tr.train_id)
+        if key and key not in tr_by_number:
+            tr_by_number[key] = tr
+        else:
+            tr_leftover.append(tr)
+
+    tolerance_secs = tolerance_minutes * 60
+    matched_keys: set[str] = set()
+    for gt in gt_arrivals:
+        key = _norm_train_number(gt.train_id)
+        tr = tr_by_number.get(key) if key else None
+        if tr is not None and key not in matched_keys:
+            matched_keys.add(key)
+            delta = int((tr.departure_time - gt.expected_time).total_seconds())
+            result.matches.append(
+                TrainNumberMatch(
+                    gt=gt,
+                    tr=tr,
+                    delta_seconds=delta,
+                    within_tolerance=abs(delta) <= tolerance_secs,
+                )
+            )
+        else:
+            result.gt_only.append(gt)
+
+    for key, tr in tr_by_number.items():
+        if key not in matched_keys:
+            result.tr_only.append(tr)
+    result.tr_only.extend(tr_leftover)
 
     return result
 
@@ -1375,14 +1510,61 @@ def _parse_septa_local_time(value: str, tz: ZoneInfo) -> datetime | None:
     return None
 
 
+def _septa_rr_arrival_from_entry(
+    entry: dict, code: str, now: datetime, et: ZoneInfo
+) -> GroundTruthArrival | None:
+    """Convert one SEPTA Arrivals-API entry into a ``GroundTruthArrival``.
+
+    Returns ``None`` only when the entry can't participate in per-station
+    train-number matching: a *resolved* terminating arrival (its destination is
+    this very station, so there's no onward departure) or an unparseable time.
+
+    Unresolved destinations — short-turns like Malvern/Wilmington that aren't in
+    ``_SEPTA_RR_DEST_TO_CODE`` — are KEPT. The #1575 matcher keys on station +
+    train number and ignores destination, so dropping them here would lose
+    exactly the short-turn / through-routed coverage this path is meant to add.
+    """
+    dest_name = (entry.get("destination") or "").strip()
+    dest_code = _SEPTA_RR_DEST_TO_CODE.get(_norm_septa_name(dest_name))
+    # Skip only *resolved* terminating arrivals (dest == the board's own
+    # station, which has no onward departure). Unresolved destinations stay.
+    if dest_code and dest_code == code:
+        return None
+
+    # Prefer the estimated depart_time; fall back to scheduled.
+    time_str = (entry.get("depart_time") or entry.get("sched_time") or "").strip()
+    expected_time = _parse_septa_local_time(time_str, et)
+    if expected_time is None:
+        return None
+
+    train_id = (entry.get("train_id") or "").strip()
+    track = (entry.get("track") or "").strip() or None
+    minutes_away = max(
+        0,
+        int((expected_time.astimezone(timezone.utc) - now).total_seconds() / 60),
+    )
+
+    return GroundTruthArrival(
+        station_code=code,
+        destination_code=dest_code or "",
+        expected_time=expected_time,
+        line_color="",  # Arrivals API exposes a line name, not a color
+        headsign=f"{train_id} to {dest_name}" if train_id else dest_name,
+        minutes_away=minutes_away,
+        train_id=train_id,
+        track=track,
+    )
+
+
 def fetch_septa_rr_ground_truth() -> list[GroundTruthArrival]:
     """Fetch SEPTA Regional Rail departures from SEPTA's Arrivals REST API.
 
     Queries each route origin/terminal (the stations run_validation_loop tests)
-    plus the Center City hubs, then resolves every entry's ``destination`` label
-    back to an internal code via ``_SEPTA_RR_DEST_TO_CODE``. Entries whose
-    destination isn't one of our route terminals (e.g. short-turns to Malvern or
-    Wilmington) are dropped — safe: reduces coverage, never a false FAIL.
+    plus the Center City hubs, then converts every entry via
+    ``_septa_rr_arrival_from_entry``. Only resolved terminating arrivals (dest ==
+    the board's own station) are dropped; short-turns to destinations not in
+    ``_SEPTA_RR_DEST_TO_CODE`` (e.g. Malvern/Wilmington) are kept, since the
+    per-station train-number matcher (#1575) ignores destination.
     """
     et = ZoneInfo("America/New_York")
 
@@ -1414,40 +1596,9 @@ def fetch_septa_rr_ground_truth() -> list[GroundTruthArrival]:
                 continue
 
             for entry in _parse_septa_arrivals_payload(payload):
-                dest_name = (entry.get("destination") or "").strip()
-                dest_code = _SEPTA_RR_DEST_TO_CODE.get(_norm_septa_name(dest_name))
-                # Skip unresolved destinations and terminating arrivals (dest ==
-                # the board's own station, which has no onward departure).
-                if not dest_code or dest_code == code:
-                    continue
-
-                # Prefer the estimated depart_time; fall back to scheduled.
-                time_str = (
-                    entry.get("depart_time") or entry.get("sched_time") or ""
-                ).strip()
-                expected_time = _parse_septa_local_time(time_str, et)
-                if expected_time is None:
-                    continue
-
-                train_id = (entry.get("train_id") or "").strip()
-                track = (entry.get("track") or "").strip() or None
-                minutes_away = max(
-                    0,
-                    int((expected_time.astimezone(timezone.utc) - now).total_seconds() / 60),
-                )
-
-                arrivals.append(
-                    GroundTruthArrival(
-                        station_code=code,
-                        destination_code=dest_code,
-                        expected_time=expected_time,
-                        line_color="",  # Arrivals API exposes a line name, not a color
-                        headsign=f"{train_id} to {dest_name}" if train_id else dest_name,
-                        minutes_away=minutes_away,
-                        train_id=train_id,
-                        track=track,
-                    )
-                )
+                arrival = _septa_rr_arrival_from_entry(entry, code, now, et)
+                if arrival is not None:
+                    arrivals.append(arrival)
     finally:
         client.close()
 
@@ -1685,6 +1836,139 @@ def run_wmata_validation(base_url: str, tolerance: float, verbose: bool = False,
     print_summary(route_directions_tested)
 
 
+def run_septa_rr_by_train_number(
+    gt_arrivals: list[GroundTruthArrival],
+    base_url: str,
+    tolerance: float,
+    verbose: bool,
+    gt_window_minutes: int = 120,
+    far_future_minutes: int = 12,
+) -> int:
+    """Validate SEPTA_RR per station, matching GT vs TrackRat on train number.
+
+    Returns the number of stations checked. SEPTA Regional Rail trips short-turn
+    and through-route mid-line, so the shared route-topology loop
+    (``run_validation_loop``) almost never overlaps GT and TrackRat for the same
+    (origin, terminal) pair — yielding 0 PASS and misleading FAILs that are
+    really non-overlap (#1575). Here, for each station SEPTA reports, we fetch
+    every SEPTA_RR departure TrackRat has at that station and match on the
+    rider-facing train number:
+
+    - matched within tolerance -> PASS (times agree — the meaningful signal)
+    - matched outside tolerance -> FAIL (a genuine time disagreement)
+    - GT train not in TrackRat  -> WARN (non-overlap; short-turn / discovery lag)
+    - TrackRat train not in GT   -> WARN (only OBSERVED / near-term; else skipped)
+    """
+    et = ZoneInfo("America/New_York")
+    now_utc = datetime.now(timezone.utc)
+    window_cutoff = now_utc + timedelta(minutes=gt_window_minutes)
+
+    # Group GT by station, keeping only in-window trains that carry a train
+    # number (train-number matching is impossible without one).
+    by_station: dict[str, list[GroundTruthArrival]] = {}
+    dropped_no_id = 0
+    for a in gt_arrivals:
+        if a.expected_time > window_cutoff:
+            continue
+        if not a.train_id:
+            dropped_no_id += 1
+            continue
+        by_station.setdefault(a.station_code, []).append(a)
+
+    if dropped_no_id and verbose:
+        print(f"  Note: Skipped {dropped_no_id} GT departures with no train number")
+
+    stations_tested = 0
+    phantom_window = timedelta(minutes=35)
+    client = httpx.Client()
+    try:
+        for station in sorted(by_station):
+            station_gt = by_station[station]
+            tr_departures = fetch_trackrat_station_departures(
+                client, base_url, station, "SEPTA_RR"
+            )
+            comparison = compare_by_train_number(
+                station_gt, tr_departures, station, tolerance
+            )
+            stations_tested += 1
+
+            print(f"\n{YELLOW}--- {get_station_name(station)} ({station}) ---{NC}")
+            if verbose:
+                print(
+                    f"  GT trains: {len(station_gt)}, "
+                    f"TR departures: {len(tr_departures)}"
+                )
+                for tr in sorted(tr_departures, key=lambda x: x.departure_time):
+                    time_str = tr.departure_time.astimezone(et).strftime("%H:%M:%S")
+                    track_str = f"  track={tr.track}" if tr.track else ""
+                    cancel_str = "  CANCELLED" if tr.is_cancelled else ""
+                    print(
+                        f"    TR: {time_str}  {tr.train_id}  line={tr.line_code}  "
+                        f"obs={tr.observation_type}{track_str}{cancel_str}"
+                    )
+
+            # Matched trains: PASS when times agree, FAIL on a genuine disagreement.
+            for m in comparison.matches:
+                time_str = m.gt.expected_time.astimezone(et).strftime("%H:%M")
+                detail = ""
+                if verbose:
+                    tr_time = m.tr.departure_time.astimezone(et).strftime("%H:%M:%S")
+                    detail = (
+                        f" -> {m.tr.train_id} @ {tr_time} ({m.tr.observation_type})"
+                    )
+                if m.tr.is_cancelled:
+                    log_warn(
+                        f"Train {m.gt.train_id} @ {time_str} matched but CANCELLED "
+                        f"in TrackRat{detail}"
+                    )
+                elif m.within_tolerance:
+                    log_pass(
+                        f"Train {m.gt.train_id} @ {time_str} matched "
+                        f"({chr(0x394)} {format_delta(m.delta_seconds)}){detail}"
+                    )
+                else:
+                    log_fail(
+                        f"Train {m.gt.train_id} @ {time_str} time disagreement "
+                        f"({chr(0x394)} {format_delta(m.delta_seconds)}){detail}"
+                    )
+
+            # GT trains TrackRat has no record of here: non-overlap, informational.
+            # Near-term ones get a WARN; far-future ones (collector discovery lag)
+            # are shown only when verbose so the summary isn't buried in noise.
+            for gt in comparison.gt_only:
+                time_str = gt.expected_time.astimezone(et).strftime("%H:%M")
+                if gt.minutes_away <= far_future_minutes:
+                    log_warn(
+                        f"SEPTA train {gt.train_id} @ {time_str} "
+                        f"({gt.minutes_away} min away) not found in TrackRat at "
+                        f"{station} (no overlap — short-turn or not yet observed)"
+                    )
+                elif verbose:
+                    print(
+                        f"  {YELLOW}info{NC}: SEPTA train {gt.train_id} @ {time_str} "
+                        f"({gt.minutes_away} min away, far-future) not yet in TrackRat"
+                    )
+
+            # TrackRat trains SEPTA's board omits: only flag OBSERVED / near-term
+            # (a train TrackRat tracks that SEPTA doesn't show); SCHEDULED and
+            # far-future ones are expected and stay silent.
+            for tr in comparison.tr_only:
+                is_near = (
+                    abs((tr.departure_time - now_utc).total_seconds())
+                    < phantom_window.total_seconds()
+                )
+                if tr.observation_type == "OBSERVED" or is_near:
+                    time_str = tr.departure_time.astimezone(et).strftime("%H:%M")
+                    log_warn(
+                        f"TrackRat train {tr.train_id} @ {time_str} at {station} "
+                        f"has no SEPTA ground truth match"
+                    )
+    finally:
+        client.close()
+
+    return stations_tested
+
+
 def run_septa_rr_validation(base_url: str, tolerance: float, verbose: bool = False, gt_window: int = 120, far_future: int = 12) -> None:
     """Run ground truth validation for SEPTA Regional Rail."""
     _print_header("SEPTA_RR", base_url, tolerance, gt_window)
@@ -1710,8 +1994,12 @@ def run_septa_rr_validation(base_url: str, tolerance: float, verbose: bool = Fal
                 f'{time_str} ({a.minutes_away}min)  "{a.headsign}"{id_str}{track_str}'
             )
 
-    route_directions_tested = run_validation_loop(gt_arrivals, "SEPTA_RR", base_url, tolerance, verbose, gt_window, far_future)
-    print_summary(route_directions_tested)
+    # SEPTA RR trips short-turn / through-route, so match per station on train
+    # number rather than by static route-topology pairs (#1575).
+    stations_tested = run_septa_rr_by_train_number(
+        gt_arrivals, base_url, tolerance, verbose, gt_window, far_future
+    )
+    print_summary(stations_tested)
 
 
 # --- Main ---
