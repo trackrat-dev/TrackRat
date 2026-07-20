@@ -20,6 +20,15 @@ from trackrat.utils.time import ensure_timezone_aware, now_et
 
 logger = get_logger(__name__)
 
+# Schedule-first sources whose stop times have only minute granularity, so
+# adjacent stops on the same minute legitimately yield an exactly-0-second hop
+# (SEPTA Metro trolleys). For these, that same-minute segment is floored to one
+# minute rather than discarded, so the journey still contributes to segment
+# analytics instead of emitting an `invalid_transit_time` warning (issue #1573).
+# Negative deltas (arrival before the prior departure — stale/out-of-order
+# predictions) are NOT floored; they stay rejected by the invalid-time guard.
+_SUBMINUTE_FLOOR_SOURCES: frozenset[str] = frozenset({"SEPTA_METRO"})
+
 
 class TransitAnalyzer:
     """Analyzes transit times and station dwell times from journey data."""
@@ -244,6 +253,17 @@ class TransitAnalyzer:
             )
             actual_seconds = actual_delta.total_seconds()
             actual_minutes = round(actual_seconds / 60)
+
+            # Minute-granularity schedule-first feeds (SEPTA Metro trolleys)
+            # produce legitimate same-minute (exactly-0-second) hops between
+            # adjacent curb stops. Floor those to one minute so the segment still
+            # counts, rather than warning-and-dropping it (issue #1573). Only the
+            # exact-0 case is floored: a negative delta means the next arrival is
+            # before the prior departure (stale/out-of-order prediction) and must
+            # stay rejected by the invalid-time guard below.
+            if actual_seconds == 0 and journey.data_source in _SUBMINUTE_FLOOR_SOURCES:
+                actual_seconds = 60.0
+                actual_minutes = 1
 
             # Skip invalid times (non-positive seconds or unreasonably long)
             if actual_seconds <= 0 or actual_minutes > 300:
@@ -570,6 +590,17 @@ class TransitAnalyzer:
             )
             actual_seconds = actual_delta.total_seconds()
             actual_minutes = round(actual_seconds / 60)
+
+            # Minute-granularity schedule-first feeds (SEPTA Metro trolleys)
+            # produce legitimate same-minute (exactly-0-second) hops between
+            # adjacent curb stops. Floor those to one minute so the segment still
+            # counts, rather than warning-and-dropping it (issue #1573). Only the
+            # exact-0 case is floored: a negative delta means the next arrival is
+            # before the prior departure (stale/out-of-order prediction) and must
+            # stay rejected by the invalid-time guard below.
+            if actual_seconds == 0 and journey.data_source in _SUBMINUTE_FLOOR_SOURCES:
+                actual_seconds = 60.0
+                actual_minutes = 1
 
             # Skip invalid times (non-positive seconds or unreasonably long)
             if actual_seconds <= 0 or actual_minutes > 300:

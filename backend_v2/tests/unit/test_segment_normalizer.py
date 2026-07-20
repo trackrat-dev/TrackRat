@@ -725,6 +725,21 @@ class TestIsSegmentAnomalous:
         assert not _is_segment_anomalous("UNKNOWN1", "UNKNOWN2", "PATH")
         assert not _is_segment_anomalous("UNKNOWN1", "UNKNOWN2", "WMATA")
 
+    def test_septa_metro_segments_not_route_matched(self):
+        """SEPTA_METRO is excluded from route-match filtering (issue #1573).
+
+        Its topology is built direction_id=0 only, with per-direction trolley
+        curb codes, so inbound (direction_id=1) journeys are keyed by codes
+        absent from the topology. Those are genuinely adjacent segments, not
+        phantom jumps, so they must pass through instead of being flagged
+        anomalous and generating ~174 false-positive warnings per cycle.
+        """
+        # SEPM20879 is the inbound curb code, absent from the (outbound-only)
+        # route tuples — under the old behavior this pair was anomalous.
+        assert not _is_segment_anomalous("SEPM20879", "SEPM20876", "SEPTA_METRO")
+        # Even a totally unknown Metro pair passes through now.
+        assert not _is_segment_anomalous("UNKNOWN1", "UNKNOWN2", "SEPTA_METRO")
+
     def test_amtrak_unknown_stations_are_anomalous(self):
         """Test that AMTRAK segments with unknown stations are flagged as anomalous.
 

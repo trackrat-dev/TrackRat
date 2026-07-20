@@ -31,6 +31,18 @@ logger = get_logger(__name__)
 # connections (e.g., 96 St Q → Astoria-Ditmars Blvd N/W for subway).
 # AMTRAK included because sparse API responses can create segments spanning
 # hundreds of miles when intermediate stops lack actual times.
+#
+# SEPTA_METRO is deliberately EXCLUDED. Its route topology is built from
+# direction_id=0 only, and each trolley curb stop has its own per-direction
+# code (e.g. Baltimore Av & 42nd St is SEPM20876 outbound / SEPM20879
+# inbound, but only SEPM20876 is in a route tuple). The collector persists
+# the raw per-curb code, so every direction_id=1 trolley journey is keyed by
+# codes absent from the topology and its (genuinely adjacent) segments would
+# be flagged anomalous — ~174 false-positive warnings per collection cycle
+# (issue #1573). These segments are between consecutive stops of a single
+# journey, not phantom cross-branch jumps, so the route-match guard does more
+# harm than good here. Metro is served schedule-first / frequency-first, so
+# any residual segment noise carries no rider-facing cost.
 _REQUIRE_ROUTE_MATCH_SOURCES: set[str] = {
     "NJT",
     "AMTRAK",
@@ -41,7 +53,6 @@ _REQUIRE_ROUTE_MATCH_SOURCES: set[str] = {
     "MBTA",
     "METRA",
     "SEPTA_RR",
-    "SEPTA_METRO",
 }
 
 
