@@ -1468,6 +1468,23 @@ class JourneyCollector:
         # Track stops with corrupted times (departure before arrival - physically impossible)
         stops_with_corrupted_times: list[dict[str, str]] = []
 
+        # Earliest scheduled moment across all stops = the origin's scheduled
+        # time. Used to clamp the schedule-less updated_* fallback below so a
+        # stale/bogus live time can never sort a schedule-less stop ahead of
+        # the origin (issue #1535). Derived from the stops rather than
+        # journey.scheduled_departure because the two can diverge (the journey
+        # field is set at discovery/materialization and is not always the
+        # origin stop's scheduled departure).
+        scheduled_anchor_candidates = [
+            t
+            for candidate in stops
+            for t in (candidate.scheduled_arrival, candidate.scheduled_departure)
+            if t is not None
+        ]
+        earliest_scheduled = (
+            min(scheduled_anchor_candidates) if scheduled_anchor_candidates else None
+        )
+
         # Sort stops by scheduled times, but preserve sequence for stops without times
         # This prevents stops with null times from being incorrectly placed at position 0
         def get_sort_key(
@@ -1525,7 +1542,18 @@ class JourneyCollector:
                     for t in (stop.updated_arrival, stop.updated_departure)
                     if t is not None
                 ]
-                return (0, min(updated_times))
+                earliest_updated = min(updated_times)
+                # Clamp against the origin (issue #1535): a stale or bogus live
+                # TIME earlier than the earliest scheduled stop would otherwise
+                # sort this schedule-less stop to sequence 0, displacing the
+                # origin (whose key is its own scheduled departure). Only trust
+                # the live time when it is not earlier than the earliest
+                # scheduled stop; otherwise discard it and let the stop fall
+                # through to the end bucket below, preserving the origin's
+                # position while keeping the #1530 fallback for plausible
+                # (in-window) live times.
+                if earliest_scheduled is None or earliest_updated >= earliest_scheduled:
+                    return (0, earliest_updated)
 
             # Use timezone-aware max to place after all timed stops,
             # but preserve relative order using existing sequence
