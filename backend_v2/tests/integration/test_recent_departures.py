@@ -292,6 +292,65 @@ class TestRecentDepartures:
         )
         assert {d.train_id for d in amtrak_only.departures} == {"A2150"}
 
+    async def test_line_codes_filter(self, db_session: AsyncSession):
+        """``line_codes`` scopes results to specific lines.
+
+        NJT Main and Bergen County both run HB→SF, so the line-detail
+        departures timeline must be able to request only one line's trains for
+        the same station pair (issue #1567). The filter is a raw match on
+        ``TrainJourney.line_code``; clients send every stored case variant
+        (e.g. 'MA' and legacy 'Ma').
+        """
+        service = DepartureService()
+
+        main = _make_njt_journey(
+            train_id="MAIN_1",
+            scheduled_departure=now_et() - timedelta(minutes=15),
+            has_departed_station=True,
+        )
+        main.line_code = "MA"
+        main.line_name = "Main Line"
+        # Legacy mixed-case row as produced by parse_njt_line_code truncation
+        legacy_main = _make_njt_journey(
+            train_id="MAIN_2",
+            scheduled_departure=now_et() - timedelta(minutes=25),
+            has_departed_station=True,
+        )
+        legacy_main.line_code = "Ma"
+        legacy_main.line_name = "Main Line"
+        bergen = _make_njt_journey(
+            train_id="BERGEN_1",
+            scheduled_departure=now_et() - timedelta(minutes=20),
+            has_departed_station=True,
+        )
+        bergen.line_code = "BE"
+        bergen.line_name = "Bergen County Line"
+        db_session.add_all([main, legacy_main, bergen])
+        await db_session.commit()
+
+        main_only = await service.get_recent_departures(
+            db_session, from_station="NY", line_codes=["MA", "Ma"]
+        )
+        assert {d.train_id for d in main_only.departures} == {"MAIN_1", "MAIN_2"}, (
+            "line_codes=['MA','Ma'] must return both Main variants and exclude "
+            f"Bergen; got {[d.train_id for d in main_only.departures]}"
+        )
+
+        bergen_only = await service.get_recent_departures(
+            db_session, from_station="NY", line_codes=["BE", "Be"]
+        )
+        assert {d.train_id for d in bergen_only.departures} == {"BERGEN_1"}, (
+            "line_codes=['BE','Be'] must return only the Bergen train; got "
+            f"{[d.train_id for d in bergen_only.departures]}"
+        )
+
+        unfiltered = await service.get_recent_departures(db_session, from_station="NY")
+        assert {d.train_id for d in unfiltered.departures} == {
+            "MAIN_1",
+            "MAIN_2",
+            "BERGEN_1",
+        }, "Omitting line_codes must keep the combined board unchanged"
+
     async def test_destination_filter_requires_forward_sequence(
         self, db_session: AsyncSession
     ):

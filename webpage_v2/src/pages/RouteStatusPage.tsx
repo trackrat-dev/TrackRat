@@ -85,7 +85,8 @@ export function RouteStatusPage() {
       // return identical combined stats for the same from/to pair.
       apiService.getRouteHistory(from, to, dataSource, days, hours, line?.lineCodes),
       // Summary is optional context; a failure here must not blank the whole page.
-      apiService.getRouteSummary(from, to).catch(() => null),
+      // Line-scoped for the same shared-terminal reason as history above.
+      apiService.getRouteSummary(from, to, undefined, line?.lineCodes).catch(() => null),
     ])
       .then(([historyRes, summaryRes]) => {
         setHistory(historyRes);
@@ -147,8 +148,9 @@ export function RouteStatusPage() {
         </div>
       )}
 
-      {/* Recent + upcoming departures timeline (polls every 30s) */}
-      <DeparturesTimeline from={from} to={to} dataSource={dataSource} />
+      {/* Recent + upcoming departures timeline (polls every 30s); line-scoped
+          in line mode so shared-terminal lines don't show each other's trains */}
+      <DeparturesTimeline from={from} to={to} dataSource={dataSource} lineCodes={line?.lineCodes} />
 
       {/* Period selector */}
       <div className="flex items-center gap-2 mb-4">

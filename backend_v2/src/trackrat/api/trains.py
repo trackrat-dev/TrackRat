@@ -98,6 +98,13 @@ async def get_departures(
         None,
         description="Comma-separated list of data sources to include: NJT,AMTRAK,PATH,PATCO,LIRR,MNR,SUBWAY,BART,MBTA,METRA,WMATA. Default: all",
     ),
+    lines: str | None = Query(
+        None,
+        description=(
+            "Comma-separated line codes to filter (e.g. 'MA,Ma'). "
+            "Mirrors the /routes/history `lines` filter."
+        ),
+    ),
     limit: int = Query(50, le=1000, description="Maximum results"),
     db: AsyncSession = Depends(get_db),
 ) -> DeparturesResponse:
@@ -106,6 +113,11 @@ async def get_departures(
     Returns cached results for default time parameters. For future dates, falls back
     to GTFS static schedule data. Supports filtering by data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, BART, MBTA, METRA, WMATA).
     """
+    # Parse line codes filter (same convention as /routes/history)
+    line_codes = (
+        [lc.strip() for lc in lines.split(",") if lc.strip()] if lines else None
+    )
+
     logger.info(
         "get_departures_request",
         from_station=from_station,
@@ -115,6 +127,7 @@ async def get_departures(
         time_to=time_to,
         hide_departed=hide_departed,
         data_sources=data_sources,
+        lines=line_codes,
     )
 
     cache_service = ApiCacheService()
@@ -125,8 +138,13 @@ async def get_departures(
         source_list = [s.strip().upper() for s in data_sources.split(",") if s.strip()]
 
     # Use cache when using default time parameters (date, time_from, time_to are None)
-    # Cache supports both hide_departed=true and hide_departed=false
-    use_cache = date is None and time_from is None and time_to is None
+    # Cache supports both hide_departed=true and hide_departed=false. Line-scoped
+    # requests bypass the cache entirely (niche line-detail path) so the shared
+    # departures cache — and its data_sources superset fallback — never serves
+    # unfiltered rows for a line query (issue #1567 / PR #1585 review).
+    use_cache = (
+        date is None and time_from is None and time_to is None and not line_codes
+    )
 
     if use_cache:
         cache_params = {
@@ -207,6 +225,7 @@ async def get_departures(
         limit,
         hide_departed,
         source_list,
+        line_codes=line_codes,
     )
 
     if use_cache:
@@ -257,6 +276,13 @@ async def get_recent_departures(
         None,
         description="Comma-separated list of data sources to include: NJT,AMTRAK,PATH,PATCO,LIRR,MNR,SUBWAY,BART,MBTA,METRA,WMATA. Default: all",
     ),
+    lines: str | None = Query(
+        None,
+        description=(
+            "Comma-separated line codes to filter (e.g. 'MA,Ma'). "
+            "Mirrors the /routes/history `lines` filter."
+        ),
+    ),
     limit: int = Query(50, le=1000, description="Maximum results"),
     db: AsyncSession = Depends(get_db),
 ) -> DeparturesResponse:
@@ -266,12 +292,18 @@ async def get_recent_departures(
     origin station was in the past ``window_minutes``, including cancellations
     and completed journeys. Results are sorted most-recent-first.
     """
+    # Parse line codes filter (same convention as /routes/history)
+    line_codes = (
+        [lc.strip() for lc in lines.split(",") if lc.strip()] if lines else None
+    )
+
     logger.info(
         "get_recent_departures_request",
         from_station=from_station,
         to_station=to_station,
         window_minutes=window_minutes,
         data_sources=data_sources,
+        lines=line_codes,
     )
 
     source_list: list[str] | None = None
@@ -286,6 +318,7 @@ async def get_recent_departures(
         window_minutes=window_minutes,
         limit=limit,
         data_sources=source_list,
+        line_codes=line_codes,
     )
 
 

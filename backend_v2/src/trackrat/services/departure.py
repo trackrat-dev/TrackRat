@@ -322,11 +322,20 @@ class DepartureService:
         data_sources: list[str] | None = None,
         skip_individual_refresh: bool = False,
         skip_gtfs_merge: bool = False,
+        line_codes: list[str] | None = None,
     ) -> DeparturesResponse:
         """Get train departures between stations.
 
         For future dates (> today), queries GTFS static schedule data.
         For today or past dates, uses real-time TrainJourney data.
+
+        ``line_codes`` optionally scopes results to specific lines (raw match
+        against ``TrainDeparture.line.code``, same semantics as the
+        /routes/history ``lines`` filter) so lines sharing terminal stations
+        (e.g. NJT Main/Bergen HB-SF) get distinct boards. Applied to the
+        merged real-time + GTFS list *before* the limit, so a shared-terminal
+        sibling can't consume the limit and hide this line's next train
+        (issue #1567 / PR #1585 review).
         """
         today = now_et().date()
         target_date = date or today
@@ -364,7 +373,10 @@ class DepartureService:
                 time_from=aware_time_from,
             )
             response.departures = [
-                d for d in response.departures if d.data_source in allowed_sources
+                d
+                for d in response.departures
+                if d.data_source in allowed_sources
+                and (not line_codes or d.line.code in line_codes)
             ]
             response.metadata["count"] = len(response.departures)
             if to_station:
@@ -747,6 +759,14 @@ class DepartureService:
             # real-time data (NJT, Amtrak, PATH) - not PATCO which is schedule-only.
             departures = self._filter_stale_scheduled_trains(departures, current_time)
 
+        # Line-scope the merged (real-time + GTFS) list BEFORE the limit so a
+        # shared-terminal sibling line's departures can't consume the limit and
+        # hide this line's next train (issue #1567 / PR #1585 review). Raw
+        # line_code match, same convention as /routes/history — clients send
+        # every stored case variant (e.g. "MA","Ma").
+        if line_codes:
+            departures = [d for d in departures if d.line.code in line_codes]
+
         # Apply limit to departures
         limited_departures = departures[:limit]
 
@@ -783,12 +803,18 @@ class DepartureService:
         window_minutes: int = 120,
         limit: int = 50,
         data_sources: list[str] | None = None,
+        line_codes: list[str] | None = None,
     ) -> DeparturesResponse:
         """Get recently-departed trains from a station.
 
         Returns trains whose scheduled departure from the origin station was
         within the last ``window_minutes``, including cancellations and
         completed journeys. Sorted by scheduled departure, most recent first.
+
+        ``line_codes`` optionally scopes results to specific lines (raw match
+        against ``TrainJourney.line_code``, same semantics as the
+        /routes/history ``lines`` filter) so lines sharing terminal stations
+        (e.g. NJT Main/Bergen HB-SF) get distinct boards.
 
         Unlike ``get_departures``, this intentionally bypasses the
         ``is_expired`` / ``is_completed`` / ``hide_departed`` filters so that
@@ -822,6 +848,8 @@ class DepartureService:
                 TrainJourney.is_cancelled.is_(True),
             ),
         ]
+        if line_codes:
+            recent_filters.append(TrainJourney.line_code.in_(line_codes))
 
         stmt = (
             select(TrainJourney)

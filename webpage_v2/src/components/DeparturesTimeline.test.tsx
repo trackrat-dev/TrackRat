@@ -4,10 +4,11 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import {
   buildDeparturesTimeline,
+  directUpcomingTrains,
   DeparturesTimelineView,
   TimelineRow,
 } from './DeparturesTimeline';
-import { Train } from '../types';
+import { Train, TripOption, TripSearchResponse } from '../types';
 
 function makeTrain(id: string, overrides: Partial<Train> = {}): Train {
   return {
@@ -35,6 +36,43 @@ function makeTrain(id: string, overrides: Partial<Train> = {}): Train {
 
 const trainRows = (rows: TimelineRow[]) =>
   rows.filter((r): r is Extract<TimelineRow, { kind: 'train' }> => r.kind === 'train');
+
+/** Wrap a Train as the single leg of a direct trip, as `/trips/search` returns it. */
+function makeDirectTrip(train: Train, isDirect = true): TripOption {
+  return {
+    legs: [
+      {
+        train_id: train.train_id,
+        journey_date: train.journey_date,
+        line: train.line,
+        data_source: train.data_source,
+        destination: train.destination,
+        boarding: train.departure,
+        alighting: train.arrival,
+        observation_type: train.observation_type,
+        is_cancelled: train.is_cancelled,
+      },
+    ],
+    transfers: [],
+    departure_time: train.departure.scheduled_time ?? '',
+    arrival_time: train.arrival.scheduled_time ?? '',
+    total_duration_minutes: 70,
+    is_direct: isDirect,
+  };
+}
+
+function makeSearchResponse(trips: TripOption[]): TripSearchResponse {
+  return {
+    trips,
+    metadata: {
+      from_station: { code: 'HB', name: 'Hoboken' },
+      to_station: { code: 'SF', name: 'Suffern' },
+      count: trips.length,
+      search_type: 'direct',
+      generated_at: '',
+    },
+  };
+}
 
 describe('buildDeparturesTimeline', () => {
   it('orders recent (reversed) → NOW → upcoming, most-recent just above the divider', () => {
@@ -185,5 +223,31 @@ describe('DeparturesTimelineView', () => {
     renderView(buildDeparturesTimeline([], [makeTrain('B')]));
     const link = screen.getByText('View All Departures →').closest('a');
     expect(link).toHaveAttribute('href', '/trains/TR/NY');
+  });
+});
+
+describe('directUpcomingTrains', () => {
+  // The non-line-mode upcoming feed: keep direct, non-cancelled trains for the
+  // page's data source. (Line mode uses /trains/departures instead, filtered
+  // server-side — issue #1567 / PR #1585 review.)
+  const njt = makeTrain('NJT_1', { data_source: 'NJT' });
+  const pathTrain = makeTrain('PATH_1', { data_source: 'PATH' });
+
+  it('keeps only direct, non-cancelled trains for the given data source', () => {
+    const cancelled = makeTrain('NJT_X', { data_source: 'NJT', is_cancelled: true });
+    const response = makeSearchResponse([
+      makeDirectTrip(njt),
+      makeDirectTrip(cancelled),
+      makeDirectTrip(pathTrain),
+      makeDirectTrip(makeTrain('NJT_TRANSFER', { data_source: 'NJT' }), false), // transfer → excluded
+    ]);
+
+    const result = directUpcomingTrains(response, 'NJT');
+    expect(result.map((t) => t.train_id)).toEqual(['NJT_1']);
+  });
+
+  it('keeps all direct, non-cancelled trains when no data source is given', () => {
+    const response = makeSearchResponse([makeDirectTrip(njt), makeDirectTrip(pathTrain)]);
+    expect(directUpcomingTrains(response).map((t) => t.train_id)).toEqual(['NJT_1', 'PATH_1']);
   });
 });

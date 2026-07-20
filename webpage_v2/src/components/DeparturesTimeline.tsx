@@ -13,6 +13,12 @@ interface Props {
   to: string;
   /** Resolved data source for the page; scopes the timeline to one feed. */
   dataSource?: string;
+  /**
+   * Line codes to scope the timeline to (line-detail view). Lines that share
+   * terminal stations (e.g. NJT Main/Bergen HB↔SF) would otherwise show a
+   * combined board for the same from/to pair.
+   */
+  lineCodes?: string[];
 }
 
 const RECENT_WINDOW_MINUTES = 120;
@@ -126,7 +132,7 @@ const isAbortError = (err: unknown): boolean =>
   err instanceof DOMException && err.name === 'AbortError';
 
 /** Extract direct, non-cancelled upcoming trains scoped to the page's data source. */
-function directUpcomingTrains(response: TripSearchResponse, dataSource?: string): Train[] {
+export function directUpcomingTrains(response: TripSearchResponse, dataSource?: string): Train[] {
   return response.trips
     .filter((t) => t.is_direct)
     .map(tripLegToTrain)
@@ -138,7 +144,7 @@ function directUpcomingTrains(response: TripSearchResponse, dataSource?: string)
  * NOW divider, upcoming trains below. Polls every 30s independently of the
  * page's one-shot history metrics.
  */
-export function DeparturesTimeline({ from, to, dataSource }: Props) {
+export function DeparturesTimeline({ from, to, dataSource, lineCodes }: Props) {
   const navigate = useNavigate();
   const [recent, setRecent] = useState<Train[]>([]);
   const [upcoming, setUpcoming] = useState<Train[]>([]);
@@ -153,24 +159,55 @@ export function DeparturesTimeline({ from, to, dataSource }: Props) {
         return null;
       };
 
+      const lineScoped = !!lineCodes && lineCodes.length > 0;
+      // In line mode, upcoming trains come from /trains/departures, which applies
+      // the line filter server-side BEFORE its limit — so a shared-terminal
+      // sibling can't crowd this line's next train out of the result set (issue
+      // #1567 / PR #1585 review). Non-line mode keeps /trips/search, which is
+      // station-equivalence aware and needs no line scoping.
+      const upcomingReq = lineScoped
+        ? apiService
+            .getDepartures(from, {
+              to,
+              dataSources: dataSource,
+              lines: lineCodes,
+              hideDeparted: true,
+              limit: UPCOMING_FETCH_LIMIT,
+              signal,
+            })
+            .catch(swallow)
+        : apiService.searchTrips(from, to, UPCOMING_FETCH_LIMIT, undefined, signal).catch(swallow);
+
       const [recentRes, upcomingRes] = await Promise.all([
         apiService
           .getRecentDepartures(from, {
             to,
             windowMinutes: RECENT_WINDOW_MINUTES,
             dataSources: dataSource,
+            lines: lineCodes,
             limit: RECENT_FETCH_LIMIT,
             signal,
           })
           .catch(swallow),
-        apiService.searchTrips(from, to, UPCOMING_FETCH_LIMIT, undefined, signal).catch(swallow),
+        upcomingReq,
       ]);
 
       if (recentRes) setRecent(recentRes.departures);
-      if (upcomingRes) setUpcoming(directUpcomingTrains(upcomingRes, dataSource));
+      if (upcomingRes) {
+        // getDepartures → DeparturesResponse (already line/source-filtered
+        // server-side; drop cancelled to match the /trips/search path).
+        // searchTrips → TripSearchResponse (filter to direct, non-cancelled here).
+        setUpcoming(
+          'departures' in upcomingRes
+            ? upcomingRes.departures.filter((t) => !t.is_cancelled)
+            : directUpcomingTrains(upcomingRes, dataSource)
+        );
+      }
       setLoaded(true);
     },
-    [from, to, dataSource]
+    // lineCodes comes from the static route topology (stable reference per
+    // line id), so it is safe as a dependency without serialization.
+    [from, to, dataSource, lineCodes]
   );
 
   // Nothing to show until the first poll resolves, or when the route has no
