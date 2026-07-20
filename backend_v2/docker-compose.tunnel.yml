@@ -1,0 +1,41 @@
+# Cloudflare Tunnel connector — ISOLATED from the api/db stack (issue #1578).
+#
+# This file is deliberately NOT loaded during the api/db bring-up. The startup
+# script (infra_v2/terraform/compute.tf) starts db/api from docker-compose.yml
+# alone, then — only when enable_cloudflare_tunnel is true AND the
+# trackrat-cloudflare-tunnel-token-<env> secret is present — brings cloudflared
+# up separately and non-fatally:
+#
+#   compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d cloudflared || <warn>
+#
+# Because api/db are already healthy by then and this file is never parsed during
+# their bring-up, a malformed connector config or invalid token cannot abort them.
+# The connector's on/off state lives in the committed enable_cloudflare_tunnel
+# flag (repo), not only in Secret Manager IAM.
+#
+# Merging with docker-compose.yml keeps cloudflared on the same `trackrat`
+# network, so it still resolves the API at http://api:8000 (Cloudflare terminates
+# TLS at its edge and routes the hostname there over the private Docker network).
+
+services:
+  cloudflared:
+    image: cloudflare/cloudflared:2026.7.1
+    container_name: trackrat-cloudflared
+    # Pass the token via the TUNNEL_TOKEN env var, NOT a --token flag on a string
+    # command. docker-compose parses a string `command:` with shell-word splitting,
+    # and a real tunnel token interpolated inline trips that parser
+    # ("invalid command line string"). cloudflared reads TUNNEL_TOKEN for
+    # `tunnel run`; the env var never goes through shell-word splitting and keeps
+    # the secret out of the process arg list.
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+    depends_on:
+      - api
+    restart: unless-stopped
+    networks:
+      - trackrat
+
+networks:
+  trackrat:
+    driver: bridge

@@ -61,6 +61,9 @@ resource "google_compute_instance_template" "trackrat" {
       ZONE="${var.zone}"
       REGION="${var.region}"
       ENVIRONMENT="${var.environment}"
+      # Committed on/off switch for the Cloudflare Tunnel connector (issue #1578).
+      # "true"/"false" from the Terraform bool var.enable_cloudflare_tunnel.
+      ENABLE_CLOUDFLARE_TUNNEL="${var.enable_cloudflare_tunnel}"
       DEPLOY_BUCKET="${google_storage_bucket.deploy.name}"
       CONTAINER_IMAGE="$REGION-docker.pkg.dev/$PROJECT_ID/trackrat/api:$ENVIRONMENT-latest"
 
@@ -169,10 +172,11 @@ resource "google_compute_instance_template" "trackrat" {
         --secret=trackrat-wmata-api-key --project="$PROJECT_ID" 2>/dev/null)
       METRA_API_TOKEN=$(toolbox --quiet gcloud secrets versions access latest \
         --secret=trackrat-metra-api-token --project="$PROJECT_ID" 2>/dev/null) || true
-      # Cloudflare Tunnel token (optional, per-environment). Absent/unreadable ->
-      # empty -> the tunnel stays off (see .env block below). Only the staging
-      # secret exists during the Cloudflare pilot; production reads a nonexistent
-      # secret and keeps using its load balancer.
+      # Cloudflare Tunnel token (optional, per-environment). The connector is only
+      # started when ENABLE_CLOUDFLARE_TUNNEL=true AND this token is non-empty
+      # (issue #1578) — so an absent/unreadable secret OR the flag being off both
+      # leave the tunnel fully off. Only the staging secret exists during the
+      # Cloudflare pilot; production reads a nonexistent secret and keeps its LB.
       CLOUDFLARE_TUNNEL_TOKEN=$(toolbox --quiet gcloud secrets versions access latest \
         --secret="trackrat-cloudflare-tunnel-token-$ENVIRONMENT" --project="$PROJECT_ID" 2>/dev/null) || true
       echo "Secrets fetched successfully"
@@ -196,6 +200,25 @@ resource "google_compute_instance_template" "trackrat" {
       if [ ! -f "$APP_DIR/docker-compose.yml" ]; then
         echo "ERROR: docker-compose.yml not found after download"
         exit 1
+      fi
+
+      # Cloudflare Tunnel is opt-in: only fetch its (isolated) compose file when the
+      # committed flag is on AND a token was read. Kept non-fatal so a missing object
+      # can never abort api/db startup (issue #1578).
+      TUNNEL_ENABLED=0
+      if [ "$ENABLE_CLOUDFLARE_TUNNEL" = "true" ] && [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
+        echo "=== Downloading docker-compose.tunnel.yml (tunnel enabled) ==="
+        if toolbox --quiet gsutil cp "gs://$DEPLOY_BUCKET/docker-compose.tunnel.yml" "$APP_DIR/docker-compose.tunnel.yml"; then
+          TUNNEL_TOOLBOX_FILE=$(find /var/lib/toolbox -name "docker-compose.tunnel.yml" -path "*/mnt/disks/data/compose/*" 2>/dev/null | head -1)
+          if [ -n "$TUNNEL_TOOLBOX_FILE" ]; then
+            cp "$TUNNEL_TOOLBOX_FILE" "$APP_DIR/docker-compose.tunnel.yml"
+          fi
+        fi
+        if [ -f "$APP_DIR/docker-compose.tunnel.yml" ]; then
+          TUNNEL_ENABLED=1
+        else
+          echo "WARN: tunnel enabled but docker-compose.tunnel.yml missing — skipping connector; api/db unaffected"
+        fi
       fi
 
       # ===========================================
@@ -223,15 +246,15 @@ TRACKRAT_LOG_LEVEL=INFO
 TRACKRAT_DISABLED_DATA_SOURCES=BART,WMATA,MBTA,METRA
 ENVEOF
 
-      # Activate the Cloudflare Tunnel connector only when a token is present.
-      # COMPOSE_PROFILES applies to every compose invocation below (pull/down/up),
-      # so cloudflared is pulled and started consistently. Without a token the
-      # profile stays off and the cloudflared service is never created.
-      if [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
-        echo "Cloudflare tunnel token present — activating tunnel profile"
+      # Write the tunnel token for the (separately brought-up) cloudflared service
+      # only when the connector is actually enabled. No COMPOSE_PROFILES here — the
+      # connector is no longer a profile in the api/db file; it is an isolated
+      # second `up` from docker-compose.tunnel.yml after api/db are healthy, so a
+      # bad token can never abort the api/db bring-up (issue #1578).
+      if [ "$TUNNEL_ENABLED" = "1" ]; then
+        echo "Cloudflare tunnel enabled — writing connector token"
         cat >> "$APP_DIR/.env" <<TUNNELEOF
 CLOUDFLARE_TUNNEL_TOKEN=$CLOUDFLARE_TUNNEL_TOKEN
-COMPOSE_PROFILES=tunnel
 TUNNELEOF
       fi
       chmod 600 "$APP_DIR/.env"
@@ -297,8 +320,20 @@ TUNNELEOF
         echo "✅ Staging database scrubbed"
       fi
 
-      # Start all containers (db is already running on staging, this adds the api)
+      # Start all containers (db is already running on staging, this adds the api).
+      # Only docker-compose.yml is loaded here, so the cloudflared connector is
+      # neither parsed nor started — api/db are fully independent of it.
       $COMPOSE_PATH up -d
+
+      # Bring the Cloudflare Tunnel connector up as an isolated, non-fatal second
+      # step, only when enabled. api/db are already healthy above, and this merges
+      # the tunnel file only now, so any connector config/token error is contained
+      # here and cannot abort the API (issue #1578).
+      if [ "$TUNNEL_ENABLED" = "1" ]; then
+        echo "=== Starting Cloudflare Tunnel connector (isolated) ==="
+        $COMPOSE_PATH -f docker-compose.yml -f docker-compose.tunnel.yml up -d cloudflared \
+          || echo "WARN: cloudflared failed to start — api/db remain up and serving"
+      fi
 
       echo ""
       echo "=== TrackRat started successfully ==="
