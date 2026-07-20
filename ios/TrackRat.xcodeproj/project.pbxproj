@@ -83,6 +83,7 @@
 		A19899442E8063EA0079E596 /* LiveActivityServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899422E8063EA0079E596 /* LiveActivityServiceTests.swift */; };
 		A19899452E8063EA0079E596 /* RatSenseServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899432E8063EA0079E596 /* RatSenseServiceTests.swift */; };
 		A198994A2E8063F90079E596 /* HistoricalDataViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899472E8063F90079E596 /* HistoricalDataViewModelTests.swift */; };
+		B1RSVMTST01000000000000A1 /* RouteStatusViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1RSVMTST01000000000000A1 /* RouteStatusViewModelTests.swift */; };
 		A198994B2E8063F90079E596 /* TrainDetailsViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899482E8063F90079E596 /* TrainDetailsViewModelTests.swift */; };
 		A198994C2E8063F90079E596 /* TrainListViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899492E8063F90079E596 /* TrainListViewModelTests.swift */; };
 		A198994D2E8063F90079E596 /* CongestionMapViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899462E8063F90079E596 /* CongestionMapViewModelTests.swift */; };
@@ -314,6 +315,7 @@
 		A19899432E8063EA0079E596 /* RatSenseServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RatSenseServiceTests.swift; path = TrackRatTests/Services/RatSenseServiceTests.swift; sourceTree = "<group>"; };
 		A19899462E8063F90079E596 /* CongestionMapViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CongestionMapViewModelTests.swift; path = TrackRatTests/ViewModels/CongestionMapViewModelTests.swift; sourceTree = "<group>"; };
 		A19899472E8063F90079E596 /* HistoricalDataViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = HistoricalDataViewModelTests.swift; path = TrackRatTests/ViewModels/HistoricalDataViewModelTests.swift; sourceTree = "<group>"; };
+		F1RSVMTST01000000000000A1 /* RouteStatusViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RouteStatusViewModelTests.swift; path = TrackRatTests/ViewModels/RouteStatusViewModelTests.swift; sourceTree = "<group>"; };
 		A19899482E8063F90079E596 /* TrainDetailsViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainDetailsViewModelTests.swift; path = TrackRatTests/ViewModels/TrainDetailsViewModelTests.swift; sourceTree = "<group>"; };
 		A19899492E8063F90079E596 /* TrainListViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainListViewModelTests.swift; path = TrackRatTests/ViewModels/TrainListViewModelTests.swift; sourceTree = "<group>"; };
 		A19899522E8067020079E596 /* TrainV2Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainV2Tests.swift; path = TrackRatTests/Models/TrainV2Tests.swift; sourceTree = "<group>"; };
@@ -425,6 +427,7 @@
 				B1B1B1B12FA1B1B100000004 /* PrefetcherTests.swift */,
 				A19899462E8063F90079E596 /* CongestionMapViewModelTests.swift */,
 				A19899472E8063F90079E596 /* HistoricalDataViewModelTests.swift */,
+				F1RSVMTST01000000000000A1 /* RouteStatusViewModelTests.swift */,
 				A19899482E8063F90079E596 /* TrainDetailsViewModelTests.swift */,
 				A19899492E8063F90079E596 /* TrainListViewModelTests.swift */,
 				A1FEA5A02E7F7EB600041405 /* BackendWakeupService.swift */,
@@ -906,6 +909,7 @@
 				B1CGMKTST01000000000000A1 /* CongestionMapKitViewTests.swift in Sources */,
 				A16C81EF2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */,
 				A198994A2E8063F90079E596 /* HistoricalDataViewModelTests.swift in Sources */,
+				B1RSVMTST01000000000000A1 /* RouteStatusViewModelTests.swift in Sources */,
 				A12C31452F1DA62600CAF76D /* ProFeatureLockView.swift in Sources */,
 				A12C314A2F1DA64A00CAF76D /* SubscriptionService.swift in Sources */,
 				A198994B2E8063F90079E596 /* TrainDetailsViewModelTests.swift in Sources */,

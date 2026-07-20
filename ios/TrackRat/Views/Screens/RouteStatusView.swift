@@ -1159,15 +1159,15 @@ final class RouteStatusViewModel: ObservableObject {
         isLoadingMap = true
         defer { isLoadingMap = false }
 
-        baseRouteStationCodes = context.stationCodes
+        let systemsToFetch = enabledSystems.isEmpty
+            ? Set([context.dataSource])
+            : enabledSystems
+
+        baseRouteStationCodes = baseRoutePath(for: systemsToFetch)
         let routeStationCodes = Set(baseRouteStationCodes.map { $0.uppercased() })
 
         // Fetch congestion data for each enabled system
         var allSegments: [CongestionSegment] = []
-
-        let systemsToFetch = enabledSystems.isEmpty
-            ? Set([context.dataSource])
-            : enabledSystems
 
         await withTaskGroup(of: [CongestionSegment].self) { group in
             for system in systemsToFetch {
@@ -1201,6 +1201,19 @@ final class RouteStatusViewModel: ObservableObject {
         filteredSegments = allSegments
         buildStationsFromSegments()
         setMapRegion()
+    }
+
+    /// Topology path for the map's base route layer. Uses the context's own
+    /// path while its system is part of the active filter; when the filter
+    /// excludes it, re-derives the path from an enabled system so the base
+    /// layer matches the live segments (e.g. NJT runs NP→NY via Secaucus
+    /// while Amtrak runs direct).
+    func baseRoutePath(for systems: Set<String>) -> [String] {
+        if systems.contains(context.dataSource) { return context.stationCodes }
+        guard let from = context.effectiveFromStation,
+              let to = context.effectiveToStation else { return [] }
+        let paths = systems.sorted().map { RouteStatusContext.topologyPath(from: from, to: to, dataSource: $0) }
+        return paths.first(where: { $0.count > 2 }) ?? paths.first ?? []
     }
 
     private func buildStationsFromSegments() {
