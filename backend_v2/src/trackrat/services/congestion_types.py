@@ -92,6 +92,8 @@ class SegmentCongestion:
         baseline_train_count: float | None = None,
         frequency_factor: float | None = None,
         frequency_level: str | None = None,
+        # Real observed leg this (possibly canonical) segment was derived from
+        dominant_real_pair: tuple[str, str] | None = None,
     ):
         self.from_station = from_station
         self.to_station = to_station
@@ -109,3 +111,9 @@ class SegmentCongestion:
         self.baseline_train_count = baseline_train_count
         self.frequency_factor = frequency_factor
         self.frequency_level = frequency_level
+        # The real (from, to) leg — a pair of stations trains actually stopped
+        # at — that contributed the most samples to this canonical segment.
+        # Skip-stop expansion produces canonical sub-segments whose endpoints no
+        # train stops at (e.g. Amtrak TR→PH -> CWH→PHN); clients use this to
+        # redirect a tap on such a segment to a real, served station board.
+        self.dominant_real_pair = dominant_real_pair

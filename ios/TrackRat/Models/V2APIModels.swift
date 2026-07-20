@@ -610,6 +610,12 @@ struct CongestionSegment: Codable, Identifiable {
     let baselineTrainCount: Double?
     let frequencyFactor: Double?
     let frequencyLevel: String?
+    // The real, served station pair this segment was derived from. Skip-stop
+    // expansion produces canonical sub-segments whose endpoints no train stops
+    // at (e.g. Amtrak CWH→PHN); tapping resolves to this pair so the departures
+    // board is populated instead of empty (issue #1560). nil for older backends.
+    let realFromStation: String?
+    let realToStation: String?
 
     enum CodingKeys: String, CodingKey {
         case fromStation = "from_station"
@@ -629,12 +635,21 @@ struct CongestionSegment: Codable, Identifiable {
         case baselineTrainCount = "baseline_train_count"
         case frequencyFactor = "frequency_factor"
         case frequencyLevel = "frequency_level"
+        case realFromStation = "real_from_station"
+        case realToStation = "real_to_station"
     }
-    
+
     // Identifiable
     var id: String {
         "\(fromStation)-\(toStation)-\(dataSource)"
     }
+
+    /// Station codes to navigate to when this segment is tapped. Resolves a
+    /// skip-stop canonical sub-segment (e.g. Amtrak CWH→PHN) to the real served
+    /// leg it was derived from, falling back to the segment's own endpoints when
+    /// the backend didn't supply a real pair (issue #1560).
+    var navFromStation: String { realFromStation ?? fromStation }
+    var navToStation: String { realToStation ?? toStation }
     
     // Computed properties for display
     var displayCongestionLevel: String {

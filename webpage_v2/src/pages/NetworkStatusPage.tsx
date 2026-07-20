@@ -9,7 +9,12 @@ import { ChevronIcon } from '../components/icons';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { formatTime } from '../utils/date';
 import { usePolling } from '../utils/usePolling';
-import { getCongestionColor, getCongestionBg, getCongestionLabel } from '../utils/congestion';
+import {
+  getCongestionColor,
+  getCongestionBg,
+  getCongestionLabel,
+  navStationCodes,
+} from '../utils/congestion';
 
 const CongestionMap = lazy(() => import('../components/CongestionMap').then((m) => ({ default: m.CongestionMap })));
 
@@ -160,7 +165,10 @@ export function NetworkStatusPage() {
                   {segs.map(seg => (
                     <button
                       key={`${seg.from_station}-${seg.to_station}`}
-                      onClick={() => navigate(`/trains/${seg.from_station}/${seg.to_station}`)}
+                      onClick={() => {
+                        const [navFrom, navTo] = navStationCodes(seg);
+                        navigate(`/trains/${navFrom}/${navTo}`);
+                      }}
                       className="w-full px-4 py-3 flex items-center justify-between text-left hover:bg-surface/50 transition-colors"
                     >
                       <div className="flex-1 min-w-0">

@@ -504,6 +504,38 @@ struct RouteStatusView: View {
             }
             .padding()
             .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
+        } else {
+            // Both lists empty and not loading. Show an explicit message rather
+            // than silently removing the whole card, which read as a bug when a
+            // tapped segment had no direct trains (issue #1560).
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Departures")
+                    .font(.headline)
+
+                Text("No recent or upcoming departures right now.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.vertical, 8)
+
+                if context.effectiveFromStation != nil && context.effectiveToStation != nil {
+                    Button {
+                        navigateToAllDepartures()
+                    } label: {
+                        HStack {
+                            Text("View All Departures")
+                                .font(.subheadline.bold())
+                            Spacer()
+                            Image(systemName: "chevron.right")
+                                .font(.caption)
+                        }
+                        .foregroundColor(.orange)
+                        .padding(.top, 4)
+                    }
+                }
+            }
+            .padding()
+            .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
         }
     }
 

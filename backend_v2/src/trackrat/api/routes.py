@@ -781,6 +781,8 @@ async def _compute_and_cache_single_provider(
             baseline_train_count=s.baseline_train_count,
             frequency_factor=s.frequency_factor,
             frequency_level=s.frequency_level,
+            real_from_station=s.dominant_real_pair[0] if s.dominant_real_pair else None,
+            real_to_station=s.dominant_real_pair[1] if s.dominant_real_pair else None,
         )
         for s in aggregated_segments
     ]
@@ -1093,6 +1095,12 @@ async def get_route_congestion(
             baseline_train_count=segment.baseline_train_count,
             frequency_factor=segment.frequency_factor,
             frequency_level=segment.frequency_level,
+            real_from_station=(
+                segment.dominant_real_pair[0] if segment.dominant_real_pair else None
+            ),
+            real_to_station=(
+                segment.dominant_real_pair[1] if segment.dominant_real_pair else None
+            ),
         )
         aggregated_api_segments.append(segment_model)
 
