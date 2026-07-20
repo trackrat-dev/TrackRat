@@ -1,6 +1,6 @@
 # TrackRat V2 Backend
 
-A simplified, efficient train tracking system for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, and WMATA built with FastAPI, PostgreSQL, and modern Python.
+A simplified, efficient train tracking system for NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA, and SEPTA (Regional Rail + Metro) built with FastAPI, PostgreSQL, and modern Python.
 
 **Version:** 2.0.0 (April 2026)
 **Database:** PostgreSQL with asyncpg (production-ready)
@@ -18,7 +18,7 @@ A simplified, efficient train tracking system for NJ Transit, Amtrak, PATH, PATC
 - **📊 Built-in Monitoring**: Health checks, metrics, validation, and structured logging
 - **🤖 ML Predictions**: Track assignment predictions with confidence scoring
 - **📱 Live Activities**: Push notification support for iOS Live Activity updates
-- **🚂 Multi-Transit**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, and WMATA with extensible architecture
+- **🚂 Multi-Transit**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA, and SEPTA (Regional Rail + Metro) with extensible architecture
 - **🔔 Route Alerts**: Push notifications for delays and cancellations on subscribed routes
 - **🔍 Coverage Validation**: Hourly validation ensures complete train coverage
 - **💾 API Caching**: Intelligent response caching with pre-computation
@@ -88,13 +88,15 @@ poetry run uvicorn trackrat.main:app --reload
 - **Every 4 minutes**: MBTA Commuter Rail collection (unified, GTFS-RT)
 - **Every 4 minutes**: Metra collection (unified, GTFS-RT, requires API token)
 - **Every 3 minutes**: WMATA/DC Metro collection (REST API, requires API key)
+- **Every 4 minutes**: SEPTA Regional Rail collection (unified, delay-based GTFS-RT)
+- **Every 4 minutes**: SEPTA Metro collection (unified, route-filtered GTFS-RT, schedule-first serving)
 - **Every 5 minutes**: Update checks for active journeys
 - **Every 5 minutes**: Route alert evaluation and push notifications
 - **Hourly at :05**: Validation across key routes
 - **Daily 3:30 AM ET**: Data retention cleanup (deletes journeys, discovery runs, validation results, and inactive service alerts older than `TRACKRAT_RETENTION_DAYS`, default 60 days; active service alerts are kept regardless of age)
 - Monitor scheduler status at `/scheduler/status` endpoint
 
-**Note**: PATH, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, and WMATA each use unified collectors that handle both discovery and journey updates in a single pass. LIRR, Metro-North, Subway, BART, MBTA, and Metra use GTFS-RT feeds with shared logic in `mta_common.py`. WMATA uses its REST API. PATCO uses GTFS static schedules only (no real-time API).
+**Note**: PATH, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA, and SEPTA (Regional Rail + Metro) each use unified collectors that handle both discovery and journey updates in a single pass. LIRR, Metro-North, Subway, BART, MBTA, Metra, and SEPTA use GTFS-RT feeds with shared logic in `mta_common.py` (SEPTA Regional Rail is delay-based; SEPTA Metro is route-filtered and served schedule-first). WMATA uses its REST API. PATCO uses GTFS static schedules only (no real-time API).
 
 ## Configuration
 
@@ -125,7 +127,7 @@ All configuration is done via environment variables. See `.env.example` for avai
 - `TRACKRAT_VALIDATION_MAX_TRAINS_TO_VERIFY`: Max missing trains to verify in detail (default: 20)
 - `TRACKRAT_USE_OPTIMIZED_AMTRAK_PATTERN_ANALYSIS`: Use database-aggregated pattern analysis (default: true)
 - `TRACKRAT_MBTA_API_KEY`: MBTA API key for higher rate limits (optional, public feed works without)
-- `TRACKRAT_DISABLED_DATA_SOURCES`: Comma-separated data sources to fully disable — collection, service alerts, and API serving (e.g. `BART,WMATA,MBTA,METRA`; default: none)
+- `TRACKRAT_DISABLED_DATA_SOURCES`: Comma-separated data sources to fully disable — collection, schedule generation, GTFS refresh, service alerts, and API serving (e.g. `BART,WMATA,MBTA,METRA`; default: none)
 - `TRACKRAT_ENABLE_SQL_LOGGING`: Enable SQLAlchemy query logging (default: false)
 
 ### APNS Certificate Setup
@@ -161,7 +163,7 @@ GET /api/v2/trains/departures?from=NY&to=TR&limit=50&data_source=ALL&hide_depart
 Get trains between stations with filtering:
 - `from`/`to`: Station codes (works for any segment)
 - `limit`: Max results (default: 50)
-- `data_source`: NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, BART, MBTA, METRA, WMATA, or ALL
+- `data_source`: NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, BART, MBTA, METRA, WMATA, SEPTA_RR, SEPTA_METRO, or ALL
 - `hide_departed`: Skip trains that have already departed (default: false). When true, also skips expensive past-train refresh for better performance.
 - Returns both SCHEDULED and OBSERVED trains
 
@@ -312,7 +314,7 @@ Sync route alert subscriptions for delay/cancellation push notifications
 ```
 GET /api/v2/alerts/service
 ```
-MTA service alerts (planned work, delays) for Subway, LIRR, and Metro-North
+MTA service alerts (planned work, delays) for Subway, LIRR, Metro-North, and SEPTA (Regional Rail + Metro)
 
 ### Feedback
 ```
@@ -493,6 +495,8 @@ The scheduler supports multiple replicas:
 - **MBTACollector**: Unified MBTA Commuter Rail collector using GTFS-RT feeds
 - **MetraCollector**: Unified Metra collector using GTFS-RT feeds (Central Time)
 - **WMATACollector**: DC Metro collector using WMATA REST API
+- **SeptaRailCollector**: Unified SEPTA Regional Rail collector (delay-based GTFS-RT, joins the static schedule to reconstruct absolute times)
+- **SeptaMetroCollector**: Unified SEPTA Metro collector (route-filtered GTFS-RT, schedule-first serving)
 - **MTA Common**: Shared MTA logic for stop merging, departure inference, completion detection
 - **JustInTimeUpdateService**: On-demand data refresh with staleness checking (all data sources)
 

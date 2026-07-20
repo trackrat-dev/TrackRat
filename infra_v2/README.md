@@ -47,6 +47,13 @@ Simplified GCP infrastructure using Managed Instance Groups with Container-Optim
                    └──────────────────────────────────────────────────────────┘
 ```
 
+### Frontend Topology (LB consolidation & Cloudflare Tunnel)
+
+The dedicated per-environment API load balancer above is the original topology and still fronts **staging**. Production's API frontend is controlled by two committed-default switches in `terraform/variables.tf` (flipped via committed defaults, not `-var`, so push-triggered applies stay consistent):
+
+- **`consolidate_api_lb`** (default `true`): tears down this workspace's dedicated API frontend (IP, url map, proxies, forwarding rules) because `apiv2.trackrat.net` is host-routed by the consolidated **webpage** LB (`terraform-webpage/`) to the API backend service. This collapses two global forwarding rules into one. The webpage LB also emits an HSTS header with `preload` (`terraform-webpage/main.tf`). Runbook: `RUNBOOK-lb-consolidation.md`.
+- **`frontend_via_cloudflare`** (default `false`): tears down the dedicated API frontend because the API is fronted by a **Cloudflare Tunnel** instead — a `cloudflared` container (`backend_v2/docker-compose.yml`, `COMPOSE_PROFILES=tunnel`) fed the `CLOUDFLARE_TUNNEL_TOKEN` env. This eliminates the "Cloud Load Balancer Forwarding Rule Minimum Global" charge entirely. The startup script (`compute.tf`) reads the optional `trackrat-cloudflare-tunnel-token-<env>` secret and only enables the tunnel profile when a token is present. Runbook: `RUNBOOK-cloudflare-cutover.md`.
+
 ## Prerequisites
 
 ### Required Secrets (create manually before terraform apply)
@@ -62,6 +69,8 @@ gcloud secrets create trackrat-apns-auth-key --data-file=-
 gcloud secrets create trackrat-wmata-api-key --data-file=-
 gcloud secrets create trackrat-metra-api-token --data-file=-
 ```
+
+The optional Cloudflare Tunnel token secret (`trackrat-cloudflare-tunnel-token-<env>`) is **not** Terraform-managed — it is created manually during the Cloudflare cutover (`RUNBOOK-cloudflare-cutover.md`). When absent, the `cloudflared` tunnel profile stays off.
 
 ### Terraform State Bucket
 
@@ -138,6 +147,8 @@ Manual deploy from the repo root:
 | `machine_type` | t2d-standard-2 | Production VM machine type (staging overrides to t2d-standard-1 via `local.machine_type`) |
 | `disk_size_gb` | 40 | Persistent disk size |
 | `snapshot_retention_days` | 7 | Snapshot retention period |
+| `consolidate_api_lb` | true | Production cutover: tear down the dedicated API frontend; `apiv2.trackrat.net` served by the consolidated webpage LB. No effect on staging. |
+| `frontend_via_cloudflare` | false | Tear down the dedicated API frontend in favor of a Cloudflare Tunnel (`cloudflared`). Flip only after the tunnel connector is healthy and DNS is cut over. |
 
 **Note:** Staging uses spot VMs for cost savings; production uses on-demand VMs for stability. Staging also runs a smaller `t2d-standard-1` (1 vCPU / 4 GB) as a cost experiment, while production stays on `t2d-standard-2` (2 vCPU / 8 GB).
 
@@ -376,6 +387,8 @@ cat /var/log/startup.log | grep -i disk
 ```
 infra_v2/
 ├── README.md                    # This file
+├── RUNBOOK-lb-consolidation.md  # API + webpage LB consolidation cutover runbook
+├── RUNBOOK-cloudflare-cutover.md  # Cloudflare Tunnel API-frontend cutover runbook
 ├── cloudbuild.yaml              # Production deployment pipeline
 ├── cloudbuild-staging.yaml      # Staging deployment pipeline
 ├── cloudbuild-terraform.yaml    # Terraform automation
