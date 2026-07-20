@@ -281,6 +281,11 @@ struct CongestionMapKitView: UIViewRepresentable {
     let stations: [JourneyStation]
     let trainPositions: [TrainLocationData]
     let highlightMode: SegmentHighlightMode
+    /// Ordered station codes of the route's topology path. When non-empty, the
+    /// path is drawn as a static base layer beneath the live congestion
+    /// segments, so low-frequency routes (e.g. Amtrak Keystone) still show a
+    /// continuous line where no train completed a segment recently (#1561).
+    let baseRouteStationCodes: [String]
     let onSegmentTap: (CongestionSegment) -> Void
 
     init(region: Binding<MKCoordinateRegion>,
@@ -288,13 +293,26 @@ struct CongestionMapKitView: UIViewRepresentable {
          stations: [JourneyStation],
          trainPositions: [TrainLocationData] = [],
          highlightMode: SegmentHighlightMode = .delays,
+         baseRouteStationCodes: [String] = [],
          onSegmentTap: @escaping (CongestionSegment) -> Void) {
         self._region = region
         self.segments = segments
         self.stations = stations
         self.trainPositions = trainPositions
         self.highlightMode = highlightMode
+        self.baseRouteStationCodes = baseRouteStationCodes
         self.onSegmentTap = onSegmentTap
+    }
+
+    /// Polyline coordinates for each consecutive station pair along a route
+    /// path. Pairs with unknown station coordinates are skipped; pairs without
+    /// GTFS shape data fall back to a straight line.
+    static func baseRoutePolylineCoordinates(stationCodes: [String]) -> [[CLLocationCoordinate2D]] {
+        zip(stationCodes, stationCodes.dropFirst()).compactMap { from, to -> [CLLocationCoordinate2D]? in
+            guard let fromCoords = Stations.getCoordinates(for: from),
+                  let toCoords = Stations.getCoordinates(for: to) else { return nil }
+            return RouteShapes.coordinates(from: from, to: to) ?? [fromCoords, toCoords]
+        }
     }
     
     func makeUIView(context: Context) -> MKMapView {
@@ -327,6 +345,22 @@ struct CongestionMapKitView: UIViewRepresentable {
             mapView.setRegion(region, animated: true)
         }
         
+        // Sync the static route-topology base layer. Inserted at the bottom of
+        // the overlay stack so live congestion segments always draw on top.
+        if baseRouteStationCodes != context.coordinator.baseRouteStationCodes {
+            context.coordinator.baseRouteStationCodes = baseRouteStationCodes
+            if !context.coordinator.baseRoutePolylines.isEmpty {
+                mapView.removeOverlays(context.coordinator.baseRoutePolylines)
+                context.coordinator.baseRoutePolylines = []
+            }
+            let coordinateRuns = Self.baseRoutePolylineCoordinates(stationCodes: baseRouteStationCodes)
+            for (index, coordinates) in coordinateRuns.enumerated() {
+                let polyline = RouteTopologyPolyline(coordinates: coordinates, count: coordinates.count)
+                mapView.insertOverlay(polyline, at: index)
+                context.coordinator.baseRoutePolylines.append(polyline)
+            }
+        }
+
         // Build desired overlay state (include congestionLevel to catch visual changes)
         let desiredOverlayState = Set(segments.map { OverlayIdentity(segmentID: $0.id, congestionLevel: $0.congestionLevel) })
         let highlightModeChanged = highlightMode != context.coordinator.highlightMode
@@ -451,6 +485,10 @@ struct CongestionMapKitView: UIViewRepresentable {
         var currentOverlayState: Set<OverlayIdentity> = []
         var overlayMap: [String: CongestionPolyline] = [:]
 
+        // Route-topology base layer state (not tappable, so kept out of `polylines`)
+        var baseRouteStationCodes: [String] = []
+        var baseRoutePolylines: [RouteTopologyPolyline] = []
+
         // MARK: - Public color/width helpers (used by updateUIView and rendererFor)
         func colorForSegment(_ segment: CongestionSegment) -> UIColor {
             guard highlightMode != .off else { return UIColor.clear }
@@ -468,6 +506,9 @@ struct CongestionMapKitView: UIViewRepresentable {
 
         // MARK: - Polyline Rendering
         func mapView(_ mapView: MKMapView, rendererFor overlay: MKOverlay) -> MKOverlayRenderer {
+            if let polyline = overlay as? RouteTopologyPolyline {
+                return polyline.makeRenderer()
+            }
             if let polyline = overlay as? CongestionPolyline {
                 let renderer = MKPolylineRenderer(polyline: polyline)
                 if let segment = polyline.segment {
