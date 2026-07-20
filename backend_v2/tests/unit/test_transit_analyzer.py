@@ -282,6 +282,30 @@ async def test_non_metro_same_minute_hop_still_dropped(mock_session):
 
 
 @pytest.mark.asyncio
+async def test_septa_metro_negative_hop_still_dropped(mock_session):
+    """The Metro floor is exact-0 only: a negative (out-of-order) hop is dropped.
+
+    A stale/out-of-order prediction can place the next stop's arrival before the
+    prior stop's departure, yielding a negative delta. That is corrupt data, not
+    a same-minute rounding artifact, so it must stay rejected by the invalid-time
+    guard rather than being floored to a bogus 1-minute segment (issue #1573).
+    """
+    journey = _same_minute_journey("SEPTA_METRO")
+    # Move the second stop's arrival one minute BEFORE the first stop's departure.
+    journey.stops[1].scheduled_arrival = datetime(2025, 7, 15, 7, 59, 0)
+    journey.stops[1].actual_arrival = datetime(2025, 7, 15, 7, 59, 0)
+    analyzer = TransitAnalyzer()
+    setup_mock_query(mock_session, journey.stops)
+
+    await analyzer.analyze_journey(mock_session, journey)
+
+    segment_times = [
+        obj for obj in mock_session.added_objects if isinstance(obj, SegmentTransitTime)
+    ]
+    assert len(segment_times) == 0, "negative Metro hop must not be floored"
+
+
+@pytest.mark.asyncio
 async def test_missing_actual_times(mock_session, sample_journey):
     """Test handling when actual times are missing."""
     # Remove actual times from middle stop
