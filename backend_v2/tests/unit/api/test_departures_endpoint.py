@@ -8,11 +8,14 @@ the SQL filter + filter-before-limit behavior is covered by
 tests/integration/test_departures_line_filter.py.
 """
 
+import inspect
 from unittest.mock import AsyncMock, patch
 
 from starlette.testclient import TestClient
 
+from trackrat.api.trains import get_departures, get_recent_departures
 from trackrat.models.api import DeparturesResponse
+from trackrat.services.departure import ALL_DATA_SOURCES
 
 
 class TestDeparturesLinesFilter:
@@ -72,3 +75,37 @@ class TestDeparturesLinesFilter:
         assert (
             mock_get.await_count == 1
         ), "Service must be invoked to compute the line-filtered result"
+
+
+class TestDataSourcesDescriptionListsAllSources:
+    """The `data_sources` param docs must list every served source (issue #1574).
+
+    The default is "all" and `ALL_DATA_SOURCES` governs what is actually served,
+    so a client passing an explicit `data_sources` filter has only these
+    description strings to learn which values exist. They drifted out of sync
+    when SEPTA_RR/SEPTA_METRO were added (present in `ALL_DATA_SOURCES`, absent
+    from the docs). These tests pin the two strings to `ALL_DATA_SOURCES` so any
+    future source addition that forgets the docs fails here.
+    """
+
+    @staticmethod
+    def _data_sources_description(endpoint) -> str:
+        param = inspect.signature(endpoint).parameters["data_sources"]
+        # The default is a FastAPI Query(...) object carrying `.description`.
+        return param.default.description or ""
+
+    def test_get_departures_description_lists_every_served_source(self):
+        description = self._data_sources_description(get_departures)
+        missing = [s for s in ALL_DATA_SOURCES if s not in description]
+        assert not missing, (
+            f"get_departures data_sources description omits served sources "
+            f"{missing}; description={description!r}"
+        )
+
+    def test_get_recent_departures_description_lists_every_served_source(self):
+        description = self._data_sources_description(get_recent_departures)
+        missing = [s for s in ALL_DATA_SOURCES if s not in description]
+        assert not missing, (
+            f"get_recent_departures data_sources description omits served "
+            f"sources {missing}; description={description!r}"
+        )
