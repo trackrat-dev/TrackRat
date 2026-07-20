@@ -705,7 +705,9 @@ TRIP_ET_HOUR=$(TZ=America/New_York date +%-H)
 # Test a single trip search direction.
 # Returns 0 on success, 1 on failure.
 # Usage: trip_test "label" from to expected tmpfile [always_expect]
-#   expected: "transfer" | "direct" | "any"
+#   expected: "transfer" | "direct" | "any" | "same_complex"
+#             "same_complex" expects no_direct_trains/0 trips (origin and dest
+#             are platforms in one station complex — see #1357)
 #   always_expect: "true" to FAIL on 0 trips (for 24/7 services like subway)
 #                  During overnight hours (1-5 AM ET), downgrades to WARN due to sparse real-time data
 trip_test() {
@@ -723,6 +725,25 @@ trip_test() {
 
   count=$(python3 -c "import json; d=json.load(open('$tmpfile')); print(len(d.get('trips',[])))" 2>/dev/null || echo 0)
   search_type=$(python3 -c "import json; d=json.load(open('$tmpfile')); print(d.get('metadata',{}).get('search_type',''))" 2>/dev/null || echo "")
+
+  # Same-complex pairs: both codes are platforms within ONE physical station
+  # complex (e.g. the 4/5/6 and N/R/W platforms at 14 St-Union Sq). There is no
+  # train to ride between platforms, so trip search correctly reports
+  # `no_direct_trains` with 0 trips (the #1231 Bug A/D design). 0 trips is the
+  # PASS condition here — asserting a trip was a false positive (see #1357).
+  if [[ "$expected" == "same_complex" ]]; then
+    # Require BOTH no_direct_trains AND 0 trips: a same-complex pair must never
+    # yield a ridable trip. Asserting only search_type would silently pass if the
+    # backend ever regressed to attach trips to a no_direct_trains response.
+    if [[ "$search_type" == "no_direct_trains" && "$count" -eq 0 ]]; then
+      pass "$label: same complex (no_direct_trains, 0 trips — correct)"
+      return 0
+    fi
+    fail "$label: same-complex pair expected no_direct_trains/0 trips, got '$search_type' ($count trips)"
+    FAILED_ROUTES+=("Trip search $label: expected no_direct_trains/0 trips, got $search_type ($count trips)")
+    return 1
+  fi
+
   if [[ "$count" -eq 0 ]]; then
     if [[ "$always_expect" == "true" && "$TRIP_ET_HOUR" -ge 1 && "$TRIP_ET_HOUR" -lt 6 ]]; then
       warn "$label: 0 trips ($search_type) — overnight (24/7 service, sparse data)"
@@ -857,15 +878,20 @@ trip_bidi "SUBWAY A↔D Inwood↔ConeyIsland"    "SA02" "SD43" "transfer" "true"
 trip_bidi "SUBWAY 7↔N Flushing↔Astoria"      "S701" "SR01" "transfer" "true"
 # Pelham Bay(6) ↔ Canarsie(L) — requires 6↔L transfer
 trip_bidi "SUBWAY 6↔L PelhamBay↔Canarsie"    "S601" "SL29" "transfer" "true"
-# Same-complex transfers (different line groups at same station)
-trip_bidi "SUBWAY 4/5/6↔N/R/W UnionSq"       "S635" "SR20" "any"      "true"
-trip_bidi "SUBWAY 7↔A/C/E TimesSq"           "S725" "SA27" "any"      "true"
-trip_bidi "SUBWAY 1/2↔A/B/C/D 59St-Columbus" "S125" "SA24" "any"      "true"
-trip_bidi "SUBWAY 2/3↔B/Q AtlanticAv"        "S235" "SD24" "any"      "true"
-trip_bidi "SUBWAY A/C↔2/3 FultonSt"          "SA38" "S229" "any"      "true"
-trip_bidi "SUBWAY A/C/F↔N/R/W JaySt"         "SA41" "SR29" "any"      "true"
-trip_bidi "SUBWAY A/C↔L BroadwayJunction"    "SA51" "SL22" "any"      "true"
-trip_bidi "SUBWAY 7↔G CourtSq"               "S719" "SG22" "any"      "true"
+# Same-complex pairs: both codes are platforms in ONE physical station complex
+# (verified via SUBWAY_STATION_COMPLEXES — e.g. S635/SR20 are both "14 St-Union
+# Sq"). There is no train to ride between platforms, so trip search correctly
+# returns `no_direct_trains`/0 trips (the #1231 Bug A/D design), NOT a transfer
+# trip. Expecting a trip here was a false positive that kept #1357 reopening;
+# assert the correct no_direct_trains outcome instead.
+trip_bidi "SUBWAY 4/5/6↔N/R/W UnionSq"       "S635" "SR20" "same_complex"
+trip_bidi "SUBWAY 7↔A/C/E TimesSq"           "S725" "SA27" "same_complex"
+trip_bidi "SUBWAY 1/2↔A/B/C/D 59St-Columbus" "S125" "SA24" "same_complex"
+trip_bidi "SUBWAY 2/3↔B/Q AtlanticAv"        "S235" "SD24" "same_complex"
+trip_bidi "SUBWAY A/C↔2/3 FultonSt"          "SA38" "S229" "same_complex"
+trip_bidi "SUBWAY A/C/F↔N/R/W JaySt"         "SA41" "SR29" "same_complex"
+trip_bidi "SUBWAY A/C↔L BroadwayJunction"    "SA51" "SL22" "same_complex"
+trip_bidi "SUBWAY 7↔G CourtSq"               "S719" "SG22" "same_complex"
 
 # ── Same-line direct (single subway train, 24/7) ───────────────────
 trip_bidi "SUBWAY 4/5 UnionSq↔WallSt"       "S635" "S419" "direct"   "true"
