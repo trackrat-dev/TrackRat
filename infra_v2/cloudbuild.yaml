@@ -72,6 +72,17 @@ steps:
       - 'gs://${_DEPLOY_BUCKET}/docker-compose.yml'
     waitFor: ['push-latest']
 
+  # Upload the isolated Cloudflare Tunnel compose file (issue #1578). The startup
+  # script fetches it only when the tunnel is enabled, but it is always published
+  # so enabling the flag needs no separate deploy.
+  - name: 'gcr.io/cloud-builders/gsutil'
+    id: 'upload-compose-tunnel'
+    args:
+      - 'cp'
+      - 'backend_v2/docker-compose.tunnel.yml'
+      - 'gs://${_DEPLOY_BUCKET}/docker-compose.tunnel.yml'
+    waitFor: ['push-latest']
+
   # Rolling restart of MIG to pull new image
   - name: 'gcr.io/cloud-builders/gcloud'
     id: 'deploy'
@@ -83,7 +94,7 @@ steps:
       - 'restart'
       - '${_MIG_NAME}'
       - '--zone=${_ZONE}'
-    waitFor: ['upload-compose']
+    waitFor: ['upload-compose', 'upload-compose-tunnel']
 
   # Scale down staging after successful production deploy (cost savings)
   - name: 'gcr.io/cloud-builders/gcloud'

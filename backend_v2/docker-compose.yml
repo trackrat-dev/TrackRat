@@ -8,11 +8,12 @@
 #   NJT_API_TOKEN  - NJ Transit API token (from Secret Manager)
 #   APNS_TEAM_ID, APNS_KEY_ID, APNS_BUNDLE_ID, APNS_ENVIRONMENT - APNS config
 #
-# Optional (Cloudflare Tunnel — replaces the Google load balancer as the API's
-# front door so no global forwarding rule is billed):
-#   COMPOSE_PROFILES=tunnel   - activates the cloudflared service below
-#   CLOUDFLARE_TUNNEL_TOKEN   - remotely-managed tunnel token (from Secret Manager)
-# Both are set by the startup script only when the tunnel-token secret exists.
+# The Cloudflare Tunnel connector (cloudflared) lives in a SEPARATE file,
+# docker-compose.tunnel.yml, so that a malformed connector config or token can
+# never abort the api/db bring-up (issue #1578). The startup script brings db/api
+# up from this file alone, then — only when enable_cloudflare_tunnel is true AND
+# a token secret is present — brings cloudflared up via a second, non-fatal
+# `compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d cloudflared`.
 
 services:
   db:
@@ -84,33 +85,6 @@ services:
       - ${DATA_DIR:-/mnt/disks/data}:${DATA_DIR:-/mnt/disks/data}:ro
     ports:
       - "8000:8000"
-    restart: unless-stopped
-    networks:
-      - trackrat
-
-  # Cloudflare Tunnel connector. Dormant unless the "tunnel" compose profile is
-  # active (the startup script sets COMPOSE_PROFILES=tunnel + CLOUDFLARE_TUNNEL_TOKEN
-  # only when the tunnel-token secret is present). When active, Cloudflare terminates
-  # TLS at its edge and routes the API hostname to http://api:8000 over this private
-  # network, so the API needs no Google load balancer or global forwarding rule.
-  cloudflared:
-    image: cloudflare/cloudflared:2026.7.1
-    container_name: trackrat-cloudflared
-    profiles: ["tunnel"]
-    # Pass the token via the TUNNEL_TOKEN env var, NOT a --token flag on a string
-    # command. docker-compose parses a string `command:` with shell-word splitting,
-    # and a real tunnel token interpolated inline trips that parser
-    # ("invalid command line string"), which aborts the WHOLE compose file — so
-    # `pull`/`up` fail and the MIG startup script crash-loops (staging outage
-    # 2026-07-19; production was spared only because it has no tunnel token, so the
-    # value interpolated to empty and parsed). cloudflared reads TUNNEL_TOKEN for
-    # `tunnel run`; the env var never goes through shell-word splitting and keeps
-    # the secret out of the process arg list.
-    command: tunnel --no-autoupdate run
-    environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
-    depends_on:
-      - api
     restart: unless-stopped
     networks:
       - trackrat

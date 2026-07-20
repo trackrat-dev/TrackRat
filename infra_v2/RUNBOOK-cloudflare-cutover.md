@@ -21,7 +21,7 @@ Front everything with Cloudflare (DNS is already there) and delete both Google
 load balancers:
 
 - **APIs** (`apiv2`, `staging.apiv2`) → **Cloudflare Tunnel** (`cloudflared`
-  container in `backend_v2/docker-compose.yml`). Cloudflare terminates TLS at
+  container in the isolated `backend_v2/docker-compose.tunnel.yml`). Cloudflare terminates TLS at
   its edge and routes the hostname to `http://api:8000` over the private Docker
   network. The VM needs no public ingress, no origin certificate, and no reverse
   proxy — the origin stays exactly as it is today (plain HTTP on `:8000`).
@@ -35,29 +35,49 @@ static IPs.
 
 ## Repo levers already in place
 
-- `backend_v2/docker-compose.yml` — `cloudflared` service under
-  `profiles: ["tunnel"]`. Inert unless the startup script activates the profile.
+- `infra_v2/terraform/variables.tf` — **`enable_cloudflare_tunnel`** (default
+  `false`). Master on/off switch for the connector. `cloudflared` starts **only**
+  when this flag is `true` **and** the token secret is present — secret-existence
+  alone is no longer enough (issue #1578). **This is the connector trigger.**
+- `backend_v2/docker-compose.tunnel.yml` — the `cloudflared` service, isolated
+  from `docker-compose.yml`. It is never parsed during the api/db bring-up, so a
+  malformed connector config or invalid token cannot abort the API.
 - `infra_v2/terraform/compute.tf` — startup script reads
-  `trackrat-cloudflare-tunnel-token-$ENVIRONMENT` from Secret Manager. If present,
-  it appends `CLOUDFLARE_TUNNEL_TOKEN` + `COMPOSE_PROFILES=tunnel` to `.env`, so
-  `cloudflared` starts. If absent (e.g. production today), the tunnel stays off.
+  `trackrat-cloudflare-tunnel-token-$ENVIRONMENT` from Secret Manager. When
+  `enable_cloudflare_tunnel=true` and the token is non-empty, it writes
+  `CLOUDFLARE_TUNNEL_TOKEN` to `.env`, brings `db`/`api` up from
+  `docker-compose.yml` alone, then starts `cloudflared` in a **separate,
+  non-fatal** `compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d
+  cloudflared`. If the flag is off or the token absent, the tunnel stays fully off.
 - `infra_v2/terraform/secrets.tf` — a NOTE only; the tunnel-token secret and its
   IAM grant are intentionally **not** Terraform-managed during the pilot (an IAM
   binding on a not-yet-created secret would fail the apply). The staging VM SA is
   granted read access out-of-band via `gcloud` in step 1b.
 - `infra_v2/terraform/variables.tf` — `frontend_via_cloudflare` (default `false`).
   Flipping the committed default to `true` tears down the dedicated API frontend
-  (IP, url map, proxies, forwarding rules). **This is the teardown trigger.**
+  (IP, url map, proxies, forwarding rules). **This is the LB teardown trigger**,
+  independent of `enable_cloudflare_tunnel`.
 
-Everything ships in the safe/off position: merging the branch changes nothing
-about the live load balancers until the manual steps below are done.
+Everything ships in the safe/off position: with `enable_cloudflare_tunnel=false`,
+merging the branch neither starts the connector nor touches the live load
+balancers until the steps below flip the flags.
 
 ---
 
-## Phase 1 — Staging pilot (zero production risk)
+## Phase 1 — Staging pilot (production untouched, but not risk-free on staging)
 
 The staging API LB is independent of production, and the tunnel runs *alongside*
 the existing LB, so nothing is torn down until after the tunnel is verified.
+
+Two caveats keep this from being literally "zero risk" — both on **staging only**:
+
+- The connector is now isolated in `docker-compose.tunnel.yml` and brought up
+  non-fatally *after* `db`/`api` (issue #1578), so a bad token/config can no
+  longer abort the API the way the 2026-07-19 outage did. It still shares the VM,
+  so treat a first enable as a real change, not a no-op.
+- Since #1577, `staging.trackrat.net` (the **webpage**) is host-routed by the
+  staging **API** LB. Tearing that LB down at 1e therefore also drops staging
+  webpage serving — account for it before flipping `frontend_via_cloudflare`.
 
 ### 1a. Create the tunnel (Cloudflare dashboard)
 
@@ -93,10 +113,13 @@ both environments have a token (see the note in that file).
 
 ### 1c. Ship the connector (repo → staging)
 
-Merge this branch to `main`. The staging Cloud Build runs Terraform (new
-instance template) and rolls a new MIG instance. On boot the startup script
-finds the staging secret, activates the `tunnel` profile, and starts
-`cloudflared`. Verify:
+Set `enable_cloudflare_tunnel = true` in `infra_v2/terraform/variables.tf`
+(committed default, not `-var`) and merge to `main`. The staging Cloud Build
+runs Terraform (new instance template) and rolls a new MIG instance. On boot the
+startup script finds the staging secret, and — because the flag is now on —
+fetches `docker-compose.tunnel.yml` and starts `cloudflared` in its isolated,
+non-fatal `up`. (With the flag left `false`, the secret alone does nothing.)
+Verify:
 
 - Dashboard: the tunnel shows **HEALTHY** with one connector.
 - Logs: `PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --env staging --search cloudflared`

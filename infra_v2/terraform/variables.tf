@@ -51,6 +51,12 @@ variable "frontend_via_cloudflare" {
   default     = false
 }
 
+variable "enable_cloudflare_tunnel" {
+  description = "Master on/off switch for the Cloudflare Tunnel connector (cloudflared). When false (the committed default), the startup script NEVER creates the cloudflared container, regardless of whether the trackrat-cloudflare-tunnel-token-<env> secret exists — so a dormant/invalid token can no longer crash-loop a connector (issue #1578). Activation requires BOTH this flag true AND the secret present. This gates only whether the connector runs; frontend_via_cloudflare separately controls tearing down the Google API frontend. Flip via a committed default (not -var) so push-triggered applies stay consistent, and only after a valid token is stored — see infra_v2/RUNBOOK-cloudflare-cutover.md."
+  type        = bool
+  default     = false
+}
+
 variable "disk_size_gb" {
   description = "Persistent disk size in GB"
   type        = number
