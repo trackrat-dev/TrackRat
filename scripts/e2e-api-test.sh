@@ -732,12 +732,15 @@ trip_test() {
   # `no_direct_trains` with 0 trips (the #1231 Bug A/D design). 0 trips is the
   # PASS condition here — asserting a trip was a false positive (see #1357).
   if [[ "$expected" == "same_complex" ]]; then
-    if [[ "$search_type" == "no_direct_trains" ]]; then
+    # Require BOTH no_direct_trains AND 0 trips: a same-complex pair must never
+    # yield a ridable trip. Asserting only search_type would silently pass if the
+    # backend ever regressed to attach trips to a no_direct_trains response.
+    if [[ "$search_type" == "no_direct_trains" && "$count" -eq 0 ]]; then
       pass "$label: same complex (no_direct_trains, 0 trips — correct)"
       return 0
     fi
-    fail "$label: same-complex pair expected no_direct_trains, got '$search_type' ($count trips)"
-    FAILED_ROUTES+=("Trip search $label: expected no_direct_trains, got $search_type")
+    fail "$label: same-complex pair expected no_direct_trains/0 trips, got '$search_type' ($count trips)"
+    FAILED_ROUTES+=("Trip search $label: expected no_direct_trains/0 trips, got $search_type ($count trips)")
     return 1
   fi
 
