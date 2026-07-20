@@ -96,7 +96,7 @@ async def get_departures(
     ),
     data_sources: str | None = Query(
         None,
-        description="Comma-separated list of data sources to include: NJT,AMTRAK,PATH,PATCO,LIRR,MNR,SUBWAY,BART,MBTA,METRA,WMATA. Default: all",
+        description="Comma-separated list of data sources to include: NJT,AMTRAK,PATH,PATCO,LIRR,MNR,SUBWAY,BART,MBTA,METRA,WMATA,SEPTA_RR,SEPTA_METRO. Default: all",
     ),
     lines: str | None = Query(
         None,
@@ -274,7 +274,7 @@ async def get_recent_departures(
     ),
     data_sources: str | None = Query(
         None,
-        description="Comma-separated list of data sources to include: NJT,AMTRAK,PATH,PATCO,LIRR,MNR,SUBWAY,BART,MBTA,METRA,WMATA. Default: all",
+        description="Comma-separated list of data sources to include: NJT,AMTRAK,PATH,PATCO,LIRR,MNR,SUBWAY,BART,MBTA,METRA,WMATA,SEPTA_RR,SEPTA_METRO. Default: all",
     ),
     lines: str | None = Query(
         None,
