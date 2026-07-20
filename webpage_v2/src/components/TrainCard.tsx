@@ -1,7 +1,7 @@
 import type { KeyboardEvent } from 'react';
 import { Train } from '../types';
 import { formatRelativeMinutes, getDelayMinutes, isToday } from '../utils/date';
-import { formatDelayText } from '../utils/formatting';
+import { formatArrivalDelayText, formatDelayText } from '../utils/formatting';
 import { StatusBadge } from './StatusBadge';
 import { ShareButton } from './ShareButton';
 import { TimeDisplay } from './TimeDisplay';
@@ -14,6 +14,12 @@ interface TrainCardProps {
   to?: string;
   departed?: boolean;
 }
+
+// A train can leave its origin on time and still slip en route (issue
+// #1527): the status pill must reflect the rider's destination arrival, not
+// just the origin departure. Threshold matches the iOS trip list's
+// DELAY_THRESHOLD_MINUTES so both clients flag the same trains.
+const ARRIVAL_DELAY_STATUS_THRESHOLD_MINUTES = 3;
 
 export function TrainCard({ train, onClick, from, to, departed = false }: TrainCardProps) {
   const bestDepartureTime = train.departure.actual_time || train.departure.updated_time || undefined;
@@ -40,13 +46,17 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
     from &&
     train.train_position?.at_station_code === from;
 
+  const arrivesLate =
+    delayMinutes <= 0 &&
+    arrivalDelayMinutes >= ARRIVAL_DELAY_STATUS_THRESHOLD_MINUTES;
+
   const status = train.is_cancelled
     ? 'cancelled'
     : departed
     ? 'departed'
     : isBoarding
     ? 'boarding'
-    : delayMinutes > 0
+    : delayMinutes > 0 || arrivesLate
     ? 'delayed'
     : 'on time';
 
@@ -100,6 +110,8 @@ export function TrainCard({ train, onClick, from, to, departed = false }: TrainC
               label={
                 status === 'cancelled' || status === 'departed' || status === 'boarding'
                   ? undefined
+                  : arrivesLate
+                  ? formatArrivalDelayText(arrivalDelayMinutes)
                   : formatDelayText(delayMinutes)
               }
             />

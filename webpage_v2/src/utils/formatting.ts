@@ -4,6 +4,15 @@ export function formatDelayText(delayMinutes: number): string {
   return `${delayMinutes} mins late`;
 }
 
+/**
+ * Pill label for a train that departs on time but arrives late (issue
+ * #1527) — distinguishes an en-route slip from a delayed departure.
+ * Callers gate on delayMinutes > 0; at 0 this would read "Arrives On time".
+ */
+export function formatArrivalDelayText(delayMinutes: number): string {
+  return `Arrives ${formatDelayText(delayMinutes)}`;
+}
+
 export function getStatusBadgeClass(status: string): string {
   const baseClass = 'px-2 py-1 rounded-full text-xs font-semibold';
   switch (status.toLowerCase()) {

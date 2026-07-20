@@ -284,6 +284,31 @@ class DepartureService:
             return eff_arrival or eff_departure
         return eff_departure or eff_arrival
 
+    @staticmethod
+    def _effective_updated_arrival(
+        journey: TrainJourney,
+        to_stop: JourneyStop,
+        sorted_stops: list[JourneyStop],
+    ) -> datetime | None:
+        """Live time to display for a to-stop's arrival on a departure board.
+
+        Arrival twin of _effective_updated_time: the departure boards built
+        the arrival block from the raw updated_arrival/updated_departure pair
+        (the last raw NJT read on this path, issue #1527), so an NJT
+        intermediate destination bypassed the canonical inversion correction.
+        Routing through effective_njt_updated_times keeps the semantics
+        single-sourced: at intermediate stops the max() surfaces the live
+        estimate (clamping a nominally-early TIME to the schedule, matching
+        the SQL twin); at a genuine terminal the raw fields pass through so
+        the turnaround DEP_TIME can never be shown as the arrival (#1492).
+        """
+        terminal_idx = terminal_stop_index(sorted_stops, journey.terminal_station_code)
+        is_terminal = terminal_idx is not None and sorted_stops[terminal_idx] is to_stop
+        eff_arrival, eff_departure = effective_njt_updated_times(
+            to_stop, journey.data_source, is_terminal=is_terminal
+        )
+        return eff_arrival or eff_departure
+
     async def get_departures(
         self,
         db: AsyncSession,
@@ -590,8 +615,11 @@ class DepartureService:
                         name=get_station_name(to_station),
                         scheduled_time=to_stop.scheduled_arrival
                         or to_stop.scheduled_departure,
-                        updated_time=to_stop.updated_arrival
-                        or to_stop.updated_departure,
+                        # NJT inversion correction for the destination stop —
+                        # see _effective_updated_arrival (issue #1527).
+                        updated_time=self._effective_updated_arrival(
+                            journey, to_stop, sorted_stops
+                        ),
                         actual_time=to_stop.actual_arrival or to_stop.actual_departure,
                         track=to_stop.track,
                     )
@@ -869,8 +897,11 @@ class DepartureService:
                         name=get_station_name(to_station),
                         scheduled_time=to_stop.scheduled_arrival
                         or to_stop.scheduled_departure,
-                        updated_time=to_stop.updated_arrival
-                        or to_stop.updated_departure,
+                        # NJT inversion correction for the destination stop —
+                        # see _effective_updated_arrival (issue #1527).
+                        updated_time=self._effective_updated_arrival(
+                            journey, to_stop, sorted_stops
+                        ),
                         actual_time=to_stop.actual_arrival or to_stop.actual_departure,
                         track=to_stop.track,
                     )

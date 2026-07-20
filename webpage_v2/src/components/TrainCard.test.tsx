@@ -82,6 +82,58 @@ describe('TrainCard', () => {
     expect(screen.getByText('5 mins late')).toBeInTheDocument();
   });
 
+  // Issue #1527: a train that departs on time but slips en route claimed
+  // "On time" in the list while the detail screen showed the arrival delay.
+  describe('en-route arrival delay', () => {
+    it('flags a train that departs on time but arrives late', () => {
+      renderCard(makeTrain({
+        arrival: {
+          code: 'NY',
+          name: 'New York Penn Station',
+          scheduled_time: '2025-01-15T15:10:00-05:00',
+          updated_time: '2025-01-15T15:19:00-05:00',
+        },
+      }));
+
+      expect(screen.getByText('Arrives 9 mins late')).toBeInTheDocument();
+      expect(screen.queryByText('On time')).not.toBeInTheDocument();
+    });
+
+    it('keeps "On time" when the arrival slip is under the threshold', () => {
+      renderCard(makeTrain({
+        arrival: {
+          code: 'NY',
+          name: 'New York Penn Station',
+          scheduled_time: '2025-01-15T15:10:00-05:00',
+          updated_time: '2025-01-15T15:12:00-05:00',
+        },
+      }));
+
+      expect(screen.getByText('On time')).toBeInTheDocument();
+      expect(screen.queryByText(/Arrives/)).not.toBeInTheDocument();
+    });
+
+    it('lets a departure delay dominate the pill over the arrival slip', () => {
+      renderCard(makeTrain({
+        departure: {
+          code: 'TR',
+          name: 'Trenton',
+          scheduled_time: '2025-01-15T14:00:00-05:00',
+          updated_time: '2025-01-15T14:05:00-05:00',
+        },
+        arrival: {
+          code: 'NY',
+          name: 'New York Penn Station',
+          scheduled_time: '2025-01-15T15:10:00-05:00',
+          updated_time: '2025-01-15T15:19:00-05:00',
+        },
+      }));
+
+      expect(screen.getByText('5 mins late')).toBeInTheDocument();
+      expect(screen.queryByText(/Arrives/)).not.toBeInTheDocument();
+    });
+  });
+
   it('leads with the live time and strikes through the scheduled time when delayed', () => {
     const { container } = renderCard(makeTrain({
       departure: {
