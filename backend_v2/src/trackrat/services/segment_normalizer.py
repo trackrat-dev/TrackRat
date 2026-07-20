@@ -63,6 +63,26 @@ def _is_segment_anomalous(from_station: str, to_station: str, data_source: str) 
     return True
 
 
+def _dominant_real_pair(
+    data_list: list[dict[str, Any]],
+) -> tuple[str, str] | None:
+    """Return the real (from, to) leg that contributed the most samples.
+
+    Each entry in ``data_list`` carries the real observed leg (``real_from`` /
+    ``real_to``) it was expanded from plus that leg's ``sample_count``. The leg
+    with the highest total sample count wins (ties broken deterministically by
+    the pair itself). This gives clients a real, served station pair to navigate
+    to when a canonical sub-segment's own endpoints are skip-stop stations no
+    train stops at (e.g. Amtrak CWH→PHN, derived from the real TR→PH leg).
+    """
+    pair_samples: dict[tuple[str, str], int] = defaultdict(int)
+    for d in data_list:
+        pair_samples[(d["real_from"], d["real_to"])] += d["sample_count"]
+    if not pair_samples:
+        return None
+    return max(pair_samples.items(), key=lambda kv: (kv[1], kv[0]))[0]
+
+
 def normalize_aggregated_segments(
     raw_segments: list[SegmentCongestion],
 ) -> list[SegmentCongestion]:
@@ -135,6 +155,12 @@ def normalize_aggregated_segments(
                     "baseline_train_count": segment.baseline_train_count,
                     "frequency_factor": segment.frequency_factor,
                     "frequency_level": segment.frequency_level,
+                    # The real observed leg this canonical pair came from — a pair
+                    # of stations trains actually stopped at. Kept so clients can
+                    # redirect a tap on a skip-stop canonical sub-segment to a
+                    # real, served station board.
+                    "real_from": segment.from_station,
+                    "real_to": segment.to_station,
                 }
             )
 
@@ -144,6 +170,7 @@ def normalize_aggregated_segments(
         # Combine statistics from all contributing segments
         total_samples = sum(d["sample_count"] for d in data_list)
         total_cancellations = sum(d["cancellation_count"] for d in data_list)
+        dominant_real_pair = _dominant_real_pair(data_list)
 
         if total_samples == 0:
             # Only cancellation data - skip or create minimal entry
@@ -162,6 +189,7 @@ def normalize_aggregated_segments(
                         average_delay_minutes=0.0,
                         cancellation_count=total_cancellations,
                         cancellation_rate=(total_cancellations / total_journeys * 100),
+                        dominant_real_pair=dominant_real_pair,
                     )
                 )
             continue
@@ -249,6 +277,7 @@ def normalize_aggregated_segments(
                 baseline_train_count=baseline_train_count,
                 frequency_factor=frequency_factor,
                 frequency_level=frequency_level,
+                dominant_real_pair=dominant_real_pair,
             )
         )
 

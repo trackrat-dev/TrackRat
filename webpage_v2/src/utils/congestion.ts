@@ -143,6 +143,20 @@ export function partitionRenderableSegments(
   return { renderable, skipped };
 }
 
+/**
+ * Station pair a tap on this segment should navigate to. Skip-stop expansion
+ * yields canonical sub-segments whose endpoints no train stops at (e.g. Amtrak
+ * CWH→PHN); the backend supplies the real served leg the segment was derived
+ * from so the tap lands on a populated departures board instead of an empty one
+ * (#1560). Falls back to the segment's own endpoints when the backend omits it.
+ */
+export function navStationCodes(segment: SegmentCongestion): [string, string] {
+  return [
+    segment.real_from_station ?? segment.from_station,
+    segment.real_to_station ?? segment.to_station,
+  ];
+}
+
 export interface SegmentFeatureProperties {
   from_station: string;
   to_station: string;
@@ -155,31 +169,36 @@ export interface SegmentFeatureProperties {
 /**
  * One straight-line GeoJSON `LineString` feature per renderable segment,
  * carrying the properties the map layer and popup read (`color` drives the
- * data-driven line paint; `from_station`/`to_station` drive tap navigation).
+ * data-driven line paint; `from_station`/`to_station` are the resolved served
+ * pair that drives tap navigation, while `segment_name` keeps the canonical
+ * stretch the user is hovering).
  */
 export function buildSegmentFeatureCollection(
   renderable: RenderableSegment[],
 ): FeatureCollection<LineString, SegmentFeatureProperties> {
   return {
     type: 'FeatureCollection',
-    features: renderable.map(({ segment, from, to }) => ({
-      type: 'Feature',
-      properties: {
-        from_station: segment.from_station,
-        to_station: segment.to_station,
-        segment_name: `${segment.from_station_name} → ${segment.to_station_name}`,
-        congestion_level: segment.congestion_level,
-        average_delay_minutes: segment.average_delay_minutes,
-        color: CONGESTION_HEX[segment.congestion_level],
-      },
-      geometry: {
-        type: 'LineString',
-        coordinates: [
-          [from.lon, from.lat],
-          [to.lon, to.lat],
-        ],
-      },
-    })),
+    features: renderable.map(({ segment, from, to }) => {
+      const [navFrom, navTo] = navStationCodes(segment);
+      return {
+        type: 'Feature',
+        properties: {
+          from_station: navFrom,
+          to_station: navTo,
+          segment_name: `${segment.from_station_name} → ${segment.to_station_name}`,
+          congestion_level: segment.congestion_level,
+          average_delay_minutes: segment.average_delay_minutes,
+          color: CONGESTION_HEX[segment.congestion_level],
+        },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [from.lon, from.lat],
+            [to.lon, to.lat],
+          ],
+        },
+      };
+    }),
   };
 }
 

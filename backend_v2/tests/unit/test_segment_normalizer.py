@@ -359,6 +359,128 @@ class TestNormalizeAggregatedSegments:
         assert result[0].congestion_level == "normal"
 
 
+class TestDominantRealPair:
+    """Test that normalized segments carry the real served leg they came from.
+
+    Skip-stop expansion produces canonical sub-segments whose endpoints are
+    stations no train stops at (e.g. Amtrak CWH→PHN). ``dominant_real_pair``
+    records the real leg (stations trains actually stopped at) that contributed
+    the most samples, so clients can redirect a tap on such a sub-segment to a
+    populated station board (issue #1560).
+    """
+
+    def test_adjacent_segment_reports_itself(self):
+        """An already-canonical served segment reports its own endpoints."""
+        raw = [
+            SegmentCongestion(
+                from_station="NY",
+                to_station="SE",
+                data_source="NJT",
+                congestion_factor=1.1,
+                congestion_level="normal",
+                avg_transit_minutes=5.0,
+                baseline_minutes=4.5,
+                sample_count=10,
+                average_delay_minutes=0.5,
+            )
+        ]
+        result = normalize_aggregated_segments(raw)
+
+        assert len(result) == 1
+        assert result[0].dominant_real_pair == ("NY", "SE")
+
+    def test_expanded_subsegments_point_to_real_leg(self):
+        """Each canonical sub-segment points back to the real skip-stop leg."""
+        # NY -> NP skips SE; both NY->SE and SE->NP came from the real NY->NP leg.
+        raw = [
+            SegmentCongestion(
+                from_station="NY",
+                to_station="NP",
+                data_source="NJT",
+                congestion_factor=1.2,
+                congestion_level="moderate",
+                avg_transit_minutes=10.0,
+                baseline_minutes=8.0,
+                sample_count=5,
+                average_delay_minutes=2.0,
+            )
+        ]
+        result = normalize_aggregated_segments(raw)
+
+        segments_by_key = {(s.from_station, s.to_station): s for s in result}
+        assert segments_by_key[("NY", "SE")].dominant_real_pair == ("NY", "NP")
+        assert segments_by_key[("SE", "NP")].dominant_real_pair == ("NY", "NP")
+
+    def test_amtrak_skip_stop_redirects_to_served_pair(self):
+        """Reproduces #1560: tapping Amtrak CWH→PHN must resolve to TR→PH.
+
+        NEC Amtrak trains run TR→PH skipping Cornwells Heights (CWH) and North
+        Philadelphia (PHN). The leg expands to the canonical sub-segments
+        TR→CWH, CWH→PHN, PHN→PH — none of whose endpoints an Amtrak train
+        stops at. Every sub-segment must carry TR→PH so a tap lands on a real,
+        populated departures board instead of an empty one.
+        """
+        raw = [
+            SegmentCongestion(
+                from_station="TR",
+                to_station="PH",
+                data_source="AMTRAK",
+                congestion_factor=1.1,
+                congestion_level="normal",
+                avg_transit_minutes=30.0,
+                baseline_minutes=28.0,
+                sample_count=12,
+                average_delay_minutes=2.0,
+            )
+        ]
+        result = normalize_aggregated_segments(raw)
+
+        segments_by_key = {(s.from_station, s.to_station): s for s in result}
+        assert ("TR", "CWH") in segments_by_key
+        assert ("CWH", "PHN") in segments_by_key
+        assert ("PHN", "PH") in segments_by_key
+        # The tapped skip-stop sub-segment resolves to the served TR->PH board.
+        assert segments_by_key[("CWH", "PHN")].dominant_real_pair == ("TR", "PH")
+        for seg in result:
+            assert seg.dominant_real_pair == ("TR", "PH")
+
+    def test_highest_sample_real_leg_wins(self):
+        """When multiple real legs feed a canonical pair, the busiest one wins."""
+        raw = [
+            # NY -> NP (5 samples) expands to [NY->SE, SE->NP]
+            SegmentCongestion(
+                from_station="NY",
+                to_station="NP",
+                data_source="NJT",
+                congestion_factor=1.2,
+                congestion_level="moderate",
+                avg_transit_minutes=10.0,
+                baseline_minutes=8.0,
+                sample_count=5,
+                average_delay_minutes=2.0,
+            ),
+            # Direct NY -> SE (10 samples), also feeds the NY->SE canonical pair
+            SegmentCongestion(
+                from_station="NY",
+                to_station="SE",
+                data_source="NJT",
+                congestion_factor=1.1,
+                congestion_level="normal",
+                avg_transit_minutes=5.0,
+                baseline_minutes=4.5,
+                sample_count=10,
+                average_delay_minutes=0.5,
+            ),
+        ]
+        result = normalize_aggregated_segments(raw)
+        segments_by_key = {(s.from_station, s.to_station): s for s in result}
+
+        # NY->SE gets 5 samples via NY->NP and 10 direct; the direct leg wins.
+        assert segments_by_key[("NY", "SE")].dominant_real_pair == ("NY", "SE")
+        # SE->NP only comes from the NY->NP leg.
+        assert segments_by_key[("SE", "NP")].dominant_real_pair == ("NY", "NP")
+
+
 class TestNormalizeIndividualSegments:
     """Test the normalize_individual_segments function."""
 

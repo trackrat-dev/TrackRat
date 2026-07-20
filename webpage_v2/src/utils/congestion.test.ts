@@ -10,8 +10,10 @@ import {
   CONGESTION_LEVELS,
   partitionRenderableSegments,
   buildSegmentFeatureCollection,
+  navStationCodes,
   computeSegmentBounds,
   averageRouteDelay,
+  RenderableSegment,
 } from './congestion';
 
 // Real stations (all carry coordinates in data/stations.ts) so the tests
@@ -186,6 +188,61 @@ describe('buildSegmentFeatureCollection', () => {
   it('produces an empty FeatureCollection for no renderable segments', () => {
     const fc = buildSegmentFeatureCollection([]);
     expect(fc.features).toHaveLength(0);
+  });
+
+  it('navigation endpoints resolve to the real served pair, display stays canonical', () => {
+    // Issue #1560: a skip-stop canonical sub-segment (Amtrak CWH→PHN — stations
+    // no train stops at) draws on the CWH→PHN stretch but its tap must target
+    // the real served leg TR→PH so the departures board is populated.
+    const renderable: RenderableSegment[] = [
+      {
+        segment: makeSegment({
+          from_station: 'CWH',
+          to_station: 'PHN',
+          from_station_name: 'Cornwells Heights',
+          to_station_name: 'North Philadelphia',
+          data_source: 'AMTRAK',
+          real_from_station: 'TR',
+          real_to_station: 'PH',
+        }),
+        from: { lon: NY.lon, lat: NY.lat },
+        to: { lon: NP.lon, lat: NP.lat },
+      },
+    ];
+    const [feature] = buildSegmentFeatureCollection(renderable).features;
+    // Tap target = the served pair.
+    expect(feature.properties.from_station).toBe('TR');
+    expect(feature.properties.to_station).toBe('PH');
+    // Hover label = the canonical stretch the user is pointing at.
+    expect(feature.properties.segment_name).toBe(
+      'Cornwells Heights → North Philadelphia',
+    );
+  });
+});
+
+describe('navStationCodes', () => {
+  it('returns the real served pair when the backend supplies it', () => {
+    const seg = makeSegment({
+      from_station: 'CWH',
+      to_station: 'PHN',
+      real_from_station: 'TR',
+      real_to_station: 'PH',
+    });
+    expect(navStationCodes(seg)).toEqual(['TR', 'PH']);
+  });
+
+  it('falls back to the segment endpoints when no real pair is present', () => {
+    const seg = makeSegment({ from_station: 'NY', to_station: 'NP' });
+    expect(navStationCodes(seg)).toEqual(['NY', 'NP']);
+  });
+
+  it('falls back per-endpoint when only one real code is present', () => {
+    const seg = makeSegment({
+      from_station: 'NY',
+      to_station: 'NP',
+      real_from_station: 'TR',
+    });
+    expect(navStationCodes(seg)).toEqual(['TR', 'NP']);
   });
 });
 

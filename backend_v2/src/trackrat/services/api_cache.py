@@ -427,6 +427,16 @@ class ApiCacheService:
                 baseline_train_count=segment.baseline_train_count,
                 frequency_factor=segment.frequency_factor,
                 frequency_level=segment.frequency_level,
+                real_from_station=(
+                    segment.dominant_real_pair[0]
+                    if segment.dominant_real_pair
+                    else None
+                ),
+                real_to_station=(
+                    segment.dominant_real_pair[1]
+                    if segment.dominant_real_pair
+                    else None
+                ),
             )
             aggregated_api_segments.append(segment_model)
 

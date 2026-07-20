@@ -235,6 +235,12 @@ export interface SegmentCongestion {
   baseline_train_count: number | null;
   frequency_factor: number | null;
   frequency_level: 'healthy' | 'moderate' | 'reduced' | 'severe' | null;
+  // The real, served station pair this segment was derived from. Skip-stop
+  // expansion produces canonical sub-segments whose endpoints no train stops at
+  // (e.g. Amtrak CWH→PHN); tapping resolves to this pair so the departures board
+  // is populated instead of empty (#1560). Absent on older backend responses.
+  real_from_station?: string | null;
+  real_to_station?: string | null;
 }
 
 export interface CongestionResponse {

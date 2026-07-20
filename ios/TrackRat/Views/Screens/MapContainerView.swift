@@ -142,15 +142,15 @@ struct MapContainerView: View {
                 onSegmentTap: { segment in
                     guard appState.enableSegmentTap else { return }
                     let route = RouteTopology.routeContaining(
-                        from: segment.fromStation,
-                        to: segment.toStation,
+                        from: segment.navFromStation,
+                        to: segment.navToStation,
                         dataSource: segment.dataSource
                     )
                     routeStatusContext = RouteStatusContext(
                         dataSource: segment.dataSource,
                         lineId: route?.id,
-                        fromStationCode: segment.fromStation,
-                        toStationCode: segment.toStation
+                        fromStationCode: segment.navFromStation,
+                        toStationCode: segment.navToStation
                     )
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 },

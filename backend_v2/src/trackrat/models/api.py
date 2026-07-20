@@ -627,6 +627,14 @@ class SegmentCongestion(BaseModel):
     baseline_train_count: float | None = Field(default=None, ge=0.0)
     frequency_factor: float | None = Field(default=None, ge=0.0)
     frequency_level: Literal["healthy", "moderate", "reduced", "severe"] | None = None
+    # The real, served station pair this segment was derived from. Skip-stop
+    # expansion produces canonical sub-segments whose endpoints (from_station /
+    # to_station) are stations no train stops at (e.g. Amtrak CWH→PHN). Clients
+    # navigate a tap to this pair — a real leg trains actually ran — so the
+    # station board is populated instead of empty. Equals from/to for segments
+    # whose own endpoints are already served.
+    real_from_station: str | None = None
+    real_to_station: str | None = None
 
 
 class CongestionMapResponse(BaseModel):

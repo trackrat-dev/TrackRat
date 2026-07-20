@@ -364,6 +364,7 @@ class TestApiCacheService:
                 baseline_train_count=12,
                 frequency_factor=0.83,
                 frequency_level="healthy",
+                dominant_real_pair=None,
             )
         ]
         mock_individual = []
@@ -445,6 +446,7 @@ class TestApiCacheService:
                 baseline_train_count=12,
                 frequency_factor=0.83,
                 frequency_level="healthy",
+                dominant_real_pair=None,
             ),
         ]
         mock_individual = []
