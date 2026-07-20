@@ -29,6 +29,8 @@ check_njt_stop_order = gtv.check_njt_stop_order
 fetch_trackrat_train_stop_order = gtv.fetch_trackrat_train_stop_order
 compare_by_train_number = gtv.compare_by_train_number
 _norm_train_number = gtv._norm_train_number
+_septa_rr_arrival_from_entry = gtv._septa_rr_arrival_from_entry
+ZoneInfo = gtv.ZoneInfo
 
 
 # --- Helpers ---
@@ -1170,3 +1172,59 @@ class TestRunSeptaRrByTrainNumber:
         assert gtv.PASS_COUNT == 1  # SEPR90004 matched
         assert gtv.WARN_COUNT == 1  # SEPR90228 near-term non-overlap
         assert gtv.FAIL_COUNT == 0
+
+
+class TestSeptaRrArrivalFromEntry:
+    """_septa_rr_arrival_from_entry: entry -> GroundTruthArrival conversion.
+
+    Guards the #1591 fix: short-turn trains whose destination isn't in
+    _SEPTA_RR_DEST_TO_CODE must be KEPT (the per-station train-number matcher
+    ignores destination), while resolved terminating arrivals are still dropped.
+    """
+
+    ET = ZoneInfo("America/New_York")
+    # NOW is 15:00 UTC == 10:00 ET; a 10:05 ET depart is 5 min away.
+    DEPART = "2026-02-22 10:05:00"
+
+    def _entry(self, destination: str, train_id: str = "8360") -> dict:
+        return {
+            "destination": destination,
+            "depart_time": self.DEPART,
+            "train_id": train_id,
+            "track": "3",
+        }
+
+    def test_unresolved_short_turn_destination_is_kept(self):
+        # "Malvern" is a real SEPTA short-turn not in _SEPTA_RR_DEST_TO_CODE.
+        entry = self._entry("Malvern", train_id="9821")
+        arrival = _septa_rr_arrival_from_entry(entry, "SEPR90701", NOW, self.ET)
+
+        assert arrival is not None, "short-turn train must not be dropped"
+        assert arrival.train_id == "9821"
+        assert arrival.station_code == "SEPR90701"
+        assert arrival.destination_code == ""  # unresolved -> empty, not dropped
+        assert arrival.minutes_away == 5
+
+    def test_resolved_terminating_arrival_is_dropped(self):
+        # destination "Trenton" resolves to SEPR90701; querying that same station
+        # means the train terminates here with no onward departure.
+        entry = self._entry("Trenton", train_id="777")
+        arrival = _septa_rr_arrival_from_entry(entry, "SEPR90701", NOW, self.ET)
+
+        assert arrival is None
+
+    def test_resolved_through_destination_is_kept_with_code(self):
+        # destination "Trenton" (SEPR90701) queried at a different station (30th
+        # Street, SEPR90004) is a normal through departure and keeps its code.
+        entry = self._entry("Trenton", train_id="4256")
+        arrival = _septa_rr_arrival_from_entry(entry, "SEPR90004", NOW, self.ET)
+
+        assert arrival is not None
+        assert arrival.destination_code == "SEPR90701"
+        assert arrival.train_id == "4256"
+
+    def test_unparseable_time_is_dropped(self):
+        entry = {"destination": "Malvern", "depart_time": "", "train_id": "1"}
+        arrival = _septa_rr_arrival_from_entry(entry, "SEPR90701", NOW, self.ET)
+
+        assert arrival is None

@@ -1510,14 +1510,61 @@ def _parse_septa_local_time(value: str, tz: ZoneInfo) -> datetime | None:
     return None
 
 
+def _septa_rr_arrival_from_entry(
+    entry: dict, code: str, now: datetime, et: ZoneInfo
+) -> GroundTruthArrival | None:
+    """Convert one SEPTA Arrivals-API entry into a ``GroundTruthArrival``.
+
+    Returns ``None`` only when the entry can't participate in per-station
+    train-number matching: a *resolved* terminating arrival (its destination is
+    this very station, so there's no onward departure) or an unparseable time.
+
+    Unresolved destinations — short-turns like Malvern/Wilmington that aren't in
+    ``_SEPTA_RR_DEST_TO_CODE`` — are KEPT. The #1575 matcher keys on station +
+    train number and ignores destination, so dropping them here would lose
+    exactly the short-turn / through-routed coverage this path is meant to add.
+    """
+    dest_name = (entry.get("destination") or "").strip()
+    dest_code = _SEPTA_RR_DEST_TO_CODE.get(_norm_septa_name(dest_name))
+    # Skip only *resolved* terminating arrivals (dest == the board's own
+    # station, which has no onward departure). Unresolved destinations stay.
+    if dest_code and dest_code == code:
+        return None
+
+    # Prefer the estimated depart_time; fall back to scheduled.
+    time_str = (entry.get("depart_time") or entry.get("sched_time") or "").strip()
+    expected_time = _parse_septa_local_time(time_str, et)
+    if expected_time is None:
+        return None
+
+    train_id = (entry.get("train_id") or "").strip()
+    track = (entry.get("track") or "").strip() or None
+    minutes_away = max(
+        0,
+        int((expected_time.astimezone(timezone.utc) - now).total_seconds() / 60),
+    )
+
+    return GroundTruthArrival(
+        station_code=code,
+        destination_code=dest_code or "",
+        expected_time=expected_time,
+        line_color="",  # Arrivals API exposes a line name, not a color
+        headsign=f"{train_id} to {dest_name}" if train_id else dest_name,
+        minutes_away=minutes_away,
+        train_id=train_id,
+        track=track,
+    )
+
+
 def fetch_septa_rr_ground_truth() -> list[GroundTruthArrival]:
     """Fetch SEPTA Regional Rail departures from SEPTA's Arrivals REST API.
 
     Queries each route origin/terminal (the stations run_validation_loop tests)
-    plus the Center City hubs, then resolves every entry's ``destination`` label
-    back to an internal code via ``_SEPTA_RR_DEST_TO_CODE``. Entries whose
-    destination isn't one of our route terminals (e.g. short-turns to Malvern or
-    Wilmington) are dropped — safe: reduces coverage, never a false FAIL.
+    plus the Center City hubs, then converts every entry via
+    ``_septa_rr_arrival_from_entry``. Only resolved terminating arrivals (dest ==
+    the board's own station) are dropped; short-turns to destinations not in
+    ``_SEPTA_RR_DEST_TO_CODE`` (e.g. Malvern/Wilmington) are kept, since the
+    per-station train-number matcher (#1575) ignores destination.
     """
     et = ZoneInfo("America/New_York")
 
@@ -1549,40 +1596,9 @@ def fetch_septa_rr_ground_truth() -> list[GroundTruthArrival]:
                 continue
 
             for entry in _parse_septa_arrivals_payload(payload):
-                dest_name = (entry.get("destination") or "").strip()
-                dest_code = _SEPTA_RR_DEST_TO_CODE.get(_norm_septa_name(dest_name))
-                # Skip unresolved destinations and terminating arrivals (dest ==
-                # the board's own station, which has no onward departure).
-                if not dest_code or dest_code == code:
-                    continue
-
-                # Prefer the estimated depart_time; fall back to scheduled.
-                time_str = (
-                    entry.get("depart_time") or entry.get("sched_time") or ""
-                ).strip()
-                expected_time = _parse_septa_local_time(time_str, et)
-                if expected_time is None:
-                    continue
-
-                train_id = (entry.get("train_id") or "").strip()
-                track = (entry.get("track") or "").strip() or None
-                minutes_away = max(
-                    0,
-                    int((expected_time.astimezone(timezone.utc) - now).total_seconds() / 60),
-                )
-
-                arrivals.append(
-                    GroundTruthArrival(
-                        station_code=code,
-                        destination_code=dest_code,
-                        expected_time=expected_time,
-                        line_color="",  # Arrivals API exposes a line name, not a color
-                        headsign=f"{train_id} to {dest_name}" if train_id else dest_name,
-                        minutes_away=minutes_away,
-                        train_id=train_id,
-                        track=track,
-                    )
-                )
+                arrival = _septa_rr_arrival_from_entry(entry, code, now, et)
+                if arrival is not None:
+                    arrivals.append(arrival)
     finally:
         client.close()
 
