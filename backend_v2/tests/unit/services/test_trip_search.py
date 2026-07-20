@@ -35,6 +35,7 @@ from trackrat.models.api import (
 from trackrat.services.trip_search import (
     FALLBACK_TRANSIT_MINUTES,
     MAX_TRANSFER_QUERIES,
+    _cross_modal_hub_direct_trips,
     _departure_to_leg,
     _empty_response,
     _filter_cross_system_direct_trips,
@@ -1162,15 +1163,11 @@ class TestSecaucusJunctionBudget:
     single-system and default multi-system cases.
     """
 
-    def _secaucus_in_budget(
-        self, from_systems: set[str], to_systems: set[str]
-    ) -> bool:
+    def _secaucus_in_budget(self, from_systems: set[str], to_systems: set[str]) -> bool:
         transfers = _find_relevant_transfer_points(
             from_systems, to_systems, from_station="NH", to_station="NY"
         )
-        ranked = _rank_transfer_points(
-            transfers, "NH", "NY", from_systems, to_systems
-        )
+        ranked = _rank_transfer_points(transfers, "NH", "NY", from_systems, to_systems)
         budget = MAX_TRANSFER_QUERIES // 2
         return any(
             tp.station_a == "SE" and tp.station_b == "SE" and tp.system_a == "NJT"
@@ -1553,9 +1550,7 @@ class TestResolveArrivalTime:
 
     def test_returns_real_arrival_when_present(self):
         now = datetime.now(ET)
-        dep = _make_departure(
-            dep_time=now, arr_time=now + timedelta(minutes=22)
-        )
+        dep = _make_departure(dep_time=now, arr_time=now + timedelta(minutes=22))
         assert _resolve_arrival_time(dep) == now + timedelta(minutes=22)
 
     def test_returns_updated_arrival_when_no_actual(self):
@@ -1649,9 +1644,9 @@ class TestCrossModalHubsRouteAsTransfer:
         cross-MODAL (rail<->subway) hubs were reclassified as transfers.
         """
         valid = _systems_for_station("NP") & _systems_for_station("PWC")
-        assert "PATH" in valid, (
-            f"NP<->PWC must keep PATH as a direct system, got {valid}"
-        )
+        assert (
+            "PATH" in valid
+        ), f"NP<->PWC must keep PATH as a direct system, got {valid}"
 
 
 class TestHasSharedLine:
@@ -1683,15 +1678,11 @@ class TestHasSharedLine:
 
     def test_no_common_system_returns_false(self):
         """NJT origin vs PATH destination — no common system at all."""
-        assert not _has_shared_line(
-            "TR", "PWC", {"NJT", "AMTRAK"}, {"PATH"}
-        )
+        assert not _has_shared_line("TR", "PWC", {"NJT", "AMTRAK"}, {"PATH"})
 
     def test_njt_north_jersey_coast_to_northeast_corridor_shared(self):
         """Sanity check on rail systems: NP (NEC) ↔ NY (NEC) share Northeast Corridor."""
-        assert _has_shared_line(
-            "NP", "NY", {"NJT", "AMTRAK"}, {"NJT", "AMTRAK"}
-        )
+        assert _has_shared_line("NP", "NY", {"NJT", "AMTRAK"}, {"NJT", "AMTRAK"})
 
 
 class TestFilterCrossModalDirectTrips:
@@ -1752,9 +1743,9 @@ class TestFilterCrossModalDirectTrips:
         ]
         result = _filter_cross_system_direct_trips(trips, from_systems, to_systems)
         sources = [t.legs[0].data_source for t in result]
-        assert sources == ["SUBWAY"], (
-            f"Pure subway pair must filter out rail trains, got {sources}"
-        )
+        assert sources == [
+            "SUBWAY"
+        ], f"Pure subway pair must filter out rail trains, got {sources}"
 
 
 class TestSynthesizeAlighting:
@@ -1878,9 +1869,7 @@ class TestSharedLineShortcutRespectsDataSources:
         """
         from_systems_filtered = {"NJT", "AMTRAK"} & {"NJT", "AMTRAK"}
         to_systems_filtered = {"NJT", "AMTRAK"} & {"NJT", "AMTRAK"}
-        assert _has_shared_line(
-            "NP", "NY", from_systems_filtered, to_systems_filtered
-        )
+        assert _has_shared_line("NP", "NY", from_systems_filtered, to_systems_filtered)
 
     def test_subway_overlap_invisible_when_user_only_enabled_rail(self):
         """Inverse: two subway-line-sharing stations, but user only enabled
@@ -1970,3 +1959,161 @@ class TestSharedLineEndToEnd:
             "NJT-enabled NP→NY with no real-time results should report "
             f"no_direct_trains, got {result.metadata}"
         )
+
+
+class TestCrossModalHubEndpoint:
+    """Issue #1587: a cross-modal hub (PWC/NY/GCT) as a trip *endpoint* must
+    resolve the subway portion as a single direct SUBWAY leg, instead of the
+    degenerate ``HUB -> HUB`` [PATH] leg that produced 0 trips in both directions.
+
+    ``PWC`` (WTC / Oculus) is paired with subway complex codes including ``SR25``
+    (WTC-Cortlandt, R/W). The real onward ride to 14 St-Union Sq (``S635``) is a
+    single R/W subway leg; the PATH<->subway walk is the implicit transfer.
+    """
+
+    class _StubResponse:
+        def __init__(self, deps: list[TrainDeparture]):
+            self.departures = deps
+
+    class _StubSession:
+        """Async context manager standing in for ``get_session()`` (no DB)."""
+
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, *exc):
+            return False
+
+    # PWC (WTC / Oculus) subway complex codes — every one expands to the whole
+    # complex in DepartureService, so a query for any of them matches the same
+    # R/W train, which physically boards at SR25 (WTC-Cortlandt, R/W).
+    _PWC_SUBWAY = frozenset({"S138", "S228", "SA36", "SE01", "SR25"})
+
+    class _StubDepartureService:
+        """Faithfully models DepartureService for the WTC<->Union Sq R/W train.
+
+        DepartureService expands ``from_station`` to its whole equivalence group
+        before matching, so the R/W train is returned for *every* WTC-complex
+        code paired with S635 — not just the SR25 pair (the old stub only served
+        SR25, hiding the sorted-first mislabel the PR #1593 review found). With
+        ``label_matched_stop=True`` the board is labeled with the actual matched
+        platform (SR25), so dedupe keeps the real platform regardless of which
+        equivalent code was queried.
+        """
+
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        async def get_departures(self, **kwargs):  # noqa: ANN003 - test stub
+            self.calls.append(kwargs)
+            frm = kwargs.get("from_station")
+            to = kwargs.get("to_station")
+            label_matched = kwargs.get("label_matched_stop", False)
+            pwc = TestCrossModalHubEndpoint._PWC_SUBWAY
+
+            # Determine the real R/W boarding/alighting platforms, if this
+            # query touches the WTC complex <-> S635 in either direction.
+            if frm in pwc and to == "S635":
+                board_real, alight_real = "SR25", "S635"
+            elif frm == "S635" and to in pwc:
+                board_real, alight_real = "S635", "SR25"
+            else:
+                return TestCrossModalHubEndpoint._StubResponse([])
+
+            # label_matched_stop surfaces the matched platform; otherwise the
+            # requested (possibly substituted) code is echoed — the mislabel.
+            board = board_real if label_matched else frm
+            alight = alight_real if label_matched else to
+            return TestCrossModalHubEndpoint._StubResponse(
+                [
+                    _make_departure(
+                        train_id="R100",
+                        from_code=board,
+                        from_name="from",
+                        to_code=alight,
+                        to_name="to",
+                        data_source="SUBWAY",
+                        line_code="R",
+                    )
+                ]
+            )
+
+    def _patch(self, monkeypatch, stub):
+        from trackrat.services import trip_search as ts_mod
+
+        monkeypatch.setattr(ts_mod, "DepartureService", lambda: stub)
+        monkeypatch.setattr(ts_mod, "get_session", lambda: self._StubSession())
+
+    @pytest.mark.asyncio
+    async def test_hub_to_subway_returns_cross_modal_trip(self, monkeypatch):
+        """``PWC -> S635`` yields a single-leg SUBWAY trip (was 0 trips)."""
+        stub = self._StubDepartureService()
+        self._patch(monkeypatch, stub)
+
+        result = await search_trips(
+            db=None,  # type: ignore[arg-type]
+            from_station="PWC",
+            to_station="S635",
+        )
+
+        assert result.metadata["search_type"] == "cross_modal", result.metadata
+        assert len(result.trips) == 1
+        leg = result.trips[0].legs[0]
+        assert leg.data_source == "SUBWAY"
+        assert leg.boarding.code == "SR25"  # WTC subway platform, not PWC
+        assert result.trips[0].is_direct is True
+
+    @pytest.mark.asyncio
+    async def test_subway_to_hub_returns_cross_modal_trip(self, monkeypatch):
+        """Reverse direction ``S635 -> PWC`` is symmetric (was 0 trips)."""
+        stub = self._StubDepartureService()
+        self._patch(monkeypatch, stub)
+
+        result = await search_trips(
+            db=None,  # type: ignore[arg-type]
+            from_station="S635",
+            to_station="PWC",
+        )
+
+        assert result.metadata["search_type"] == "cross_modal", result.metadata
+        assert len(result.trips) == 1
+        leg = result.trips[0].legs[0]
+        assert leg.data_source == "SUBWAY"
+        assert leg.boarding.code == "S635"
+        assert leg.alighting.code == "SR25"
+
+    @pytest.mark.asyncio
+    async def test_helper_noop_when_neither_endpoint_is_hub(self):
+        """Non-hub pairs return [] without issuing any departure query."""
+        stub = self._StubDepartureService()
+        trips = await _cross_modal_hub_direct_trips(
+            stub, "S635", "SR20", None, None, None, False, None, 10
+        )
+        assert trips == []
+        assert stub.calls == []  # short-circuits before querying
+
+    @pytest.mark.asyncio
+    async def test_helper_noop_when_subway_disabled(self):
+        """A hub endpoint with SUBWAY filtered out returns [] and never queries."""
+        stub = self._StubDepartureService()
+        trips = await _cross_modal_hub_direct_trips(
+            stub, "PWC", "S635", None, None, None, False, ["PATH"], 10
+        )
+        assert trips == []
+        assert stub.calls == []
+
+    @pytest.mark.asyncio
+    async def test_helper_falls_through_when_no_subway_service(self, monkeypatch):
+        """A hub paired with an unreachable subway stop yields no trip, so the
+        caller falls through to transfer search rather than getting a false hit."""
+        from trackrat.services import trip_search as ts_mod
+
+        stub = self._StubDepartureService()  # only serves S635<->SR25
+        monkeypatch.setattr(ts_mod, "get_session", lambda: self._StubSession())
+
+        trips = await _cross_modal_hub_direct_trips(
+            stub, "PWC", "S601", None, None, None, False, None, 10
+        )
+        assert trips == []
+        # It did attempt subway queries (one per PWC subway code), all empty.
+        assert stub.calls and all(c["data_sources"] == ["SUBWAY"] for c in stub.calls)

@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.config.stations import expand_station_codes, get_station_name
-from trackrat.config.stations.common import STATION_EQUIVALENTS
+from trackrat.config.stations.common import CROSS_MODAL_HUBS, STATION_EQUIVALENTS
 from trackrat.config.transfer_points import (
     TransferPoint,
     get_intra_system_transfers,
@@ -48,6 +48,13 @@ CONNECTION_BUFFER_MINUTES = 2
 
 # Maximum connection wait time at the transfer station (minutes)
 MAX_CONNECTION_WAIT_MINUTES = 60
+
+# Cross-modal mega-hub rail/PATH code -> its in-building subway complex codes
+# (Penn, Grand Central, WTC). A rider whose trip *ends or starts* at one of
+# these rail/PATH codes reaches the subway by walking within the building, so
+# the subway portion is a single direct SUBWAY leg between the other endpoint
+# and one of these platform codes (#1587).
+_CROSS_MODAL_HUB_SUBWAY: dict[str, frozenset[str]] = dict(CROSS_MODAL_HUBS)
 
 # Conservative transit-time estimate used when a subway departure's arrival
 # prediction is missing. Subway GTFS-RT feeds only reliably publish next-stop
@@ -384,6 +391,101 @@ def _orient_transfer(
     return tp.station_b, tp.system_b, tp.station_a, tp.system_a
 
 
+async def _cross_modal_hub_direct_trips(
+    departure_service: DepartureService,
+    from_station: str,
+    to_station: str,
+    search_date: date | None,
+    time_from: datetime | None,
+    time_to: datetime | None,
+    hide_departed: bool,
+    data_sources: list[str] | None,
+    limit: int,
+) -> list[TripOption]:
+    """Resolve a cross-modal-hub endpoint as a single SUBWAY leg (#1587).
+
+    PWC/NY/GCT are rail/PATH codes modeled as ``CROSS_MODAL_HUBS`` and are
+    deliberately kept out of the subway equivalence group, so ``PWC`` resolves
+    only to ``{"PATH"}``.  When such a hub is a trip *endpoint*, direct search
+    sees only the rail/PATH side (nothing) and transfer search anchors a
+    degenerate ``HUB -> HUB`` [PATH] leg with no departures — 0 trips in both
+    directions.  But the real journey is a single subway ride between the other
+    endpoint and the hub's in-building subway complex (the PATH<->subway walk is
+    the transfer).  Query direct SUBWAY departures between the other endpoint and
+    each of the hub's paired subway codes and return them as single-leg trips.
+
+    Fires only when at least one endpoint is a hub rail code.  Pairs that don't
+    share subway service simply return no departures, so this can never fabricate
+    a connection — a genuinely non-adjacent pair (e.g. ``PWC`` to a far subway
+    stop needing its own transfer) yields nothing and the caller falls through to
+    transfer search.
+    """
+    from_codes = _CROSS_MODAL_HUB_SUBWAY.get(from_station)
+    to_codes = _CROSS_MODAL_HUB_SUBWAY.get(to_station)
+    if not from_codes and not to_codes:
+        return []
+
+    # The subway portion only exists if SUBWAY is enabled for the search.
+    if data_sources is not None and "SUBWAY" not in data_sources:
+        return []
+
+    leg_from_codes = sorted(from_codes) if from_codes else [from_station]
+    leg_to_codes = sorted(to_codes) if to_codes else [to_station]
+
+    # One direct SUBWAY query per (from, to) subway-code pair, capped so a
+    # hub<->hub search can't fan out unbounded. Separate DB sessions because the
+    # queries run concurrently and AsyncSession is not concurrency-safe.
+    pairs = [(f, t) for f in leg_from_codes for t in leg_to_codes if f != t][
+        :MAX_TRANSFER_QUERIES
+    ]
+
+    async def _query(leg_from: str, leg_to: str) -> DeparturesResponse:
+        async with get_session() as leg_db:
+            return await departure_service.get_departures(
+                db=leg_db,
+                from_station=leg_from,
+                to_station=leg_to,
+                date=search_date,
+                time_from=time_from,
+                time_to=time_to,
+                limit=limit,
+                hide_departed=hide_departed,
+                data_sources=["SUBWAY"],
+                skip_individual_refresh=True,
+                # Every hub subway code expands to the whole in-building
+                # complex, so a query for one platform code (e.g. S138) can
+                # match a train that actually boards at an equivalent platform
+                # (e.g. SR25). Label with the matched stop so the dedupe below
+                # keeps the real platform rather than the sorted-first
+                # substituted code (PR #1593 review).
+                label_matched_stop=True,
+            )
+
+    results = await asyncio.gather(
+        *[_query(f, t) for f, t in pairs], return_exceptions=True
+    )
+
+    trips: list[TripOption] = []
+    seen: set[tuple[str, date | None]] = set()
+    for result in results:
+        if isinstance(result, BaseException):
+            logger.warning("cross_modal_hub_leg_failed", error=str(result))
+            continue
+        for dep in result.departures:
+            if dep.data_source != "SUBWAY":
+                continue
+            key = (dep.train_id, dep.journey_date)
+            if key in seen:
+                continue
+            trip = _make_direct_trip(dep)
+            if trip:
+                seen.add(key)
+                trips.append(trip)
+
+    trips.sort(key=lambda t: (t.departure_time, t.total_duration_minutes))
+    return trips[:limit]
+
+
 async def search_trips(
     db: AsyncSession,
     from_station: str,
@@ -462,6 +564,41 @@ async def search_trips(
                 },
                 "count": len(direct_trips),
                 "search_type": "direct",
+                "generated_at": now_et().isoformat(),
+            },
+        )
+
+    # --- Step 1b: Cross-modal hub endpoint (#1587) ---
+    # When PWC/NY/GCT is an endpoint, direct search only saw the rail/PATH side
+    # (nothing) and transfer search would anchor a degenerate HUB->HUB leg with
+    # no departures. Resolve the subway portion as a single direct SUBWAY leg
+    # between the other endpoint and the hub's in-building subway complex.
+    cross_modal_trips = await _cross_modal_hub_direct_trips(
+        departure_service,
+        from_station,
+        to_station,
+        search_date,
+        time_from,
+        time_to,
+        hide_departed,
+        data_sources,
+        limit,
+    )
+    if cross_modal_trips:
+        logger.info("trip_search_cross_modal_hub", count=len(cross_modal_trips))
+        return TripSearchResponse(
+            trips=cross_modal_trips,
+            metadata={
+                "from_station": {
+                    "code": from_station,
+                    "name": get_station_name(from_station),
+                },
+                "to_station": {
+                    "code": to_station,
+                    "name": get_station_name(to_station),
+                },
+                "count": len(cross_modal_trips),
+                "search_type": "cross_modal",
                 "generated_at": now_et().isoformat(),
             },
         )
