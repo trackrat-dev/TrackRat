@@ -452,6 +452,13 @@ async def _cross_modal_hub_direct_trips(
                 hide_departed=hide_departed,
                 data_sources=["SUBWAY"],
                 skip_individual_refresh=True,
+                # Every hub subway code expands to the whole in-building
+                # complex, so a query for one platform code (e.g. S138) can
+                # match a train that actually boards at an equivalent platform
+                # (e.g. SR25). Label with the matched stop so the dedupe below
+                # keeps the real platform rather than the sorted-first
+                # substituted code (PR #1593 review).
+                label_matched_stop=True,
             )
 
     results = await asyncio.gather(

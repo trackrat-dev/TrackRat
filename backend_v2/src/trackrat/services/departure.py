@@ -323,6 +323,7 @@ class DepartureService:
         skip_individual_refresh: bool = False,
         skip_gtfs_merge: bool = False,
         line_codes: list[str] | None = None,
+        label_matched_stop: bool = False,
     ) -> DeparturesResponse:
         """Get train departures between stations.
 
@@ -336,6 +337,17 @@ class DepartureService:
         merged real-time + GTFS list *before* the limit, so a shared-terminal
         sibling can't consume the limit and hide this line's next train
         (issue #1567 / PR #1585 review).
+
+        ``label_matched_stop`` labels each departure's boarding/alighting
+        ``StationInfo.code`` with the *actual* stop the journey was matched on
+        (``from_stop``/``to_stop``) instead of echoing the requested
+        ``from_station``/``to_station``. Because ``from_station`` is expanded to
+        its whole equivalence group before matching, the requested code and the
+        matched platform can differ (e.g. querying WTC code ``S138`` matches an
+        R/W train that actually boards at the equivalent ``SR25``). The default
+        echoes the requested code so the board reflects what the caller asked
+        for; cross-modal-hub trip search (#1587 / PR #1593 review) opts in so a
+        substituted hub code can't surface the wrong physical platform.
         """
         today = now_et().date()
         target_date = date or today
@@ -598,6 +610,15 @@ class DepartureService:
             # Calculate train position
             train_position = self._calculate_train_position(journey)
 
+            # Label the board with the requested code by default; when
+            # label_matched_stop is set, use the actual matched stop code so an
+            # expanded/substituted equivalent can't mislabel the platform. The
+            # alighting substitution is inlined below to keep mypy's
+            # to_stop/to_station narrowing on the arrival branch.
+            board_code = (
+                from_stop.station_code if label_matched_stop else from_station
+            ) or from_station
+
             # Build departure
             departure = TrainDeparture(
                 train_id=journey.train_id,
@@ -609,8 +630,8 @@ class DepartureService:
                 ),
                 destination=journey.destination,
                 departure=StationInfo(
-                    code=from_station,
-                    name=get_station_name(from_station),
+                    code=board_code,
+                    name=get_station_name(board_code),
                     scheduled_time=from_stop.scheduled_departure
                     or from_stop.scheduled_arrival,
                     # NJT inversion correction with the #1492 terminal
@@ -623,8 +644,14 @@ class DepartureService:
                 ),
                 arrival=(
                     StationInfo(
-                        code=to_station,
-                        name=get_station_name(to_station),
+                        code=(
+                            (to_stop.station_code if label_matched_stop else to_station)
+                            or to_station
+                        ),
+                        name=get_station_name(
+                            (to_stop.station_code if label_matched_stop else to_station)
+                            or to_station
+                        ),
                         scheduled_time=to_stop.scheduled_arrival
                         or to_stop.scheduled_departure,
                         # NJT inversion correction for the destination stop —

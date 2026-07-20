@@ -1984,8 +1984,22 @@ class TestCrossModalHubEndpoint:
         async def __aexit__(self, *exc):
             return False
 
+    # PWC (WTC / Oculus) subway complex codes — every one expands to the whole
+    # complex in DepartureService, so a query for any of them matches the same
+    # R/W train, which physically boards at SR25 (WTC-Cortlandt, R/W).
+    _PWC_SUBWAY = frozenset({"S138", "S228", "SA36", "SE01", "SR25"})
+
     class _StubDepartureService:
-        """Returns an R/W subway departure only for the S635<->SR25 pair."""
+        """Faithfully models DepartureService for the WTC<->Union Sq R/W train.
+
+        DepartureService expands ``from_station`` to its whole equivalence group
+        before matching, so the R/W train is returned for *every* WTC-complex
+        code paired with S635 — not just the SR25 pair (the old stub only served
+        SR25, hiding the sorted-first mislabel the PR #1593 review found). With
+        ``label_matched_stop=True`` the board is labeled with the actual matched
+        platform (SR25), so dedupe keeps the real platform regardless of which
+        equivalent code was queried.
+        """
 
         def __init__(self) -> None:
             self.calls: list[dict] = []
@@ -1994,21 +2008,35 @@ class TestCrossModalHubEndpoint:
             self.calls.append(kwargs)
             frm = kwargs.get("from_station")
             to = kwargs.get("to_station")
-            if {frm, to} == {"S635", "SR25"}:
-                return TestCrossModalHubEndpoint._StubResponse(
-                    [
-                        _make_departure(
-                            train_id="R100",
-                            from_code=frm,
-                            from_name="from",
-                            to_code=to,
-                            to_name="to",
-                            data_source="SUBWAY",
-                            line_code="R",
-                        )
-                    ]
-                )
-            return TestCrossModalHubEndpoint._StubResponse([])
+            label_matched = kwargs.get("label_matched_stop", False)
+            pwc = TestCrossModalHubEndpoint._PWC_SUBWAY
+
+            # Determine the real R/W boarding/alighting platforms, if this
+            # query touches the WTC complex <-> S635 in either direction.
+            if frm in pwc and to == "S635":
+                board_real, alight_real = "SR25", "S635"
+            elif frm == "S635" and to in pwc:
+                board_real, alight_real = "S635", "SR25"
+            else:
+                return TestCrossModalHubEndpoint._StubResponse([])
+
+            # label_matched_stop surfaces the matched platform; otherwise the
+            # requested (possibly substituted) code is echoed — the mislabel.
+            board = board_real if label_matched else frm
+            alight = alight_real if label_matched else to
+            return TestCrossModalHubEndpoint._StubResponse(
+                [
+                    _make_departure(
+                        train_id="R100",
+                        from_code=board,
+                        from_name="from",
+                        to_code=alight,
+                        to_name="to",
+                        data_source="SUBWAY",
+                        line_code="R",
+                    )
+                ]
+            )
 
     def _patch(self, monkeypatch, stub):
         from trackrat.services import trip_search as ts_mod
