@@ -142,11 +142,22 @@ export class APIService {
 
   async getDepartures(
     from: string,
-    opts?: { to?: string; limit?: number; signal?: AbortSignal }
+    opts?: {
+      to?: string;
+      limit?: number;
+      dataSources?: string;
+      /** Scope to specific line codes (line-detail view); filtered server-side before the limit. */
+      lines?: string[];
+      hideDeparted?: boolean;
+      signal?: AbortSignal;
+    }
   ): Promise<DeparturesResponse> {
     const params = new URLSearchParams({ from });
     if (opts?.to) params.set('to', opts.to);
     params.set('limit', String(opts?.limit ?? 50));
+    if (opts?.dataSources) params.set('data_sources', opts.dataSources);
+    if (opts?.lines && opts.lines.length > 0) params.set('lines', opts.lines.join(','));
+    if (opts?.hideDeparted) params.set('hide_departed', 'true');
     const url = `${BASE_URL}/trains/departures?${params.toString()}`;
     return this.fetch<DeparturesResponse>(url, false, opts?.signal); // Uncached — the station board polls
   }

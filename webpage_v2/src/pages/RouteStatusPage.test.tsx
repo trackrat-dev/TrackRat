@@ -12,6 +12,7 @@ vi.mock('../services/api', () => ({
     getRouteSummary: vi.fn(),
     searchTrips: vi.fn(),
     getRecentDepartures: vi.fn(),
+    getDepartures: vi.fn(),
     getServiceAlerts: vi.fn(),
   },
 }));
@@ -65,6 +66,7 @@ describe('RouteStatusPage', () => {
     vi.mocked(apiService.getRouteSummary).mockResolvedValue(null);
     vi.mocked(apiService.searchTrips).mockResolvedValue({ trips: [] } as never);
     vi.mocked(apiService.getRecentDepartures).mockResolvedValue({ departures: [] } as never);
+    vi.mocked(apiService.getDepartures).mockResolvedValue({ departures: [] } as never);
     vi.mocked(apiService.getServiceAlerts).mockResolvedValue({ alerts: [] } as never);
   });
 
@@ -136,13 +138,20 @@ describe('RouteStatusPage', () => {
       expect(apiService.getRouteHistory).toHaveBeenCalledWith('NY', 'TR', 'NJT', undefined, 24, ['NE']);
       // The operations summary is line-scoped the same way (issue #1567).
       expect(apiService.getRouteSummary).toHaveBeenCalledWith('NY', 'TR', undefined, ['NE']);
+      // And the upcoming departures feed (line mode uses /trains/departures,
+      // filtered server-side before the limit — PR #1585 review).
+      expect(apiService.getDepartures).toHaveBeenCalledWith(
+        'NY',
+        expect.objectContaining({ to: 'TR', lines: ['NE'] })
+      );
     });
 
     it('scopes history, summary, and departures to line codes so lines sharing terminals differ', async () => {
       // NJT Main and Bergen both run HB → SF, so without line-code scoping the
       // two line pages would issue identical queries. Each must pass its own
       // lineCodes to disambiguate (issue #1567 extended this from history to
-      // the operations summary and the departures timeline).
+      // the operations summary and the departures timeline; PR #1585 review
+      // moved the upcoming feed to the server-filtered /trains/departures).
       vi.mocked(apiService.getRouteHistory).mockResolvedValue(makeHistory(90));
 
       const { unmount } = renderLine('njt-main');
@@ -153,9 +162,14 @@ describe('RouteStatusPage', () => {
         'HB',
         expect.objectContaining({ to: 'SF', lines: ['MA', 'Ma'] })
       );
+      expect(apiService.getDepartures).toHaveBeenLastCalledWith(
+        'HB',
+        expect.objectContaining({ to: 'SF', lines: ['MA', 'Ma'], hideDeparted: true })
+      );
       unmount();
 
       vi.mocked(apiService.getRouteHistory).mockClear();
+      vi.mocked(apiService.getDepartures).mockClear();
       renderLine('njt-bergen');
       await screen.findByRole('heading', { name: 'Bergen County Line' });
       expect(apiService.getRouteHistory).toHaveBeenLastCalledWith('HB', 'SF', 'NJT', undefined, 24, ['BE', 'Be']);
@@ -163,6 +177,10 @@ describe('RouteStatusPage', () => {
       expect(apiService.getRecentDepartures).toHaveBeenLastCalledWith(
         'HB',
         expect.objectContaining({ to: 'SF', lines: ['BE', 'Be'] })
+      );
+      expect(apiService.getDepartures).toHaveBeenLastCalledWith(
+        'HB',
+        expect.objectContaining({ to: 'SF', lines: ['BE', 'Be'], hideDeparted: true })
       );
     });
 

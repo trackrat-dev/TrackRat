@@ -227,56 +227,27 @@ describe('DeparturesTimelineView', () => {
 });
 
 describe('directUpcomingTrains', () => {
-  // Shared-terminal fixture (issue #1567): NJT Main and Bergen County both run
-  // HB → SF, so a line page must be able to keep only its own line's trains.
-  const main = makeTrain('MAIN_1', { line: { code: 'MA', name: 'Main Line', color: '#FBB040' } });
-  const legacyMain = makeTrain('MAIN_2', { line: { code: 'Ma', name: 'Main Line', color: '#FBB040' } });
-  const bergen = makeTrain('BERGEN_1', { line: { code: 'BE', name: 'Bergen County Line', color: '#F26D6A' } });
+  // The non-line-mode upcoming feed: keep direct, non-cancelled trains for the
+  // page's data source. (Line mode uses /trains/departures instead, filtered
+  // server-side — issue #1567 / PR #1585 review.)
+  const njt = makeTrain('NJT_1', { data_source: 'NJT' });
+  const pathTrain = makeTrain('PATH_1', { data_source: 'PATH' });
 
-  it('keeps only trains whose line code is in lineCodes, covering legacy case variants', () => {
+  it('keeps only direct, non-cancelled trains for the given data source', () => {
+    const cancelled = makeTrain('NJT_X', { data_source: 'NJT', is_cancelled: true });
     const response = makeSearchResponse([
-      makeDirectTrip(main),
-      makeDirectTrip(legacyMain),
-      makeDirectTrip(bergen),
+      makeDirectTrip(njt),
+      makeDirectTrip(cancelled),
+      makeDirectTrip(pathTrain),
+      makeDirectTrip(makeTrain('NJT_TRANSFER', { data_source: 'NJT' }), false), // transfer → excluded
     ]);
 
-    const mainOnly = directUpcomingTrains(response, 'NJT', ['MA', 'Ma']);
-    expect(mainOnly.map((t) => t.train_id)).toEqual(['MAIN_1', 'MAIN_2']);
-
-    const bergenOnly = directUpcomingTrains(response, 'NJT', ['BE', 'Be']);
-    expect(bergenOnly.map((t) => t.train_id)).toEqual(['BERGEN_1']);
+    const result = directUpcomingTrains(response, 'NJT');
+    expect(result.map((t) => t.train_id)).toEqual(['NJT_1']);
   });
 
-  it('keeps all direct trains when lineCodes is omitted or empty (combined board)', () => {
-    const response = makeSearchResponse([makeDirectTrip(main), makeDirectTrip(bergen)]);
-
-    expect(directUpcomingTrains(response, 'NJT').map((t) => t.train_id)).toEqual([
-      'MAIN_1',
-      'BERGEN_1',
-    ]);
-    expect(directUpcomingTrains(response, 'NJT', []).map((t) => t.train_id)).toEqual([
-      'MAIN_1',
-      'BERGEN_1',
-    ]);
-  });
-
-  it('applies the direct, cancellation, and data-source filters alongside lineCodes', () => {
-    const cancelledMain = makeTrain('MAIN_X', {
-      line: { code: 'MA', name: 'Main Line', color: '#FBB040' },
-      is_cancelled: true,
-    });
-    const otherSourceMain = makeTrain('PATH_1', {
-      line: { code: 'MA', name: 'Main Line', color: '#FBB040' },
-      data_source: 'PATH',
-    });
-    const response = makeSearchResponse([
-      makeDirectTrip(main),
-      makeDirectTrip(cancelledMain),
-      makeDirectTrip(otherSourceMain),
-      makeDirectTrip(bergen, false), // transfer trip: excluded regardless of line
-    ]);
-
-    const result = directUpcomingTrains(response, 'NJT', ['MA', 'Ma']);
-    expect(result.map((t) => t.train_id)).toEqual(['MAIN_1']);
+  it('keeps all direct, non-cancelled trains when no data source is given', () => {
+    const response = makeSearchResponse([makeDirectTrip(njt), makeDirectTrip(pathTrain)]);
+    expect(directUpcomingTrains(response).map((t) => t.train_id)).toEqual(['NJT_1', 'PATH_1']);
   });
 });

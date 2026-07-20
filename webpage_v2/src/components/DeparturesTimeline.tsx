@@ -24,9 +24,6 @@ interface Props {
 const RECENT_WINDOW_MINUTES = 120;
 const RECENT_FETCH_LIMIT = 5;
 const UPCOMING_FETCH_LIMIT = 10;
-// When filtering upcoming trips by line client-side, fetch a deeper page so a
-// shared-terminal line still fills its rows after the other line's trains drop.
-const UPCOMING_FETCH_LIMIT_LINE_SCOPED = 20;
 const MAX_RECENT = 3;
 const MAX_UPCOMING = 3;
 
@@ -134,25 +131,12 @@ export function DeparturesTimelineView({ rows, from, to, onSelect }: ViewProps) 
 const isAbortError = (err: unknown): boolean =>
   err instanceof DOMException && err.name === 'AbortError';
 
-/**
- * Extract direct, non-cancelled upcoming trains scoped to the page's data
- * source and (in line mode) its line codes. `/trips/search` has no line
- * filter, so line scoping happens here — mirroring the data-source filter.
- */
-export function directUpcomingTrains(
-  response: TripSearchResponse,
-  dataSource?: string,
-  lineCodes?: string[]
-): Train[] {
+/** Extract direct, non-cancelled upcoming trains scoped to the page's data source. */
+export function directUpcomingTrains(response: TripSearchResponse, dataSource?: string): Train[] {
   return response.trips
     .filter((t) => t.is_direct)
     .map(tripLegToTrain)
-    .filter(
-      (t) =>
-        !t.is_cancelled &&
-        (!dataSource || t.data_source === dataSource) &&
-        (!lineCodes || lineCodes.length === 0 || lineCodes.includes(t.line.code))
-    );
+    .filter((t) => !t.is_cancelled && (!dataSource || t.data_source === dataSource));
 }
 
 /**
@@ -176,6 +160,24 @@ export function DeparturesTimeline({ from, to, dataSource, lineCodes }: Props) {
       };
 
       const lineScoped = !!lineCodes && lineCodes.length > 0;
+      // In line mode, upcoming trains come from /trains/departures, which applies
+      // the line filter server-side BEFORE its limit — so a shared-terminal
+      // sibling can't crowd this line's next train out of the result set (issue
+      // #1567 / PR #1585 review). Non-line mode keeps /trips/search, which is
+      // station-equivalence aware and needs no line scoping.
+      const upcomingReq = lineScoped
+        ? apiService
+            .getDepartures(from, {
+              to,
+              dataSources: dataSource,
+              lines: lineCodes,
+              hideDeparted: true,
+              limit: UPCOMING_FETCH_LIMIT,
+              signal,
+            })
+            .catch(swallow)
+        : apiService.searchTrips(from, to, UPCOMING_FETCH_LIMIT, undefined, signal).catch(swallow);
+
       const [recentRes, upcomingRes] = await Promise.all([
         apiService
           .getRecentDepartures(from, {
@@ -187,19 +189,20 @@ export function DeparturesTimeline({ from, to, dataSource, lineCodes }: Props) {
             signal,
           })
           .catch(swallow),
-        apiService
-          .searchTrips(
-            from,
-            to,
-            lineScoped ? UPCOMING_FETCH_LIMIT_LINE_SCOPED : UPCOMING_FETCH_LIMIT,
-            undefined,
-            signal
-          )
-          .catch(swallow),
+        upcomingReq,
       ]);
 
       if (recentRes) setRecent(recentRes.departures);
-      if (upcomingRes) setUpcoming(directUpcomingTrains(upcomingRes, dataSource, lineCodes));
+      if (upcomingRes) {
+        // getDepartures → DeparturesResponse (already line/source-filtered
+        // server-side; drop cancelled to match the /trips/search path).
+        // searchTrips → TripSearchResponse (filter to direct, non-cancelled here).
+        setUpcoming(
+          'departures' in upcomingRes
+            ? upcomingRes.departures.filter((t) => !t.is_cancelled)
+            : directUpcomingTrains(upcomingRes, dataSource)
+        );
+      }
       setLoaded(true);
     },
     // lineCodes comes from the static route topology (stable reference per
