@@ -755,12 +755,18 @@ class DepartureService:
         window_minutes: int = 120,
         limit: int = 50,
         data_sources: list[str] | None = None,
+        line_codes: list[str] | None = None,
     ) -> DeparturesResponse:
         """Get recently-departed trains from a station.
 
         Returns trains whose scheduled departure from the origin station was
         within the last ``window_minutes``, including cancellations and
         completed journeys. Sorted by scheduled departure, most recent first.
+
+        ``line_codes`` optionally scopes results to specific lines (raw match
+        against ``TrainJourney.line_code``, same semantics as the
+        /routes/history ``lines`` filter) so lines sharing terminal stations
+        (e.g. NJT Main/Bergen HB-SF) get distinct boards.
 
         Unlike ``get_departures``, this intentionally bypasses the
         ``is_expired`` / ``is_completed`` / ``hide_departed`` filters so that
@@ -794,6 +800,8 @@ class DepartureService:
                 TrainJourney.is_cancelled.is_(True),
             ),
         ]
+        if line_codes:
+            recent_filters.append(TrainJourney.line_code.in_(line_codes))
 
         stmt = (
             select(TrainJourney)

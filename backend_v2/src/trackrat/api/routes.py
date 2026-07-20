@@ -1452,6 +1452,13 @@ async def get_operations_summary(
         None,
         description="Filter by data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, METRA, WMATA, MBTA)",
     ),
+    lines: str | None = Query(
+        None,
+        description=(
+            "Comma-separated line codes to filter (route scope only, "
+            "e.g. 'MA,Ma'). Mirrors the /routes/history `lines` filter."
+        ),
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> OperationsSummaryResponse:
     """
@@ -1469,6 +1476,11 @@ async def get_operations_summary(
     """
     from trackrat.services.summary import summary_service
 
+    # Parse line codes filter (same convention as /routes/history)
+    line_codes = (
+        [lc.strip() for lc in lines.split(",") if lc.strip()] if lines else None
+    )
+
     logger.info(
         "get_operations_summary_request",
         scope=scope,
@@ -1476,6 +1488,7 @@ async def get_operations_summary(
         to_station=to_station,
         train_id=train_id,
         data_source=data_source,
+        lines=line_codes,
     )
 
     # Validate parameters based on scope
@@ -1500,6 +1513,7 @@ async def get_operations_summary(
         "to_station": to_station,
         "train_id": train_id,
         "data_source": data_source,
+        "lines": lines,
     }
     if scope != "train":
         cached_response = await cache_service.get_cached_response(
@@ -1525,7 +1539,7 @@ async def get_operations_summary(
         summary = await summary_service.get_network_summary(db, data_source)
     elif scope == "route":
         summary = await summary_service.get_route_summary(
-            db, from_station, to_station, data_source  # type: ignore[arg-type]
+            db, from_station, to_station, data_source, line_codes  # type: ignore[arg-type]
         )
     else:  # train
         summary = await summary_service.get_train_summary(

@@ -257,6 +257,13 @@ async def get_recent_departures(
         None,
         description="Comma-separated list of data sources to include: NJT,AMTRAK,PATH,PATCO,LIRR,MNR,SUBWAY,BART,MBTA,METRA,WMATA. Default: all",
     ),
+    lines: str | None = Query(
+        None,
+        description=(
+            "Comma-separated line codes to filter (e.g. 'MA,Ma'). "
+            "Mirrors the /routes/history `lines` filter."
+        ),
+    ),
     limit: int = Query(50, le=1000, description="Maximum results"),
     db: AsyncSession = Depends(get_db),
 ) -> DeparturesResponse:
@@ -266,12 +273,18 @@ async def get_recent_departures(
     origin station was in the past ``window_minutes``, including cancellations
     and completed journeys. Results are sorted most-recent-first.
     """
+    # Parse line codes filter (same convention as /routes/history)
+    line_codes = (
+        [lc.strip() for lc in lines.split(",") if lc.strip()] if lines else None
+    )
+
     logger.info(
         "get_recent_departures_request",
         from_station=from_station,
         to_station=to_station,
         window_minutes=window_minutes,
         data_sources=data_sources,
+        lines=line_codes,
     )
 
     source_list: list[str] | None = None
@@ -286,6 +299,7 @@ async def get_recent_departures(
         window_minutes=window_minutes,
         limit=limit,
         data_sources=source_list,
+        line_codes=line_codes,
     )
 
 

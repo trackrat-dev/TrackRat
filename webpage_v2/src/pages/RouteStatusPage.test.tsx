@@ -134,23 +134,36 @@ describe('RouteStatusPage', () => {
       // History is fetched for the line's first→last stations (NY → TR) on NJT,
       // scoped to the line's own codes. Default period is 24h → days undefined, hours 24.
       expect(apiService.getRouteHistory).toHaveBeenCalledWith('NY', 'TR', 'NJT', undefined, 24, ['NE']);
+      // The operations summary is line-scoped the same way (issue #1567).
+      expect(apiService.getRouteSummary).toHaveBeenCalledWith('NY', 'TR', undefined, ['NE']);
     });
 
-    it('scopes history to line codes so lines sharing terminals differ', async () => {
+    it('scopes history, summary, and departures to line codes so lines sharing terminals differ', async () => {
       // NJT Main and Bergen both run HB → SF, so without line-code scoping the
-      // two line pages would issue identical history queries. Each must pass its
-      // own lineCodes to disambiguate.
+      // two line pages would issue identical queries. Each must pass its own
+      // lineCodes to disambiguate (issue #1567 extended this from history to
+      // the operations summary and the departures timeline).
       vi.mocked(apiService.getRouteHistory).mockResolvedValue(makeHistory(90));
 
       const { unmount } = renderLine('njt-main');
       await screen.findByRole('heading', { name: 'Main Line' });
       expect(apiService.getRouteHistory).toHaveBeenLastCalledWith('HB', 'SF', 'NJT', undefined, 24, ['MA', 'Ma']);
+      expect(apiService.getRouteSummary).toHaveBeenLastCalledWith('HB', 'SF', undefined, ['MA', 'Ma']);
+      expect(apiService.getRecentDepartures).toHaveBeenLastCalledWith(
+        'HB',
+        expect.objectContaining({ to: 'SF', lines: ['MA', 'Ma'] })
+      );
       unmount();
 
       vi.mocked(apiService.getRouteHistory).mockClear();
       renderLine('njt-bergen');
       await screen.findByRole('heading', { name: 'Bergen County Line' });
       expect(apiService.getRouteHistory).toHaveBeenLastCalledWith('HB', 'SF', 'NJT', undefined, 24, ['BE', 'Be']);
+      expect(apiService.getRouteSummary).toHaveBeenLastCalledWith('HB', 'SF', undefined, ['BE', 'Be']);
+      expect(apiService.getRecentDepartures).toHaveBeenLastCalledWith(
+        'HB',
+        expect.objectContaining({ to: 'SF', lines: ['BE', 'Be'] })
+      );
     });
 
     it('shows an error for an unknown line id', () => {

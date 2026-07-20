@@ -4,10 +4,11 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import {
   buildDeparturesTimeline,
+  directUpcomingTrains,
   DeparturesTimelineView,
   TimelineRow,
 } from './DeparturesTimeline';
-import { Train } from '../types';
+import { Train, TripOption, TripSearchResponse } from '../types';
 
 function makeTrain(id: string, overrides: Partial<Train> = {}): Train {
   return {
@@ -35,6 +36,43 @@ function makeTrain(id: string, overrides: Partial<Train> = {}): Train {
 
 const trainRows = (rows: TimelineRow[]) =>
   rows.filter((r): r is Extract<TimelineRow, { kind: 'train' }> => r.kind === 'train');
+
+/** Wrap a Train as the single leg of a direct trip, as `/trips/search` returns it. */
+function makeDirectTrip(train: Train, isDirect = true): TripOption {
+  return {
+    legs: [
+      {
+        train_id: train.train_id,
+        journey_date: train.journey_date,
+        line: train.line,
+        data_source: train.data_source,
+        destination: train.destination,
+        boarding: train.departure,
+        alighting: train.arrival,
+        observation_type: train.observation_type,
+        is_cancelled: train.is_cancelled,
+      },
+    ],
+    transfers: [],
+    departure_time: train.departure.scheduled_time ?? '',
+    arrival_time: train.arrival.scheduled_time ?? '',
+    total_duration_minutes: 70,
+    is_direct: isDirect,
+  };
+}
+
+function makeSearchResponse(trips: TripOption[]): TripSearchResponse {
+  return {
+    trips,
+    metadata: {
+      from_station: { code: 'HB', name: 'Hoboken' },
+      to_station: { code: 'SF', name: 'Suffern' },
+      count: trips.length,
+      search_type: 'direct',
+      generated_at: '',
+    },
+  };
+}
 
 describe('buildDeparturesTimeline', () => {
   it('orders recent (reversed) → NOW → upcoming, most-recent just above the divider', () => {
@@ -185,5 +223,60 @@ describe('DeparturesTimelineView', () => {
     renderView(buildDeparturesTimeline([], [makeTrain('B')]));
     const link = screen.getByText('View All Departures →').closest('a');
     expect(link).toHaveAttribute('href', '/trains/TR/NY');
+  });
+});
+
+describe('directUpcomingTrains', () => {
+  // Shared-terminal fixture (issue #1567): NJT Main and Bergen County both run
+  // HB → SF, so a line page must be able to keep only its own line's trains.
+  const main = makeTrain('MAIN_1', { line: { code: 'MA', name: 'Main Line', color: '#FBB040' } });
+  const legacyMain = makeTrain('MAIN_2', { line: { code: 'Ma', name: 'Main Line', color: '#FBB040' } });
+  const bergen = makeTrain('BERGEN_1', { line: { code: 'BE', name: 'Bergen County Line', color: '#F26D6A' } });
+
+  it('keeps only trains whose line code is in lineCodes, covering legacy case variants', () => {
+    const response = makeSearchResponse([
+      makeDirectTrip(main),
+      makeDirectTrip(legacyMain),
+      makeDirectTrip(bergen),
+    ]);
+
+    const mainOnly = directUpcomingTrains(response, 'NJT', ['MA', 'Ma']);
+    expect(mainOnly.map((t) => t.train_id)).toEqual(['MAIN_1', 'MAIN_2']);
+
+    const bergenOnly = directUpcomingTrains(response, 'NJT', ['BE', 'Be']);
+    expect(bergenOnly.map((t) => t.train_id)).toEqual(['BERGEN_1']);
+  });
+
+  it('keeps all direct trains when lineCodes is omitted or empty (combined board)', () => {
+    const response = makeSearchResponse([makeDirectTrip(main), makeDirectTrip(bergen)]);
+
+    expect(directUpcomingTrains(response, 'NJT').map((t) => t.train_id)).toEqual([
+      'MAIN_1',
+      'BERGEN_1',
+    ]);
+    expect(directUpcomingTrains(response, 'NJT', []).map((t) => t.train_id)).toEqual([
+      'MAIN_1',
+      'BERGEN_1',
+    ]);
+  });
+
+  it('applies the direct, cancellation, and data-source filters alongside lineCodes', () => {
+    const cancelledMain = makeTrain('MAIN_X', {
+      line: { code: 'MA', name: 'Main Line', color: '#FBB040' },
+      is_cancelled: true,
+    });
+    const otherSourceMain = makeTrain('PATH_1', {
+      line: { code: 'MA', name: 'Main Line', color: '#FBB040' },
+      data_source: 'PATH',
+    });
+    const response = makeSearchResponse([
+      makeDirectTrip(main),
+      makeDirectTrip(cancelledMain),
+      makeDirectTrip(otherSourceMain),
+      makeDirectTrip(bergen, false), // transfer trip: excluded regardless of line
+    ]);
+
+    const result = directUpcomingTrains(response, 'NJT', ['MA', 'Ma']);
+    expect(result.map((t) => t.train_id)).toEqual(['MAIN_1']);
   });
 });

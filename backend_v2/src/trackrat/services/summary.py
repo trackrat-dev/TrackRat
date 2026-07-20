@@ -356,6 +356,7 @@ class SummaryService:
         from_station: str,
         to_station: str,
         data_source: str | None = None,
+        line_codes: list[str] | None = None,
     ) -> OperationsSummary:
         """
         Generate a route-specific operations summary.
@@ -365,11 +366,18 @@ class SummaryService:
             from_station: Origin station code
             to_station: Destination station code
             data_source: Optional filter by data source (NJT or AMTRAK)
+            line_codes: Optional line codes to scope the summary to, so lines
+                sharing terminal stations (e.g. NJT Main/Bergen HB-SF) get
+                distinct summaries. Raw match against TrainJourney.line_code,
+                same semantics as the /routes/history `lines` filter.
 
         Returns:
             OperationsSummary with headline and body
         """
-        cache_key = f"route_{from_station}_{to_station}_{data_source or 'all'}"
+        lines_key = ",".join(line_codes) if line_codes else "all"
+        cache_key = (
+            f"route_{from_station}_{to_station}_{data_source or 'all'}_{lines_key}"
+        )
         if cache_key in self._cache:
             cached_data, timestamp = self._cache[cache_key]
             age_seconds = (now_et() - timestamp).total_seconds()
@@ -408,6 +416,8 @@ class SummaryService:
                 active_data_sources([data_source] if data_source else None)
             )
         )
+        if line_codes:
+            conditions.append(TrainJourney.line_code.in_(line_codes))
 
         # Prioritize journeys with actual departure data over scheduled-only
         # This ensures when deduplicating by train_id, we keep the most accurate record

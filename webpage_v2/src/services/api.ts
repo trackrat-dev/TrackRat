@@ -163,6 +163,7 @@ export class APIService {
       to?: string;
       windowMinutes?: number;
       dataSources?: string;
+      lines?: string[];
       limit?: number;
       signal?: AbortSignal;
     } = {}
@@ -171,14 +172,21 @@ export class APIService {
     if (options.to) params.set('to', options.to);
     params.set('window_minutes', String(options.windowMinutes ?? 120));
     if (options.dataSources) params.set('data_sources', options.dataSources);
+    // Scope to specific line codes when known (line-detail view) — see
+    // getRouteHistory for why shared-terminal lines need this.
+    if (options.lines && options.lines.length > 0) params.set('lines', options.lines.join(','));
     if (options.limit !== undefined) params.set('limit', options.limit.toString());
     const url = `${BASE_URL}/trains/recent-departures?${params.toString()}`;
     return this.fetch<DeparturesResponse>(url, false, options.signal);
   }
 
-  async getRouteSummary(from: string, to: string, signal?: AbortSignal): Promise<OperationsSummaryResponse | null> {
+  async getRouteSummary(from: string, to: string, signal?: AbortSignal, lines?: string[]): Promise<OperationsSummaryResponse | null> {
     try {
-      const url = `${BASE_URL}/routes/summary?scope=route&from_station=${encodeURIComponent(from)}&to_station=${encodeURIComponent(to)}`;
+      const params = new URLSearchParams({ scope: 'route', from_station: from, to_station: to });
+      // Scope to specific line codes when known (line-detail view) — see
+      // getRouteHistory for why shared-terminal lines need this.
+      if (lines && lines.length > 0) params.set('lines', lines.join(','));
+      const url = `${BASE_URL}/routes/summary?${params.toString()}`;
       return await this.fetch<OperationsSummaryResponse>(url, true, signal);
     } catch (err) {
       return this.nullOn404(err);
