@@ -211,6 +211,76 @@ async def test_invalid_transit_times(mock_session, sample_journey):
     assert segment_times[0].from_station_code == "NP"
 
 
+def _same_minute_journey(data_source: str) -> TrainJourney:
+    """Two adjacent stops arriving/departing on the same minute (0-second hop).
+
+    Models a SEPTA Metro trolley run over minute-granularity schedule times,
+    where consecutive curb stops legitimately share a minute (issue #1573).
+    """
+    base_time = datetime(2025, 7, 15, 8, 0, 0)
+    journey = TrainJourney(
+        id=42,
+        train_id="T-DIR1",
+        journey_date=base_time.date(),
+        line_code="SEPTA-T4",
+        data_source=data_source,
+    )
+    journey.stops = [
+        JourneyStop(
+            journey_id=42,
+            station_code="SEPM20879",  # inbound curb code absent from topology
+            station_name="Baltimore Av & 42nd St",
+            stop_sequence=0,
+            scheduled_departure=base_time,
+            actual_departure=base_time,
+        ),
+        JourneyStop(
+            journey_id=42,
+            station_code="SEPM20876",
+            station_name="Baltimore Av & 40th St",
+            stop_sequence=1,
+            scheduled_arrival=base_time,  # same minute -> 0-second hop
+            actual_arrival=base_time,
+        ),
+    ]
+    return journey
+
+
+@pytest.mark.asyncio
+async def test_septa_metro_same_minute_hop_floored_to_one_minute(mock_session):
+    """SEPTA_METRO 0-second hops are floored to 1 minute, not dropped (#1573)."""
+    journey = _same_minute_journey("SEPTA_METRO")
+    analyzer = TransitAnalyzer()
+    setup_mock_query(mock_session, journey.stops)
+
+    await analyzer.analyze_journey(mock_session, journey)
+
+    segment_times = [
+        obj for obj in mock_session.added_objects if isinstance(obj, SegmentTransitTime)
+    ]
+    assert len(segment_times) == 1, "same-minute Metro segment should be retained"
+    seg = segment_times[0]
+    assert seg.from_station_code == "SEPM20879"
+    assert seg.to_station_code == "SEPM20876"
+    assert seg.actual_minutes == 1, "0-second hop must be floored to 1 minute"
+    assert seg.delay_minutes == 0
+
+
+@pytest.mark.asyncio
+async def test_non_metro_same_minute_hop_still_dropped(mock_session):
+    """The 0-second floor is scoped: a SUBWAY same-minute hop is still dropped."""
+    journey = _same_minute_journey("SUBWAY")
+    analyzer = TransitAnalyzer()
+    setup_mock_query(mock_session, journey.stops)
+
+    await analyzer.analyze_journey(mock_session, journey)
+
+    segment_times = [
+        obj for obj in mock_session.added_objects if isinstance(obj, SegmentTransitTime)
+    ]
+    assert len(segment_times) == 0, "non-Metro 0-second hop must not be floored"
+
+
 @pytest.mark.asyncio
 async def test_missing_actual_times(mock_session, sample_journey):
     """Test handling when actual times are missing."""

@@ -20,6 +20,13 @@ from trackrat.utils.time import ensure_timezone_aware, now_et
 
 logger = get_logger(__name__)
 
+# Schedule-first sources whose stop times have only minute granularity, so
+# adjacent stops on the same minute legitimately yield a 0-second hop (SEPTA
+# Metro trolleys). For these, a non-positive segment is floored to one minute
+# rather than discarded, so the journey still contributes to segment analytics
+# instead of emitting an `invalid_transit_time` warning (issue #1573).
+_SUBMINUTE_FLOOR_SOURCES: frozenset[str] = frozenset({"SEPTA_METRO"})
+
 
 class TransitAnalyzer:
     """Analyzes transit times and station dwell times from journey data."""
@@ -244,6 +251,14 @@ class TransitAnalyzer:
             )
             actual_seconds = actual_delta.total_seconds()
             actual_minutes = round(actual_seconds / 60)
+
+            # Minute-granularity schedule-first feeds (SEPTA Metro trolleys)
+            # produce legitimate same-minute (0-second) hops between adjacent
+            # curb stops. Floor these to one minute so the segment still counts,
+            # rather than warning-and-dropping it (issue #1573).
+            if actual_seconds <= 0 and journey.data_source in _SUBMINUTE_FLOOR_SOURCES:
+                actual_seconds = 60.0
+                actual_minutes = 1
 
             # Skip invalid times (non-positive seconds or unreasonably long)
             if actual_seconds <= 0 or actual_minutes > 300:
@@ -570,6 +585,14 @@ class TransitAnalyzer:
             )
             actual_seconds = actual_delta.total_seconds()
             actual_minutes = round(actual_seconds / 60)
+
+            # Minute-granularity schedule-first feeds (SEPTA Metro trolleys)
+            # produce legitimate same-minute (0-second) hops between adjacent
+            # curb stops. Floor these to one minute so the segment still counts,
+            # rather than warning-and-dropping it (issue #1573).
+            if actual_seconds <= 0 and journey.data_source in _SUBMINUTE_FLOOR_SOURCES:
+                actual_seconds = 60.0
+                actual_minutes = 1
 
             # Skip invalid times (non-positive seconds or unreasonably long)
             if actual_seconds <= 0 or actual_minutes > 300:
