@@ -56,4 +56,15 @@ locals {
   # as consolidate_api_lb: flip it to true ONLY after the tunnel is up and DNS
   # is cut over, or the push-triggered apply takes the API offline.
   create_api_frontend = !var.frontend_via_cloudflare && !(var.environment == "production" && var.consolidate_api_lb)
+
+  # Staging serves its webpage from this same LB, mirroring how production's
+  # single consolidated LB serves both apiv2 and the webpage bucket. The staging
+  # webpage's dedicated frontend was decommissioned for cost, so instead of
+  # re-adding one we host-route staging.trackrat.net through the surviving
+  # staging API frontend (no extra IP or forwarding rules). Gated on staging AND
+  # on the API frontend existing, so a Cloudflare-tunnel cutover
+  # (frontend_via_cloudflare=true) cleanly drops the webpage routing with it.
+  serve_webpage_on_api_lb = var.environment == "staging" && local.create_api_frontend
+  webpage_staging_domain  = "staging.trackrat.net"
+  webpage_staging_bucket  = "trackrat-webpage-staging"
 }
