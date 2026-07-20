@@ -5,22 +5,23 @@ Tests phantom stop deletion and SQLAlchemy dirty tracking to prevent
 the bug where Trenton appears after Hamilton due to duplicate stop_sequence values.
 """
 
-from datetime import UTC, date, datetime
+import itertools
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from trackrat.collectors.njt.client import NJTransitClient
-from trackrat.collectors.njt.journey import JourneyCollector
-from trackrat.models.database import JourneyStop, TrainJourney
-from trackrat.utils.time import now_et, parse_njt_time
 
 from tests.fixtures.njt_api_responses import (
     StopBuilder,
     create_schedule_less_secaucus_response,
     create_stop_list_response,
 )
+from trackrat.collectors.njt.client import NJTransitClient
+from trackrat.collectors.njt.journey import JourneyCollector
+from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.utils.time import now_et, parse_njt_time
 
 
 @pytest.fixture
@@ -1554,3 +1555,296 @@ class TestScheduleLessStopProductionPath:
             "NP",
             "MP",
         ], f"Expected NY -> NP -> MP after phantom deletion, got {station_codes}"
+
+
+# ---------------------------------------------------------------------------
+# Invariant / field-presence matrix tests for _resequence_stops (issue #1537)
+# ---------------------------------------------------------------------------
+
+# The four optional time fields that drive get_sort_key, in the order the code
+# consults them. Every combination of present/absent is exercised below.
+_TIME_FIELDS = (
+    "scheduled_arrival",
+    "scheduled_departure",
+    "updated_arrival",
+    "updated_departure",
+)
+_FIELD_ABBREV = {
+    "scheduled_arrival": "sa",
+    "scheduled_departure": "sd",
+    "updated_arrival": "ua",
+    "updated_departure": "ud",
+}
+# All 16 presence combinations, as tuples of booleans aligned with _TIME_FIELDS.
+_FIELD_PRESENCE_COMBINATIONS = list(itertools.product((False, True), repeat=4))
+
+# Four distinct stops in intended geographic order: origin first, terminal last.
+_INVARIANT_STATIONS = [
+    ("TR", "Trenton"),
+    ("HL", "Hamilton"),
+    ("PJ", "Princeton Junction"),
+    ("NY", "New York Penn Station"),
+]
+# Fixed base time. The tests never read the wall clock for their assertions
+# (resequencing sorts purely on the stop time fields), so no time-freezing
+# library is needed to keep them deterministic — the timestamps are constants.
+_INVARIANT_BASE_TIME = datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC)
+_INVARIANT_STEP = timedelta(minutes=10)
+
+
+def _combo_label(combo: tuple[bool, ...]) -> str:
+    """Readable parametrize id, e.g. ``sa1_sd0_ua1_ud0``."""
+    return "_".join(
+        f"{_FIELD_ABBREV[field]}{int(present)}"
+        for field, present in zip(_TIME_FIELDS, combo, strict=True)
+    )
+
+
+class TestResequenceInvariants:
+    """Invariant tests for ``_resequence_stops`` across the 16 field-presence
+    combinations of its four optional time fields (issue #1537).
+
+    Rather than asserting a single hand-picked order, these tests assert the
+    ordering *invariants* the resequencer must uphold for every combination:
+
+    - **Origin first / terminal last** — the stop with the earliest effective
+      time lands at sequence 0, the latest at sequence N-1.
+    - **Contiguous ``0..N-1``** — sequences are dense with no duplicates.
+    - **Insertion-order independence** — seeding the same stops in a different
+      DB row order must produce the same result (no reliance on stable sort
+      over unspecified row order for stops with distinct sort keys).
+    - **Idempotence** — a second resequencing pass changes nothing.
+    - **No timed stop after an untimed one** — a stop bucketed to
+      ``DATETIME_MAX_ET`` can never precede a stop that has a real time.
+
+    Every failure message prints the offending combination and the resulting
+    stop set, per the repo's verbose-tests-for-debugging philosophy.
+    """
+
+    async def _seed_journey(
+        self,
+        db_session: AsyncSession,
+        combo: tuple[bool, ...],
+        insertion_order: list[int],
+        train_id: str,
+    ) -> TrainJourney:
+        """Seed a 4-stop journey where every stop has field presence ``combo``.
+
+        Each stop's present time fields are all set to a distinct,
+        strictly-increasing ``effective`` time so its position is unambiguous
+        regardless of which fields carry it. Stops are inserted in
+        ``insertion_order`` (indices into ``_INVARIANT_STATIONS``) so the test
+        can prove the output is independent of DB row order.
+
+        For the empty combination (no time fields) the only ordering signal is
+        ``stop_sequence``, so it is seeded to the intended index; for every
+        timed combination ``stop_sequence`` is seeded *reversed* to prove the
+        time sort overrides a wrong input sequence.
+        """
+        has_time = any(combo)
+        n = len(_INVARIANT_STATIONS)
+
+        journey = TrainJourney(
+            train_id=train_id,
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="New York",
+            origin_station_code=_INVARIANT_STATIONS[0][0],
+            terminal_station_code=_INVARIANT_STATIONS[-1][0],
+            data_source="NJT",
+            scheduled_departure=now_et(),
+            has_complete_journey=False,
+            is_completed=False,
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        for idx in insertion_order:
+            code, name = _INVARIANT_STATIONS[idx]
+            effective = _INVARIANT_BASE_TIME + idx * _INVARIANT_STEP
+            stop_kwargs: dict[str, object] = {
+                "journey_id": journey.id,
+                "journey_date": journey.journey_date,
+                "station_code": code,
+                "station_name": name,
+                "stop_sequence": idx if not has_time else (n - 1 - idx),
+                "scheduled_arrival": None,
+                "scheduled_departure": None,
+                "updated_arrival": None,
+                "updated_departure": None,
+            }
+            for field, present in zip(_TIME_FIELDS, combo, strict=True):
+                if present:
+                    stop_kwargs[field] = effective
+            db_session.add(JourneyStop(**stop_kwargs))
+
+        await db_session.flush()
+        return journey
+
+    async def _ordered_stops(
+        self, db_session: AsyncSession, journey: TrainJourney
+    ) -> list[tuple[str, int]]:
+        """Return ``[(station_code, stop_sequence), ...]`` ordered by sequence."""
+        stmt = (
+            select(JourneyStop)
+            .where(JourneyStop.journey_id == journey.id)
+            .order_by(JourneyStop.stop_sequence)
+        )
+        stops = (await db_session.scalars(stmt)).all()
+        return [(s.station_code, s.stop_sequence) for s in stops]
+
+    @pytest.mark.parametrize("combo", _FIELD_PRESENCE_COMBINATIONS, ids=_combo_label)
+    @pytest.mark.asyncio
+    async def test_resequence_invariants_over_field_presence_matrix(
+        self,
+        db_session: AsyncSession,
+        journey_collector,
+        mock_njt_client,
+        combo,
+    ):
+        """For each of the 16 field-presence combinations, resequencing must
+        yield origin-first/terminal-last order, contiguous sequences,
+        insertion-order independence, and idempotence."""
+        n = len(_INVARIANT_STATIONS)
+        intended_codes = [code for code, _ in _INVARIANT_STATIONS]
+        label = _combo_label(combo)
+
+        # (1) Seed with REVERSED insertion order and resequence.
+        journey_rev = await self._seed_journey(
+            db_session, combo, list(range(n - 1, -1, -1)), f"INV_{label}_R"
+        )
+        await journey_collector._resequence_stops(db_session, journey_rev)
+        await db_session.flush()
+        result_rev = await self._ordered_stops(db_session, journey_rev)
+        codes_rev = [code for code, _ in result_rev]
+        seqs_rev = [seq for _, seq in result_rev]
+
+        # Origin first, terminal last, correct geographic order throughout.
+        assert codes_rev == intended_codes, (
+            f"combo={label}: reversed-insertion resequence produced {codes_rev}, "
+            f"expected origin-first/terminal-last order {intended_codes}"
+        )
+        # Contiguous 0..N-1, no duplicates.
+        assert seqs_rev == list(range(n)), (
+            f"combo={label}: sequences must be a contiguous 0..N-1 with no "
+            f"duplicates, got {seqs_rev} (stops {result_rev})"
+        )
+
+        # (2) Insertion-order independence: FORWARD insertion must match exactly.
+        journey_fwd = await self._seed_journey(
+            db_session, combo, list(range(n)), f"INV_{label}_F"
+        )
+        await journey_collector._resequence_stops(db_session, journey_fwd)
+        await db_session.flush()
+        result_fwd = await self._ordered_stops(db_session, journey_fwd)
+        assert result_fwd == result_rev, (
+            f"combo={label}: DB insertion order changed the result — "
+            f"forward-insertion {result_fwd} != reversed-insertion {result_rev}"
+        )
+
+        # (3) Idempotence: a second pass must not change anything.
+        await journey_collector._resequence_stops(db_session, journey_rev)
+        await db_session.flush()
+        result_rev_again = await self._ordered_stops(db_session, journey_rev)
+        assert result_rev_again == result_rev, (
+            f"combo={label}: resequencing is not idempotent — "
+            f"{result_rev} became {result_rev_again} on the second pass"
+        )
+
+    @pytest.mark.asyncio
+    async def test_untimed_stop_cannot_displace_a_timed_stop_from_position_zero(
+        self, db_session: AsyncSession, journey_collector, mock_njt_client
+    ):
+        """A stop with no scheduled/updated time is bucketed to DATETIME_MAX_ET
+        and must sort AFTER every timed stop, even if its input ``stop_sequence``
+        is 0.
+
+        This is the invariant the ``DATETIME_MAX_ET`` bucketing exists to protect
+        (see the comment above ``get_sort_key``): null-time stops must never be
+        placed at position 0. Here an untimed stop is deliberately seeded with
+        ``stop_sequence=0`` and must still end up behind both timed stops.
+        """
+        journey = TrainJourney(
+            train_id="INV_TIMED_VS_UNTIMED",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="New York",
+            origin_station_code="TR",
+            terminal_station_code="NY",
+            data_source="NJT",
+            scheduled_departure=now_et(),
+            has_complete_journey=False,
+            is_completed=False,
+        )
+        db_session.add(journey)
+        await db_session.flush()
+
+        # Timed origin (12:00) and timed terminal (12:30).
+        timed_origin = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="TR",
+            station_name="Trenton",
+            stop_sequence=2,  # deliberately wrong input order
+            scheduled_arrival=datetime(2024, 1, 1, 12, 0, 0, tzinfo=UTC),
+            scheduled_departure=datetime(2024, 1, 1, 12, 1, 0, tzinfo=UTC),
+        )
+        timed_terminal = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="NY",
+            station_name="New York Penn Station",
+            stop_sequence=3,
+            scheduled_arrival=datetime(2024, 1, 1, 12, 30, 0, tzinfo=UTC),
+            scheduled_departure=None,
+        )
+        # Untimed stop with stop_sequence=0 — must NOT grab position 0.
+        untimed_low_seq = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="SE",
+            station_name="Secaucus Junction",
+            stop_sequence=0,
+            scheduled_arrival=None,
+            scheduled_departure=None,
+            updated_arrival=None,
+            updated_departure=None,
+        )
+        # A second untimed stop with a higher sequence — must follow SE and stay
+        # behind the timed stops, proving untimed stops keep their relative order.
+        untimed_high_seq = JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="ND",
+            station_name="New Brunswick",
+            stop_sequence=9,
+            scheduled_arrival=None,
+            scheduled_departure=None,
+            updated_arrival=None,
+            updated_departure=None,
+        )
+        # Insert in a scrambled order so nothing leans on row order.
+        for stop in (untimed_high_seq, timed_terminal, untimed_low_seq, timed_origin):
+            db_session.add(stop)
+        await db_session.flush()
+
+        await journey_collector._resequence_stops(db_session, journey)
+        await db_session.flush()
+
+        result = await self._ordered_stops(db_session, journey)
+        codes = [code for code, _ in result]
+        seqs = [seq for _, seq in result]
+
+        # Timed stops (by time) come first, untimed (by input sequence) after.
+        assert codes == ["TR", "NY", "SE", "ND"], (
+            "Timed stops must precede untimed stops (untimed ordered by their "
+            f"input sequence), got {result}"
+        )
+        # The untimed stop seeded at sequence 0 must not be first.
+        assert codes[0] == "TR", (
+            "A timed stop must hold position 0; an untimed stop with input "
+            f"stop_sequence=0 must not displace it. Got order {result}"
+        )
+        assert seqs == [0, 1, 2, 3], f"Expected contiguous [0, 1, 2, 3], got {seqs}"
