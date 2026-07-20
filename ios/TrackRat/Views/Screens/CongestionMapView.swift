@@ -1402,11 +1402,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
 
             // Handle route topology polylines
             if let polyline = overlay as? RouteTopologyPolyline {
-                let renderer = MKPolylineRenderer(polyline: polyline)
-                renderer.strokeColor = UIColor.white
-                renderer.lineWidth = 4.0
-                renderer.alpha = 0.6
-                return renderer
+                return polyline.makeRenderer()
             }
 
             return MKOverlayRenderer(overlay: overlay)
@@ -1877,6 +1873,16 @@ class RouteTopologyPolyline: MKPolyline {
     var routeId: String = ""
     var routeName: String = ""
     var dataSource: String = ""
+
+    /// Shared styling so route-topology lines look identical on every map
+    /// (full congestion map and the route-status base layer).
+    func makeRenderer() -> MKPolylineRenderer {
+        let renderer = MKPolylineRenderer(polyline: self)
+        renderer.strokeColor = UIColor.white
+        renderer.lineWidth = 4.0
+        renderer.alpha = 0.6
+        return renderer
+    }
 }
 
 // MARK: - Custom Annotation Class for System Map

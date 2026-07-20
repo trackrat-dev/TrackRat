@@ -391,13 +391,14 @@ struct RouteStatusView: View {
         VStack(spacing: 8) {
             if viewModel.isLoadingMap {
                 ShimmerRect(height: 200, cornerRadius: 12)
-            } else if !viewModel.filteredSegments.isEmpty {
+            } else if !viewModel.filteredSegments.isEmpty || viewModel.baseRouteStationCodes.count >= 2 {
                 CongestionMapKitView(
                     region: $viewModel.mapRegion,
                     segments: viewModel.filteredSegments,
                     stations: [],
                     trainPositions: [],
                     highlightMode: .delays,  // "on" — per-segment coloring is automatic
+                    baseRouteStationCodes: viewModel.baseRouteStationCodes,
                     onSegmentTap: { _ in }
                 )
                 .frame(height: 200)
@@ -857,6 +858,10 @@ final class RouteStatusViewModel: ObservableObject {
     // Map state
     @Published var filteredSegments: [CongestionSegment] = []
     @Published var journeyStations: [JourneyStation] = []
+    /// Ordered topology path for this route, drawn as a static base layer
+    /// beneath live congestion segments so segments with no recent train
+    /// (e.g. Keystone Paoli→30th St) still show a route line (#1561).
+    @Published var baseRouteStationCodes: [String] = []
     @Published var mapRegion = MKCoordinateRegion()
     @Published var isLoadingMap = true
 
@@ -983,6 +988,7 @@ final class RouteStatusViewModel: ObservableObject {
         context = newContext
         filteredSegments = []
         journeyStations = []
+        baseRouteStationCodes = []
         mapRegion = MKCoordinateRegion()
         isLoadingMap = true
         serviceAlerts = []
@@ -1185,14 +1191,15 @@ final class RouteStatusViewModel: ObservableObject {
         isLoadingMap = true
         defer { isLoadingMap = false }
 
-        let routeStationCodes = Set(context.stationCodes.map { $0.uppercased() })
-
-        // Fetch congestion data for each enabled system
-        var allSegments: [CongestionSegment] = []
-
         let systemsToFetch = enabledSystems.isEmpty
             ? Set([context.dataSource])
             : enabledSystems
+
+        baseRouteStationCodes = baseRoutePath(for: systemsToFetch)
+        let routeStationCodes = Set(baseRouteStationCodes.map { $0.uppercased() })
+
+        // Fetch congestion data for each enabled system
+        var allSegments: [CongestionSegment] = []
 
         await withTaskGroup(of: [CongestionSegment].self) { group in
             for system in systemsToFetch {
@@ -1228,6 +1235,19 @@ final class RouteStatusViewModel: ObservableObject {
         setMapRegion()
     }
 
+    /// Topology path for the map's base route layer. Uses the context's own
+    /// path while its system is part of the active filter; when the filter
+    /// excludes it, re-derives the path from an enabled system so the base
+    /// layer matches the live segments (e.g. NJT runs NP→NY via Secaucus
+    /// while Amtrak runs direct).
+    func baseRoutePath(for systems: Set<String>) -> [String] {
+        if systems.contains(context.dataSource) { return context.stationCodes }
+        guard let from = context.effectiveFromStation,
+              let to = context.effectiveToStation else { return [] }
+        let paths = systems.sorted().map { RouteStatusContext.topologyPath(from: from, to: to, dataSource: $0) }
+        return paths.first(where: { $0.count > 2 }) ?? paths.first ?? []
+    }
+
     private func buildStationsFromSegments() {
         var seen = Set<String>()
         var stations: [JourneyStation] = []
@@ -1252,8 +1272,11 @@ final class RouteStatusViewModel: ObservableObject {
     }
 
     private func setMapRegion() {
-        guard !journeyStations.isEmpty else { return }
-        let coordinates = journeyStations.map { $0.coordinate }
+        // Cover the full topology path, not just segments with live data, so
+        // the base route layer is never drawn outside the visible region.
+        var coordinates = journeyStations.map { $0.coordinate }
+        coordinates += baseRouteStationCodes.compactMap { Stations.getCoordinates(for: $0) }
+        guard !coordinates.isEmpty else { return }
         let minLat = coordinates.map { $0.latitude }.min() ?? 0
         let maxLat = coordinates.map { $0.latitude }.max() ?? 0
         let minLon = coordinates.map { $0.longitude }.min() ?? 0

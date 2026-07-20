@@ -241,6 +241,22 @@ class RouteStatusContextTests: XCTestCase {
         }
     }
 
+    func testTopologyPath_samePairDivergesBySystem() {
+        // NP→NY is the canonical divergent pair: NJT routes via Secaucus,
+        // Amtrak runs direct. The route-status base map layer relies on this
+        // per-system distinction (PR #1582 review).
+        XCTAssertEqual(
+            RouteStatusContext.topologyPath(from: "NP", to: "NY", dataSource: "NJT"),
+            ["NP", "SE", "NY"],
+            "NJT's NP→NY topology must include Secaucus"
+        )
+        XCTAssertEqual(
+            RouteStatusContext.topologyPath(from: "NP", to: "NY", dataSource: "AMTRAK"),
+            ["NP", "NY"],
+            "Amtrak's NP→NY topology is direct — no Secaucus stop"
+        )
+    }
+
     func testGtfsRouteIds_allMnrBranches_topologyAndCodeAgree() {
         let pairs: [(String, String, String)] = [
             ("mnr-hudson", "MNR-HUD", "1"),

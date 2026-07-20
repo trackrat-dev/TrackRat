@@ -631,21 +631,28 @@ struct RouteStatusContext: Identifiable, Equatable {
             return route.stationCodes
         }
         if let from = fromStationCode, let to = toStationCode {
-            let direct = RouteTopology.expandStationCodes([from, to], dataSource: dataSource)
-            if direct.count > 2 { return direct }
-
-            // Try station equivalents for cross-platform transfers
-            let fromCodes = Stations.stationEquivalents[from] ?? [from]
-            let toCodes = Stations.stationEquivalents[to] ?? [to]
-            for f in fromCodes {
-                for t in toCodes {
-                    let expanded = RouteTopology.expandStationCodes([f, t], dataSource: dataSource)
-                    if expanded.count > 2 { return expanded }
-                }
-            }
-            return direct
+            return Self.topologyPath(from: from, to: to, dataSource: dataSource)
         }
         return []
+    }
+
+    /// Expand a station pair to an ordered topology path on `dataSource`,
+    /// trying station equivalents for cross-platform transfers (e.g., G→L at
+    /// Metropolitan Av). Falls back to the bare pair when no expansion exists.
+    static func topologyPath(from: String, to: String, dataSource: String) -> [String] {
+        let direct = RouteTopology.expandStationCodes([from, to], dataSource: dataSource)
+        if direct.count > 2 { return direct }
+
+        // Try station equivalents for cross-platform transfers
+        let fromCodes = Stations.stationEquivalents[from] ?? [from]
+        let toCodes = Stations.stationEquivalents[to] ?? [to]
+        for f in fromCodes {
+            for t in toCodes {
+                let expanded = RouteTopology.expandStationCodes([f, t], dataSource: dataSource)
+                if expanded.count > 2 { return expanded }
+            }
+        }
+        return direct
     }
 
     /// GTFS route IDs for filtering service alerts by relevance.
