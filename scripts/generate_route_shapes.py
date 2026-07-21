@@ -6,6 +6,15 @@ Downloads GTFS feeds for all transit providers, extracts shapes.txt, maps shape
 points to station-pair segments, simplifies with Douglas-Peucker, and generates
 a Swift file with embedded coordinate arrays.
 
+Segments come from two passes per provider:
+1. Trip pass: consecutive mapped-stop pairs of sampled rail trips (bus trips
+   like Amtrak Thruway are excluded via route_type). This yields the
+   journey-granularity keys the congestion API returns.
+2. Topology pass: adjacent station pairs from backend route_topology AND iOS
+   RouteTopology.swift that the trip pass missed (coarse express hops like
+   OMA-DEN that no trip serves as consecutive stops) are sliced out of full
+   trip shapes, so the iOS route base layer follows real track too.
+
 Usage:
     cd backend_v2
     poetry run python3 ../scripts/generate_route_shapes.py [--output-dir /tmp/route_shapes]
@@ -20,6 +29,7 @@ import csv
 import io
 import math
 import os
+import re
 import urllib.request
 import zipfile
 from collections import defaultdict
@@ -38,6 +48,41 @@ GTFS_FEEDS = {
     "SEPTA_METRO": "https://www3.septa.org/developer/google_bus.zip",
 }
 
+# GTFS route_type values we extract shapes for: 0 = tram/trolley, 1 = subway,
+# 2 = rail. Excludes buses (3) — the Amtrak feed leads with hundreds of Thruway
+# connecting-bus trips and the SEPTA google_bus feed is mostly buses; without
+# this filter the trip sampling budget is spent on bus routes before any rail
+# route is reached.
+RAIL_ROUTE_TYPES = {"0", "1", "2"}
+
+# Trip sampling: enough trips per route to cover its stopping-pattern variety
+# (locals vs expresses hit different consecutive station pairs). A global cap
+# is wrong here — feeds list trips grouped by route, so a global cap exhausts
+# the budget on the first few routes and leaves the rest with no shapes at all
+# (this is how Amtrak shipped with near-zero coverage).
+MAX_TRIPS_PER_ROUTE = 50
+
+# Topology pass: a station anchors a shape slice only if the shape's polyline
+# passes within this distance of it. Keeps a shape that merely comes near a
+# city from being mistaken for one that actually serves its station. 2 km
+# tolerates same-city terminal splits (the Downeaster's shape runs to Boston
+# North Station, ~1.7 km from the coordinates stored for code BOS).
+MAX_STATION_TO_SHAPE_M = 2000.0
+
+_IOS_SHARED_DIR = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)), "..", "ios", "TrackRat", "Shared"
+)
+
+# iOS route topology — parsed for its adjacent station pairs so the base-layer
+# renderer (which walks RouteTopology.swift, not the backend topology) finds a
+# shape for every segment it draws.
+IOS_TOPOLOGY_PATH = os.path.join(_IOS_SHARED_DIR, "RouteTopology.swift")
+
+# iOS station coordinates — the renderer's own chord endpoints, used as the
+# last-resort anchor for stations absent from both the GTFS feed and the
+# backend STATION_COORDINATES table.
+IOS_COORDINATES_PATH = os.path.join(_IOS_SHARED_DIR, "StationCoordinates.swift")
+
 # Import station code mapping from backend to map GTFS stop_ids to our codes.
 # We do this by adding backend_v2/src to sys.path.
 import sys
@@ -46,7 +91,10 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 BACKEND_SRC = os.path.join(SCRIPT_DIR, "..", "backend_v2", "src")
 sys.path.insert(0, BACKEND_SRC)
 
-from trackrat.config.stations import map_gtfs_stop_to_station_code  # noqa: E402
+from trackrat.config.stations import (  # noqa: E402
+    get_station_coordinates,
+    map_gtfs_stop_to_station_code,
+)
 from trackrat.config.route_topology import ALL_ROUTES  # noqa: E402
 
 # Build a mapping from equivalent station codes to the canonical code used
@@ -209,6 +257,24 @@ def _perpendicular_distance(
     return math.sqrt((point[0] - proj[0]) ** 2 + (point[1] - proj[1]) ** 2)
 
 
+def rail_trip_filter(trips: list[dict], routes: list[dict]) -> list[dict]:
+    """Keep only trips on rail routes (route_type 0/1/2), dropping buses.
+
+    If routes.txt is missing or carries no route_type data, all trips pass
+    through unchanged — every feed we consume is then rail-only anyway.
+    """
+    route_types = {
+        r["route_id"]: (r.get("route_type") or "").strip()
+        for r in routes
+        if r.get("route_id")
+    }
+    if not any(route_types.values()):
+        return trips
+    return [
+        t for t in trips if route_types.get(t.get("route_id", "")) in RAIL_ROUTE_TYPES
+    ]
+
+
 def extract_segment_shapes(
     provider: str,
     shapes: dict[str, list[ShapePoint]],
@@ -238,12 +304,14 @@ def extract_segment_shapes(
             continue
         stop_coords[stop["stop_id"]] = (float(lat), float(lon))
 
-    # Build trip -> shape_id mapping
+    # Build trip -> shape_id and trip -> route_id mappings
     trip_shape: dict[str, str] = {}
+    trip_route: dict[str, str] = {}
     for trip in trips:
         shape_id = trip.get("shape_id", "")
         if shape_id:
             trip_shape[trip["trip_id"]] = shape_id
+            trip_route[trip["trip_id"]] = trip.get("route_id", "")
 
     # Build trip -> ordered stops
     trip_stops: dict[str, list[tuple[int, str]]] = defaultdict(list)
@@ -261,9 +329,13 @@ def extract_segment_shapes(
     # For each trip, extract shape segments between consecutive stops
     # Accumulate all shapes per segment key, keep the one with the most points
     segment_shapes: dict[str, list[tuple[float, float]]] = {}
-    processed_trips = 0
+    route_trip_counts: dict[str, int] = defaultdict(int)
 
     for trip_id, ordered_stops in trip_stops.items():
+        route_id = trip_route.get(trip_id, "")
+        if route_trip_counts[route_id] >= MAX_TRIPS_PER_ROUTE:
+            continue
+
         shape_id = trip_shape.get(trip_id)
         if not shape_id or shape_id not in shapes:
             continue
@@ -328,22 +400,263 @@ def extract_segment_shapes(
             ):
                 segment_shapes[key] = segment_pts
 
-        processed_trips += 1
-        # Only need a handful of trips per route to get shape coverage
-        if processed_trips >= 200:
-            break
+        route_trip_counts[route_id] += 1
 
     return segment_shapes
+
+
+def parse_ios_topology() -> dict[str, list[list[str]]]:
+    """Parse RouteTopology.swift into {provider: [ordered station code lists]}.
+
+    The iOS base-layer renderer draws one polyline per *iOS* adjacent station
+    pair, and its route lists are coarser than the backend's (e.g. the iOS
+    California Zephyr lists 8 stations where the backend lists every stop), so
+    backend topology alone cannot supply all the keys iOS looks up.
+    """
+    try:
+        with open(IOS_TOPOLOGY_PATH, encoding="utf-8") as f:
+            text = f.read()
+    except OSError as e:
+        print(f"  ⚠️  Cannot read iOS RouteTopology.swift ({e}) — "
+              "base-layer pairs limited to backend topology")
+        return {}
+
+    result: dict[str, list[list[str]]] = defaultdict(list)
+    pattern = re.compile(
+        r'dataSource:\s*"([A-Z_]+)"\s*,\s*stationCodes:\s*\[([^\]]*)\]', re.S
+    )
+    for match in pattern.finditer(text):
+        provider = match.group(1)
+        codes = re.findall(r'"([^"]+)"', match.group(2))
+        if len(codes) >= 2:
+            result[provider].append(codes)
+    return dict(result)
+
+
+def parse_ios_station_coordinates() -> dict[str, dict[str, float]]:
+    """Parse StationCoordinates.swift into {code: {lat, lon}}.
+
+    These are the exact coordinates the iOS renderer draws chord endpoints
+    from, and the file covers stations that the current GTFS feed and the
+    backend STATION_COORDINATES table both lack (e.g. Amtrak stations with
+    temporarily suspended service).
+    """
+    try:
+        with open(IOS_COORDINATES_PATH, encoding="utf-8") as f:
+            text = f.read()
+    except OSError as e:
+        print(f"  ⚠️  Cannot read iOS StationCoordinates.swift ({e})")
+        return {}
+
+    pattern = re.compile(
+        r'"([A-Z0-9]+)":\s*CLLocationCoordinate2D\('
+        r"latitude:\s*(-?[\d.]+),\s*longitude:\s*(-?[\d.]+)\)"
+    )
+    return {
+        m.group(1): {"lat": float(m.group(2)), "lon": float(m.group(3))}
+        for m in pattern.finditer(text)
+    }
+
+
+def resolve_station_coords(
+    needed_pairs: set[tuple[str, str]],
+    feed_coords: dict[str, dict[str, float]],
+    ios_coords: dict[str, dict[str, float]],
+) -> dict[str, dict[str, float]]:
+    """Best coordinates per topology station: the feed's own stops.txt first
+    (it matches the feed's shape geometry), then backend STATION_COORDINATES,
+    then iOS StationCoordinates.swift."""
+    resolved: dict[str, dict[str, float]] = {}
+    for pair in needed_pairs:
+        for code in pair:
+            if code in resolved:
+                continue
+            coords = (
+                feed_coords.get(code)
+                or get_station_coordinates(code)
+                or ios_coords.get(code)
+            )
+            if coords:
+                resolved[code] = coords
+    return resolved
+
+
+def topology_adjacent_pairs(
+    provider: str, ios_topology: dict[str, list[list[str]]]
+) -> set[tuple[str, str]]:
+    """All adjacent station pairs (canonically ordered) that renderers walk:
+    backend route_topology plus the iOS RouteTopology.swift lists."""
+    pairs: set[tuple[str, str]] = set()
+    station_lists = [
+        route.stations for route in ALL_ROUTES if route.data_source == provider
+    ]
+    station_lists.extend(ios_topology.get(provider, []))
+    for stations in station_lists:
+        for a, b in zip(stations, stations[1:]):
+            if a != b:
+                pairs.add((a, b) if a < b else (b, a))
+    return pairs
+
+
+def find_nearest_shape_position(
+    shape_points: list[ShapePoint], lat: float, lon: float
+) -> tuple[float, int, float, float, float]:
+    """Nearest position ON the polyline (not just nearest vertex).
+
+    Long-distance shapes space vertices kilometers apart, so vertex distance
+    wildly overstates how far a station is from the line (Syracuse sits ~0 m
+    from the Empire Corridor track but 3.5 km from the nearest vertex).
+
+    Returns (dist_m, segment_index, t, proj_lat, proj_lon) where the position
+    lies on the segment between vertex segment_index and segment_index + 1 at
+    fraction t. Projection happens in raw degree space — good enough to pick
+    the nearest segment — while dist_m is a true haversine distance.
+    """
+    best: tuple[float, int, float, float, float] | None = None
+    for i in range(len(shape_points) - 1):
+        a, b = shape_points[i], shape_points[i + 1]
+        dx, dy = b.lat - a.lat, b.lon - a.lon
+        length_sq = dx * dx + dy * dy
+        if length_sq == 0:
+            t = 0.0
+        else:
+            t = max(0.0, min(1.0, ((lat - a.lat) * dx + (lon - a.lon) * dy) / length_sq))
+        proj_lat, proj_lon = a.lat + t * dx, a.lon + t * dy
+        dist = haversine_m(proj_lat, proj_lon, lat, lon)
+        if best is None or dist < best[0]:
+            best = (dist, i, t, proj_lat, proj_lon)
+    return best
+
+
+def station_coords_for_provider(
+    provider: str, stops: list[dict]
+) -> dict[str, dict[str, float]]:
+    """Station code -> coordinates from the feed's own stops.txt.
+
+    The feed's coordinates are authoritative for anchoring against the feed's
+    shapes; the backend STATION_COORDINATES table is only a fallback (used in
+    slice_topology_pairs) and has gaps for some Amtrak stations.
+    """
+    coords: dict[str, dict[str, float]] = {}
+    for stop in stops:
+        code = map_gtfs_stop_to_station_code(
+            stop.get("stop_id", ""), stop.get("stop_name", ""), provider
+        )
+        if not code:
+            continue
+        code = SHAPE_CODE_REMAP.get(code, code)
+        lat, lon = stop.get("stop_lat", ""), stop.get("stop_lon", "")
+        if not lat or not lon:
+            continue
+        coords.setdefault(code, {"lat": float(lat), "lon": float(lon)})
+    return coords
+
+
+def slice_topology_pairs(
+    shapes: dict[str, list[ShapePoint]],
+    needed_pairs: set[tuple[str, str]],
+    existing_keys: set[str],
+    station_coords: dict[str, dict[str, float]],
+) -> dict[str, list[tuple[float, float]]]:
+    """Slice shapes for topology-adjacent pairs the trip pass missed.
+
+    Coarse pairs (express hops like OMA-DEN) are never consecutive stops of any
+    trip, so the trip pass cannot produce them. For each missing pair, find the
+    shape whose polyline passes closest to both stations (each within
+    MAX_STATION_TO_SHAPE_M) and cut it between the two projected positions.
+
+    Returns: {"fromCode-toCode": [(lat, lon), ...]} for newly covered pairs.
+    """
+    # Precompute bounding boxes for a cheap containment prefilter
+    margin = 0.02  # ~2 km in latitude
+    candidates = []
+    for shape_points in shapes.values():
+        if len(shape_points) < 2:
+            continue
+        lats = [p.lat for p in shape_points]
+        lons = [p.lon for p in shape_points]
+        candidates.append(
+            (shape_points, min(lats) - margin, max(lats) + margin,
+             min(lons) - margin, max(lons) + margin)
+        )
+
+    def in_bbox(coord: dict, bbox) -> bool:
+        _, lat_lo, lat_hi, lon_lo, lon_hi = bbox
+        return lat_lo <= coord["lat"] <= lat_hi and lon_lo <= coord["lon"] <= lon_hi
+
+    new_segments: dict[str, list[tuple[float, float]]] = {}
+    for code_a, code_b in sorted(needed_pairs):
+        key = f"{code_a}-{code_b}"  # pairs arrive canonically ordered (a < b)
+        if key in existing_keys or key in new_segments:
+            continue
+        coord_a = station_coords.get(code_a)
+        coord_b = station_coords.get(code_b)
+        if not coord_a or not coord_b:
+            continue
+
+        best = None  # (score, shape_points, pos_a, pos_b)
+        for bbox in candidates:
+            if not (in_bbox(coord_a, bbox) and in_bbox(coord_b, bbox)):
+                continue
+            shape_points = bbox[0]
+            pos_a = find_nearest_shape_position(shape_points, coord_a["lat"], coord_a["lon"])
+            pos_b = find_nearest_shape_position(shape_points, coord_b["lat"], coord_b["lon"])
+            dist_a, dist_b = pos_a[0], pos_b[0]
+            if dist_a > MAX_STATION_TO_SHAPE_M or dist_b > MAX_STATION_TO_SHAPE_M:
+                continue
+            score = dist_a + dist_b
+            if best is None or score < best[0]:
+                best = (score, shape_points, pos_a, pos_b)
+
+        if best is None:
+            continue
+        _, shape_points, pos_a, pos_b = best
+        _, seg_a, t_a, proj_a_lat, proj_a_lon = pos_a
+        _, seg_b, t_b, proj_b_lat, proj_b_lon = pos_b
+        scalar_a, scalar_b = seg_a + t_a, seg_b + t_b
+        if scalar_a == scalar_b:
+            continue  # both stations project to the same spot — degenerate
+
+        if scalar_a <= scalar_b:
+            interior = [(p.lat, p.lon) for p in shape_points[seg_a + 1 : seg_b + 1]]
+            segment_pts = [(proj_a_lat, proj_a_lon)] + interior + [(proj_b_lat, proj_b_lon)]
+        else:
+            interior = [(p.lat, p.lon) for p in shape_points[seg_b + 1 : seg_a + 1]]
+            segment_pts = [(proj_b_lat, proj_b_lon)] + interior + [(proj_a_lat, proj_a_lon)]
+            segment_pts.reverse()  # run code_a -> code_b, matching the canonical key
+
+        # Projections at t=0/1 coincide with vertices — drop exact duplicates
+        deduped = [segment_pts[0]]
+        for pt in segment_pts[1:]:
+            if pt != deduped[-1]:
+                deduped.append(pt)
+        if len(deduped) < 2:
+            continue
+        new_segments[key] = deduped
+
+    return new_segments
 
 
 def simplify_shapes(
     segment_shapes: dict[str, list[tuple[float, float]]],
     epsilon: float = 0.0001,  # ~11 meters
 ) -> dict[str, list[tuple[float, float]]]:
-    """Simplify all segment shapes using Douglas-Peucker."""
+    """Simplify all segment shapes using Douglas-Peucker.
+
+    Long intercity segments (Amtrak long-distance hops span hundreds of km)
+    get a proportionally larger tolerance: they are only ever viewed at
+    national zoom, and ~11 m fidelity there would balloon the generated file.
+    """
     result = {}
     for key, points in segment_shapes.items():
-        simplified = douglas_peucker(points, epsilon)
+        span_m = haversine_m(points[0][0], points[0][1], points[-1][0], points[-1][1])
+        if span_m > 200_000:
+            eps = epsilon * 20  # ~220 m
+        elif span_m > 50_000:
+            eps = epsilon * 5  # ~55 m
+        else:
+            eps = epsilon
+        simplified = douglas_peucker(points, eps)
         # Only keep if we have more than 2 points (straight line needs no shape data)
         if len(simplified) > 2:
             result[key] = simplified
@@ -398,12 +711,42 @@ def validate_direction(
     return violations
 
 
+def merge_provider_shapes(
+    all_shapes: dict[str, dict[str, list[tuple[float, float]]]],
+) -> dict[str, dict[str, list[tuple[float, float]]]]:
+    """Resolve cross-provider duplicate keys before Swift emission.
+
+    Providers that share track also share station codes (NJT and Amtrak both
+    produce "NP-NY"), but a Swift dictionary literal with duplicate keys is a
+    runtime crash, so each key must be emitted exactly once. Keep the version
+    with the most points; ties go to the alphabetically-first provider.
+    """
+    winners: dict[str, str] = {}
+    for provider in sorted(all_shapes):
+        for key, points in all_shapes[provider].items():
+            current = winners.get(key)
+            if current is None or len(points) > len(all_shapes[current][key]):
+                winners[key] = provider
+
+    merged: dict[str, dict[str, list[tuple[float, float]]]] = {
+        provider: {} for provider in all_shapes
+    }
+    duplicates = 0
+    for key, provider in winners.items():
+        merged[provider][key] = all_shapes[provider][key]
+        duplicates += sum(1 for p in all_shapes if key in all_shapes[p]) - 1
+    if duplicates:
+        print(f"  Deduplicated {duplicates} cross-provider key(s)")
+    return merged
+
+
 def generate_swift(
     all_shapes: dict[str, dict[str, list[tuple[float, float]]]],
     output_path: str,
 ) -> None:
     """Generate RouteShapes.swift with embedded coordinate arrays."""
 
+    all_shapes = merge_provider_shapes(all_shapes)
     total_segments = sum(len(shapes) for shapes in all_shapes.values())
     total_points = sum(
         len(pts) for shapes in all_shapes.values() for pts in shapes.values()
@@ -499,6 +842,8 @@ def main():
 
     os.makedirs(args.output_dir, exist_ok=True)
 
+    ios_topology = parse_ios_topology()
+    ios_coords = parse_ios_station_coordinates()
     all_shapes: dict[str, dict[str, list[tuple[float, float]]]] = {}
 
     for provider in args.providers:
@@ -519,18 +864,44 @@ def main():
         trips = parse_gtfs_file(zip_path, "trips.txt")
         stop_times = parse_gtfs_file(zip_path, "stop_times.txt")
         stops = parse_gtfs_file(zip_path, "stops.txt")
+        routes = parse_gtfs_file(zip_path, "routes.txt")
 
         print(f"  Parsed: {len(shapes_raw)} shape points, {len(trips)} trips, {len(stop_times)} stop_times, {len(stops)} stops")
+
+        # Drop bus trips (Amtrak Thruway, SEPTA buses) before sampling
+        rail_trips = rail_trip_filter(trips, routes)
+        if len(rail_trips) != len(trips):
+            print(f"  {len(rail_trips)} rail trips after route_type filter ({len(trips) - len(rail_trips)} non-rail dropped)")
 
         # Process shapes
         shapes = parse_shapes(shapes_raw)
         print(f"  {len(shapes)} unique shapes")
 
-        # Extract segment shapes
+        # Extract segment shapes from sampled trips
         segment_shapes = extract_segment_shapes(
-            provider, shapes, trips, stop_times, stops
+            provider, shapes, rail_trips, stop_times, stops
         )
-        print(f"  {len(segment_shapes)} station-pair segments with shape data")
+        print(f"  {len(segment_shapes)} station-pair segments from trip pass")
+
+        # Slice shapes for topology-adjacent pairs the trip pass missed, using
+        # only rail trips' shapes so a bus shape can never win the slice.
+        rail_shape_ids = {t["shape_id"] for t in rail_trips if t.get("shape_id")}
+        rail_shapes = {sid: pts for sid, pts in shapes.items() if sid in rail_shape_ids}
+        needed_pairs = topology_adjacent_pairs(provider, ios_topology)
+        feed_coords = station_coords_for_provider(provider, stops)
+        station_coords = resolve_station_coords(needed_pairs, feed_coords, ios_coords)
+        sliced = slice_topology_pairs(
+            rail_shapes, needed_pairs, set(segment_shapes.keys()), station_coords
+        )
+        if sliced:
+            segment_shapes.update(sliced)
+            print(f"  {len(sliced)} additional segments from topology pass")
+        still_missing = [
+            f"{a}-{b}" for a, b in sorted(needed_pairs)
+            if f"{a}-{b}" not in segment_shapes
+        ]
+        if still_missing:
+            print(f"  {len(still_missing)} topology pairs without shape data: {', '.join(still_missing[:20])}{'…' if len(still_missing) > 20 else ''}")
 
         # Simplify
         simplified = simplify_shapes(segment_shapes, epsilon=args.epsilon)

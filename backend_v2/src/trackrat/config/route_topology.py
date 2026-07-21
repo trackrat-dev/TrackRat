@@ -938,7 +938,6 @@ AMTRAK_LAKESHORE = Route(
         "UCA",
         "AMS",
         "ALB",
-        "REN",
         "NY",
     ),
 )
