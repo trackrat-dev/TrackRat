@@ -2049,7 +2049,11 @@ COVERAGE_SKIP_SOURCES = frozenset({"AMTRAK"})
 
 
 def _probe_line_departures(
-    client: httpx.Client, base_url: str, source: str, stations: list[str]
+    client: httpx.Client,
+    base_url: str,
+    source: str,
+    stations: list[str],
+    line_codes: frozenset[str],
 ) -> tuple[list[TrackRatDeparture], str]:
     """Return (departures, direction) for a line, trying its busiest segments.
 
@@ -2061,6 +2065,14 @@ def _probe_line_departures(
     then the full route — in both directions, and return the first non-empty
     result. Adjacent stations always share a direct route, so any train on the
     line traversing that segment is surfaced.
+
+    The ``/trains/departures`` endpoint filters only by ``data_sources``, so a
+    shared segment returns *sibling* lines too (e.g. NJT Bergen County's busiest
+    segment MZ->SF is also on the Main Line). Filtering the results to the
+    route's own ``line_codes`` keeps a dark line from being masked by a live
+    sibling on the same segment. Routes with no ``line_codes`` (LIRR terminal
+    variants resolved geometrically, not by tag) fall back to the unfiltered
+    any-train check, since filtering by an empty set would drop every train.
     """
     n = len(stations)
     mid = n // 2
@@ -2077,6 +2089,8 @@ def _probe_line_departures(
     for a, b in candidates:
         for origin, dest in [(a, b), (b, a)]:
             deps = fetch_trackrat_departures(client, base_url, origin, dest, source)
+            if line_codes:
+                deps = [d for d in deps if d.line_code in line_codes]
             if deps:
                 return deps, f"{origin}->{dest}"
     return [], f"{stations[0]}<->{stations[-1]}"
@@ -2139,7 +2153,7 @@ def run_line_coverage(base_url: str, verbose: bool, fail_empty: bool = False) ->
                     continue
                 lines_checked += 1
                 deps, direction = _probe_line_departures(
-                    client, base_url, source, stations
+                    client, base_url, source, stations, route.line_codes
                 )
                 label = f"{route.name} [{route.id}] ({direction})"
                 if deps:

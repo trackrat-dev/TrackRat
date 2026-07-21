@@ -67,6 +67,7 @@ def _tr(
     track: str | None = None,
     is_cancelled: bool = False,
     observation_type: str = "OBSERVED",
+    line_code: str = "NEC",
 ) -> TrackRatDeparture:
     """Build a TrackRatDeparture with sensible defaults."""
     dep_time = NOW + timedelta(minutes=minutes_offset)
@@ -75,7 +76,7 @@ def _tr(
         destination_code=dest,
         destination_name=f"Station {dest}",
         departure_time=dep_time,
-        line_code="NEC",
+        line_code=line_code,
         line_color="#FF6600",
         observation_type=observation_type,
         track=track,
@@ -1303,3 +1304,85 @@ class TestParseSeptaStatusMinutes:
     def test_unknown_status_is_none(self):
         # "Suspended" / "Canceled" carry no usable delay -> None (not 0).
         assert _parse_septa_status_minutes("Suspended") is None
+
+
+class TestProbeLineDeparturesLineCodeFilter:
+    """Line-coverage probe must attribute departures to the probed line's own
+    ``line_codes``, so a live *sibling* line on a shared segment can't mask a
+    line that has actually gone dark (codex review on PR #1597).
+
+    Example: NJT Bergen County's busiest segment (MZ->SF) is also on the Main
+    Line, so ``data_sources=NJT`` alone returns Main Line trains even when
+    Bergen County is empty.
+    """
+
+    STATIONS = ["A", "B", "C", "D"]
+
+    def _patch_fetch(self, monkeypatch, segment_deps):
+        """Patch fetch_trackrat_departures to return per-(origin,dest) deps."""
+
+        def fake_fetch(client, base_url, origin, dest, source):
+            return list(segment_deps.get((origin, dest), []))
+
+        monkeypatch.setattr(gtv, "fetch_trackrat_departures", fake_fetch)
+
+    def test_sibling_line_alone_reports_empty(self, monkeypatch):
+        # Every segment returns ONLY a sibling ("NE") train; the probed line is
+        # "NC". With the filter, no segment counts -> line correctly empty.
+        sibling = [_tr(train_id="main", line_code="NE")]
+        seg = {
+            (a, b): sibling
+            for a in self.STATIONS
+            for b in self.STATIONS
+            if a != b
+        }
+        self._patch_fetch(monkeypatch, seg)
+        deps, _direction = gtv._probe_line_departures(
+            None, "http://x", "NJT", self.STATIONS, frozenset({"NC"})
+        )
+        assert deps == [], "sibling-only segment must not mark the line as live"
+
+    def test_own_line_on_later_segment_is_found(self, monkeypatch):
+        # Busiest segment (C->D) has only a sibling; the probed line's real
+        # train sits on a later candidate (A->B). Probe must skip the masked
+        # segment and surface the genuine one.
+        seg = {
+            ("C", "D"): [_tr(train_id="main", line_code="NE")],
+            ("D", "C"): [_tr(train_id="main", line_code="NE")],
+            ("A", "B"): [_tr(train_id="bergen", line_code="NC")],
+        }
+        self._patch_fetch(monkeypatch, seg)
+        deps, direction = gtv._probe_line_departures(
+            None, "http://x", "NJT", self.STATIONS, frozenset({"NC"})
+        )
+        assert [d.train_id for d in deps] == ["bergen"]
+        assert all(d.line_code == "NC" for d in deps)
+        assert direction == "A->B"
+
+    def test_mixed_segment_keeps_only_own_line(self, monkeypatch):
+        # A segment carrying both lines returns non-empty, but only the probed
+        # line's departures are retained.
+        seg = {
+            ("C", "D"): [
+                _tr(train_id="main", line_code="NE"),
+                _tr(train_id="bergen", line_code="NC"),
+            ],
+        }
+        self._patch_fetch(monkeypatch, seg)
+        deps, direction = gtv._probe_line_departures(
+            None, "http://x", "NJT", self.STATIONS, frozenset({"NC"})
+        )
+        assert [d.train_id for d in deps] == ["bergen"]
+        assert direction == "C->D"
+
+    def test_empty_line_codes_falls_back_to_any_train(self, monkeypatch):
+        # LIRR terminal variants have no line_codes (resolved geometrically);
+        # filtering by an empty set would drop every train, so the probe must
+        # keep the unfiltered any-train behavior.
+        seg = {("C", "D"): [_tr(train_id="main", line_code="NE")]}
+        self._patch_fetch(monkeypatch, seg)
+        deps, direction = gtv._probe_line_departures(
+            None, "http://x", "LIRR", self.STATIONS, frozenset()
+        )
+        assert [d.train_id for d in deps] == ["main"]
+        assert direction == "C->D"
