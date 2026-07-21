@@ -43,61 +43,6 @@ class TrainSystemTests: XCTestCase {
         XCTAssertEqual(scheduleOnly.count, 1, "Expected 1 schedule-only system: \(scheduleOnly)")
     }
 
-    // MARK: - isFullyScheduleOnly
-
-    func testIsFullyScheduleOnly_onlyPATCO() {
-        // PATCO is the only system served entirely from static schedules. SEPTA Metro is a
-        // hybrid (real-time NHSL/trolleys) so it must NOT be fully schedule-only — its
-        // schedule-only lines are handled per-route in RouteTopology, not system-wide.
-        XCTAssertTrue(TrainSystem.patco.isFullyScheduleOnly,
-                      "PATCO is entirely schedule-only")
-        XCTAssertFalse(TrainSystem.septaMetro.isFullyScheduleOnly,
-                       "SEPTA Metro is a hybrid and must not be treated as fully schedule-only")
-    }
-
-    func testIsFullyScheduleOnly_systemsWithRealtimeService() {
-        let notFullyScheduleOnly: [TrainSystem] = [
-            .njt, .amtrak, .path, .lirr, .mnr, .subway, .metra, .wmata, .bart, .mbta,
-            .septaRegionalRail, .septaMetro,
-        ]
-        for system in notFullyScheduleOnly {
-            XCTAssertFalse(
-                system.isFullyScheduleOnly,
-                "\(system.displayName) has real-time service and must not be fully schedule-only"
-            )
-        }
-    }
-
-    func testIsFullyScheduleOnly_divergesFromSupportsAlerts() {
-        // supportsAlerts and isFullyScheduleOnly are related but distinct. PATCO is both
-        // (no alerts, fully schedule-only). SEPTA Metro supports alerts AND is not fully
-        // schedule-only, yet still has schedule-only *lines* (handled per-route elsewhere).
-        XCTAssertFalse(TrainSystem.patco.supportsAlerts)
-        XCTAssertTrue(TrainSystem.patco.isFullyScheduleOnly)
-
-        XCTAssertTrue(TrainSystem.septaMetro.supportsAlerts,
-                      "SEPTA Metro supports alerts via its real-time lines")
-        XCTAssertFalse(TrainSystem.septaMetro.isFullyScheduleOnly,
-                       "SEPTA Metro is not fully schedule-only despite having schedule-only lines")
-    }
-
-    func testIsFullyScheduleOnly_coversAllCases() {
-        // Forces every TrainSystem case to be explicitly classified by the exhaustive switch.
-        // Pins the counts so an accidental reclassification is caught.
-        let allSystems = TrainSystem.allCases
-        let fullyScheduleOnly = allSystems.filter { $0.isFullyScheduleOnly }
-        let hasRealtime = allSystems.filter { !$0.isFullyScheduleOnly }
-
-        XCTAssertEqual(
-            fullyScheduleOnly.count + hasRealtime.count,
-            allSystems.count,
-            "Every TrainSystem must be classified as fully schedule-only or not"
-        )
-        // Current expectations: 1 fully schedule-only (PATCO), 12 with some real-time service.
-        XCTAssertEqual(fullyScheduleOnly.count, 1, "Expected only PATCO to be fully schedule-only: \(fullyScheduleOnly)")
-        XCTAssertEqual(hasRealtime.count, 12, "Expected 12 systems with real-time service: \(hasRealtime)")
-    }
-
     // MARK: - Availability (feature flag)
 
     func testAvailableCases_excludesDisabledSystems() {

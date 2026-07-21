@@ -52,33 +52,31 @@ struct RouteTopology {
 
     /// Route IDs the backend serves schedule-only, so the congestion map always draws them as
     /// a white base line even with the Routes layer off — they never produce congestion
-    /// segments and would otherwise be invisible. Combines every route of a fully schedule-only
-    /// system (PATCO, via `TrainSystem.isFullyScheduleOnly`) with SEPTA Metro's schedule-only
-    /// lines.
+    /// segments and would otherwise be invisible. Combines PATCO (fully schedule-only, so all
+    /// of `patcoRoutes` qualify) with SEPTA Metro's schedule-only lines.
+    ///
+    /// Deliberately expressed from the route arrays rather than `TrainSystem`, because this
+    /// file is also compiled into the Live Activity widget extension, which does not include
+    /// `TrainSystem`.
     static let scheduleOnlyRouteIDs: Set<String> = {
-        var ids = Set(
-            allRoutes
-                .filter { TrainSystem(rawValue: $0.dataSource)?.isFullyScheduleOnly == true }
-                .map(\.id)
-        )
+        var ids = Set(patcoRoutes.map(\.id))
         ids.formUnion(scheduleOnlySeptaMetroRouteIDs)
         return ids
     }()
 
     /// Route topology lines to draw as the white base layer on the congestion map, given the
-    /// user's selected systems and whether the Routes layer is enabled.
+    /// user's selected data sources and whether the Routes layer is enabled.
     ///
     /// - Schedule-only lines (`scheduleOnlyRouteIDs`) are always drawn when their system is
     ///   selected, since they never produce congestion segments and would otherwise be invisible.
     /// - Every other (real-time) line is drawn only when `showRoutes` is on, so the user's Routes
     ///   toggle keeps its meaning for real-time lines — including SEPTA Metro's NHSL and trolleys.
     static func congestionMapBaseRoutes(
-        selectedSystems: Set<TrainSystem>,
+        selectedDataSources: Set<String>,
         showRoutes: Bool
     ) -> [RouteLine] {
-        let selectedSources = selectedSystems.asRawStrings
-        return allRoutes.filter { route in
-            guard selectedSources.contains(route.dataSource) else { return false }
+        allRoutes.filter { route in
+            guard selectedDataSources.contains(route.dataSource) else { return false }
             return showRoutes || scheduleOnlyRouteIDs.contains(route.id)
         }
     }

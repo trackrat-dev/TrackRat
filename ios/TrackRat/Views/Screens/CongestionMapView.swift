@@ -1136,7 +1136,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
         // Check if anything changed (congestion, routes, stations, systems, or highlight mode)
         let congestionChanged = desiredAggregatedState != context.coordinator.currentAggregatedOverlayState ||
                                desiredIndividualState != context.coordinator.currentIndividualOverlayState
-        let desiredBaseRoutes = RouteTopology.congestionMapBaseRoutes(selectedSystems: selectedSystems, showRoutes: showRoutes)
+        let desiredBaseRoutes = RouteTopology.congestionMapBaseRoutes(selectedDataSources: selectedSystems.asRawStrings, showRoutes: showRoutes)
         let desiredRouteIDs = Set(desiredBaseRoutes.map(\.id))
         let routeOverlaysChanged = desiredRouteIDs != context.coordinator.renderedRouteIDs
         let desiredStationCodes = Set(stations.map { $0.code })

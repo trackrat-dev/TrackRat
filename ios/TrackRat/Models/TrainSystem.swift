@@ -121,27 +121,6 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// Whether this system is served entirely from static schedules with no real-time feed,
-    /// so the backend never returns congestion segments for any of its lines. The congestion
-    /// map always draws such a system's route topology as a white base line so it stays
-    /// visible even without live data. PATCO is the only fully schedule-only system.
-    ///
-    /// SEPTA Metro is deliberately NOT included: it is a hybrid whose Broad Street and
-    /// Market-Frankford lines are schedule-only while NHSL and the trolleys are real-time.
-    /// Its schedule-only lines are handled per-route via `RouteTopology.scheduleOnlyRouteIDs`
-    /// so its real-time lines keep obeying the congestion map's Routes toggle like every other
-    /// real-time line. (This is also why the flag can't be derived from `supportsAlerts`:
-    /// SEPTA Metro supports alerts yet is not fully schedule-only.)
-    var isFullyScheduleOnly: Bool {
-        switch self {
-        case .patco:
-            return true
-        case .njt, .amtrak, .path, .lirr, .mnr, .subway, .metra, .wmata, .bart, .mbta,
-             .septaRegionalRail, .septaMetro:
-            return false
-        }
-    }
-
     /// Data sources whose backend feeds publish a service-alerts list
     /// (planned work, elevator outages, real-time service changes).
     /// Distinct from `supportsAlerts`, which gates delay/cancellation push

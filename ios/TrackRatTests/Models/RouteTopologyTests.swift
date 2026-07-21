@@ -353,14 +353,14 @@ class RouteTopologyTests: XCTestCase {
     /// off, SEPTA Metro must draw exactly its schedule-only lines (Broad St + Market-Frankford)
     /// — not its real-time NHSL/trolley lines, which stay under the user's Routes toggle.
     func testCongestionMapBaseRoutes_septaMetro_routesOff_onlyScheduleOnlyLines() {
-        let routes = RouteTopology.congestionMapBaseRoutes(selectedSystems: [.septaMetro], showRoutes: false)
+        let routes = RouteTopology.congestionMapBaseRoutes(selectedDataSources: ["SEPTA_METRO"], showRoutes: false)
         let ids = Set(routes.map(\.id))
         XCTAssertEqual(ids, ["SEPTA-B1", "SEPTA-B2", "SEPTA-B3", "SEPTA-L1"],
                        "SEPTA Metro with Routes off must draw only its schedule-only lines, got \(ids.sorted())")
     }
 
     func testCongestionMapBaseRoutes_septaMetro_routesOn_allLines() {
-        let routes = RouteTopology.congestionMapBaseRoutes(selectedSystems: [.septaMetro], showRoutes: true)
+        let routes = RouteTopology.congestionMapBaseRoutes(selectedDataSources: ["SEPTA_METRO"], showRoutes: true)
         let ids = Set(routes.map(\.id))
         XCTAssertEqual(ids, routeIDs(forDataSource: "SEPTA_METRO"),
                        "SEPTA Metro with Routes on must draw the full topology, including NHSL/trolleys")
@@ -369,15 +369,15 @@ class RouteTopologyTests: XCTestCase {
 
     func testCongestionMapBaseRoutes_patco_routesOff_allRoutes() {
         // PATCO is fully schedule-only, so all its routes draw even with Routes off.
-        let routes = RouteTopology.congestionMapBaseRoutes(selectedSystems: [.patco], showRoutes: false)
+        let routes = RouteTopology.congestionMapBaseRoutes(selectedDataSources: ["PATCO"], showRoutes: false)
         let ids = Set(routes.map(\.id))
         XCTAssertEqual(ids, routeIDs(forDataSource: "PATCO"),
                        "PATCO with Routes off must draw its whole (schedule-only) network")
     }
 
     func testCongestionMapBaseRoutes_patco_routesToggleHasNoEffect() {
-        let off = RouteTopology.congestionMapBaseRoutes(selectedSystems: [.patco], showRoutes: false)
-        let on = RouteTopology.congestionMapBaseRoutes(selectedSystems: [.patco], showRoutes: true)
+        let off = RouteTopology.congestionMapBaseRoutes(selectedDataSources: ["PATCO"], showRoutes: false)
+        let on = RouteTopology.congestionMapBaseRoutes(selectedDataSources: ["PATCO"], showRoutes: true)
         XCTAssertEqual(Set(off.map(\.id)), Set(on.map(\.id)),
                        "PATCO renders the same regardless of the Routes toggle (fully schedule-only)")
     }
@@ -385,13 +385,13 @@ class RouteTopologyTests: XCTestCase {
     func testCongestionMapBaseRoutes_realtimeSystem_routesOff_empty() {
         // A fully real-time system contributes nothing to the base layer when Routes is off —
         // its lines are shown only as colored congestion segments.
-        let routes = RouteTopology.congestionMapBaseRoutes(selectedSystems: [.njt], showRoutes: false)
+        let routes = RouteTopology.congestionMapBaseRoutes(selectedDataSources: ["NJT"], showRoutes: false)
         XCTAssertTrue(routes.isEmpty,
                       "NJT with Routes off must not draw any base topology, got \(routes.map(\.id))")
     }
 
     func testCongestionMapBaseRoutes_realtimeSystem_routesOn_allRoutes() {
-        let routes = RouteTopology.congestionMapBaseRoutes(selectedSystems: [.njt], showRoutes: true)
+        let routes = RouteTopology.congestionMapBaseRoutes(selectedDataSources: ["NJT"], showRoutes: true)
         let ids = Set(routes.map(\.id))
         XCTAssertEqual(ids, routeIDs(forDataSource: "NJT"),
                        "NJT with Routes on must draw its full topology")
@@ -399,21 +399,21 @@ class RouteTopologyTests: XCTestCase {
 
     func testCongestionMapBaseRoutes_unselectedSystemsDoNotLeak() {
         // Selecting only NJT must not pull in PATCO or SEPTA Metro schedule-only lines.
-        let routes = RouteTopology.congestionMapBaseRoutes(selectedSystems: [.njt], showRoutes: false)
+        let routes = RouteTopology.congestionMapBaseRoutes(selectedDataSources: ["NJT"], showRoutes: false)
         let sources = Set(routes.map(\.dataSource))
         XCTAssertFalse(sources.contains("PATCO"), "Unselected PATCO must not leak into the base layer")
         XCTAssertFalse(sources.contains("SEPTA_METRO"), "Unselected SEPTA Metro must not leak into the base layer")
     }
 
     func testCongestionMapBaseRoutes_emptySelection_empty() {
-        XCTAssertTrue(RouteTopology.congestionMapBaseRoutes(selectedSystems: [], showRoutes: false).isEmpty)
-        XCTAssertTrue(RouteTopology.congestionMapBaseRoutes(selectedSystems: [], showRoutes: true).isEmpty)
+        XCTAssertTrue(RouteTopology.congestionMapBaseRoutes(selectedDataSources: [], showRoutes: false).isEmpty)
+        XCTAssertTrue(RouteTopology.congestionMapBaseRoutes(selectedDataSources: [], showRoutes: true).isEmpty)
     }
 
     func testCongestionMapBaseRoutes_mixedSelection_routesOff() {
         // PATCO (all routes) + SEPTA Metro (schedule-only lines only) render; NJT does not.
         let routes = RouteTopology.congestionMapBaseRoutes(
-            selectedSystems: [.patco, .septaMetro, .njt],
+            selectedDataSources: ["PATCO", "SEPTA_METRO", "NJT"],
             showRoutes: false
         )
         let ids = Set(routes.map(\.id))
