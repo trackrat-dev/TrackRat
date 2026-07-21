@@ -121,6 +121,26 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         }
     }
 
+    /// Whether this system has schedule-only lines the backend never returns congestion
+    /// segments for (they're excluded from `REAL_TIME_DATA_SOURCES`). The congestion map
+    /// always draws these systems' route topology as a white base line so those lines
+    /// stay visible even without live data.
+    ///
+    /// PATCO is entirely schedule-only. SEPTA Metro is a hybrid — NHSL and the trolleys
+    /// are fed in real time, but Broad Street and Market-Frankford are schedule-only — so
+    /// it needs the white base line too. This is why the flag can't be derived from
+    /// `supportsAlerts`: SEPTA Metro supports alerts (its real-time lines can raise
+    /// delay/cancellation alerts) yet still has schedule-only lines.
+    var hasScheduleOnlyLines: Bool {
+        switch self {
+        case .patco, .septaMetro:
+            return true
+        case .njt, .amtrak, .path, .lirr, .mnr, .subway, .metra, .wmata, .bart, .mbta,
+             .septaRegionalRail:
+            return false
+        }
+    }
+
     /// Data sources whose backend feeds publish a service-alerts list
     /// (planned work, elevator outages, real-time service changes).
     /// Distinct from `supportsAlerts`, which gates delay/cancellation push
@@ -207,13 +227,14 @@ extension Set where Element == TrainSystem {
 
     /// Data sources whose route topology should be drawn on the congestion map.
     ///
-    /// Schedule-only systems (PATCO) have no real-time data so the backend never returns
-    /// congestion segments for them. We still draw their route lines in white whenever
-    /// they're in the user's selected systems, so the map shows that the system exists.
-    /// Real-time systems are only drawn when the user explicitly enables the Routes layer.
+    /// Systems with schedule-only lines (PATCO, and SEPTA Metro's Broad Street /
+    /// Market-Frankford) never produce congestion segments for those lines, so we always
+    /// draw their route topology in white whenever they're in the user's selected systems —
+    /// otherwise those lines would be invisible on the map. Fully real-time systems are only
+    /// drawn when the user explicitly enables the Routes layer. See `hasScheduleOnlyLines`.
     func congestionMapRouteOverlaySources(showRoutes: Bool) -> Set<String> {
         var sources = Set<String>()
-        for system in self where !system.supportsAlerts {
+        for system in self where system.hasScheduleOnlyLines {
             sources.insert(system.dataSource)
         }
         if showRoutes {

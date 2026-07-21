@@ -43,6 +43,60 @@ class TrainSystemTests: XCTestCase {
         XCTAssertEqual(scheduleOnly.count, 1, "Expected 1 schedule-only system: \(scheduleOnly)")
     }
 
+    // MARK: - hasScheduleOnlyLines
+
+    func testHasScheduleOnlyLines_systemsWithScheduleOnlyLines() {
+        // PATCO is entirely schedule-only; SEPTA Metro is a hybrid whose Broad Street /
+        // Market-Frankford lines are schedule-only. Both must draw a white base line.
+        let systemsWithScheduleOnlyLines: [TrainSystem] = [.patco, .septaMetro]
+        for system in systemsWithScheduleOnlyLines {
+            XCTAssertTrue(
+                system.hasScheduleOnlyLines,
+                "\(system.displayName) has schedule-only lines and should draw a white base route line"
+            )
+        }
+    }
+
+    func testHasScheduleOnlyLines_fullyRealtimeSystems() {
+        let fullyRealtime: [TrainSystem] = [
+            .njt, .amtrak, .path, .lirr, .mnr, .subway, .metra, .wmata, .bart, .mbta,
+            .septaRegionalRail,
+        ]
+        for system in fullyRealtime {
+            XCTAssertFalse(
+                system.hasScheduleOnlyLines,
+                "\(system.displayName) is fully real-time and should not force a base route line"
+            )
+        }
+    }
+
+    func testHasScheduleOnlyLines_divergesFromSupportsAlerts_forSeptaMetro() {
+        // The whole point of the flag: SEPTA Metro supports alerts (real-time NHSL/trolleys)
+        // yet still has schedule-only lines, so the two predicates must NOT agree here.
+        XCTAssertTrue(TrainSystem.septaMetro.supportsAlerts,
+                      "SEPTA Metro must still support alerts (its real-time lines can raise them)")
+        XCTAssertTrue(TrainSystem.septaMetro.hasScheduleOnlyLines,
+                      "SEPTA Metro must be flagged as having schedule-only lines despite supporting alerts")
+    }
+
+    func testHasScheduleOnlyLines_coversAllCases() {
+        // Forces every TrainSystem case to be explicitly classified. If a new case is added,
+        // the exhaustive switch won't compile until the developer decides, and this pins the
+        // current counts so an accidental reclassification is caught.
+        let allSystems = TrainSystem.allCases
+        let scheduleOnlyLine = allSystems.filter { $0.hasScheduleOnlyLines }
+        let fullyRealtime = allSystems.filter { !$0.hasScheduleOnlyLines }
+
+        XCTAssertEqual(
+            scheduleOnlyLine.count + fullyRealtime.count,
+            allSystems.count,
+            "Every TrainSystem must be classified as having schedule-only lines or not"
+        )
+        // Current expectations: 2 with schedule-only lines (PATCO, SEPTA Metro), 11 without.
+        XCTAssertEqual(scheduleOnlyLine.count, 2, "Expected 2 systems with schedule-only lines: \(scheduleOnlyLine)")
+        XCTAssertEqual(fullyRealtime.count, 11, "Expected 11 fully real-time systems: \(fullyRealtime)")
+    }
+
     // MARK: - Availability (feature flag)
 
     func testAvailableCases_excludesDisabledSystems() {
@@ -547,9 +601,10 @@ class TrainSystemTests: XCTestCase {
     }
 
     // MARK: - congestionMapRouteOverlaySources
-    // Schedule-only systems (PATCO today) must be auto-rendered on the congestion
-    // map whenever selected, because the backend produces no congestion segments
-    // for them. Real-time systems are only rendered when the Routes layer is on.
+    // Systems with schedule-only lines (PATCO, SEPTA Metro) must be auto-rendered on
+    // the congestion map whenever selected, because the backend produces no congestion
+    // segments for those lines. Fully real-time systems are only rendered when the
+    // Routes layer is on.
 
     func testCongestionMapRouteOverlaySources_emptySelection() {
         let selected: Set<TrainSystem> = []
@@ -585,6 +640,23 @@ class TrainSystemTests: XCTestCase {
                        "PATCO render behavior should be unchanged by the Routes toggle")
     }
 
+    func testCongestionMapRouteOverlaySources_septaMetroOnly_routesOff() {
+        // Regression for the Market-Frankford bug: SEPTA Metro has schedule-only lines
+        // (Broad St, Market-Frankford), so its topology must render even with Routes off —
+        // previously it was gated out because SEPTA Metro supports alerts.
+        let selected: Set<TrainSystem> = [.septaMetro]
+        let sources = selected.congestionMapRouteOverlaySources(showRoutes: false)
+        XCTAssertEqual(sources, ["SEPTA_METRO"],
+                       "SEPTA Metro must render its route overlay even when Routes toggle is off, so schedule-only lines like Market-Frankford are visible")
+    }
+
+    func testCongestionMapRouteOverlaySources_septaMetroOnly_routesOn() {
+        let selected: Set<TrainSystem> = [.septaMetro]
+        let sources = selected.congestionMapRouteOverlaySources(showRoutes: true)
+        XCTAssertEqual(sources, ["SEPTA_METRO"],
+                       "SEPTA Metro render behavior should be unchanged by the Routes toggle")
+    }
+
     func testCongestionMapRouteOverlaySources_mixedSelection_routesOff() {
         let selected: Set<TrainSystem> = [.patco, .njt, .path]
         let sources = selected.congestionMapRouteOverlaySources(showRoutes: false)
@@ -599,6 +671,15 @@ class TrainSystemTests: XCTestCase {
                        "All selected systems should render overlays when Routes toggle is on")
     }
 
+    func testCongestionMapRouteOverlaySources_scheduleOnlyLineSystemsMixed_routesOff() {
+        // With Routes off, only systems with schedule-only lines (PATCO + SEPTA Metro)
+        // should render; the fully real-time NJT/PATH must not.
+        let selected: Set<TrainSystem> = [.patco, .septaMetro, .njt, .path]
+        let sources = selected.congestionMapRouteOverlaySources(showRoutes: false)
+        XCTAssertEqual(sources, ["PATCO", "SEPTA_METRO"],
+                       "Only systems with schedule-only lines should render overlays when Routes toggle is off")
+    }
+
     func testCongestionMapRouteOverlaySources_excludesUnselectedScheduleOnly() {
         // If PATCO is the only schedule-only system but the user hasn't selected it,
         // it must not appear in the overlay set (this would defeat the "selected systems"
@@ -609,15 +690,15 @@ class TrainSystemTests: XCTestCase {
                        "Unselected schedule-only systems must not bleed into the overlay set")
     }
 
-    func testCongestionMapRouteOverlaySources_coversAllScheduleOnlySystems() {
-        // If a new schedule-only system is added to TrainSystem, this test ensures it
-        // automatically participates in the always-render behavior. Compares against
-        // the same `!supportsAlerts` predicate used internally.
-        let scheduleOnlySystems = Set(TrainSystem.allCases.filter { !$0.supportsAlerts })
-        XCTAssertFalse(scheduleOnlySystems.isEmpty,
-                       "Expected at least one schedule-only system to exercise this code path")
-        let sources = scheduleOnlySystems.congestionMapRouteOverlaySources(showRoutes: false)
-        XCTAssertEqual(sources, Set(scheduleOnlySystems.map(\.dataSource)),
-                       "Every schedule-only system in selection must appear in overlay sources when Routes toggle is off")
+    func testCongestionMapRouteOverlaySources_coversAllScheduleOnlyLineSystems() {
+        // If a new system with schedule-only lines is added to TrainSystem, this test
+        // ensures it automatically participates in the always-render behavior. Compares
+        // against the same `hasScheduleOnlyLines` predicate used internally.
+        let scheduleOnlyLineSystems = Set(TrainSystem.allCases.filter { $0.hasScheduleOnlyLines })
+        XCTAssertFalse(scheduleOnlyLineSystems.isEmpty,
+                       "Expected at least one system with schedule-only lines to exercise this code path")
+        let sources = scheduleOnlyLineSystems.congestionMapRouteOverlaySources(showRoutes: false)
+        XCTAssertEqual(sources, Set(scheduleOnlyLineSystems.map(\.dataSource)),
+                       "Every system with schedule-only lines in selection must appear in overlay sources when Routes toggle is off")
     }
 }

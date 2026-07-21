@@ -1247,9 +1247,10 @@ struct SystemCongestionMapView: UIViewRepresentable {
             }
         }
 
-        // Handle route topology overlays. Always drawn for schedule-only systems (PATCO)
-        // because they never produce congestion segments; gated by the Routes toggle for
-        // real-time systems. See `congestionMapRouteOverlaySources` for the rules.
+        // Handle route topology overlays. Always drawn for systems with schedule-only
+        // lines (PATCO, and SEPTA Metro's Broad St / Market-Frankford) because those lines
+        // never produce congestion segments; gated by the Routes toggle for fully real-time
+        // systems. See `congestionMapRouteOverlaySources` for the rules.
         if routeOverlaysChanged {
             // Remove existing overlays
             if !context.coordinator.routeTopologyOverlays.isEmpty {
