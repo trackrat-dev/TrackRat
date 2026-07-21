@@ -16,14 +16,12 @@ StationCoordinates.swift so regex drift against those files fails loudly.
 import os
 import sys
 
-import pytest
-
 # Add scripts directory to path so we can import the generator
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "..", "scripts"))
 
 from generate_route_shapes import (
+    MAX_PATTERNS_PER_ROUTE,
     MAX_STATION_TO_SHAPE_M,
-    MAX_TRIPS_PER_ROUTE,
     ShapePoint,
     extract_segment_shapes,
     find_nearest_shape_position,
@@ -39,7 +37,9 @@ from generate_route_shapes import (
 
 def _points(coords):
     """Build ShapePoints from (lat, lon) tuples with sequential sequence."""
-    return [ShapePoint(lat=lat, lon=lon, sequence=i) for i, (lat, lon) in enumerate(coords)]
+    return [
+        ShapePoint(lat=lat, lon=lon, sequence=i) for i, (lat, lon) in enumerate(coords)
+    ]
 
 
 class TestRailTripFilter:
@@ -61,9 +61,11 @@ class TestRailTripFilter:
         ]
         kept = rail_trip_filter(trips, self.ROUTES)
         kept_ids = [t["trip_id"] for t in kept]
-        assert kept_ids == ["t1", "t3", "t4"], (
-            f"expected the Thruway bus trip filtered out, got {kept_ids}"
-        )
+        assert kept_ids == [
+            "t1",
+            "t3",
+            "t4",
+        ], f"expected the Thruway bus trip filtered out, got {kept_ids}"
 
     def test_unknown_route_id_dropped(self):
         trips = [{"trip_id": "t1", "route_id": "not-in-routes-txt"}]
@@ -86,7 +88,7 @@ class TestPerRouteSampling:
     a global trip cap was exhausted by the first routes in stop_times order.
     """
 
-    def _synthetic_feed(self, busy_trip_count):
+    def _synthetic_feed(self, busy_trip_count, distinct_patterns=False):
         # Straight north-south line through three real Amtrak stops whose GTFS
         # stop_ids map to internal codes via the real backend mapping
         # (NYP -> NY, PHL -> PH, WIL -> WI). No mocks — real code mapping.
@@ -95,29 +97,60 @@ class TestPerRouteSampling:
         shapes = {"shape_a": shape_a, "shape_b": shape_b}
 
         stops = [
-            {"stop_id": "NYP", "stop_name": "New York Penn", "stop_lat": "40.75", "stop_lon": "-74.0"},
-            {"stop_id": "PHL", "stop_name": "Philadelphia", "stop_lat": "39.95", "stop_lon": "-75.18"},
-            {"stop_id": "WIL", "stop_name": "Wilmington", "stop_lat": "39.74", "stop_lon": "-75.55"},
+            {
+                "stop_id": "NYP",
+                "stop_name": "New York Penn",
+                "stop_lat": "40.75",
+                "stop_lon": "-74.0",
+            },
+            {
+                "stop_id": "PHL",
+                "stop_name": "Philadelphia",
+                "stop_lat": "39.95",
+                "stop_lon": "-75.18",
+            },
+            {
+                "stop_id": "WIL",
+                "stop_name": "Wilmington",
+                "stop_lat": "39.74",
+                "stop_lon": "-75.55",
+            },
         ]
 
         trips = []
         stop_times = []
-        # Busy route: many identical trips NYP -> PHL on shape_a
+        # Busy route: many trips NYP -> PHL. With distinct_patterns each trip
+        # gets its own copy of the shape, making every (shape, stops) pattern
+        # unique so each one consumes budget.
         for i in range(busy_trip_count):
             trip_id = f"busy-{i}"
-            trips.append({"trip_id": trip_id, "route_id": "busy", "shape_id": "shape_a"})
-            stop_times.append({"trip_id": trip_id, "stop_sequence": "1", "stop_id": "NYP"})
-            stop_times.append({"trip_id": trip_id, "stop_sequence": "2", "stop_id": "PHL"})
+            shape_id = "shape_a"
+            if distinct_patterns:
+                shape_id = f"shape_a_{i}"
+                shapes[shape_id] = shape_a
+            trips.append({"trip_id": trip_id, "route_id": "busy", "shape_id": shape_id})
+            stop_times.append(
+                {"trip_id": trip_id, "stop_sequence": "1", "stop_id": "NYP"}
+            )
+            stop_times.append(
+                {"trip_id": trip_id, "stop_sequence": "2", "stop_id": "PHL"}
+            )
         # Quiet route: a single trip PHL -> WIL on shape_b, listed last
         trips.append({"trip_id": "quiet-0", "route_id": "quiet", "shape_id": "shape_b"})
-        stop_times.append({"trip_id": "quiet-0", "stop_sequence": "1", "stop_id": "PHL"})
-        stop_times.append({"trip_id": "quiet-0", "stop_sequence": "2", "stop_id": "WIL"})
+        stop_times.append(
+            {"trip_id": "quiet-0", "stop_sequence": "1", "stop_id": "PHL"}
+        )
+        stop_times.append(
+            {"trip_id": "quiet-0", "stop_sequence": "2", "stop_id": "WIL"}
+        )
 
         return shapes, trips, stop_times, stops
 
-    def test_quiet_route_still_gets_shapes(self):
+    def test_quiet_route_survives_budget_exhausting_busy_route(self):
+        # Busy route burns through more distinct patterns than its budget —
+        # the quiet route must still be processed (per-route, not global, cap)
         shapes, trips, stop_times, stops = self._synthetic_feed(
-            busy_trip_count=MAX_TRIPS_PER_ROUTE + 25
+            busy_trip_count=MAX_PATTERNS_PER_ROUTE + 25, distinct_patterns=True
         )
         segments = extract_segment_shapes("AMTRAK", shapes, trips, stop_times, stops)
         assert "NY-PH" in segments, f"busy route pair missing: {sorted(segments)}"
@@ -126,14 +159,25 @@ class TestPerRouteSampling:
             f"is broken. Got keys: {sorted(segments)}"
         )
 
+    def test_duplicate_patterns_do_not_consume_budget(self):
+        # Identical trips collapse to one pattern; even far more of them than
+        # the budget must leave the quiet route unaffected
+        shapes, trips, stop_times, stops = self._synthetic_feed(
+            busy_trip_count=MAX_PATTERNS_PER_ROUTE * 2
+        )
+        segments = extract_segment_shapes("AMTRAK", shapes, trips, stop_times, stops)
+        assert (
+            "NY-PH" in segments and "PH-WI" in segments
+        ), f"expected both pairs, got: {sorted(segments)}"
+
     def test_segment_points_run_in_canonical_order(self):
         shapes, trips, stop_times, stops = self._synthetic_feed(busy_trip_count=1)
         segments = extract_segment_shapes("AMTRAK", shapes, trips, stop_times, stops)
         # Key "NY-PH": points must run from NY (40.75) toward PH (39.95)
         points = segments["NY-PH"]
-        assert points[0][0] > points[-1][0], (
-            f"expected points to run NY -> PH (north to south), got {points}"
-        )
+        assert (
+            points[0][0] > points[-1][0]
+        ), f"expected points to run NY -> PH (north to south), got {points}"
 
 
 class TestFindNearestShapePosition:
@@ -172,13 +216,15 @@ class TestSliceTopologyPairs:
     # A shape through three "stations" A (index 0), mid vertex, B (index 2),
     # far vertex C (index 4)
     SHAPE = {
-        "s1": _points([
-            (40.00, -74.00),
-            (40.05, -74.02),
-            (40.10, -74.00),
-            (40.15, -73.98),
-            (40.20, -74.00),
-        ])
+        "s1": _points(
+            [
+                (40.00, -74.00),
+                (40.05, -74.02),
+                (40.10, -74.00),
+                (40.15, -73.98),
+                (40.20, -74.00),
+            ]
+        )
     }
     COORDS = {
         "AA": {"lat": 40.00, "lon": -74.00},
@@ -199,11 +245,14 @@ class TestSliceTopologyPairs:
         # Same pair, canonical order reversed relative to travel direction:
         # key "AA-CC" must run from AA regardless of shape direction
         reversed_shape = {"s1": list(reversed(self.SHAPE["s1"]))}
-        result = slice_topology_pairs(reversed_shape, {("AA", "CC")}, set(), self.COORDS)
-        points = result["AA-CC"]
-        assert points[0] == (40.00, -74.00), (
-            f"points must start at AA (canonical first), got {points[:2]}"
+        result = slice_topology_pairs(
+            reversed_shape, {("AA", "CC")}, set(), self.COORDS
         )
+        points = result["AA-CC"]
+        assert points[0] == (
+            40.00,
+            -74.00,
+        ), f"points must start at AA (canonical first), got {points[:2]}"
 
     def test_station_too_far_from_shape_is_skipped(self):
         result = slice_topology_pairs(self.SHAPE, {("AA", "ZZ")}, set(), self.COORDS)
@@ -233,13 +282,11 @@ class TestMergeProviderShapes:
         }
         merged = merge_provider_shapes(all_shapes)
         emitted = [
-            (provider, key)
-            for provider, shapes in merged.items()
-            for key in shapes
+            (provider, key) for provider, shapes in merged.items() for key in shapes
         ]
-        assert emitted == [("NJT", "NP-NY")], (
-            f"expected single emission under NJT (3 points beats 2), got {emitted}"
-        )
+        assert emitted == [
+            ("NJT", "NP-NY")
+        ], f"expected single emission under NJT (3 points beats 2), got {emitted}"
 
     def test_tie_goes_to_first_provider_alphabetically(self):
         pts = [(40.0, -74.0), (40.1, -74.0)]
@@ -263,9 +310,9 @@ class TestIOSFileParsers:
     def test_parses_real_route_topology(self):
         topology = parse_ios_topology()
         assert "AMTRAK" in topology, f"providers found: {sorted(topology)}"
-        assert len(topology["AMTRAK"]) >= 15, (
-            f"expected the ~20 iOS Amtrak routes, got {len(topology['AMTRAK'])}"
-        )
+        assert (
+            len(topology["AMTRAK"]) >= 15
+        ), f"expected the ~20 iOS Amtrak routes, got {len(topology['AMTRAK'])}"
         nec = next(
             (codes for codes in topology["AMTRAK"] if "BOS" in codes and "WS" in codes),
             None,

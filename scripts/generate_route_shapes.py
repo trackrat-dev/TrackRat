@@ -55,12 +55,14 @@ GTFS_FEEDS = {
 # route is reached.
 RAIL_ROUTE_TYPES = {"0", "1", "2"}
 
-# Trip sampling: enough trips per route to cover its stopping-pattern variety
-# (locals vs expresses hit different consecutive station pairs). A global cap
+# Trip sampling: enough distinct stopping patterns per route to cover its
+# variety (locals vs expresses hit different consecutive station pairs).
+# Trips with an already-seen (shape, stop sequence) are skipped without
+# consuming budget, so the cap counts patterns, not raw trips. A global cap
 # is wrong here — feeds list trips grouped by route, so a global cap exhausts
 # the budget on the first few routes and leaves the rest with no shapes at all
 # (this is how Amtrak shipped with near-zero coverage).
-MAX_TRIPS_PER_ROUTE = 50
+MAX_PATTERNS_PER_ROUTE = 200
 
 # Topology pass: a station anchors a shape slice only if the shape's polyline
 # passes within this distance of it. Keeps a shape that merely comes near a
@@ -329,16 +331,24 @@ def extract_segment_shapes(
     # For each trip, extract shape segments between consecutive stops
     # Accumulate all shapes per segment key, keep the one with the most points
     segment_shapes: dict[str, list[tuple[float, float]]] = {}
-    route_trip_counts: dict[str, int] = defaultdict(int)
+    route_pattern_counts: dict[str, int] = defaultdict(int)
+    seen_patterns: set[tuple] = set()
 
     for trip_id, ordered_stops in trip_stops.items():
-        route_id = trip_route.get(trip_id, "")
-        if route_trip_counts[route_id] >= MAX_TRIPS_PER_ROUTE:
-            continue
-
         shape_id = trip_shape.get(trip_id)
         if not shape_id or shape_id not in shapes:
             continue
+
+        # Identical (shape, stop sequence) trips add nothing — skip them
+        # without consuming the per-route pattern budget
+        pattern = (shape_id, tuple(stop_id for _, stop_id in ordered_stops))
+        if pattern in seen_patterns:
+            continue
+
+        route_id = trip_route.get(trip_id, "")
+        if route_pattern_counts[route_id] >= MAX_PATTERNS_PER_ROUTE:
+            continue
+        seen_patterns.add(pattern)
 
         shape_points = shapes[shape_id]
         if len(shape_points) < 2:
@@ -400,7 +410,7 @@ def extract_segment_shapes(
             ):
                 segment_shapes[key] = segment_pts
 
-        route_trip_counts[route_id] += 1
+        route_pattern_counts[route_id] += 1
 
     return segment_shapes
 
@@ -492,7 +502,7 @@ def topology_adjacent_pairs(
     ]
     station_lists.extend(ios_topology.get(provider, []))
     for stations in station_lists:
-        for a, b in zip(stations, stations[1:]):
+        for a, b in zip(stations, stations[1:], strict=False):
             if a != b:
                 pairs.add((a, b) if a < b else (b, a))
     return pairs
