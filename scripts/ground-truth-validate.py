@@ -7,6 +7,7 @@ Run from the repo root using the backend poetry environment:
 
 import argparse
 import asyncio
+import re
 import sys
 import os
 from collections.abc import Callable
@@ -1510,6 +1511,28 @@ def _parse_septa_local_time(value: str, tz: ZoneInfo) -> datetime | None:
     return None
 
 
+# SEPTA's Arrivals `status` reports real-time lateness as "On Time" or "N min"
+# (it is never early). The `depart_time` field, by contrast, is the scheduled
+# departure plus a fixed station dwell and does NOT move with this delay, so
+# `status` is the only real-time signal on the board.
+_SEPTA_STATUS_MINUTES_RE = re.compile(r"(\d+)\s*min", re.IGNORECASE)
+
+
+def _parse_septa_status_minutes(status: str) -> int | None:
+    """Minutes late from a SEPTA Arrivals ``status`` field.
+
+    Returns 0 for "On Time", N for "N min", and ``None`` for anything else
+    (blank, "Suspended", etc.) — signalling "no usable real-time delay".
+    """
+    if not status:
+        return None
+    text = status.strip()
+    if text.lower() == "on time":
+        return 0
+    match = _SEPTA_STATUS_MINUTES_RE.search(text)
+    return int(match.group(1)) if match else None
+
+
 def _septa_rr_arrival_from_entry(
     entry: dict, code: str, now: datetime, et: ZoneInfo
 ) -> GroundTruthArrival | None:
@@ -1531,9 +1554,20 @@ def _septa_rr_arrival_from_entry(
     if dest_code and dest_code == code:
         return None
 
-    # Prefer the estimated depart_time; fall back to scheduled.
-    time_str = (entry.get("depart_time") or entry.get("sched_time") or "").strip()
-    expected_time = _parse_septa_local_time(time_str, et)
+    # SEPTA's `depart_time` is the scheduled departure plus a fixed dwell; it
+    # does NOT reflect real-time lateness (that lives in `status`, e.g. "6 min").
+    # Apply the reported lateness to the scheduled time to reconstruct SEPTA's
+    # real-time estimate — which is what TrackRat's OBSERVED departures should be
+    # compared against. Falling back to depart_time alone (the old behaviour)
+    # compared against ~scheduled time and flagged correctly-delayed TrackRat
+    # departures as failures.
+    sched_dt = _parse_septa_local_time((entry.get("sched_time") or "").strip(), et)
+    depart_dt = _parse_septa_local_time((entry.get("depart_time") or "").strip(), et)
+    delay_minutes = _parse_septa_status_minutes(entry.get("status") or "")
+    if sched_dt is not None and delay_minutes:
+        expected_time = sched_dt + timedelta(minutes=delay_minutes)
+    else:
+        expected_time = depart_dt or sched_dt
     if expected_time is None:
         return None
 
@@ -2002,6 +2036,146 @@ def run_septa_rr_validation(base_url: str, tolerance: float, verbose: bool = Fal
     print_summary(stations_tested)
 
 
+# --- Line coverage sweep ---
+
+# Sources where a per-line "does this line have departures" probe is meaningful:
+# fixed-schedule / frequency systems where a whole line going dark is
+# unambiguously a bug. AMTRAK is intentionally excluded — it's a single
+# line_code spanning ~50 national services queried by station/pattern, so
+# origin->terminal departure probes (e.g. Chicago->Emeryville) are noisy rather
+# than diagnostic; Amtrak coverage is verified via `--provider AMTRAK` ground
+# truth and the E2E route battery instead.
+COVERAGE_SKIP_SOURCES = frozenset({"AMTRAK"})
+
+
+def _probe_line_departures(
+    client: httpx.Client, base_url: str, source: str, stations: list[str]
+) -> tuple[list[TrackRatDeparture], str]:
+    """Return (departures, direction) for a line, trying its busiest segments.
+
+    An end-to-end origin->terminal probe misses trains on through-routed or
+    branch-to-hub lines (e.g. LIRR branches that transfer at Jamaica, SEPTA RR
+    branches that run through Center City), reporting a running line as empty.
+    Instead probe a few *adjacent* segments — approaching the inner terminal
+    first (usually busiest), then leaving the outer terminal, then a midpoint,
+    then the full route — in both directions, and return the first non-empty
+    result. Adjacent stations always share a direct route, so any train on the
+    line traversing that segment is surfaced.
+    """
+    n = len(stations)
+    mid = n // 2
+    candidates: list[tuple[str, str]] = []
+    for a, b in [
+        (stations[-2], stations[-1]),  # into the inner terminal (usually busiest)
+        (stations[0], stations[1]),  # out of the outer terminal
+        (stations[mid - 1], stations[mid]),  # midpoint segment
+        (stations[0], stations[-1]),  # full route, last resort
+    ]:
+        if a != b and (a, b) not in candidates:
+            candidates.append((a, b))
+
+    for a, b in candidates:
+        for origin, dest in [(a, b), (b, a)]:
+            deps = fetch_trackrat_departures(client, base_url, origin, dest, source)
+            if deps:
+                return deps, f"{origin}->{dest}"
+    return [], f"{stations[0]}<->{stations[-1]}"
+
+
+def _fetch_active_data_sources(client: httpx.Client, base_url: str) -> list[str] | None:
+    """Return the deployment's active (non-disabled) data sources from /health."""
+    try:
+        resp = client.get(f"{base_url.rstrip('/')}/health", timeout=15)
+        resp.raise_for_status()
+        data = resp.json()
+    except (httpx.HTTPError, ValueError) as e:
+        log_fail(f"Could not fetch /health to determine active sources: {e}")
+        return None
+    return data.get("data_sources", {}).get("active")
+
+
+def run_line_coverage(base_url: str, verbose: bool, fail_empty: bool = False) -> None:
+    """Sweep every line of every active system and flag any with zero departures.
+
+    Data-driven from route_topology, so new lines are covered automatically. This
+    catches a whole line silently going dark (e.g. a broken feed) even when no
+    hardcoded E2E route exercises it — the gap that let SEPTA Metro's
+    Market-Frankford line serve zero trains undetected. A line is "empty" only if
+    it returns no departures in EITHER direction. Empty lines are WARN by default
+    (low-frequency and overnight gaps can be legitimate); pass ``fail_empty`` to
+    escalate to FAIL.
+    """
+    print(f"\n{BOLD}Line coverage sweep (every line of every active system){NC}")
+    print(f"Target: {base_url}\n")
+
+    client = httpx.Client()
+    try:
+        active = _fetch_active_data_sources(client, base_url)
+        if active is None:
+            return
+        active_set = set(active)
+
+        lines_checked = 0
+        empty_lines: list[str] = []
+
+        for source in sorted(active_set):
+            if source in COVERAGE_SKIP_SOURCES:
+                log_skip(
+                    f"{source}: per-line coverage not applicable "
+                    "(verified via ground truth / E2E)"
+                )
+                continue
+            routes = get_routes_for_data_source(source)
+            if not routes:
+                log_warn(f"{source}: no routes defined in topology")
+                continue
+
+            print(f"\n{BOLD}--- {source} ({len(routes)} lines) ---{NC}")
+            source_ok = 0
+            source_empty = 0
+            for route in routes:
+                stations = list(route.stations)
+                if len(stations) < 2:
+                    continue
+                lines_checked += 1
+                deps, direction = _probe_line_departures(
+                    client, base_url, source, stations
+                )
+                label = f"{route.name} [{route.id}] ({direction})"
+                if deps:
+                    source_ok += 1
+                    if verbose:
+                        obs = sum(1 for d in deps if d.observation_type == "OBSERVED")
+                        sched = sum(
+                            1 for d in deps if d.observation_type == "SCHEDULED"
+                        )
+                        log_pass(
+                            f"{label}: {len(deps)} departures "
+                            f"({obs} OBSERVED, {sched} SCHEDULED)"
+                        )
+                else:
+                    source_empty += 1
+                    empty_lines.append(f"{source}: {label}")
+                    (log_fail if fail_empty else log_warn)(
+                        f"{label}: 0 departures (both directions)"
+                    )
+
+            print(
+                f"  {source}: {source_ok}/{source_ok + source_empty} "
+                "lines have departures"
+            )
+
+        print(f"\n{BOLD}========== LINE COVERAGE SUMMARY =========={NC}")
+        print(f"  Lines checked: {lines_checked}")
+        print(f"  Empty lines:   {len(empty_lines)}")
+        for entry in empty_lines:
+            color = RED if fail_empty else YELLOW
+            print(f"    {color}EMPTY{NC} {entry}")
+        print_summary(lines_checked)
+    finally:
+        client.close()
+
+
 # --- Main ---
 
 
@@ -2054,10 +2228,27 @@ def main() -> None:
         action="store_true",
         help="Report NJT stop-order inversions as WARN instead of FAIL (default: FAIL)",
     )
+    parser.add_argument(
+        "--coverage",
+        action="store_true",
+        help=(
+            "Run the line-coverage sweep instead of provider ground truth: probe "
+            "every line of every active system and flag any with zero departures"
+        ),
+    )
+    parser.add_argument(
+        "--fail-empty",
+        action="store_true",
+        help="In --coverage mode, treat an empty line as FAIL instead of WARN",
+    )
     args = parser.parse_args()
 
     global STOP_ORDER_WARN
     STOP_ORDER_WARN = args.stop_order_warn
+
+    if args.coverage:
+        run_line_coverage(args.base_url, verbose=args.verbose, fail_empty=args.fail_empty)
+        sys.exit(1 if FAIL_COUNT > 0 else 0)
 
     runners = {
         "PATH": run_path_validation,

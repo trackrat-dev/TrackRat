@@ -30,6 +30,7 @@ fetch_trackrat_train_stop_order = gtv.fetch_trackrat_train_stop_order
 compare_by_train_number = gtv.compare_by_train_number
 _norm_train_number = gtv._norm_train_number
 _septa_rr_arrival_from_entry = gtv._septa_rr_arrival_from_entry
+_parse_septa_status_minutes = gtv._parse_septa_status_minutes
 ZoneInfo = gtv.ZoneInfo
 
 
@@ -1228,3 +1229,77 @@ class TestSeptaRrArrivalFromEntry:
         arrival = _septa_rr_arrival_from_entry(entry, "SEPR90701", NOW, self.ET)
 
         assert arrival is None
+
+    def test_late_train_applies_status_delay_to_schedule(self):
+        # SEPTA's depart_time (10:01, sched+dwell) ignores the "6 min" status;
+        # the real-time estimate is sched (10:00) + 6 min = 10:06. Comparing
+        # against depart_time here would flag a correctly-delayed TrackRat
+        # departure as a failure (the bug this fix addresses).
+        entry = {
+            "destination": "Malvern",
+            "sched_time": "2026-02-22 10:00:00",
+            "depart_time": "2026-02-22 10:01:00",
+            "status": "6 min",
+            "train_id": "9756",
+        }
+        arrival = _septa_rr_arrival_from_entry(entry, "SEPR90004", NOW, self.ET)
+
+        assert arrival is not None
+        assert arrival.expected_time == datetime(2026, 2, 22, 10, 6, tzinfo=self.ET)
+        assert arrival.minutes_away == 6
+
+    def test_on_time_train_uses_depart_time(self):
+        # "On Time" (delay 0) keeps the scheduled depart_time (10:05), which
+        # carries SEPTA's fixed station dwell over the raw sched_time (10:04).
+        entry = {
+            "destination": "Malvern",
+            "sched_time": "2026-02-22 10:04:00",
+            "depart_time": "2026-02-22 10:05:00",
+            "status": "On Time",
+            "train_id": "8360",
+        }
+        arrival = _septa_rr_arrival_from_entry(entry, "SEPR90004", NOW, self.ET)
+
+        assert arrival is not None
+        assert arrival.expected_time == datetime(2026, 2, 22, 10, 5, tzinfo=self.ET)
+        assert arrival.minutes_away == 5
+
+    def test_status_delay_without_schedule_falls_back_to_depart(self):
+        # No sched_time to anchor the delay on -> fall back to depart_time rather
+        # than dropping the entry or mis-applying the delay.
+        entry = {
+            "destination": "Malvern",
+            "depart_time": "2026-02-22 10:05:00",
+            "status": "9 min",
+            "train_id": "5",
+        }
+        arrival = _septa_rr_arrival_from_entry(entry, "SEPR90004", NOW, self.ET)
+
+        assert arrival is not None
+        assert arrival.expected_time == datetime(2026, 2, 22, 10, 5, tzinfo=self.ET)
+
+
+class TestParseSeptaStatusMinutes:
+    """_parse_septa_status_minutes: SEPTA Arrivals `status` -> minutes late."""
+
+    def test_on_time_is_zero(self):
+        assert _parse_septa_status_minutes("On Time") == 0
+
+    def test_on_time_case_insensitive(self):
+        assert _parse_septa_status_minutes("on time") == 0
+
+    def test_minutes_late(self):
+        assert _parse_septa_status_minutes("6 min") == 6
+
+    def test_double_digit_minutes(self):
+        assert _parse_septa_status_minutes("14 min") == 14
+
+    def test_whitespace_tolerant(self):
+        assert _parse_septa_status_minutes("  3 min  ") == 3
+
+    def test_empty_is_none(self):
+        assert _parse_septa_status_minutes("") is None
+
+    def test_unknown_status_is_none(self):
+        # "Suspended" / "Canceled" carry no usable delay -> None (not 0).
+        assert _parse_septa_status_minutes("Suspended") is None

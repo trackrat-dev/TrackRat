@@ -24,6 +24,7 @@ NO_WAIT=false
 NO_RANDOM=false
 SKIP_LOGS=false
 GROUND_TRUTH=false
+COVERAGE=false
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -31,8 +32,9 @@ while [[ $# -gt 0 ]]; do
     --no-random)     NO_RANDOM=true; shift ;;
     --skip-logs)     SKIP_LOGS=true; shift ;;
     --ground-truth)  GROUND_TRUTH=true; shift ;;
+    --coverage)      COVERAGE=true; shift ;;
     --help|-h)
-      echo "Usage: $0 [base_url] [--no-wait] [--no-random] [--skip-logs] [--ground-truth]"
+      echo "Usage: $0 [base_url] [--no-wait] [--no-random] [--skip-logs] [--ground-truth] [--coverage]"
       exit 0
       ;;
     *) BASE_URL="$1"; shift ;;
@@ -113,6 +115,22 @@ if [[ "$GROUND_TRUTH" == "true" ]]; then
     step_pass "4 (ground truth)"
   else
     step_fail "4 (ground truth)"
+  fi
+fi
+
+# ---------- Step 5: Line coverage sweep (optional) ----------
+# Probes every line of every active system and flags any with zero departures —
+# catches a whole line silently going dark (e.g. SEPTA Metro's Market-Frankford)
+# that no hardcoded E2E route exercises. Empty lines are WARN, not fatal, so this
+# step is informational; run the sweep directly with --fail-empty to gate CI.
+
+if [[ "$COVERAGE" == "true" ]]; then
+  echo -e "${BOLD}===== Step 5: Line Coverage Sweep (every active line) =====${NC}"
+
+  if (cd "$REPO_ROOT/backend_v2" && poetry run python3 ../scripts/ground-truth-validate.py "$BASE_URL" --coverage); then
+    step_pass "5 (line coverage)"
+  else
+    step_fail "5 (line coverage)"
   fi
 fi
 

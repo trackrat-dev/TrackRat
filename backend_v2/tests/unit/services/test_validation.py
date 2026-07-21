@@ -251,8 +251,11 @@ class TestTrainValidationService:
 
             trains = await validation_service.get_amtrak_trains_for_route("NY", "PJ")
 
-        # Should include trains going both directions NY<->PJ, prefixed with "A"
-        assert trains == {"A123", "A456"}
+        # Only the NY->PJ direction is counted. The reverse-direction train
+        # (train2: PJC before NYP) is excluded because the /trains/departures
+        # endpoint this is validated against is directional — a reverse train
+        # can never appear in api_trains and would only inflate "missing".
+        assert trains == {"A123"}
 
     @pytest.mark.asyncio
     async def test_get_amtrak_trains_maps_station_codes(
@@ -282,6 +285,42 @@ class TestTrainValidationService:
             trains = await validation_service.get_amtrak_trains_for_route("NY", "WI")
 
         assert trains == {"A100"}
+
+    @pytest.mark.asyncio
+    async def test_get_amtrak_excludes_reverse_direction(
+        self, validation_service, mock_amtrak_client
+    ):
+        """A train serving to->from (reverse) must not count for the from->to route.
+
+        Regression guard: the reference set is compared against the directional
+        /trains/departures endpoint, so counting reverse-direction trains only
+        inflates "missing" and depresses coverage on shared-corridor routes.
+        """
+        validation_service.amtrak_client = mock_amtrak_client
+
+        forward = Mock()
+        forward.trainID = "111-2025-01-01"
+        forward.stations = [Mock(code="NYP"), Mock(code="MET"), Mock(code="PJC")]
+
+        reverse = Mock()
+        reverse.trainID = "222-2025-01-01"
+        reverse.stations = [Mock(code="PJC"), Mock(code="MET"), Mock(code="NYP")]
+
+        mock_amtrak_client.get_all_trains.return_value = {
+            "NYP": [forward, reverse],
+        }
+
+        with patch(
+            "trackrat.services.validation.INTERNAL_TO_AMTRAK_STATION_MAP"
+        ) as mock_map:
+            mock_map.get.side_effect = lambda x, default: {
+                "NY": "NYP",
+                "PJ": "PJC",
+            }.get(x, default)
+
+            trains = await validation_service.get_amtrak_trains_for_route("NY", "PJ")
+
+        assert trains == {"A111"}
 
     @pytest.mark.asyncio
     async def test_get_trains_from_our_api(self, validation_service, mock_http_client):

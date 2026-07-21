@@ -82,6 +82,7 @@ bash scripts/validate-staging.sh --no-random             # Skip Phase 2 random r
 bash scripts/validate-staging.sh --skip-logs             # Skip GCP log check (no creds needed)
 bash scripts/validate-staging.sh --no-wait --no-random   # Fast: health + fixed routes only
 bash scripts/validate-staging.sh --ground-truth           # Include ground truth validation (all providers)
+bash scripts/validate-staging.sh --coverage               # Include line-coverage sweep (every active line)
 
 # Against production:
 bash scripts/validate-staging.sh https://apiv2.trackrat.net
@@ -149,6 +150,27 @@ or `.njt-token` file (gitignored) in the repo root. Priority: TRACKRAT_NJT_API_T
 
 The WMATA API key is set via `TRACKRAT_WMATA_API_KEY` env var for the backend.
 The ground-truth validation script also accepts `WMATA_API_KEY` as a fallback.
+
+**Line Coverage Sweep:**
+
+Catches a whole line silently going dark (e.g. SEPTA Metro's Market-Frankford line
+serving zero trains) that the hardcoded E2E route list doesn't exercise. Data-driven
+from `route_topology`, so new lines are covered automatically. Reads `/health` for the
+deployment's active (non-disabled) sources, then probes every line of every active
+system — a few adjacent segments per line, in both directions, so through-routed /
+branch-to-hub lines (LIRR branches transferring at Jamaica, SEPTA RR branches through
+Center City) aren't false-flagged — and reports any line with zero departures. AMTRAK
+is skipped (single national line_code; verified via `--provider AMTRAK` ground truth).
+
+```bash
+cd backend_v2
+poetry run python3 ../scripts/ground-truth-validate.py --coverage            # WARN on empty lines
+poetry run python3 ../scripts/ground-truth-validate.py --coverage --verbose  # also list live lines
+poetry run python3 ../scripts/ground-truth-validate.py --coverage --fail-empty  # exit 1 on any empty line (CI gate)
+```
+
+Empty lines are WARN by default (low-frequency / overnight gaps can be legitimate);
+`--fail-empty` escalates to FAIL for CI. Also wired into `validate-staging.sh --coverage`.
 
 **Server Usage Report:**
 
