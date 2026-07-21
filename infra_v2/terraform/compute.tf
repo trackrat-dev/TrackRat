@@ -219,6 +219,13 @@ resource "google_compute_instance_template" "trackrat" {
         else
           echo "WARN: tunnel enabled but docker-compose.tunnel.yml missing — skipping connector; api/db unaffected"
         fi
+      else
+        # Tunnel off this boot: remove any stale tunnel file so that file
+        # presence always means "tunnel enabled this boot" — the shutdown
+        # drain below relies on that invariant. $APP_DIR is on the persistent
+        # data disk (and staging's disk is cloned from production's on every
+        # deploy), so a file from a prior enabled boot can otherwise linger.
+        rm -f "$APP_DIR/docker-compose.tunnel.yml"
       fi
 
       # ===========================================
@@ -334,10 +341,13 @@ TUNNELEOF
       # Bring the Cloudflare Tunnel connector up as an isolated, non-fatal second
       # step, only when enabled. api/db are already healthy above, and this merges
       # the tunnel file only now, so any connector config/token error is contained
-      # here and cannot abort the API (issue #1578).
+      # here and cannot abort the API (issue #1578). --no-deps keeps api out of
+      # this invocation's scope entirely — the tunnel file's depends_on would
+      # otherwise pull it in, leaving api untouched only as long as the merged
+      # config happens not to drift (issue #1594).
       if [ "$TUNNEL_ENABLED" = "1" ]; then
         echo "=== Starting Cloudflare Tunnel connector (isolated) ==="
-        $COMPOSE_PATH -f docker-compose.yml -f docker-compose.tunnel.yml up -d cloudflared \
+        $COMPOSE_PATH -f docker-compose.yml -f docker-compose.tunnel.yml up -d --no-deps cloudflared \
           || echo "WARN: cloudflared failed to start — api/db remain up and serving"
       fi
 
@@ -357,8 +367,18 @@ TUNNELEOF
 
       if [ -f "$APP_DIR/docker-compose.yml" ] && [ -f "$COMPOSE_PATH" ]; then
         cd "$APP_DIR"
-        # Stop containers gracefully (25s timeout leaves 5s buffer)
-        $COMPOSE_PATH stop --timeout 25 2>&1 | tee -a /var/log/shutdown.log
+        # Drain the Cloudflare Tunnel connector first, when enabled (the tunnel
+        # file exists only on enabled boots — startup removes it otherwise).
+        # Stopping cloudflared before api lets it deregister from Cloudflare's
+        # edge so traffic stops routing here before the API goes away. Kept as
+        # a separate, short, non-fatal step: a bad/stale tunnel file must never
+        # cost api/db (Postgres WAL) their graceful stop (issues #1578, #1594).
+        if [ -f "$APP_DIR/docker-compose.tunnel.yml" ]; then
+          $COMPOSE_PATH -f docker-compose.yml -f docker-compose.tunnel.yml stop --timeout 3 cloudflared 2>&1 | tee -a /var/log/shutdown.log || true
+        fi
+        # Stop api/db gracefully (20s + the 3s drain stays inside GCE's 30s
+        # preemption warning with buffer to spare for the sync below)
+        $COMPOSE_PATH stop --timeout 20 2>&1 | tee -a /var/log/shutdown.log
         echo "Containers stopped" | tee -a /var/log/shutdown.log
       fi
 

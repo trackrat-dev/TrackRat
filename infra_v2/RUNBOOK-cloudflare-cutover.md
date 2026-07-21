@@ -48,7 +48,13 @@ static IPs.
   `CLOUDFLARE_TUNNEL_TOKEN` to `.env`, brings `db`/`api` up from
   `docker-compose.yml` alone, then starts `cloudflared` in a **separate,
   non-fatal** `compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d
-  cloudflared`. If the flag is off or the token absent, the tunnel stays fully off.
+  --no-deps cloudflared` (`--no-deps` keeps `api` out of the invocation's scope
+  entirely, issue #1594). If the flag is off or the token absent, the tunnel
+  stays fully off and any stale `docker-compose.tunnel.yml` on the data disk is
+  removed, so file presence always means "enabled this boot". The shutdown
+  script drains the connector when that file is present — a short, non-fatal
+  `stop cloudflared` before the api/db stop, so Cloudflare's edge deregisters
+  this instance before the API goes away (issue #1594).
 - `infra_v2/terraform/secrets.tf` — a NOTE only; the tunnel-token secret and its
   IAM grant are intentionally **not** Terraform-managed during the pilot (an IAM
   binding on a not-yet-created secret would fail the apply). The staging VM SA is
@@ -61,6 +67,43 @@ static IPs.
 Everything ships in the safe/off position: with `enable_cloudflare_tunnel=false`,
 merging the branch neither starts the connector nor touches the live load
 balancers until the steps below flip the flags.
+
+## Current state & ordering constraints (post-#1592, as of 2026-07-21)
+
+Read this before the next enable attempt (issue #1594).
+
+- **The 2026-07-19 crash-looping staging connector is gone.** It could not
+  survive the first post-merge staging deploy: `cloudbuild-staging.yaml` scales
+  the MIG to 0 and back to 1, which *deletes* the instance — the replacement
+  boots with a fresh boot disk, so no Docker container state (including a
+  `restart: unless-stopped` connector) carries over. It stopped on 2026-07-20
+  22:11Z with the old instance's shutdown. Terraform changes apply
+  automatically too (`cloudbuild-terraform.yaml` triggers on
+  `infra_v2/terraform/**`, and the deploy pipelines wait for an in-flight
+  Terraform build), so the #1592 startup script — including its
+  `down --remove-orphans` cleanup — is the active staging template. Nothing
+  needs to be revoked or recreated to keep the connector off.
+- **The staging token secret still holds the invalid token** from the failed
+  pilot. With the flag off it is inert, but **replacing it with a fresh valid
+  token (step 1b's "add a new version" path) is a mandatory precondition of
+  step 1c** — re-enabling against the stale token just crash-loops the
+  connector again (contained now: api/db unaffected, but the pilot fails).
+- **Production deploys are different: the orphan window is real there.**
+  `cloudbuild.yaml` uses `rolling-action restart`, which reboots the *same*
+  instance — the boot disk and Docker container state survive, so a
+  previously-started connector would come back after a reboot and only a
+  startup script with `down --remove-orphans` (i.e. the #1592 template,
+  installed via a production Terraform apply) clears it. Today this is moot —
+  the `production` branch carries no tunnel code at all and no production
+  token secret exists — but it is why the promotion ordering in Phase 2
+  matters.
+- **`enable_cloudflare_tunnel` is one committed default shared by both
+  Terraform workspaces** (`cloudbuild-terraform.yaml` passes only
+  `environment` and `project_id`). Once step 1c flips it to `true`, any
+  routine main → production promotion arms production as well, leaving the
+  absent production secret as the *only* remaining gate. That is how the
+  flag-AND-token gate is designed, but be deliberate about it: create the
+  production secret only when you actually intend Phase 2.
 
 ---
 
@@ -92,12 +135,18 @@ Two caveats keep this from being literally "zero risk" — both on **staging onl
 
 ### 1b. Store the token in Secret Manager and grant the VM read access
 
+> The secret already exists and currently holds the **invalid token from the
+> failed 2026-07 pilot** — the `versions add` path below is the one you want.
+> Do not skip it: enabling the flag against the stale token crash-loops the
+> connector (contained, but the pilot fails again).
+
 ```bash
-# Create the secret with the tunnel token
-printf '%s' '<TUNNEL_TOKEN>' | gcloud secrets create trackrat-cloudflare-tunnel-token-staging \
-  --project=trackrat-v2 --replication-policy=automatic --data-file=-
-# If it already exists, add a new version instead:
-# printf '%s' '<TUNNEL_TOKEN>' | gcloud secrets versions add trackrat-cloudflare-tunnel-token-staging --project=trackrat-v2 --data-file=-
+# The secret already exists (stale token) — add a new version:
+printf '%s' '<TUNNEL_TOKEN>' | gcloud secrets versions add trackrat-cloudflare-tunnel-token-staging \
+  --project=trackrat-v2 --data-file=-
+# Only if it were ever deleted, recreate it instead:
+# printf '%s' '<TUNNEL_TOKEN>' | gcloud secrets create trackrat-cloudflare-tunnel-token-staging \
+#   --project=trackrat-v2 --replication-policy=automatic --data-file=-
 
 # Grant the staging VM service account read access
 gcloud secrets add-iam-policy-binding trackrat-cloudflare-tunnel-token-staging \
@@ -165,6 +214,14 @@ Production `apiv2` is served by the **webpage** LB (shared IP `136.110.151.144`)
 so this phase moves only DNS + origin; the webpage LB keeps serving the static
 site until Phase 4.
 
+0. **Promote first.** The `production` branch must already carry the #1592
+   isolation (plus the #1594 hardening) and its Terraform must have applied —
+   the production instance template only updates from the `production` branch
+   — **before** the production token secret is created. Production's
+   `rolling-action restart` deploys preserve Docker state across reboots (see
+   "Current state & ordering constraints" above), so only the isolated,
+   flag-gated startup script makes a bad production token a contained failure
+   instead of a repeat of the 2026-07-19 outage at production scale.
 1. Create a second tunnel `trackrat-production`, public hostname
    `apiv2.trackrat.net` → `HTTP` → `api:8000`. Store its token as
    `trackrat-cloudflare-tunnel-token-production`.
