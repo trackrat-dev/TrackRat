@@ -7,6 +7,7 @@ for displaying train schedules on future days.
 
 import csv
 import io
+import traceback
 import zipfile
 from collections.abc import Iterator
 from datetime import date, datetime, time, timedelta
@@ -91,6 +92,23 @@ GTFS_EXPIRY_EXEMPT_SOURCES: frozenset[str] = frozenset({"PATH"})
 
 # Minimum hours between feed downloads (rate limiting)
 GTFS_DOWNLOAD_INTERVAL_HOURS = 24
+
+# Trip ids per DELETE when clearing a source's stop_times. One bind parameter
+# is sent per id and asyncpg hard-caps a statement at 32767 parameters —
+# SUBWAY (~82k trips) and MNR (~35k) blew past it, so every refresh after the
+# initial load crashed before parsing and their served static schedules froze
+# until the stale calendar expired (issue #1588). Chunking also keeps each
+# DELETE comfortably inside the engine's statement_timeout (SUBWAY has ~2.4M
+# stop_times rows).
+GTFS_CLEAR_CHUNK_SIZE = 10_000
+
+# Bounds for exception text that gets logged or persisted to
+# GTFSFeedInfo.error_message. A SQLAlchemy statement error embeds the full SQL
+# (every rendered placeholder) in str(exc) — ~650 KB for the failure above —
+# which exceeded the logging pipeline's entry-size cap, so the nightly
+# failures produced no log entries at all (issue #1588).
+GTFS_ERROR_MESSAGE_MAX_CHARS = 2_000
+GTFS_TRACEBACK_MAX_CHARS = 4_000
 
 # Default line colors when not provided in GTFS
 DEFAULT_LINE_COLORS = {
@@ -254,6 +272,13 @@ def _extract_lirr_train_number(gtfs_trip_id: str) -> str | None:
     return None
 
 
+def _bounded(text: str, limit: int) -> str:
+    """Truncate text to ``limit`` chars, annotating how much was dropped."""
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}... [truncated {len(text) - limit} chars]"
+
+
 def _gtfs_csv_rows(f: Any) -> Iterator[dict[str, str]]:
     """Iterate a GTFS CSV file as dicts with whitespace-stripped keys/values.
 
@@ -392,22 +417,45 @@ class GTFSService:
             return True
 
         except httpx.HTTPError as e:
-            error_msg = f"HTTP error downloading GTFS: {e}"
-            logger.error(error_msg, data_source=data_source)
-            await db.rollback()
-            feed_info = await self._get_or_create_feed_info(db, data_source)
-            feed_info.error_message = error_msg
-            await db.commit()
-            return False
+            return await self._record_refresh_failure(db, data_source, "download", e)
 
         except Exception as e:
-            error_msg = f"Error processing GTFS: {e}"
-            logger.error(error_msg, data_source=data_source, exc_info=True)
-            await db.rollback()
-            feed_info = await self._get_or_create_feed_info(db, data_source)
-            feed_info.error_message = error_msg
-            await db.commit()
-            return False
+            return await self._record_refresh_failure(db, data_source, "process", e)
+
+    async def _record_refresh_failure(
+        self,
+        db: AsyncSession,
+        data_source: str,
+        stage: str,
+        exc: Exception,
+    ) -> bool:
+        """Log a refresh failure and persist it to feed_info, both bounded.
+
+        Everything emitted or persisted here is truncated: a SQLAlchemy
+        statement error embeds the full SQL text in ``str(exc)`` (~650 KB for
+        a bulk statement), and an oversized entry is dropped by the logging
+        pipeline instead of ingested — which is how the SUBWAY/MNR refresh
+        failed nightly for weeks with zero log entries (issue #1588). The
+        traceback is truncated from the head so the stack frames survive and
+        the giant message (which comes last) is what gets cut.
+
+        Returns False so ``refresh_feed`` can return this call's result.
+        """
+        error_msg = _bounded(str(exc), GTFS_ERROR_MESSAGE_MAX_CHARS)
+        tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+        logger.error(
+            "gtfs_refresh_failed",
+            data_source=data_source,
+            stage=stage,
+            error_type=type(exc).__name__,
+            error=error_msg,
+            traceback=_bounded(tb, GTFS_TRACEBACK_MAX_CHARS),
+        )
+        await db.rollback()
+        feed_info = await self._get_or_create_feed_info(db, data_source)
+        feed_info.error_message = f"{stage}: {error_msg}"
+        await db.commit()
+        return False
 
     async def _get_or_create_feed_info(
         self, db: AsyncSession, data_source: str
@@ -511,9 +559,14 @@ class GTFSService:
         )
         trip_ids = [row[0] for row in result.all()]
 
-        if trip_ids:
+        # Chunked: one bind param per id, and asyncpg caps a statement at
+        # 32767 — a single IN over SUBWAY's ~82k trips (or MNR's ~35k) raised
+        # instantly here on every refresh after the initial load, freezing
+        # the served static schedule until its calendar expired (issue #1588).
+        for i in range(0, len(trip_ids), GTFS_CLEAR_CHUNK_SIZE):
+            chunk = trip_ids[i : i + GTFS_CLEAR_CHUNK_SIZE]
             await db.execute(
-                delete(GTFSStopTime).where(GTFSStopTime.trip_id.in_(trip_ids))
+                delete(GTFSStopTime).where(GTFSStopTime.trip_id.in_(chunk))
             )
 
         await db.execute(delete(GTFSTrip).where(GTFSTrip.data_source == data_source))

@@ -710,7 +710,10 @@ class DepartureService:
 
         # For TODAY: merge real-time departures with GTFS schedule for rest of day
         # This shows trains that haven't entered the real-time feed yet.
-        # Skip for transfer leg queries where GTFS backfill isn't needed.
+        # Trip-search transfer legs rely on this merge too — a leg-2 window
+        # beyond the short real-time horizon (e.g. subway's ~30 min) is served
+        # entirely by GTFS (issue #1588). Only hermetic tests pass
+        # skip_gtfs_merge=True.
         if target_date == today and not skip_gtfs_merge:
             current_time = now_et()
             # SQL floor for the GTFS query. Must be the *effective* lower bound

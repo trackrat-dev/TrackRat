@@ -5,23 +5,24 @@ Unit tests for GTFS static schedule service.
 import io
 from datetime import date, datetime, time, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
+from trackrat.models.database import (
+    GTFSFeedInfo,
+)
 from trackrat.services.gtfs import (
-    GTFSService,
     GTFS_DOWNLOAD_INTERVAL_HOURS,
+    GTFS_ERROR_MESSAGE_MAX_CHARS,
     GTFS_EXPIRY_EXEMPT_SOURCES,
     NJT_LINE_CODE_MAPPING,
+    GTFSService,
+    _bounded,
     _extract_lirr_train_number,
     _gtfs_csv_rows,
     _lirr_train_id_from_gtfs,
     _mnr_train_id_from_gtfs,
     _strip_source_prefix,
-)
-from trackrat.models.database import (
-    GTFSCalendar,
-    GTFSCalendarDate,
-    GTFSFeedInfo,
 )
 from trackrat.utils.time import ET
 
@@ -554,7 +555,6 @@ class TestNJTLineCodeMapping:
 
     def test_mapping_contains_actual_gtfs_routes(self):
         """Test that actual NJT GTFS route_short_name values are mapped."""
-        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
         # Actual NJT GTFS route_short_name values (from GTFS feed)
         expected_routes = {
@@ -578,49 +578,41 @@ class TestNJTLineCodeMapping:
 
     def test_nec_maps_to_ne(self):
         """Northeast Corridor maps to 'NE' (matching NJT API LINE field)."""
-        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
         assert NJT_LINE_CODE_MAPPING["NEC"] == "NE"
 
     def test_njcl_maps_to_nc(self):
         """North Jersey Coast Line maps to 'NC' (distinct from NEC 'NE')."""
-        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
         assert NJT_LINE_CODE_MAPPING["NJCL"] == "NC"
 
     def test_morris_essex_maps_to_me(self):
         """Morris & Essex Line maps to 'ME' (matching route_topology line_codes)."""
-        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
         assert NJT_LINE_CODE_MAPPING["MNE"] == "ME"
 
     def test_gladstone_maps_to_gl(self):
         """Gladstone Branch maps to 'GL' (matching route_topology line_codes)."""
-        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
         assert NJT_LINE_CODE_MAPPING["MNEG"] == "GL"
 
     def test_montclair_boonton_maps_to_mo(self):
         """Montclair-Boonton Line maps to 'MO' (matching route_topology line_codes)."""
-        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
         assert NJT_LINE_CODE_MAPPING["BNTN"] == "MO"
 
     def test_raritan_valley_maps_to_rv(self):
         """Raritan Valley Line maps to 'RV' (matching route_topology line_codes)."""
-        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
         assert NJT_LINE_CODE_MAPPING["RARV"] == "RV"
 
     def test_pascack_valley_maps_to_pv(self):
         """Pascack Valley Line maps to 'PV' (matching route_topology line_codes)."""
-        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
         assert NJT_LINE_CODE_MAPPING["PASC"] == "PV"
 
     def test_line_codes_are_two_chars(self):
         """Verify all mapped line codes are 2 characters for consistency with API."""
-        from trackrat.services.gtfs import NJT_LINE_CODE_MAPPING
 
         for gtfs_code, api_code in NJT_LINE_CODE_MAPPING.items():
             assert len(api_code) == 2, f"{gtfs_code} -> {api_code} should be 2 chars"
@@ -902,8 +894,6 @@ class TestDataSourceFiltering:
         If Amtrak has train_id=174, it wins over NJT's trip_id=174.
         """
         # Simulating the two-phase search decision
-        search_value = "174"
-
         # Mock data representing what might be found
         njt_train_id_match = None  # NJT has no train 174
         njt_trip_id_match = {"trip_id": "174", "source": "NJT"}
@@ -1637,3 +1627,35 @@ class TestGtfsCsvRows:
         """A header-only file yields an empty iterator, not an error."""
         csv_text = "route_id, service_id, trip_id\n"
         assert self._rows(csv_text) == []
+
+
+class TestBoundedErrorText:
+    """Tests for _bounded, the truncation guard on refresh-failure text.
+
+    A SQLAlchemy statement error embeds the full SQL in str(exc) (~650 KB for
+    the issue #1588 failure), and an oversized log entry is dropped by the
+    logging pipeline instead of ingested — so everything logged or persisted
+    on a refresh failure must pass through this bound.
+    """
+
+    def test_short_text_unchanged(self):
+        assert _bounded("all good", 100) == "all good"
+
+    def test_text_at_limit_unchanged(self):
+        text = "x" * 100
+        assert _bounded(text, 100) == text
+
+    def test_long_text_truncated_with_annotation(self):
+        text = "y" * 5_000
+        result = _bounded(text, 2_000)
+        assert result.startswith("y" * 2_000)
+        assert result.endswith("[truncated 3000 chars]")
+        # Bounded: original content capped at the limit plus a short suffix
+        assert len(result) < 2_100
+
+    def test_giant_statement_error_text_is_bounded(self):
+        """The real failure shape: a ~650 KB message stays ingestible."""
+        giant = "DELETE FROM gtfs_stop_times WHERE trip_id IN " + "$1, " * 170_000
+        result = _bounded(giant, GTFS_ERROR_MESSAGE_MAX_CHARS)
+        assert len(result) < GTFS_ERROR_MESSAGE_MAX_CHARS + 100
+        assert "truncated" in result
