@@ -731,9 +731,10 @@ class CongestionAnalyzer:
                     and row.baseline_train_count > 0
                 ):
                     baseline_train_count = float(row.baseline_train_count)
-                    # Only assign a frequency level when the sample is large
-                    # enough to trust; tiny per-curb counts otherwise flip tiers
-                    # between adjacent stops (see frequency_is_reliable). The raw
+                    # Only assign a frequency level when the baseline is large
+                    # enough to trust; a tiny per-curb baseline otherwise flips
+                    # tiers between adjacent stops (see frequency_is_reliable, which
+                    # deliberately does not floor the observed count). The raw
                     # counts are still reported so the normalizer can re-check
                     # reliability on the summed canonical segment.
                     if row.frequency_factor is not None and frequency_is_reliable(

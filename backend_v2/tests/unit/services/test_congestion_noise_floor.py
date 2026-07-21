@@ -10,10 +10,12 @@ Two guards are covered:
    heavy/severe segments; the floor suppresses that while leaving genuine
    multi-minute delays (and cancellation-driven escalation) untouched.
 
-2. Frequency sample floor (``frequency_is_reliable``): a per-segment frequency
-   level is only assigned when both the observed and baseline train counts
-   reach ``FREQ_MIN_SAMPLE_TRAINS``. Fragmented per-curb counts (1-3 trains)
-   otherwise flip healthy/moderate/reduced between adjacent stops.
+2. Frequency baseline floor (``frequency_is_reliable``): a per-segment
+   frequency level is only assigned when the historical baseline reaches
+   ``FREQ_MIN_BASELINE_TRAINS``. A tiny per-curb baseline otherwise makes ±1
+   train flip healthy/moderate/reduced between adjacent stops. The observed
+   count is NOT floored, so a real drop (few trains ran against a solid
+   baseline) is still surfaced as severe/reduced.
 
 The pure-function and normalizer-level tests are deterministic; the real-DB
 tests prove the optimized SQL path (used in production) applies the delay
@@ -28,7 +30,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.congestion import CongestionAnalyzer
 from trackrat.services.congestion_types import (
-    FREQ_MIN_SAMPLE_TRAINS,
+    FREQ_MIN_BASELINE_TRAINS,
     MIN_CONGESTION_DELAY_MINUTES,
     SegmentCongestion,
     frequency_is_reliable,
@@ -72,17 +74,23 @@ class TestFrequencyIsReliable:
         assert frequency_is_reliable(5, None) is False
         assert frequency_is_reliable(None, 5.0) is False
 
-    def test_below_floor_is_unreliable(self):
-        """Tiny per-curb counts (1-3 trains) are not trustworthy."""
+    def test_tiny_baseline_is_unreliable(self):
+        """A tiny historical baseline (the denominator) is noise, regardless of
+        the observed count."""
         assert frequency_is_reliable(2, 2.5) is False
-        assert frequency_is_reliable(FREQ_MIN_SAMPLE_TRAINS - 1, 10.0) is False
-        assert frequency_is_reliable(10, float(FREQ_MIN_SAMPLE_TRAINS - 1)) is False
+        assert frequency_is_reliable(10, float(FREQ_MIN_BASELINE_TRAINS - 1)) is False
 
-    def test_at_or_above_floor_is_reliable(self):
-        assert (
-            frequency_is_reliable(FREQ_MIN_SAMPLE_TRAINS, float(FREQ_MIN_SAMPLE_TRAINS))
-            is True
-        )
+    def test_low_observed_against_solid_baseline_is_reliable(self):
+        """A low observed count against a solid baseline is a REAL service drop,
+        not noise, and must stay reliable so health mode surfaces it (a 2/20
+        factor of 0.1 is severe). Regression guard for the observed-count floor.
+        """
+        assert frequency_is_reliable(2, 20.0) is True
+        # Total service loss (0 trains ran) with a solid baseline is also real.
+        assert frequency_is_reliable(0, 8.0) is True
+
+    def test_at_or_above_baseline_floor_is_reliable(self):
+        assert frequency_is_reliable(1, float(FREQ_MIN_BASELINE_TRAINS)) is True
         assert frequency_is_reliable(52, 42.0) is True
 
 
@@ -177,6 +185,17 @@ class TestNormalizerFrequencyFloor:
         seg = result[0]
         assert seg.frequency_factor == pytest.approx(52 / 42.0)
         assert seg.frequency_level == "healthy"
+
+    def test_low_observed_against_solid_baseline_reports_severe(self):
+        """Only 2 of 20 expected trains ran: a real severe service drop. The
+        baseline is solid, so the level must be surfaced (severe), NOT hidden by
+        an observed-count floor. Regression guard for the Codex P2 on #1598.
+        """
+        result = normalize_aggregated_segments([self._seg(2, 20.0)])
+        assert len(result) == 1
+        seg = result[0]
+        assert seg.frequency_factor == pytest.approx(2 / 20.0)
+        assert seg.frequency_level == "severe"
 
     def test_sparse_subsegments_aggregate_into_reliable_segment(self):
         """Two sparse raw NY->SE segments (each below the floor) sum to a

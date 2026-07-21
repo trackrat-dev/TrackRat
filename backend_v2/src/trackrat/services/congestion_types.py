@@ -37,15 +37,20 @@ FREQ_THRESHOLD_MODERATE = 0.7  # >= 70% of baseline trains
 FREQ_THRESHOLD_REDUCED = 0.5  # >= 50% of baseline trains
 # Below 0.5 = severe
 
-# Minimum observed AND baseline train samples before a per-segment frequency
-# level is trustworthy. The factor is a ratio of two counts; when both are
-# tiny, ±1 train swings it across whole tiers. SEPTA Metro trolley stops carry
-# a distinct per-direction/per-curb code, so each segment sees only a handful
-# of trains (often 1-3) divided by an equally tiny baseline, producing
-# healthy/moderate/reduced flip-flopping between adjacent stops. Validated
-# subway-safe: every SUBWAY segment has a baseline >= 6 and all but one have
-# >= 5 observed trains, so real subway frequency signal is unaffected.
-FREQ_MIN_SAMPLE_TRAINS = 5
+# Minimum historical baseline train count before a per-segment frequency level
+# is trustworthy. The factor is observed / baseline; when the *baseline* (the
+# denominator) is tiny, ±1 train swings the ratio across whole tiers. SEPTA
+# Metro trolley stops carry a distinct per-direction/per-curb code, so each
+# segment's baseline is only a handful of trains, producing
+# healthy/moderate/reduced flip-flopping between adjacent stops.
+#
+# The guard is on the baseline ONLY, not the observed count: a low observed
+# count against a solid baseline (e.g. 2 of 20 expected trains ran -> 0.1) is a
+# genuine severe/reduced service drop that health mode exists to surface, and
+# must not be discarded as "too few samples". Validated subway-safe: every
+# SUBWAY segment has a baseline >= 6, so real subway frequency signal is
+# unaffected.
+FREQ_MIN_BASELINE_TRAINS = 5
 
 # Data sources where frequency/service health is more meaningful than delay stats.
 # Mirrors iOS TrainSystem.preferredHighlightMode == .health
@@ -115,17 +120,20 @@ def get_frequency_level(frequency_factor: float) -> str:
 def frequency_is_reliable(
     train_count: int | None, baseline_train_count: float | None
 ) -> bool:
-    """Whether a segment has enough samples for a trustworthy frequency level.
+    """Whether a segment has a trustworthy frequency baseline.
 
-    Both the observed count and the historical baseline must reach
-    ``FREQ_MIN_SAMPLE_TRAINS``; otherwise the ratio is dominated by noise and
-    should be left unset (clients render no frequency color and fall back).
+    The historical baseline (the denominator) must reach
+    ``FREQ_MIN_BASELINE_TRAINS``; below that the observed/baseline ratio is
+    dominated by noise and no frequency level should be shown. The observed
+    count is deliberately NOT floored — a low observed count against a solid
+    baseline is a real service reduction health mode should surface (2/20 = 0.1
+    is severe, not noise). ``train_count`` only needs to be present so the ratio
+    can be computed.
     """
     return (
         train_count is not None
         and baseline_train_count is not None
-        and train_count >= FREQ_MIN_SAMPLE_TRAINS
-        and baseline_train_count >= FREQ_MIN_SAMPLE_TRAINS
+        and baseline_train_count >= FREQ_MIN_BASELINE_TRAINS
     )
 
 
