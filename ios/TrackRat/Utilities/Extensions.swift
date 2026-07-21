@@ -392,4 +392,17 @@ enum CongestionColors {
         if effective <= heavyThreshold { return "heavy" }
         return "severe"
     }
+
+    /// Stable identifier for the frequency-based color tier this segment would render as.
+    /// Mirrors `color(forFrequencyFactor:cancellationRate:)` so merged runs group exactly
+    /// as they are colored in Health mode. A nil factor renders gray ("no data") and gets
+    /// its own key so those segments only merge with each other.
+    static func frequencyTierKey(forFactor factor: Double?, cancellationRate: Double) -> String {
+        guard let factor else { return "nofreq" }
+        let effective = factor - max(0, cancellationRate) * cancellationFrequencyWeight
+        if effective >= 0.9 { return "healthy" }
+        if effective >= 0.7 { return "moderate" }
+        if effective >= 0.5 { return "reduced" }
+        return "severe"
+    }
 }

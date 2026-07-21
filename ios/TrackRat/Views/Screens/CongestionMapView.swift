@@ -1775,8 +1775,24 @@ private func canonicalSegmentKey(_ stationA: String, _ stationB: String, _ dataS
 }
 
 /// Key that determines whether two segments can be visually merged (same effective color).
-private func visualMergeKey(for segment: CongestionSegment) -> String {
-    CongestionColors.congestionTierKey(forFactor: segment.congestionFactor, cancellationRate: segment.cancellationRate)
+/// Must mirror `getColorForSegment` exactly: in health mode a segment is colored by its
+/// frequency tier when a frequency factor exists, otherwise by the delay-fallback tier.
+/// Keying on the delay tier alone (the old behavior) left same-color frequency segments
+/// unmerged and merged different-color ones into a single wrongly-colored run — most
+/// visible on frequency-first systems with many short segments (SEPTA Metro).
+func visualMergeKey(for segment: CongestionSegment) -> String {
+    switch segment.preferredHighlightMode {
+    case .health:
+        if segment.frequencyFactor != nil {
+            return "freq:" + CongestionColors.frequencyTierKey(
+                forFactor: segment.frequencyFactor, cancellationRate: segment.cancellationRate)
+        }
+        return "delay:" + CongestionColors.congestionTierKey(
+            forFactor: segment.congestionFactor, cancellationRate: segment.cancellationRate)
+    case .delays, .off:
+        return "delay:" + CongestionColors.congestionTierKey(
+            forFactor: segment.congestionFactor, cancellationRate: segment.cancellationRate)
+    }
 }
 
 /// Flush a run of adjacent segments into a single merged overlay.

@@ -93,4 +93,66 @@ final class CongestionMapKitViewTests: XCTestCase {
             "A single station has no pairs to draw"
         )
     }
+
+    // MARK: - Segment merge key (adjacent same-color coalescing)
+
+    /// Build a `CongestionSegment` by decoding the API JSON shape (its only
+    /// initializer), so tests exercise the same decode path the app uses.
+    private func makeSegment(
+        dataSource: String,
+        congestionFactor: Double,
+        frequencyFactor: Double?,
+        cancellationRate: Double = 0
+    ) throws -> CongestionSegment {
+        var dict: [String: Any] = [
+            "from_station": "A", "to_station": "B",
+            "from_station_name": "A", "to_station_name": "B",
+            "data_source": dataSource,
+            "congestion_factor": congestionFactor,
+            "congestion_level": "normal",
+            "average_delay_minutes": 0,
+            "baseline_minutes": 1,
+            "current_average_minutes": 1,
+            "sample_count": 5,
+            "cancellation_count": 0,
+            "cancellation_rate": cancellationRate,
+        ]
+        if let frequencyFactor { dict["frequency_factor"] = frequencyFactor }
+        let data = try JSONSerialization.data(withJSONObject: dict)
+        return try JSONDecoder().decode(CongestionSegment.self, from: data)
+    }
+
+    func testMergeKeyUsesFrequencyTierInHealthMode() throws {
+        // SUBWAY is a Health-mode (frequency-colored) source. Two segments with
+        // the SAME frequency color but DIFFERENT delay tiers must share a key so
+        // they coalesce; the old delay-based key left them as separate stubs.
+        let a = try makeSegment(dataSource: "SUBWAY", congestionFactor: 1.0, frequencyFactor: 0.95)
+        let b = try makeSegment(dataSource: "SUBWAY", congestionFactor: 2.0, frequencyFactor: 0.92)
+        XCTAssertEqual(visualMergeKey(for: a), visualMergeKey(for: b))
+
+        // DIFFERENT frequency colors must NOT merge even with identical delay
+        // tiers; the old key merged them into one wrongly-colored run.
+        let c = try makeSegment(dataSource: "SUBWAY", congestionFactor: 1.0, frequencyFactor: 0.55)
+        XCTAssertNotEqual(visualMergeKey(for: a), visualMergeKey(for: c))
+    }
+
+    func testMergeKeyFallsBackToDelayWhenNoFrequency() throws {
+        // A Health-mode segment lacking a frequency factor is colored by the
+        // delay fallback, so its key must be the delay tier — different delay
+        // colors must stay separate, not collapse into one "no-frequency" bucket.
+        let normal = try makeSegment(dataSource: "SUBWAY", congestionFactor: 1.0, frequencyFactor: nil)
+        let severe = try makeSegment(dataSource: "SUBWAY", congestionFactor: 2.0, frequencyFactor: nil)
+        XCTAssertNotEqual(visualMergeKey(for: normal), visualMergeKey(for: severe))
+    }
+
+    func testMergeKeyUsesDelayTierInDelayMode() throws {
+        // NJT is a delay-mode source: the frequency factor is ignored and the
+        // delay tier drives merging.
+        let a = try makeSegment(dataSource: "NJT", congestionFactor: 1.0, frequencyFactor: 0.5)
+        let b = try makeSegment(dataSource: "NJT", congestionFactor: 1.05, frequencyFactor: 0.9)
+        XCTAssertEqual(visualMergeKey(for: a), visualMergeKey(for: b), "both are normal delay")
+
+        let c = try makeSegment(dataSource: "NJT", congestionFactor: 2.0, frequencyFactor: 0.5)
+        XCTAssertNotEqual(visualMergeKey(for: a), visualMergeKey(for: c))
+    }
 }
