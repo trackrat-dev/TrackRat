@@ -1755,15 +1755,21 @@ class TestGtfsMergePassesTimeFrom:
                     )
 
     @pytest.mark.asyncio
-    async def test_default_time_from_still_passed_to_gtfs(self):
-        """Even with default (start-of-day) time_from, pass it through.
+    async def test_default_time_from_floored_to_now_for_gtfs(self):
+        """With default (start-of-day) time_from, GTFS receives *now*, not midnight.
 
-        Backward compatible: when callers do not specify time_from, the
-        service defaults it to start-of-day in ET. Passing that through
-        to GTFS is a no-op for the SQL filter (it would have returned the
-        same rows anyway), but keeps the contract simple — GTFS always
-        receives the lower bound the caller intends to enforce.
+        A plain same-day board leaves time_from unset, so the service defaults
+        it to start-of-day ET. Passing that midnight value straight to GTFS is
+        exactly what _gtfs_time_cutoff treats as "no cutoff", so the per-source
+        query's 250-row cap returns the earliest trips of the day and the
+        post-merge ``> now`` filter drops every one — a high-frequency,
+        schedule-only line (SEPTA Broad St / Market-Frankford) then shows an
+        empty board by mid-afternoon. The merge must floor the GTFS lower bound
+        at the current time (``max(now, time_from)``) so the cap lands on trips
+        around/after now. Same failure class as issue #1140.
         """
+        fixed_now = ET.localize(datetime(2026, 6, 15, 19, 30, 0))
+
         mock_session = AsyncMock(spec=AsyncSession)
         mock_result = Mock()
         mock_scalars = Mock()
@@ -1774,32 +1780,40 @@ class TestGtfsMergePassesTimeFrom:
 
         service = DepartureService()
 
-        with patch.object(
-            service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
-        ):
+        with patch("trackrat.services.departure.now_et", return_value=fixed_now):
             with patch.object(
-                service, "_get_path_cutoff_time", new_callable=AsyncMock
-            ) as mock_cutoff:
-                mock_cutoff.return_value = now_et()
-                with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
-                    mock_gtfs = AsyncMock()
-                    mock_gtfs.get_scheduled_departures = AsyncMock(
-                        return_value=Mock(departures=[])
-                    )
-                    mock_gtfs_class.return_value = mock_gtfs
+                service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
+            ):
+                with patch.object(
+                    service, "_get_path_cutoff_time", new_callable=AsyncMock
+                ) as mock_cutoff:
+                    mock_cutoff.return_value = fixed_now
+                    with patch("trackrat.services.gtfs.GTFSService") as mock_gtfs_class:
+                        mock_gtfs = AsyncMock()
+                        mock_gtfs.get_scheduled_departures = AsyncMock(
+                            return_value=Mock(departures=[])
+                        )
+                        mock_gtfs_class.return_value = mock_gtfs
 
-                    await service.get_departures(
-                        db=mock_session,
-                        from_station="NY",
-                        to_station="TR",
-                        data_sources=["NJT"],
-                    )
+                        await service.get_departures(
+                            db=mock_session,
+                            from_station="NY",
+                            to_station="TR",
+                            data_sources=["NJT"],
+                        )
 
-                    assert mock_gtfs.get_scheduled_departures.await_count == 1
-                    kwargs = mock_gtfs.get_scheduled_departures.await_args.kwargs
-                    # Default time_from = start of day in ET; must still be passed.
-                    assert kwargs.get("time_from") is not None
-                    assert kwargs["time_from"].tzinfo is not None
-                    # Should be at midnight ET of today
-                    assert kwargs["time_from"].hour == 0
-                    assert kwargs["time_from"].minute == 0
+                        assert mock_gtfs.get_scheduled_departures.await_count == 1
+                        kwargs = mock_gtfs.get_scheduled_departures.await_args.kwargs
+                        passed = kwargs.get("time_from")
+                        assert passed is not None
+                        assert passed.tzinfo is not None
+                        # Floored to now (19:30), NOT the default midnight — else
+                        # the 250-row cap truncates high-frequency schedule-only
+                        # boards to morning-only rows the > now filter then drops.
+                        assert passed == fixed_now, (
+                            f"GTFS time_from ({passed}) must be floored to now "
+                            f"({fixed_now}); passing the default midnight lets "
+                            f"the .limit(250) truncate high-frequency "
+                            f"schedule-only boards to morning-only rows. "
+                            f"See issue #1140."
+                        )
