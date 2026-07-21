@@ -198,9 +198,12 @@ class TrainValidationService:
                     from_index = station_codes.index(amtrak_from)
                     to_index = station_codes.index(amtrak_to)
 
-                    # Skip if stations are in wrong order (we want from -> to)
-                    # Allow both directions since trains can go either way
-                    if from_index == to_index:
+                    # Skip unless the train serves 'from' strictly before 'to'.
+                    # The /trains/departures endpoint this is validated against is
+                    # directional, so a reverse-direction train can never appear in
+                    # api_trains and would always be counted as "missing",
+                    # artificially depressing coverage on shared-corridor routes.
+                    if from_index >= to_index:
                         continue
 
                     # This train serves the route!
@@ -244,22 +247,32 @@ class TrainValidationService:
             return set()
 
     async def get_trains_from_our_api(
-        self, from_station: str, to_station: str
+        self, from_station: str, to_station: str, source: str | None = None
     ) -> set[str]:
-        """Query our API endpoint as a user would."""
+        """Query our API endpoint as a user would.
+
+        When ``source`` is given, the departures query is scoped to that data
+        source so the resulting set compares like-for-like with that source's
+        transit reference. Without it the endpoint merges every enabled source,
+        which makes ``extra_trains`` meaningless on shared-corridor routes (it
+        would list every other source's trains).
+        """
         if not self.http_client:
             logger.error("HTTP client not initialized")
             return set()
 
         try:
             # Call our departures endpoint
+            params: dict[str, Any] = {
+                "from": from_station,
+                "to": to_station,
+                "limit": 100,
+            }
+            if source:
+                params["data_sources"] = source
             response = await self.http_client.get(
                 f"{self.api_base_url}/api/v2/trains/departures",
-                params={
-                    "from": from_station,
-                    "to": to_station,
-                    "limit": 100,
-                },
+                params=params,
             )
 
             if response.status_code != 200:
@@ -340,12 +353,15 @@ class TrainValidationService:
         results = []
         timestamp = now_et()
 
-        # Get trains from our API (common for all sources)
-        api_trains = await self.get_trains_from_our_api(from_station, to_station)
-
         for source in sources:
             start_time = time.time()
             route_label = f"{from_station}->{to_station}"
+
+            # Query our API scoped to this source so missing/extra compare
+            # like-for-like against the source's transit reference.
+            api_trains = await self.get_trains_from_our_api(
+                from_station, to_station, source
+            )
 
             # Get trains from transit API
             if source == "NJT":

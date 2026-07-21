@@ -30,6 +30,7 @@ fetch_trackrat_train_stop_order = gtv.fetch_trackrat_train_stop_order
 compare_by_train_number = gtv.compare_by_train_number
 _norm_train_number = gtv._norm_train_number
 _septa_rr_arrival_from_entry = gtv._septa_rr_arrival_from_entry
+_parse_septa_status_minutes = gtv._parse_septa_status_minutes
 ZoneInfo = gtv.ZoneInfo
 
 
@@ -66,6 +67,7 @@ def _tr(
     track: str | None = None,
     is_cancelled: bool = False,
     observation_type: str = "OBSERVED",
+    line_code: str = "NEC",
 ) -> TrackRatDeparture:
     """Build a TrackRatDeparture with sensible defaults."""
     dep_time = NOW + timedelta(minutes=minutes_offset)
@@ -74,7 +76,7 @@ def _tr(
         destination_code=dest,
         destination_name=f"Station {dest}",
         departure_time=dep_time,
-        line_code="NEC",
+        line_code=line_code,
         line_color="#FF6600",
         observation_type=observation_type,
         track=track,
@@ -1228,3 +1230,159 @@ class TestSeptaRrArrivalFromEntry:
         arrival = _septa_rr_arrival_from_entry(entry, "SEPR90701", NOW, self.ET)
 
         assert arrival is None
+
+    def test_late_train_applies_status_delay_to_schedule(self):
+        # SEPTA's depart_time (10:01, sched+dwell) ignores the "6 min" status;
+        # the real-time estimate is sched (10:00) + 6 min = 10:06. Comparing
+        # against depart_time here would flag a correctly-delayed TrackRat
+        # departure as a failure (the bug this fix addresses).
+        entry = {
+            "destination": "Malvern",
+            "sched_time": "2026-02-22 10:00:00",
+            "depart_time": "2026-02-22 10:01:00",
+            "status": "6 min",
+            "train_id": "9756",
+        }
+        arrival = _septa_rr_arrival_from_entry(entry, "SEPR90004", NOW, self.ET)
+
+        assert arrival is not None
+        assert arrival.expected_time == datetime(2026, 2, 22, 10, 6, tzinfo=self.ET)
+        assert arrival.minutes_away == 6
+
+    def test_on_time_train_uses_depart_time(self):
+        # "On Time" (delay 0) keeps the scheduled depart_time (10:05), which
+        # carries SEPTA's fixed station dwell over the raw sched_time (10:04).
+        entry = {
+            "destination": "Malvern",
+            "sched_time": "2026-02-22 10:04:00",
+            "depart_time": "2026-02-22 10:05:00",
+            "status": "On Time",
+            "train_id": "8360",
+        }
+        arrival = _septa_rr_arrival_from_entry(entry, "SEPR90004", NOW, self.ET)
+
+        assert arrival is not None
+        assert arrival.expected_time == datetime(2026, 2, 22, 10, 5, tzinfo=self.ET)
+        assert arrival.minutes_away == 5
+
+    def test_status_delay_without_schedule_falls_back_to_depart(self):
+        # No sched_time to anchor the delay on -> fall back to depart_time rather
+        # than dropping the entry or mis-applying the delay.
+        entry = {
+            "destination": "Malvern",
+            "depart_time": "2026-02-22 10:05:00",
+            "status": "9 min",
+            "train_id": "5",
+        }
+        arrival = _septa_rr_arrival_from_entry(entry, "SEPR90004", NOW, self.ET)
+
+        assert arrival is not None
+        assert arrival.expected_time == datetime(2026, 2, 22, 10, 5, tzinfo=self.ET)
+
+
+class TestParseSeptaStatusMinutes:
+    """_parse_septa_status_minutes: SEPTA Arrivals `status` -> minutes late."""
+
+    def test_on_time_is_zero(self):
+        assert _parse_septa_status_minutes("On Time") == 0
+
+    def test_on_time_case_insensitive(self):
+        assert _parse_septa_status_minutes("on time") == 0
+
+    def test_minutes_late(self):
+        assert _parse_septa_status_minutes("6 min") == 6
+
+    def test_double_digit_minutes(self):
+        assert _parse_septa_status_minutes("14 min") == 14
+
+    def test_whitespace_tolerant(self):
+        assert _parse_septa_status_minutes("  3 min  ") == 3
+
+    def test_empty_is_none(self):
+        assert _parse_septa_status_minutes("") is None
+
+    def test_unknown_status_is_none(self):
+        # "Suspended" / "Canceled" carry no usable delay -> None (not 0).
+        assert _parse_septa_status_minutes("Suspended") is None
+
+
+class TestProbeLineDeparturesLineCodeFilter:
+    """Line-coverage probe must attribute departures to the probed line's own
+    ``line_codes``, so a live *sibling* line on a shared segment can't mask a
+    line that has actually gone dark (codex review on PR #1597).
+
+    Example: NJT Bergen County's busiest segment (MZ->SF) is also on the Main
+    Line, so ``data_sources=NJT`` alone returns Main Line trains even when
+    Bergen County is empty.
+    """
+
+    STATIONS = ["A", "B", "C", "D"]
+
+    def _patch_fetch(self, monkeypatch, segment_deps):
+        """Patch fetch_trackrat_departures to return per-(origin,dest) deps."""
+
+        def fake_fetch(client, base_url, origin, dest, source):
+            return list(segment_deps.get((origin, dest), []))
+
+        monkeypatch.setattr(gtv, "fetch_trackrat_departures", fake_fetch)
+
+    def test_sibling_line_alone_reports_empty(self, monkeypatch):
+        # Every segment returns ONLY a sibling ("NE") train; the probed line is
+        # "NC". With the filter, no segment counts -> line correctly empty.
+        sibling = [_tr(train_id="main", line_code="NE")]
+        seg = {
+            (a, b): sibling
+            for a in self.STATIONS
+            for b in self.STATIONS
+            if a != b
+        }
+        self._patch_fetch(monkeypatch, seg)
+        deps, _direction = gtv._probe_line_departures(
+            None, "http://x", "NJT", self.STATIONS, frozenset({"NC"})
+        )
+        assert deps == [], "sibling-only segment must not mark the line as live"
+
+    def test_own_line_on_later_segment_is_found(self, monkeypatch):
+        # Busiest segment (C->D) has only a sibling; the probed line's real
+        # train sits on a later candidate (A->B). Probe must skip the masked
+        # segment and surface the genuine one.
+        seg = {
+            ("C", "D"): [_tr(train_id="main", line_code="NE")],
+            ("D", "C"): [_tr(train_id="main", line_code="NE")],
+            ("A", "B"): [_tr(train_id="bergen", line_code="NC")],
+        }
+        self._patch_fetch(monkeypatch, seg)
+        deps, direction = gtv._probe_line_departures(
+            None, "http://x", "NJT", self.STATIONS, frozenset({"NC"})
+        )
+        assert [d.train_id for d in deps] == ["bergen"]
+        assert all(d.line_code == "NC" for d in deps)
+        assert direction == "A->B"
+
+    def test_mixed_segment_keeps_only_own_line(self, monkeypatch):
+        # A segment carrying both lines returns non-empty, but only the probed
+        # line's departures are retained.
+        seg = {
+            ("C", "D"): [
+                _tr(train_id="main", line_code="NE"),
+                _tr(train_id="bergen", line_code="NC"),
+            ],
+        }
+        self._patch_fetch(monkeypatch, seg)
+        deps, direction = gtv._probe_line_departures(
+            None, "http://x", "NJT", self.STATIONS, frozenset({"NC"})
+        )
+        assert [d.train_id for d in deps] == ["bergen"]
+        assert direction == "C->D"
+
+    def test_empty_line_codes_falls_back_to_any_train(self, monkeypatch):
+        # LIRR terminal variants have no line_codes (resolved geometrically);
+        # filtering by an empty set would drop every train, so the probe must
+        # keep the unfiltered any-train behavior.
+        seg = {("C", "D"): [_tr(train_id="main", line_code="NE")]}
+        self._patch_fetch(monkeypatch, seg)
+        deps, direction = gtv._probe_line_departures(
+            None, "http://x", "LIRR", self.STATIONS, frozenset()
+        )
+        assert [d.train_id for d in deps] == ["main"]
+        assert direction == "C->D"

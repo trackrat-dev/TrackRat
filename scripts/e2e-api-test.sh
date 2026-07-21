@@ -269,6 +269,12 @@ ROUTES=(
   "Subway N|SR01|SD43|SUBWAY||"
   # PATCO - schedule-only (no real-time API available)
   "PATCO Speedline|LND|FFL|PATCO||s"
+  # SEPTA Regional Rail — Center City pairs (all lines pass 30th St/Suburban)
+  "SEPTA RR Center City|SEPR90004|SEPR90005|SEPTA_RR||"
+  "SEPTA RR Trenton Line|SEPR90701|SEPR90004|SEPTA_RR||"
+  # SEPTA Metro — NHSL is the real-time-upgraded Metro line (Broad St / MFL are
+  # schedule-first and covered by the line-coverage sweep instead)
+  "SEPTA Metro NHSL|SEPM30520|SEPM416|SEPTA_METRO||"
   # BART (San Francisco)
   "BART Red|BART_RICH|BART_SFIA|BART||"
   "BART Orange|BART_BERY|BART_RICH|BART||"
