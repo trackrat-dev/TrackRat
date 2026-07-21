@@ -1136,8 +1136,9 @@ struct SystemCongestionMapView: UIViewRepresentable {
         // Check if anything changed (congestion, routes, stations, systems, or highlight mode)
         let congestionChanged = desiredAggregatedState != context.coordinator.currentAggregatedOverlayState ||
                                desiredIndividualState != context.coordinator.currentIndividualOverlayState
-        let desiredRouteSources = selectedSystems.congestionMapRouteOverlaySources(showRoutes: showRoutes)
-        let routeOverlaysChanged = desiredRouteSources != context.coordinator.renderedRouteSources
+        let desiredBaseRoutes = RouteTopology.congestionMapBaseRoutes(selectedDataSources: selectedSystems.asRawStrings, showRoutes: showRoutes)
+        let desiredRouteIDs = Set(desiredBaseRoutes.map(\.id))
+        let routeOverlaysChanged = desiredRouteIDs != context.coordinator.renderedRouteIDs
         let desiredStationCodes = Set(stations.map { $0.code })
         let stationsChanged = desiredStationCodes != context.coordinator.currentStationCodes
         let systemsChanged = selectedSystems != context.coordinator.currentSelectedSystems
@@ -1247,9 +1248,10 @@ struct SystemCongestionMapView: UIViewRepresentable {
             }
         }
 
-        // Handle route topology overlays. Always drawn for schedule-only systems (PATCO)
-        // because they never produce congestion segments; gated by the Routes toggle for
-        // real-time systems. See `congestionMapRouteOverlaySources` for the rules.
+        // Handle route topology overlays. Always drawn for schedule-only lines (PATCO, and
+        // SEPTA Metro's Broad St / Market-Frankford) because they never produce congestion
+        // segments; real-time lines are gated by the Routes toggle. See
+        // `RouteTopology.congestionMapBaseRoutes` for the rules.
         if routeOverlaysChanged {
             // Remove existing overlays
             if !context.coordinator.routeTopologyOverlays.isEmpty {
@@ -1257,12 +1259,10 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 context.coordinator.routeTopologyOverlays = []
             }
 
-            if !desiredRouteSources.isEmpty {
-                let filteredRoutes = RouteTopology.allRoutes.filter { desiredRouteSources.contains($0.dataSource) }
-
+            if !desiredBaseRoutes.isEmpty {
                 var newRouteOverlays: [RouteTopologyPolyline] = []
                 var drawnSegments = Set<String>()
-                for route in filteredRoutes {
+                for route in desiredBaseRoutes {
                     for i in 0..<(route.stationCodes.count - 1) {
                         let fromCode = route.stationCodes[i]
                         let toCode = route.stationCodes[i + 1]
@@ -1292,7 +1292,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 }
                 context.coordinator.routeTopologyOverlays = newRouteOverlays
             }
-            context.coordinator.renderedRouteSources = desiredRouteSources
+            context.coordinator.renderedRouteIDs = desiredRouteIDs
         }
 
         // Handle station annotations (update if stations or systems changed)
@@ -1347,7 +1347,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
 
         // Route topology state
         var routeTopologyOverlays: [RouteTopologyPolyline] = []
-        var renderedRouteSources: Set<String> = []
+        var renderedRouteIDs: Set<String> = []
         var currentSelectedSystems: Set<TrainSystem> = .all
 
         // Station annotation state

@@ -204,23 +204,6 @@ extension Set where Element == TrainSystem {
     var asRawStrings: Set<String> {
         Set<String>(self.map(\.rawValue))
     }
-
-    /// Data sources whose route topology should be drawn on the congestion map.
-    ///
-    /// Schedule-only systems (PATCO) have no real-time data so the backend never returns
-    /// congestion segments for them. We still draw their route lines in white whenever
-    /// they're in the user's selected systems, so the map shows that the system exists.
-    /// Real-time systems are only drawn when the user explicitly enables the Routes layer.
-    func congestionMapRouteOverlaySources(showRoutes: Bool) -> Set<String> {
-        var sources = Set<String>()
-        for system in self where !system.supportsAlerts {
-            sources.insert(system.dataSource)
-        }
-        if showRoutes {
-            sources.formUnion(asRawStrings)
-        }
-        return sources
-    }
 }
 
 // MARK: - Stations Extensions (TrainSystem-aware wrappers)
