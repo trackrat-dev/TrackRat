@@ -146,7 +146,7 @@ Physical device recommended for:
 
 - All timestamps use Eastern Time zone
 - Train lookup supports both IDs and train numbers
-- `TrainSystem.disabledSystems` (BART, WMATA, MBTA, Metra) hides systems app-wide; use `TrainSystem.availableCases` for any user-facing system list (mirrors backend `TRACKRAT_DISABLED_DATA_SOURCES`). Persisted selections are sanitized on load.
+- `TrainSystem.disabledSystems` (BART, WMATA, MBTA, Metra, SEPTA RR + Metro) hides systems app-wide; use `TrainSystem.availableCases` for any user-facing system list (mirrors backend `TRACKRAT_DISABLED_DATA_SOURCES`). Persisted selections are sanitized on load.
 - Pro subscription offers 1-week free trial via Apple introductory offer
 - `debugOverrideEnabled` in SubscriptionService controls Pro feature override (defaults to `false`)
 

@@ -53,7 +53,7 @@ class TrainSystemTests: XCTestCase {
                 "\(system.displayName) is disabled and must not appear in availableCases"
             )
         }
-        // BART, DC Metro, MBTA, and Metra are the currently disabled systems.
+        // BART, DC Metro, MBTA, Metra, and SEPTA (Regional Rail + Metro) are the currently disabled systems.
         XCTAssertEqual(
             available.count,
             TrainSystem.allCases.count - TrainSystem.disabledSystems.count,
