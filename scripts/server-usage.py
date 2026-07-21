@@ -42,7 +42,10 @@ SA_KEY_PATH = "/root/.config/gcloud/service-account.json"
 PROJECT = "trackrat-v2"
 
 FORWARDING_RULES = {
-    "production": "trackrat-production-https",
+    # Production apiv2 traffic moved to the consolidated webpage LB at the
+    # Phase 4 LB-consolidation cutover (2026-07-15, infra_v2/RUNBOOK-lb-consolidation.md);
+    # the old dedicated "trackrat-production-https" rule was torn down.
+    "production": "trackrat-webpage-production-https",
     "staging": "trackrat-staging-https",
 }
 
