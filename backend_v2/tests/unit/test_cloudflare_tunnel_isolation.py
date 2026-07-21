@@ -103,15 +103,22 @@ def test_enable_cloudflare_tunnel_variable_defaults_off():
     text = _VARIABLES_TF.read_text()
     assert 'variable "enable_cloudflare_tunnel"' in text
     # The block must default to false (committed-off).
-    block = text.split('variable "enable_cloudflare_tunnel"', 1)[1].split("variable ", 1)[0]
-    assert "default     = false" in block, "connector must ship off by default (issue #1578)"
+    block = text.split('variable "enable_cloudflare_tunnel"', 1)[1].split(
+        "variable ", 1
+    )[0]
+    assert (
+        "default     = false" in block
+    ), "connector must ship off by default (issue #1578)"
 
 
 def test_startup_script_gates_connector_on_flag_and_token():
     text = _COMPUTE_TF.read_text()
     # The flag is surfaced into the script and required alongside a non-empty token.
     assert 'ENABLE_CLOUDFLARE_TUNNEL="${var.enable_cloudflare_tunnel}"' in text
-    assert '[ "$ENABLE_CLOUDFLARE_TUNNEL" = "true" ] && [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]' in text
+    assert (
+        '[ "$ENABLE_CLOUDFLARE_TUNNEL" = "true" ] && [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]'
+        in text
+    )
 
 
 def test_startup_script_dropped_secret_only_profile_activation():
@@ -138,10 +145,63 @@ def test_startup_script_teardown_removes_orphaned_connector():
 def test_startup_script_brings_connector_up_isolated_and_nonfatal():
     text = _COMPUTE_TF.read_text()
     assert (
-        "-f docker-compose.yml -f docker-compose.tunnel.yml up -d cloudflared" in text
+        "-f docker-compose.yml -f docker-compose.tunnel.yml up -d --no-deps cloudflared"
+        in text
     ), "connector must come up as an isolated second compose invocation"
     # Non-fatal: a connector failure must not abort the startup script.
-    isolated = text.split("up -d cloudflared", 1)[1]
-    assert isolated.lstrip().startswith("\\") or "|| echo" in isolated[:120], (
-        "the isolated cloudflared bring-up must be non-fatal (|| ...)"
+    isolated = text.split("up -d --no-deps cloudflared", 1)[1]
+    assert (
+        isolated.lstrip().startswith("\\") or "|| echo" in isolated[:120]
+    ), "the isolated cloudflared bring-up must be non-fatal (|| ...)"
+
+
+def test_startup_script_connector_up_uses_no_deps():
+    """The tunnel file declares ``depends_on: [api]``, so without --no-deps the
+    connector bring-up pulls api into its scope — api is left untouched only as
+    long as the merged config happens not to drift. --no-deps makes the
+    "connector failure cannot touch api/db" guarantee structural (issue #1594)."""
+    text = _COMPUTE_TF.read_text()
+    assert "up -d --no-deps cloudflared" in text, (
+        "the isolated connector bring-up must use --no-deps so api is never "
+        "in scope of the tunnel-file invocation"
     )
+
+
+def test_startup_script_removes_tunnel_file_when_disabled():
+    """File presence must mean "tunnel enabled this boot". $APP_DIR lives on the
+    persistent data disk (staging's is cloned from production's on every deploy),
+    so without cleanup a tunnel file from a prior enabled boot lingers and the
+    shutdown drain would merge a stale file on disabled boots (issue #1594)."""
+    text = _COMPUTE_TF.read_text()
+    assert 'rm -f "$APP_DIR/docker-compose.tunnel.yml"' in text, (
+        "disabled boots must remove any stale docker-compose.tunnel.yml so "
+        "file presence tracks the enable flag"
+    )
+    # The cleanup must live in the startup script's disabled branch, before the
+    # shutdown script (which relies on the invariant).
+    startup = text.split("shutdown-script", 1)[0]
+    assert 'rm -f "$APP_DIR/docker-compose.tunnel.yml"' in startup
+
+
+def test_shutdown_script_drains_connector_before_base_stack():
+    """When the tunnel is enabled, the shutdown path must stop cloudflared before
+    api so the connector deregisters from Cloudflare's edge (connection draining)
+    instead of dying with the VM while the edge still routes to it. The drain must
+    be guarded on tunnel-file presence and non-fatal so a bad/stale tunnel file
+    can never cost api/db their graceful stop (issue #1594)."""
+    text = _COMPUTE_TF.read_text()
+    assert "shutdown-script" in text
+    shutdown = text.split("shutdown-script", 1)[1]
+
+    drain = "-f docker-compose.yml -f docker-compose.tunnel.yml stop --timeout 3 cloudflared"
+    assert drain in shutdown, "shutdown must merge the tunnel file to stop cloudflared"
+    assert (
+        'if [ -f "$APP_DIR/docker-compose.tunnel.yml" ]' in shutdown
+    ), "the drain must be guarded on tunnel-file presence"
+    drain_line = next(line for line in shutdown.splitlines() if drain in line)
+    assert "|| true" in drain_line, "the drain must be non-fatal"
+
+    after_drain = shutdown.split(drain, 1)[1]
+    assert (
+        "$COMPOSE_PATH stop --timeout" in after_drain
+    ), "the base api/db stop must come after the connector drain"
