@@ -121,22 +121,23 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
         }
     }
 
-    /// Whether this system has schedule-only lines the backend never returns congestion
-    /// segments for (they're excluded from `REAL_TIME_DATA_SOURCES`). The congestion map
-    /// always draws these systems' route topology as a white base line so those lines
-    /// stay visible even without live data.
+    /// Whether this system is served entirely from static schedules with no real-time feed,
+    /// so the backend never returns congestion segments for any of its lines. The congestion
+    /// map always draws such a system's route topology as a white base line so it stays
+    /// visible even without live data. PATCO is the only fully schedule-only system.
     ///
-    /// PATCO is entirely schedule-only. SEPTA Metro is a hybrid — NHSL and the trolleys
-    /// are fed in real time, but Broad Street and Market-Frankford are schedule-only — so
-    /// it needs the white base line too. This is why the flag can't be derived from
-    /// `supportsAlerts`: SEPTA Metro supports alerts (its real-time lines can raise
-    /// delay/cancellation alerts) yet still has schedule-only lines.
-    var hasScheduleOnlyLines: Bool {
+    /// SEPTA Metro is deliberately NOT included: it is a hybrid whose Broad Street and
+    /// Market-Frankford lines are schedule-only while NHSL and the trolleys are real-time.
+    /// Its schedule-only lines are handled per-route via `RouteTopology.scheduleOnlyRouteIDs`
+    /// so its real-time lines keep obeying the congestion map's Routes toggle like every other
+    /// real-time line. (This is also why the flag can't be derived from `supportsAlerts`:
+    /// SEPTA Metro supports alerts yet is not fully schedule-only.)
+    var isFullyScheduleOnly: Bool {
         switch self {
-        case .patco, .septaMetro:
+        case .patco:
             return true
         case .njt, .amtrak, .path, .lirr, .mnr, .subway, .metra, .wmata, .bart, .mbta,
-             .septaRegionalRail:
+             .septaRegionalRail, .septaMetro:
             return false
         }
     }
@@ -223,24 +224,6 @@ extension Set where Element == TrainSystem {
     /// Converts to raw data source string set for use with Stations/route filtering
     var asRawStrings: Set<String> {
         Set<String>(self.map(\.rawValue))
-    }
-
-    /// Data sources whose route topology should be drawn on the congestion map.
-    ///
-    /// Systems with schedule-only lines (PATCO, and SEPTA Metro's Broad Street /
-    /// Market-Frankford) never produce congestion segments for those lines, so we always
-    /// draw their route topology in white whenever they're in the user's selected systems —
-    /// otherwise those lines would be invisible on the map. Fully real-time systems are only
-    /// drawn when the user explicitly enables the Routes layer. See `hasScheduleOnlyLines`.
-    func congestionMapRouteOverlaySources(showRoutes: Bool) -> Set<String> {
-        var sources = Set<String>()
-        for system in self where system.hasScheduleOnlyLines {
-            sources.insert(system.dataSource)
-        }
-        if showRoutes {
-            sources.formUnion(asRawStrings)
-        }
-        return sources
     }
 }
 
