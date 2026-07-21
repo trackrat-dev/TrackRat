@@ -253,6 +253,45 @@ class TestNormalizeAggregatedSegments:
         assert ("GCT", "M125") in segments_by_key
         assert ("M125", "MEYS") in segments_by_key
 
+    def test_septa_metro_segment_not_expanded(self):
+        """SEPTA_METRO skip-stop segments must NOT expand through topology.
+
+        Its direction_id=0 route topology is a per-route UNION of stops in a
+        synthetic sort order that doubles back on itself: the subway-surface
+        trolleys (Routes 10/11/13/34/36) list 40th St Portal -> surface Spruce
+        St stops -> 40th-Market -> 37th-Spruce. A real eastbound trolley runs
+        40th St Portal (SEPM20804) -> 37th-Spruce (SEPM20731) directly in the
+        subway. Expanding that observed hop through the topology fabricates a
+        zig-zag of physically-impossible sub-segments (e.g. 40th-Market ->
+        37th-Spruce, an 837 m back-jump) that render as jagged congestion lines
+        around University City. The observed pair must pass through unchanged.
+        """
+        raw = [
+            SegmentCongestion(
+                from_station="SEPM20804",  # 40th St Portal
+                to_station="SEPM20731",  # 37th-Spruce
+                data_source="SEPTA_METRO",
+                congestion_factor=1.0,
+                congestion_level="normal",
+                avg_transit_minutes=2.0,
+                baseline_minutes=2.0,
+                sample_count=6,
+                average_delay_minutes=0.0,
+                cancellation_count=0,
+                cancellation_rate=0.0,
+            )
+        ]
+        result = normalize_aggregated_segments(raw)
+
+        # Exactly the observed pair — no topology expansion, so none of the
+        # fabricated surface-stop sub-segments (which would appear if the pair
+        # were expanded through routes T2-T5) are present.
+        assert len(result) == 1
+        assert (result[0].from_station, result[0].to_station) == (
+            "SEPM20804",
+            "SEPM20731",
+        )
+
     def test_cancellation_only_segment_filtered(self):
         """Test that segments with only cancellation data are filtered out.
 
@@ -628,6 +667,26 @@ class TestNormalizeIndividualSegments:
         assert ("MSTM", "MGLB") in stations
         assert ("MGLB", "MSPD") in stations
         assert ("MSPD", "MTMH") in stations
+
+    def test_septa_metro_individual_segment_not_expanded(self):
+        """SEPTA_METRO individual segments must NOT expand through topology.
+
+        Same rationale as the aggregated case: 40th St Portal (SEPM20804) ->
+        37th-Spruce (SEPM20731) is a real direct subway hop, but both codes sit
+        8 stops apart in the non-physical direction_id=0 topology, so expansion
+        would fabricate a zig-zag through the surface stops. The observed
+        segment must pass through unchanged (issue #1573 topology unreliability).
+        """
+        raw = [
+            self._create_segment("SEPM20804", "SEPM20731", data_source="SEPTA_METRO")
+        ]
+        result = normalize_individual_segments(raw)
+
+        assert len(result) == 1
+        assert (result[0].from_station, result[0].to_station) == (
+            "SEPM20804",
+            "SEPM20731",
+        )
 
     def test_station_names_updated(self):
         """Test that station names are updated for expanded segments."""
