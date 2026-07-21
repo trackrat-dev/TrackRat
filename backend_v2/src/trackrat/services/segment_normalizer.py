@@ -58,6 +58,44 @@ _REQUIRE_ROUTE_MATCH_SOURCES: set[str] = {
 }
 
 
+# Data sources whose route topology is NOT a physical single-direction path, so
+# expanding a skip-stop segment through it fabricates non-physical sub-segments.
+#
+# SEPTA_METRO's topology is built from route_stops.txt direction_id=0 — a per-route
+# UNION of every stop the route serves (subway-express + surface patterns) in a
+# synthetic sort order that doubles back on itself. For the subway-surface trolleys
+# (Routes 10/11/13/34/36) that order runs 40th St Portal -> surface Spruce St stops
+# -> 40th-Market -> 37th-Spruce, but a real trolley runs 40th St Portal -> 37th-Spruce
+# directly in the subway. Expanding that observed segment through the topology path
+# explodes one clean hop into a zig-zag of fabricated sub-segments (e.g. the
+# physically-impossible 40th-Market -> 37th-Spruce, an 837 m back-jump), which
+# render as jagged congestion lines around University City. Metro's observed
+# segments are already consecutive physical adjacencies, so we keep them as-is
+# instead of expanding. Same topology unreliability that excludes SEPTA_METRO from
+# route-match filtering above (issue #1573).
+_SKIP_STOP_EXPANSION_EXCLUDED_SOURCES: set[str] = {"SEPTA_METRO"}
+
+
+def _canonical_segments(
+    data_source: str, from_station: str, to_station: str
+) -> list[tuple[str, str]]:
+    """Canonical consecutive pairs for a raw segment.
+
+    Normally this expands a skip-stop segment (A->C) into its topology path
+    (A->B, B->C). For sources in _SKIP_STOP_EXPANSION_EXCLUDED_SOURCES the
+    topology is not a physical single-direction path, so expansion would
+    fabricate zig-zag sub-segments; the observed segment is returned unchanged
+    (it is already a physical adjacency).
+    """
+    if data_source in _SKIP_STOP_EXPANSION_EXCLUDED_SOURCES:
+        return [(from_station, to_station)]
+    return get_canonical_segments(
+        data_source=data_source,
+        from_station=from_station,
+        to_station=to_station,
+    )
+
+
 def _is_segment_anomalous(from_station: str, to_station: str, data_source: str) -> bool:
     """Check if an unmatched segment is anomalous.
 
@@ -127,10 +165,8 @@ def normalize_aggregated_segments(
 
     for segment in raw_segments:
         # Get canonical segments for this segment
-        canonical = get_canonical_segments(
-            data_source=segment.data_source,
-            from_station=segment.from_station,
-            to_station=segment.to_station,
+        canonical = _canonical_segments(
+            segment.data_source, segment.from_station, segment.to_station
         )
 
         if len(canonical) == 1 and canonical[0] == (
@@ -341,10 +377,8 @@ def normalize_individual_segments(
 
     for segment in raw_segments:
         # Get canonical segments for this segment
-        canonical = get_canonical_segments(
-            data_source=segment.data_source,
-            from_station=segment.from_station,
-            to_station=segment.to_station,
+        canonical = _canonical_segments(
+            segment.data_source, segment.from_station, segment.to_station
         )
 
         if len(canonical) == 1 and canonical[0] == (
