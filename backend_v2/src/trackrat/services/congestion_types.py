@@ -10,6 +10,18 @@ CONGESTION_THRESHOLD_MODERATE = 1.25  # <= 25% slower than baseline
 CONGESTION_THRESHOLD_HEAVY = 1.5  # <= 50% slower than baseline
 # Above 1.5 = severe
 
+# Minimum absolute delay (minutes) before a segment counts as congested.
+# The congestion factor is a ratio against the scheduled inter-station time,
+# so on closely-spaced stops with sub-minute baselines (SEPTA Metro trolley
+# curb stops sit ~30-60s apart) the minute-resolution rounding of GTFS-RT
+# feeds pushes the ratio to 1.5-2.0 — heavy/severe — from a few seconds of
+# noise. Requiring a real ~1 minute of lost time before escalating suppresses
+# that jitter while leaving genuine delays untouched: rail segments with real
+# problems lose multiple minutes (validated against NJT: 14/15 heavy-severe
+# segments keep their level), and a truly stuck train on a short hop still
+# loses >= 1 min and stays escalated.
+MIN_CONGESTION_DELAY_MINUTES = 1.0
+
 # Weight applied to a segment's cancellation rate (a percentage, 0-100) when
 # folding cancellations into the congestion factor. Mirrors the iOS client's
 # CongestionColors.cancellationCongestionWeight (ios/.../Utilities/Extensions.swift)
@@ -24,6 +36,16 @@ FREQ_THRESHOLD_HEALTHY = 0.9  # >= 90% of baseline trains
 FREQ_THRESHOLD_MODERATE = 0.7  # >= 70% of baseline trains
 FREQ_THRESHOLD_REDUCED = 0.5  # >= 50% of baseline trains
 # Below 0.5 = severe
+
+# Minimum observed AND baseline train samples before a per-segment frequency
+# level is trustworthy. The factor is a ratio of two counts; when both are
+# tiny, ±1 train swings it across whole tiers. SEPTA Metro trolley stops carry
+# a distinct per-direction/per-curb code, so each segment sees only a handful
+# of trains (often 1-3) divided by an equally tiny baseline, producing
+# healthy/moderate/reduced flip-flopping between adjacent stops. Validated
+# subway-safe: every SUBWAY segment has a baseline >= 6 and all but one have
+# >= 5 observed trains, so real subway frequency signal is unaffected.
+FREQ_MIN_SAMPLE_TRAINS = 5
 
 # Data sources where frequency/service health is more meaningful than delay stats.
 # Mirrors iOS TrainSystem.preferredHighlightMode == .health
@@ -56,6 +78,25 @@ def effective_congestion_factor(
     )
 
 
+def reliable_congestion_factor(
+    congestion_factor: float, average_delay_minutes: float
+) -> float:
+    """Suppress sub-minute timing noise from the congestion factor.
+
+    Returns a nominal factor (1.0) when trains lose less than
+    ``MIN_CONGESTION_DELAY_MINUTES`` of absolute time on the segment, so the
+    minute-resolution jitter of GTFS-RT feeds on closely-spaced stops does not
+    read as congestion. Genuine delays (>= the floor) keep their real factor.
+
+    Applied to the delay component only — cancellations are folded in
+    separately via ``effective_congestion_factor``, so a heavily-cancelled but
+    on-time segment still escalates.
+    """
+    if abs(average_delay_minutes) < MIN_CONGESTION_DELAY_MINUTES:
+        return 1.0
+    return congestion_factor
+
+
 def get_frequency_level(frequency_factor: float) -> str:
     """Determine frequency/health level from a frequency factor.
 
@@ -69,6 +110,23 @@ def get_frequency_level(frequency_factor: float) -> str:
         return "reduced"
     else:
         return "severe"
+
+
+def frequency_is_reliable(
+    train_count: int | None, baseline_train_count: float | None
+) -> bool:
+    """Whether a segment has enough samples for a trustworthy frequency level.
+
+    Both the observed count and the historical baseline must reach
+    ``FREQ_MIN_SAMPLE_TRAINS``; otherwise the ratio is dominated by noise and
+    should be left unset (clients render no frequency color and fall back).
+    """
+    return (
+        train_count is not None
+        and baseline_train_count is not None
+        and train_count >= FREQ_MIN_SAMPLE_TRAINS
+        and baseline_train_count >= FREQ_MIN_SAMPLE_TRAINS
+    )
 
 
 class SegmentCongestion:

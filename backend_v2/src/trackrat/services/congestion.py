@@ -25,8 +25,10 @@ from trackrat.services.congestion_types import (
     FREQ_THRESHOLD_REDUCED,
     SegmentCongestion,
     effective_congestion_factor,
+    frequency_is_reliable,
     get_congestion_level,
     get_frequency_level,
+    reliable_congestion_factor,
 )
 from trackrat.services.departure import active_data_sources
 from trackrat.utils.time import ensure_timezone_aware, now_et
@@ -698,6 +700,16 @@ class CongestionAnalyzer:
             current_avg = float(row.current_avg_minutes or row.avg_actual or baseline)
             congestion_factor = current_avg / baseline if baseline > 0 else 1.0
 
+            # Calculate average delay
+            average_delay = current_avg - baseline
+
+            # Suppress sub-minute timing noise on closely-spaced stops before the
+            # factor drives any color (see reliable_congestion_factor). Reassigned
+            # so the reported factor and the level agree for both clients.
+            congestion_factor = reliable_congestion_factor(
+                congestion_factor, average_delay
+            )
+
             # Fold cancellations into the level so heavy cancellations register
             # on the map even when the running trains are on time. (Segments are
             # re-aggregated in normalize_aggregated_segments, which applies the
@@ -705,9 +717,6 @@ class CongestionAnalyzer:
             level = get_congestion_level(
                 effective_congestion_factor(congestion_factor, cancellation_rate)
             )
-
-            # Calculate average delay
-            average_delay = current_avg - baseline
 
             # Calculate frequency metrics (only for real-time sources)
             train_count: int | None = None
@@ -722,11 +731,16 @@ class CongestionAnalyzer:
                     and row.baseline_train_count > 0
                 ):
                     baseline_train_count = float(row.baseline_train_count)
-                    if row.frequency_factor is not None:
+                    # Only assign a frequency level when the sample is large
+                    # enough to trust; tiny per-curb counts otherwise flip tiers
+                    # between adjacent stops (see frequency_is_reliable). The raw
+                    # counts are still reported so the normalizer can re-check
+                    # reliability on the summed canonical segment.
+                    if row.frequency_factor is not None and frequency_is_reliable(
+                        train_count, baseline_train_count
+                    ):
                         frequency_factor = float(row.frequency_factor)
                         frequency_level = get_frequency_level(frequency_factor)
-                # When no historical baseline exists, frequency_factor stays None
-                # and iOS will show gray to indicate "no data available"
 
             congestion_results.append(
                 SegmentCongestion(
@@ -988,11 +1002,8 @@ class CongestionAnalyzer:
         # Convert to IndividualJourneySegment objects
         individual_segments = []
         for row in rows:
-            # Determine congestion level from factor (convert Decimal to float)
-            congestion_factor = float(row.congestion_factor)
-            level = get_congestion_level(congestion_factor)
-
             # Convert database types to Python types
+            congestion_factor = float(row.congestion_factor)
             actual_minutes = float(row.actual_minutes)
             scheduled_minutes = (
                 float(row.scheduled_minutes)
@@ -1000,6 +1011,14 @@ class CongestionAnalyzer:
                 else actual_minutes
             )
             delay_minutes = float(row.delay_minutes)
+
+            # Suppress sub-minute timing noise on closely-spaced stops so a
+            # per-train segment is not shown as heavy/severe from a few seconds
+            # of feed rounding (see reliable_congestion_factor).
+            congestion_factor = reliable_congestion_factor(
+                congestion_factor, delay_minutes
+            )
+            level = get_congestion_level(congestion_factor)
 
             segment = IndividualJourneySegment(
                 journey_id=str(row.journey_id),

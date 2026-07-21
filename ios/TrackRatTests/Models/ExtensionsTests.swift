@@ -440,4 +440,59 @@ class ExtensionsTests: XCTestCase {
             }
         }
     }
+
+    // MARK: - CongestionColors Tier Keys
+
+    /// A nil frequency factor renders gray ("no data") and gets its own key so
+    /// those segments only merge with each other.
+    func testFrequencyTierKeyNilIsNoFreq() {
+        XCTAssertEqual(CongestionColors.frequencyTierKey(forFactor: nil, cancellationRate: 0), "nofreq")
+    }
+
+    /// The tier key boundaries must line up with the frequency color thresholds
+    /// (healthy ≥ 0.9, moderate ≥ 0.7, reduced ≥ 0.5, else severe) so a merged
+    /// run is drawn in exactly the color its segments would render individually.
+    func testFrequencyTierKeyBoundariesMatchColorThresholds() {
+        XCTAssertEqual(CongestionColors.frequencyTierKey(forFactor: 1.3, cancellationRate: 0), "healthy")
+        XCTAssertEqual(CongestionColors.frequencyTierKey(forFactor: 0.9, cancellationRate: 0), "healthy")
+        XCTAssertEqual(CongestionColors.frequencyTierKey(forFactor: 0.89, cancellationRate: 0), "moderate")
+        XCTAssertEqual(CongestionColors.frequencyTierKey(forFactor: 0.7, cancellationRate: 0), "moderate")
+        XCTAssertEqual(CongestionColors.frequencyTierKey(forFactor: 0.69, cancellationRate: 0), "reduced")
+        XCTAssertEqual(CongestionColors.frequencyTierKey(forFactor: 0.5, cancellationRate: 0), "reduced")
+        XCTAssertEqual(CongestionColors.frequencyTierKey(forFactor: 0.49, cancellationRate: 0), "severe")
+    }
+
+    /// Cancellations drag the effective frequency down (~1 tier per 10%), matching
+    /// `color(forFrequencyFactor:cancellationRate:)`.
+    func testFrequencyTierKeyFoldsCancellations() {
+        XCTAssertEqual(CongestionColors.frequencyTierKey(forFactor: 0.95, cancellationRate: 0), "healthy")
+        // 0.95 - 20% * 0.020 = 0.55 -> reduced
+        XCTAssertEqual(CongestionColors.frequencyTierKey(forFactor: 0.95, cancellationRate: 20), "reduced")
+    }
+
+    /// The merge fix: in Health mode segments are colored by frequency, so the
+    /// merge key must group by the frequency tier, not the delay tier.
+    /// Same frequency color but different delay tiers -> one merge key (previously
+    /// left unmerged); different frequency colors but the same delay tier ->
+    /// different keys (previously merged into one wrongly-colored run).
+    func testFrequencyTierKeyRegroupsIndependentlyOfDelay() {
+        // Same frequency color (both healthy), different delay tiers -> merge.
+        XCTAssertEqual(
+            CongestionColors.frequencyTierKey(forFactor: 0.95, cancellationRate: 0),
+            CongestionColors.frequencyTierKey(forFactor: 0.92, cancellationRate: 0)
+        )
+        XCTAssertNotEqual(
+            CongestionColors.congestionTierKey(forFactor: 1.0, cancellationRate: 0),
+            CongestionColors.congestionTierKey(forFactor: 2.0, cancellationRate: 0)
+        )
+        // Different frequency colors, identical delay tier -> do NOT merge.
+        XCTAssertNotEqual(
+            CongestionColors.frequencyTierKey(forFactor: 0.95, cancellationRate: 0),
+            CongestionColors.frequencyTierKey(forFactor: 0.55, cancellationRate: 0)
+        )
+        XCTAssertEqual(
+            CongestionColors.congestionTierKey(forFactor: 1.0, cancellationRate: 0),
+            CongestionColors.congestionTierKey(forFactor: 1.05, cancellationRate: 0)
+        )
+    }
 }

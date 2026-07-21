@@ -19,8 +19,10 @@ from trackrat.config.route_topology import (
 from trackrat.services.congestion_types import (
     SegmentCongestion,
     effective_congestion_factor,
+    frequency_is_reliable,
     get_congestion_level,
     get_frequency_level,
+    reliable_congestion_factor,
 )
 
 logger = get_logger(__name__)
@@ -223,6 +225,11 @@ def normalize_aggregated_segments(
         # Average delay
         average_delay = avg_transit - avg_baseline
 
+        # Suppress sub-minute timing noise on closely-spaced stops before the
+        # factor drives any color (see reliable_congestion_factor). Reassigned
+        # so the reported factor and the level agree for both clients.
+        congestion_factor = reliable_congestion_factor(congestion_factor, average_delay)
+
         # Cancellation rate
         total_journeys = total_samples + total_cancellations
         cancellation_rate = (
@@ -252,23 +259,20 @@ def normalize_aggregated_segments(
             for d in data_list
             if d["baseline_train_count"] is not None
         ]
-        freq_factors = [
-            d["frequency_factor"]
-            for d in data_list
-            if d["frequency_factor"] is not None
-        ]
 
         if train_counts:
             train_count = sum(train_counts)
         if baseline_counts:
             baseline_train_count = sum(baseline_counts)
-            if train_count is not None and baseline_train_count > 0:
-                frequency_factor = train_count / baseline_train_count
-                frequency_level = get_frequency_level(frequency_factor)
-        elif freq_factors:
-            # No baseline available but source segments have frequency factors
-            # (possible when merging segments with different data availability)
-            frequency_factor = sum(freq_factors) / len(freq_factors)
+        # Re-check reliability on the summed canonical segment: several sparse
+        # raw sub-segments (each below the floor) can aggregate into a segment
+        # with enough samples to trust. Only then assign a frequency level.
+        if (
+            train_count is not None
+            and baseline_train_count is not None
+            and frequency_is_reliable(train_count, baseline_train_count)
+        ):
+            frequency_factor = train_count / baseline_train_count
             frequency_level = get_frequency_level(frequency_factor)
 
         result.append(
