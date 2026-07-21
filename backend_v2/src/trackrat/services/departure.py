@@ -713,19 +713,26 @@ class DepartureService:
         # Skip for transfer leg queries where GTFS backfill isn't needed.
         if target_date == today and not skip_gtfs_merge:
             current_time = now_et()
+            # SQL floor for the GTFS query. Must be the *effective* lower bound
+            # (max of now and the requested time_from), not the raw time_from:
+            # for a plain same-day board time_from defaults to today's midnight,
+            # which _gtfs_time_cutoff treats as "no cutoff", so the query's
+            # 250-row ascending cap returns only the earliest trips of the day.
+            # For a high-frequency, schedule-only line — SEPTA Broad St /
+            # Market-Frankford, which have no OBSERVED rows to backfill the
+            # board — those are all morning trips, and the `> gtfs_lower_bound`
+            # filter below then drops every one, leaving an empty board by
+            # midday. Passing the effective lower bound lets the SQL pre-filter
+            # prune pre-now trips so the cap lands on trips around/after "now"
+            # (this also prunes for trip_search leg-2, whose time_from is a
+            # future connection window). Same failure class as the SUBWAY Union
+            # Sq truncation (issue #1140).
+            gtfs_lower_bound = max(current_time, time_from)
             try:
                 from trackrat.services.gtfs import GTFSService
 
                 gtfs_service = GTFSService()
 
-                # Pass time_from so the GTFS SQL pre-filter prunes trips
-                # before the connection window. Without this, the underlying
-                # SQL query (limit=250 inside get_scheduled_departures) returns
-                # the earliest trips of the day at high-volume station
-                # complexes — e.g. Union Sq Subway expansion {SL03, S635,
-                # SR20} fetches ~3000+ trips/day across 4/5/6/L/N/R/W,
-                # truncating to overnight-only departures before any
-                # post-filter runs. Issue #1140.
                 gtfs_response = await gtfs_service.get_scheduled_departures(
                     db=db,
                     from_station=from_station,
@@ -733,7 +740,7 @@ class DepartureService:
                     target_date=target_date,
                     limit=200,  # Fetch more, we'll filter after merge
                     data_sources=allowed_sources,
-                    time_from=time_from,
+                    time_from=gtfs_lower_bound,
                 )
 
                 # Filter GTFS departures:
@@ -747,7 +754,6 @@ class DepartureService:
                 #    Cutoff = max(now + 20min, last_observed_departure + 2min).
                 #    This prevents duplicates while showing schedules until realtime
                 #    data reliably covers them.
-                gtfs_lower_bound = max(current_time, time_from)
                 if "PATH" in allowed_sources:
                     path_cutoff_time = await self._get_path_cutoff_time(
                         db, from_station, current_time, target_date
