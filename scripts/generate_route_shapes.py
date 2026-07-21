@@ -790,9 +790,29 @@ def generate_swift(
         "    }",
         "",
         "    // MARK: - Shape Data",
-        "    // Stored as flat [lat, lon, lat, lon, ...] arrays for compact representation.",
+        "    // Encoded as \"KEY|lat,lon,lat,lon,...\" text lines and parsed on first",
+        "    // access. Deliberately NOT a [String: [Double]] literal: a numeric",
+        "    // collection literal this size (60k+ Doubles, compiled once per target)",
+        "    // sends the Swift type checker into minutes-long territory and timed out",
+        "    // iOS CI. String literals type-check in constant time.",
         "",
-        "    private static let shapeData: [String: [Double]] = [",
+        f"    private static let shapeData: [String: [Double]] = {{",
+        f"        var result = [String: [Double]](minimumCapacity: {total_segments})",
+        "        for block in encodedShapeData {",
+        '            for line in block.split(separator: "\\n") {',
+        '                guard let separator = line.firstIndex(of: "|") else { continue }',
+        "                let key = String(line[..<separator])",
+        "                let values = line[line.index(after: separator)...]",
+        '                    .split(separator: ",")',
+        "                    .compactMap { Double($0) }",
+        "                guard values.count >= 4, values.count.isMultiple(of: 2) else { continue }",
+        "                result[key] = values",
+        "            }",
+        "        }",
+        "        return result",
+        "    }()",
+        "",
+        "    private static let encodedShapeData: [String] = [",
     ]
 
     for provider in sorted(all_shapes.keys()):
@@ -800,23 +820,13 @@ def generate_swift(
         if not shapes:
             continue
         lines.append(f"        // {provider}")
+        lines.append('        """')
         for key in sorted(shapes.keys()):
-            points = shapes[key]
             flat = []
-            for p in points:
+            for p in shapes[key]:
                 flat.extend([f"{p[0]:.6f}", f"{p[1]:.6f}"])
-            flat_str = ", ".join(flat)
-            if len(flat_str) <= 120:
-                lines.append(f'        "{key}": [{flat_str}],')
-            else:
-                # Wrap long arrays
-                lines.append(f'        "{key}": [')
-                # Group into coordinate pairs for readability
-                for i in range(0, len(flat), 8):  # 4 coordinate pairs per line
-                    chunk = ", ".join(flat[i:i+8])
-                    lines.append(f"            {chunk},")
-                lines.append("        ],")
-        lines.append("")
+            lines.append(f"        {key}|{','.join(flat)}")
+        lines.append('        """,')
 
     lines.append("    ]")
     lines.append("}")

@@ -25,6 +25,7 @@ from generate_route_shapes import (
     ShapePoint,
     extract_segment_shapes,
     find_nearest_shape_position,
+    generate_swift,
     merge_provider_shapes,
     parse_ios_station_coordinates,
     parse_ios_topology,
@@ -301,6 +302,68 @@ class TestMergeProviderShapes:
         merged = merge_provider_shapes(all_shapes)
         assert merged["NJT"] == all_shapes["NJT"]
         assert merged["AMTRAK"] == all_shapes["AMTRAK"]
+
+
+class TestGenerateSwiftEncoding:
+    """The emitted file must carry shape data as string literals parsed at
+    runtime — a [String: [Double]] literal with 60k+ Double literals sends the
+    Swift type checker into minutes-long territory and timed out iOS CI
+    (PR #1604, 30-minute job cancelled mid-compile)."""
+
+    ALL_SHAPES = {
+        "NJT": {"A-B": [(40.1234567, -74.0000004), (40.2, -74.1)]},
+        "AMTRAK": {"C-D": [(39.0, -75.0), (39.5, -75.5), (40.0, -76.0)]},
+    }
+
+    @staticmethod
+    def _decode_emitted(text):
+        """Replicate the Swift-side parser over the emitted file."""
+        decoded = {}
+        for line in text.splitlines():
+            stripped = line.strip()
+            if "|" not in stripped or stripped.startswith("//"):
+                continue
+            key, _, values = stripped.partition("|")
+            # Swift code lines containing '|' have spaces before it; data keys
+            # are bare station-pair tokens
+            if not key or " " in key or '"' in key:
+                continue
+            decoded[key] = [float(v) for v in values.split(",")]
+        return decoded
+
+    def test_encoded_data_round_trips(self, tmp_path):
+        path = tmp_path / "RouteShapes.swift"
+        generate_swift(self.ALL_SHAPES, str(path))
+        decoded = self._decode_emitted(path.read_text())
+        assert decoded == {
+            "A-B": [40.123457, -74.0, 40.2, -74.1],
+            "C-D": [39.0, -75.0, 39.5, -75.5, 40.0, -76.0],
+        }, f"emitted data does not round-trip: {decoded}"
+
+    def test_no_numeric_collection_literals_emitted(self, tmp_path):
+        path = tmp_path / "RouteShapes.swift"
+        generate_swift(self.ALL_SHAPES, str(path))
+        text = path.read_text()
+        assert '": [' not in text, (
+            "found a per-key [Double] array literal — this is the exact "
+            "pattern that timed out iOS CI"
+        )
+        # Data lines must sit inside multiline string literals
+        assert text.count('"""') % 2 == 0 and '"""' in text
+
+    def test_cross_provider_duplicates_emitted_once(self, tmp_path):
+        path = tmp_path / "RouteShapes.swift"
+        generate_swift(
+            {
+                "NJT": {"NP-NY": [(40.73, -74.16), (40.74, -74.1), (40.75, -74.0)]},
+                "AMTRAK": {"NP-NY": [(40.73, -74.16), (40.75, -74.0)]},
+            },
+            str(path),
+        )
+        text = path.read_text()
+        assert text.count("NP-NY|") == 1, "duplicate keys must be merged"
+        decoded = self._decode_emitted(text)
+        assert len(decoded["NP-NY"]) == 6, "most-points version must win"
 
 
 class TestIOSFileParsers:
