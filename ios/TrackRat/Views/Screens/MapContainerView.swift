@@ -136,7 +136,6 @@ struct MapContainerView: View {
                 segments: mapViewModel.segments,
                 individualSegments: mapViewModel.individualSegments,
                 stations: mapViewModel.showStations ? mapViewModel.routeStations : [],
-                showRoutes: mapViewModel.showRoutes,
                 selectedSystems: appState.selectedSystems,
                 highlightMode: mapViewModel.highlightMode,
                 onSegmentTap: { segment in
@@ -396,7 +395,7 @@ struct MapContainerView: View {
             // Update map when display mode changes
             print("🗺️ Map display mode changed to: \(newMode)")
             // Note: MapDisplayMode handles overall map focus, not congestion visualization
-            // Individual vs aggregated congestion is handled by CongestionMapView directly
+            // Individual vs aggregated congestion is handled by SystemCongestionMapView directly
         }
         .onChange(of: liveActivityService.isActivityActive) { _, isActive in
             // When Live Activity status changes, update the route highlight
