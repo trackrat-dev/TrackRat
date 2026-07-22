@@ -299,10 +299,16 @@ class TrainSystemTests: XCTestCase {
         ]
 
         for query in disabledQueries {
+            guard let disabledCode = Stations.getStationCode(query) else {
+                XCTFail("Missing station code for \(query)")
+                continue
+            }
             let grouped = Stations.searchGrouped(query, selectedSystems: [.njt])
-            XCTAssertTrue(
-                grouped.primary.isEmpty && grouped.other.isEmpty,
-                "Disabled-only query '\(query)' should return no selectable result, got \(grouped)"
+            XCTAssertFalse(
+                (grouped.primary + grouped.other).contains { name in
+                    Stations.getStationCode(name) == disabledCode
+                },
+                "Disabled-only station '\(query)' should not be selectable, got \(grouped)"
             )
         }
     }

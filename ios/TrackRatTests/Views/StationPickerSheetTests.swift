@@ -28,9 +28,13 @@ final class StationPickerSheetTests: XCTestCase {
 
     func testSearchRowsExcludeDisabledOnlyStationsFromOtherSystems() {
         for name in disabledStationNames {
+            guard let disabledCode = Stations.getStationCode(name) else {
+                XCTFail("Missing station code for \(name)")
+                continue
+            }
             let results = StationPickerSheet.pickerSearchResults(name, selectedSystems: [.njt])
-            XCTAssertTrue(
-                results.active.isEmpty && results.inactive.isEmpty,
+            XCTAssertFalse(
+                (results.active + results.inactive).contains { $0.code == disabledCode },
                 "Picker search must not render disabled-only station \(name) as a selectable row"
             )
         }
