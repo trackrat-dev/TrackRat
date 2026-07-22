@@ -524,12 +524,19 @@ class CongestionAnalyzer:
                 -- LEAD returns NULL for last stop in journey (no next stop)
                 sp.to_station IS NOT NULL
                 AND (
-                    -- Running trains: need positive real-time transit time
-                    -- within the lookback window. (>= :cutoff_time implies the
-                    -- coalesced departure is non-NULL.)
+                    -- Running trains: a COMPLETED segment within the lookback
+                    -- window — departed no earlier than :cutoff_time and arrived
+                    -- no later than :now_time. The arrival upper bound excludes
+                    -- not-yet-traversed segments that Amtrak stamps with future
+                    -- schedule-passthrough actual times (delay 0): those inflated
+                    -- train_count / frequency_factor and injected phantom on-time
+                    -- samples into avg_actual (issue #1603). Since arrival >
+                    -- departure, it also bounds the departure to the past.
+                    -- (>= :cutoff_time implies the coalesced departure is non-NULL.)
                     (
                         COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival) >= :cutoff_time
                         AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) IS NOT NULL
+                        AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) <= :now_time
                         AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) >
                             COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival)
                     )
@@ -538,9 +545,13 @@ class CongestionAnalyzer:
                     -- only to cancelled_count (every active metric below filters
                     -- NOT is_cancelled), letting heavy cancellations register on
                     -- the congestion map even when running trains are on time.
+                    -- Bounded above by :now_time too, so a train cancelled but
+                    -- scheduled to depart later is not counted as a cancellation
+                    -- "in the last N hours" (issue #1603).
                     OR (
                         tj.is_cancelled
                         AND sp.from_scheduled_departure >= :cutoff_time
+                        AND sp.from_scheduled_departure <= :now_time
                     )
                 )
         ),
@@ -653,6 +664,7 @@ class CongestionAnalyzer:
         # Execute query with performance logging
         params: dict[str, Any] = {
             "cutoff_time": cutoff_time,
+            "now_time": now_et(),
             "time_window_hours": time_window_hours,
         }
         if data_source:
@@ -846,8 +858,13 @@ class CongestionAnalyzer:
                 JOIN stop_pairs sp ON sp.journey_id = tj.id
                 WHERE
                     sp.to_station IS NOT NULL
-                    -- Within time window
+                    -- Within time window: departed no earlier than :cutoff_time
                     AND COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival) >= :cutoff_time
+                    -- ...and a COMPLETED segment (arrived no later than :now_time).
+                    -- The arrival upper bound drops not-yet-traversed segments
+                    -- carrying Amtrak future schedule-passthrough actual times
+                    -- (issue #1603); arrival > departure also bounds departure.
+                    AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) <= :now_time
                     -- Active journeys only (cancelled trains handled separately)
                     AND NOT tj.is_cancelled
                     -- Valid times: need real-time departure and arrival time
@@ -927,8 +944,12 @@ class CongestionAnalyzer:
                 JOIN stop_pairs sp ON sp.journey_id = tj.id
                 WHERE
                     sp.to_station IS NOT NULL
-                    -- Within time window
+                    -- Within time window: departed no earlier than :cutoff_time
                     AND COALESCE(sp.from_actual_departure, sp.from_updated_departure, sp.from_actual_arrival, sp.from_updated_arrival) >= :cutoff_time
+                    -- ...and a COMPLETED segment (arrived no later than :now_time);
+                    -- excludes Amtrak future schedule-passthrough actuals
+                    -- (issue #1603 — see the limited variant above).
+                    AND COALESCE(sp.to_actual_arrival, sp.to_updated_arrival) <= :now_time
                     -- Active journeys only
                     AND NOT tj.is_cancelled
                     -- Valid times: need real-time departure and arrival time
@@ -972,6 +993,7 @@ class CongestionAnalyzer:
         global_limit = 5000
         seg_params: dict[str, Any] = {
             "cutoff_time": cutoff_time,
+            "now_time": now_et(),
             "global_limit": global_limit,
         }
         if data_source:
@@ -1067,6 +1089,7 @@ class CongestionAnalyzer:
         dict[tuple[str, str, str], int],
     ]:
         """Extract segment data from journeys and track cancellations."""
+        now_time = now_et()
         segment_groups: defaultdict[tuple[str, str, str], list[dict[str, Any]]] = (
             defaultdict(list)
         )
@@ -1131,8 +1154,14 @@ class CongestionAnalyzer:
                 departure_time = ensure_timezone_aware(departure_time)
                 arrival_time = ensure_timezone_aware(arrival_time)
 
-                # Skip if outside time window
-                if departure_time < cutoff_time:
+                # Skip if outside time window. A completed observation also
+                # requires the arrival to be in the past: not-yet-traversed
+                # segments carry Amtrak future schedule-passthrough actual times
+                # (delay 0) that would otherwise inflate counts and inject
+                # phantom on-time samples (issue #1603). arrival_time > now
+                # excludes them (and, since arrival > departure, any future
+                # departure too), mirroring the SQL segment predicates.
+                if departure_time < cutoff_time or arrival_time > now_time:
                     continue
 
                 # Calculate segment duration
