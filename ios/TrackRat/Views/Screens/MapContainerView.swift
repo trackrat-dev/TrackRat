@@ -140,17 +140,7 @@ struct MapContainerView: View {
                 highlightMode: mapViewModel.highlightMode,
                 onSegmentTap: { segment in
                     guard appState.enableSegmentTap else { return }
-                    let route = RouteTopology.routeContaining(
-                        from: segment.navFromStation,
-                        to: segment.navToStation,
-                        dataSource: segment.dataSource
-                    )
-                    routeStatusContext = RouteStatusContext(
-                        dataSource: segment.dataSource,
-                        lineId: route?.id,
-                        fromStationCode: segment.navFromStation,
-                        toStationCode: segment.navToStation
-                    )
+                    routeStatusContext = RouteStatusContext(congestionSegment: segment)
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 },
                 onIndividualSegmentTap: { individualSegment in
