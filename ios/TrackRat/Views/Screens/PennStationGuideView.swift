@@ -92,7 +92,7 @@ struct PennStationGuideView: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
-        .presentationBackground(.ultraThinMaterial)
+        .legacyPresentationBackground(.ultraThinMaterial)
         .preferredColorScheme(.dark)
     }
 }

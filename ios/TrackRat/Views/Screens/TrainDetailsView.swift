@@ -2051,7 +2051,7 @@ struct PredictionExplanationSheet: View {
         }
         .presentationDetents([.medium])
         .presentationDragIndicator(.visible)
-        .presentationBackground(.ultraThinMaterial)
+        .legacyPresentationBackground(.ultraThinMaterial)
         .preferredColorScheme(.dark)
     }
 }

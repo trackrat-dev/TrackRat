@@ -85,7 +85,7 @@ struct JourneyFeedbackPromptView: View {
         }
         .presentationDetents([.height(380)])
         .presentationDragIndicator(.visible)
-        .presentationBackground(.ultraThinMaterial)
+        .legacyPresentationBackground(.ultraThinMaterial)
         .preferredColorScheme(.dark)
         .feedbackSheet(request: $improvementFeedbackRequest, onDismiss: {
             feedbackService.shouldShowFeedbackPrompt = false
