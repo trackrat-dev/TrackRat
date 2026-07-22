@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from trackrat.collectors.septa_common import SeptaFeedFetchError
 from trackrat.collectors.septa_rr.client import (
     SeptaRailArrival,
     SeptaRailClient,
@@ -193,9 +194,9 @@ class TestResolveStaticSchedule:
 
         assert resolved_date == date(2026, 7, 21)
         assert resolved_stops == stops
-        assert seen_dates == [date(2026, 7, 21)], (
-            f"today must win outright after the rollover; query order was {seen_dates}"
-        )
+        assert seen_dates == [
+            date(2026, 7, 21)
+        ], f"today must win outright after the rollover; query order was {seen_dates}"
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize(
@@ -259,9 +260,10 @@ class TestResolveStaticSchedule:
 
         assert resolved_date == date(2026, 7, 19)
         assert resolved_stops == stops
-        assert seen_dates == [date(2026, 7, 18), date(2026, 7, 19)], (
-            f"yesterday must be tried before today, got {seen_dates}"
-        )
+        assert seen_dates == [
+            date(2026, 7, 18),
+            date(2026, 7, 19),
+        ], f"yesterday must be tried before today, got {seen_dates}"
 
     @pytest.mark.asyncio
     @patch("trackrat.collectors.septa_rr.collector.now_et")
@@ -496,6 +498,135 @@ class TestCollectorInit:
         collector = SeptaRailCollector(client=client)
         await collector.close()
         client.close.assert_not_called()
+
+
+class TestCollect:
+    @pytest.fixture
+    def mock_client(self):
+        return AsyncMock(spec=SeptaRailClient)
+
+    @pytest.fixture
+    def collector(self, mock_client):
+        return SeptaRailCollector(client=mock_client)
+
+    @pytest.fixture
+    def mock_session(self):
+        session = AsyncMock()
+        session.begin_nested = MagicMock()
+        session.begin_nested.return_value.__aenter__ = AsyncMock()
+        session.begin_nested.return_value.__aexit__ = AsyncMock(return_value=False)
+        return session
+
+    @pytest.mark.asyncio
+    async def test_empty_snapshot_does_not_reconcile(
+        self, collector, mock_client, mock_session
+    ):
+        mock_client.get_trip_updates.return_value = []
+
+        with patch(
+            "trackrat.collectors.septa_rr.collector.reconcile_journey_omissions",
+            new_callable=AsyncMock,
+        ) as reconcile:
+            stats = await collector.collect(mock_session)
+
+        assert stats["trips"] == 0
+        mock_client.get_trip_updates.assert_awaited_once_with(use_cache=False)
+        reconcile.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_present_trip_is_reconciled_when_static_schedule_is_missing(
+        self, collector, mock_client, mock_session
+    ):
+        trip = _trip(
+            [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=0, departure_delay=0)]
+        )
+        mock_client.get_trip_updates.return_value = [trip]
+        collector._process_trip = AsyncMock(return_value=("skipped_no_static", None))
+
+        with (
+            patch(
+                "trackrat.collectors.septa_rr.collector."
+                "TransitAnalyzer.analyze_new_segments_bulk",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "trackrat.collectors.septa_rr.collector.reconcile_journey_omissions",
+                new_callable=AsyncMock,
+                return_value=1,
+            ) as reconcile,
+        ):
+            stats = await collector.collect(mock_session)
+
+        assert stats["skipped_no_static"] == 1
+        assert stats["expired"] == 1
+        assert reconcile.await_args.args[3] == set()
+        assert reconcile.await_args.args[4] == {"CHW8312"}
+
+    @pytest.mark.asyncio
+    async def test_resolved_trip_reconciles_only_its_service_day(
+        self, collector, mock_client, mock_session
+    ):
+        trip = _trip(
+            [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=0, departure_delay=0)]
+        )
+        mock_client.get_trip_updates.return_value = [trip]
+        journey = MagicMock(
+            id=7,
+            train_id="CHW8312",
+            journey_date=date(2026, 7, 18),
+        )
+        collector._process_trip = AsyncMock(return_value=("updated", journey))
+
+        with (
+            patch(
+                "trackrat.collectors.septa_rr.collector."
+                "TransitAnalyzer.analyze_new_segments_bulk",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "trackrat.collectors.septa_rr.collector.reconcile_journey_omissions",
+                new_callable=AsyncMock,
+                return_value=0,
+            ) as reconcile,
+        ):
+            await collector.collect(mock_session)
+
+        assert reconcile.await_args.args[3] == {("CHW8312", date(2026, 7, 18))}
+        assert reconcile.await_args.args[4] == set()
+
+    @pytest.mark.asyncio
+    async def test_fetch_error_never_reconciles_omissions(
+        self, collector, mock_client, mock_session
+    ):
+        mock_client.get_trip_updates.side_effect = SeptaFeedFetchError("unavailable")
+
+        with patch(
+            "trackrat.collectors.septa_rr.collector.reconcile_journey_omissions",
+            new_callable=AsyncMock,
+        ) as reconcile:
+            stats = await collector.collect(mock_session)
+
+        assert stats["errors"] == 1
+        reconcile.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_all_trip_failures_never_reconcile_omissions(
+        self, collector, mock_client, mock_session
+    ):
+        trip = _trip(
+            [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=0, departure_delay=0)]
+        )
+        mock_client.get_trip_updates.return_value = [trip]
+        collector._process_trip = AsyncMock(side_effect=ValueError("bad trip"))
+
+        with patch(
+            "trackrat.collectors.septa_rr.collector.reconcile_journey_omissions",
+            new_callable=AsyncMock,
+        ) as reconcile:
+            stats = await collector.collect(mock_session)
+
+        assert stats["errors"] == 2
+        reconcile.assert_not_awaited()
 
 
 class TestProcessTrip:

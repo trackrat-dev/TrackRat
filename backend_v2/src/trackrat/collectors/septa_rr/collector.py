@@ -21,6 +21,10 @@ from trackrat.collectors.mta_common import (
     update_journey_metadata,
     update_stop_departure_status,
 )
+from trackrat.collectors.septa_common import (
+    mark_journey_present,
+    reconcile_journey_omissions,
+)
 from trackrat.collectors.septa_rr.client import (
     SeptaRailArrival,
     SeptaRailClient,
@@ -147,7 +151,7 @@ class SeptaRailCollector:
             collection_start = now_et()
             try:
                 trip_updates = await asyncio.wait_for(
-                    self.client.get_trip_updates(),
+                    self.client.get_trip_updates(use_cache=False),
                     timeout=_FEED_FETCH_TIMEOUT_SECONDS,
                 )
             except TimeoutError:
@@ -162,6 +166,9 @@ class SeptaRailCollector:
                 logger.warning("No SEPTA RR trips found in GTFS-RT feed")
                 return stats
 
+            present_journey_keys: set[tuple[str, date]] = set()
+            unresolved_present_train_ids: set[str] = set()
+
             batch_size = 50
             trips_in_batch = 0
             analyzed_journeys: list[TrainJourney] = []
@@ -175,11 +182,24 @@ class SeptaRailCollector:
                             stats["updated"] += 1
                         elif result == "skipped_no_static":
                             stats["skipped_no_static"] += 1
-                        if journey is not None and journey.id is not None:
+                        if (
+                            journey is not None
+                            and journey.id is not None
+                            and journey.train_id is not None
+                            and journey.journey_date is not None
+                        ):
                             analyzed_journeys.append(journey)
+                            present_journey_keys.add(
+                                (journey.train_id, journey.journey_date)
+                            )
+                        else:
+                            unresolved_present_train_ids.add(
+                                _generate_train_id(trip.trip_id)
+                            )
                 except Exception as e:
                     logger.error(f"Error processing SEPTA RR trip {trip.trip_id}: {e}")
                     stats["errors"] += 1
+                    unresolved_present_train_ids.add(_generate_train_id(trip.trip_id))
 
                 trips_in_batch += 1
                 if trips_in_batch >= batch_size:
@@ -194,23 +214,13 @@ class SeptaRailCollector:
             transit_analyzer = TransitAnalyzer()
             await transit_analyzer.analyze_new_segments_bulk(session, analyzed_journeys)
 
-            today = collection_start.date()
-            stale_result = await session.execute(
-                select(TrainJourney).where(
-                    TrainJourney.data_source == DATA_SOURCE,
-                    TrainJourney.observation_type == "OBSERVED",
-                    TrainJourney.journey_date >= today - timedelta(days=1),
-                    TrainJourney.is_completed == False,  # noqa: E712
-                    TrainJourney.is_expired == False,  # noqa: E712
-                    TrainJourney.is_cancelled == False,  # noqa: E712
-                    TrainJourney.last_updated_at < collection_start,
-                )
+            stats["expired"] = await reconcile_journey_omissions(
+                session,
+                DATA_SOURCE,
+                collection_start.date(),
+                present_journey_keys,
+                unresolved_present_train_ids,
             )
-            for journey in stale_result.scalars():
-                journey.api_error_count = (journey.api_error_count or 0) + 1
-                if journey.api_error_count >= 3:
-                    journey.is_expired = True
-                    stats["expired"] += 1
 
             await session.commit()
             logger.info(
@@ -315,6 +325,9 @@ class SeptaRailCollector:
         journey = existing.scalar_one_or_none()
         first_arrival = min(arrivals, key=lambda a: a.arrival_time)
 
+        if journey is not None and (journey.is_completed or journey.is_cancelled):
+            return None, None
+
         if journey is None:
             journey = TrainJourney(
                 train_id=train_id,
@@ -392,6 +405,7 @@ class SeptaRailCollector:
         journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
         update_stop_departure_status(journey_stops, now)
         update_journey_metadata(journey, now, journey_stops)
+        mark_journey_present(journey)
         check_journey_completed(journey, journey_stops)
         logger.debug(f"Updated SEPTA RR train {train_id}")
         return "updated", journey
@@ -452,6 +466,7 @@ class SeptaRailCollector:
         now = now_et()
         update_stop_departure_status(journey_stops, now)
         update_journey_metadata(journey, now, journey_stops)
+        mark_journey_present(journey)
         check_journey_completed(journey, journey_stops)
         logger.debug(f"JIT updated SEPTA RR journey {journey.train_id}")
 
