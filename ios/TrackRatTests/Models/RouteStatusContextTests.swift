@@ -3,6 +3,66 @@ import XCTest
 
 class RouteStatusContextTests: XCTestCase {
 
+    // MARK: - Congestion segment navigation
+
+    func testCongestionSegmentContextUsesRealServedEndpoints() throws {
+        let segment = try congestionSegment(
+            fromStation: "CWH",
+            toStation: "PHN",
+            realFromStation: "TR",
+            realToStation: "PH"
+        )
+
+        let context = RouteStatusContext(congestionSegment: segment)
+
+        XCTAssertEqual(context.dataSource, "AMTRAK")
+        XCTAssertEqual(context.lineId, "amtrak-nec")
+        XCTAssertEqual(context.fromStationCode, "TR")
+        XCTAssertEqual(context.toStationCode, "PH")
+        XCTAssertEqual(context.effectiveFromStation, "TR")
+        XCTAssertEqual(context.effectiveToStation, "PH")
+    }
+
+    func testCongestionSegmentContextUsesRealEndpointsForRouteLookup() throws {
+        let segment = try congestionSegment(
+            fromStation: "CWH",
+            toStation: "PHN",
+            realFromStation: "TR",
+            realToStation: "PAO"
+        )
+
+        let context = RouteStatusContext(congestionSegment: segment)
+
+        XCTAssertEqual(
+            RouteTopology.routeContaining(
+                from: segment.fromStation,
+                to: segment.toStation,
+                dataSource: segment.dataSource
+            )?.id,
+            "amtrak-nec"
+        )
+        XCTAssertEqual(context.lineId, "amtrak-keystone")
+        XCTAssertEqual(context.fromStationCode, "TR")
+        XCTAssertEqual(context.toStationCode, "PAO")
+    }
+
+    func testCongestionSegmentContextFallsBackToCanonicalEndpoints() throws {
+        let segment = try congestionSegment(
+            fromStation: "NY",
+            toStation: "SE",
+            dataSource: "NJT"
+        )
+
+        let context = RouteStatusContext(congestionSegment: segment)
+
+        XCTAssertEqual(context.dataSource, "NJT")
+        XCTAssertEqual(context.lineId, "njt-nec")
+        XCTAssertEqual(context.fromStationCode, "NY")
+        XCTAssertEqual(context.toStationCode, "SE")
+        XCTAssertEqual(context.effectiveFromStation, "NY")
+        XCTAssertEqual(context.effectiveToStation, "SE")
+    }
+
     // MARK: - Subway: RouteTopology format ("subway-m")
 
     func testGtfsRouteIds_subwayTopologyFormat_singleLetter() {
@@ -272,5 +332,34 @@ class RouteStatusContextTests: XCTestCase {
             XCTAssertEqual(fromTopology, [expectedGtfs], "MNR topology '\(topologyId)' should resolve to '\(expectedGtfs)'")
             XCTAssertEqual(fromBackend, [expectedGtfs], "MNR backend '\(backendCode)' should resolve to '\(expectedGtfs)'")
         }
+    }
+
+    private func congestionSegment(
+        fromStation: String,
+        toStation: String,
+        dataSource: String = "AMTRAK",
+        realFromStation: String? = nil,
+        realToStation: String? = nil
+    ) throws -> CongestionSegment {
+        var json: [String: Any] = [
+            "from_station": fromStation,
+            "to_station": toStation,
+            "from_station_name": fromStation,
+            "to_station_name": toStation,
+            "data_source": dataSource,
+            "congestion_factor": 1.1,
+            "congestion_level": "normal",
+            "average_delay_minutes": 2.0,
+            "baseline_minutes": 28.0,
+            "current_average_minutes": 30.0,
+            "sample_count": 12,
+            "cancellation_count": 0,
+            "cancellation_rate": 0.0,
+        ]
+        json["real_from_station"] = realFromStation
+        json["real_to_station"] = realToStation
+
+        let data = try JSONSerialization.data(withJSONObject: json)
+        return try JSONDecoder().decode(CongestionSegment.self, from: data)
     }
 }

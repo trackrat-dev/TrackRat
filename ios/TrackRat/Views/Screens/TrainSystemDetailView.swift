@@ -137,17 +137,7 @@ struct TrainSystemDetailView: View {
                 selectedSystems: [system],
                 highlightMode: mapViewModel.highlightMode,
                 onSegmentTap: { segment in
-                    let route = RouteTopology.routeContaining(
-                        from: segment.fromStation,
-                        to: segment.toStation,
-                        dataSource: segment.dataSource
-                    )
-                    routeStatusContext = RouteStatusContext(
-                        dataSource: segment.dataSource,
-                        lineId: route?.id,
-                        fromStationCode: segment.fromStation,
-                        toStationCode: segment.toStation
-                    )
+                    routeStatusContext = RouteStatusContext(congestionSegment: segment)
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 },
                 onIndividualSegmentTap: nil

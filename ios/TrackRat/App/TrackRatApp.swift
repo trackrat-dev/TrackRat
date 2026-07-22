@@ -600,6 +600,25 @@ struct RouteStatusContext: Identifiable, Equatable {
         self.focusedAlertIds = focusedAlertIds
     }
 
+    /// Builds navigation context from the real served station pair behind a
+    /// congestion segment, falling back to its canonical rendered endpoints.
+    init(congestionSegment segment: CongestionSegment) {
+        let fromStation = segment.navFromStation
+        let toStation = segment.navToStation
+        let route = RouteTopology.routeContaining(
+            from: fromStation,
+            to: toStation,
+            dataSource: segment.dataSource
+        )
+
+        self.init(
+            dataSource: segment.dataSource,
+            lineId: route?.id,
+            fromStationCode: fromStation,
+            toStationCode: toStation
+        )
+    }
+
     /// Human-readable title for the route
     var title: String {
         if let from = fromStationCode, let to = toStationCode {
