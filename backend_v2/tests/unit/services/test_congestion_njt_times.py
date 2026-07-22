@@ -175,13 +175,17 @@ class TestPythonPathNjtCorrection:
     """_calculate_segments_from_journeys must apply the same correction."""
 
     def test_delayed_njt_segment_uses_live_departure_estimate(self):
-        """A 25-min-late NJT train's untraversed segment must compute its
-        real ~10-min transit time, not schedule-to-live (35 min → 'severe').
+        """A 25-min-late NJT train's completed segment (live estimates only,
+        no recorded actuals) must compute its real ~10-min transit time from
+        the live departure, not schedule-to-live (35 min → 'severe'). Times
+        are anchored so the downstream arrival is already in the past — the
+        #1603 filter drops not-yet-completed segments, so this exercises the
+        NJT inversion correction on a segment that is actually counted.
         """
         analyzer = CongestionAnalyzer()
         cutoff = now_et() - timedelta(hours=3)
 
-        schedule = now_et().replace(microsecond=0) - timedelta(minutes=30)
+        schedule = now_et().replace(microsecond=0) - timedelta(minutes=40)
         live_estimate = schedule + timedelta(minutes=25)
 
         journey = _journey("3855", "NJT")
