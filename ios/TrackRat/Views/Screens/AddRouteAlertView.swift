@@ -322,6 +322,7 @@ struct AddRouteAlertView: View {
                         .padding(.vertical, 14)
                         .background(Capsule().fill(.orange))
                 }
+                .buttonStyle(.plain)
                 .padding(.top, 8)
             }
 

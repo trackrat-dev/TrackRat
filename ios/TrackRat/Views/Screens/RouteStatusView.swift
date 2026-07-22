@@ -501,6 +501,7 @@ struct RouteStatusView: View {
                         .foregroundColor(.orange)
                         .padding(.top, 4)
                     }
+                    .buttonStyle(.plain)
                 }
             }
             .padding()
@@ -533,6 +534,7 @@ struct RouteStatusView: View {
                         .foregroundColor(.orange)
                         .padding(.top, 4)
                     }
+                    .buttonStyle(.plain)
                 }
             }
             .padding()
