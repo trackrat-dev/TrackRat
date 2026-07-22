@@ -21,8 +21,14 @@ struct StationPickerSheet: View {
 
     /// All visible stations filtered by selected systems.
     private var visibleStations: [Station] {
+        Self.pickerStations(selectedSystems: selectedSystems)
+    }
+
+    /// Station rows eligible for this user-facing picker.
+    static func pickerStations(selectedSystems: Set<TrainSystem>?) -> [Station] {
         var allStations = Stations.all.compactMap { name -> Station? in
             guard let code = Stations.getStationCode(name) else { return nil }
+            guard Stations.isStationAvailable(code) else { return nil }
             return Station(code: code, name: name)
         }
 
@@ -37,45 +43,43 @@ struct StationPickerSheet: View {
 
     /// Search results grouped by whether the station belongs to an active system.
     private var searchResults: (active: [Station], inactive: [Station]) {
-        guard !searchText.isEmpty else { return ([], []) }
+        Self.pickerSearchResults(searchText, selectedSystems: selectedSystems)
+    }
+
+    /// Search rows eligible for this user-facing picker.
+    static func pickerSearchResults(
+        _ query: String,
+        selectedSystems: Set<TrainSystem>?
+    ) -> (active: [Station], inactive: [Station]) {
+        guard !query.isEmpty else { return ([], []) }
 
         guard let systems = selectedSystems, !systems.isEmpty else {
             // No system filter — show all matching stations as active
-            let q = searchText.lowercased()
-            let stations = visibleStations
+            let q = query.lowercased()
+            let stations = pickerStations(selectedSystems: selectedSystems)
             let prefixMatches = stations.filter { $0.name.lowercased().hasPrefix(q) }
                 .sorted { $0.name < $1.name }
             let substringMatches = stations.filter {
                 !$0.name.lowercased().hasPrefix(q) &&
-                ($0.name.localizedCaseInsensitiveContains(searchText) ||
-                 $0.code.localizedCaseInsensitiveContains(searchText))
+                ($0.name.localizedCaseInsensitiveContains(query) ||
+                 $0.code.localizedCaseInsensitiveContains(query))
             }
             .sorted { $0.name < $1.name }
             return (Array((prefixMatches + substringMatches).prefix(20)), [])
         }
 
-        let grouped = Stations.searchGrouped(searchText, selectedSystems: systems)
+        let grouped = Stations.searchGrouped(query, selectedSystems: systems)
         return (
-            grouped.primary.compactMap { station(named: $0) },
-            grouped.other.compactMap { station(named: $0) }
+            grouped.primary.compactMap { Self.station(named: $0) },
+            grouped.other.compactMap { Self.station(named: $0) }
         )
     }
 
     /// Stations grouped by system for the browse view (when search is empty).
     private var groupedStations: [(system: String, stations: [Station])] {
-        let systemOrder: [(raw: String, label: String)] = [
-            ("NJT", "NJ Transit"),
-            ("AMTRAK", "Amtrak"),
-            ("PATH", "PATH"),
-            ("PATCO", "PATCO"),
-            ("LIRR", "LIRR"),
-            ("MNR", "Metro-North"),
-            ("SUBWAY", "NYC Subway"),
-            ("BART", "BART"),
-            ("MBTA", "MBTA"),
-            ("METRA", "Metra"),
-            ("WMATA", "DC Metro"),
-        ]
+        let systemOrder = TrainSystem.availableCases.map { system in
+            (raw: system.rawValue, label: system.displayName)
+        }
 
         let stations = visibleStations
         var groups: [(system: String, stations: [Station])] = []
@@ -179,7 +183,7 @@ struct StationPickerSheet: View {
         .listRowBackground(Color.clear)
     }
 
-    private func station(named name: String) -> Station? {
+    private static func station(named name: String) -> Station? {
         guard let code = Stations.getStationCode(name) else { return nil }
         return Station(code: code, name: name)
     }

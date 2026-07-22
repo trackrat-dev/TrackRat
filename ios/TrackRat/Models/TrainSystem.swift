@@ -226,6 +226,15 @@ extension Stations {
         return false
     }
 
+    /// Whether a station belongs to at least one system that is available to users.
+    /// Unknown memberships remain visible because they are not conclusively disabled.
+    static func isStationAvailable(_ code: String) -> Bool {
+        let stationSystems = systemStringsForStation(code)
+        guard !stationSystems.isEmpty else { return true }
+        let disabledSystemStrings = Set(TrainSystem.disabledSystems.map(\.rawValue))
+        return !stationSystems.isSubset(of: disabledSystemStrings)
+    }
+
     /// Search stations grouped by active system membership.
     /// Returns stations matching selected systems first, then stations on other systems.
     ///
@@ -244,14 +253,23 @@ extension Stations {
         originStationCode: String? = nil
     ) -> (primary: [String], other: [String]) {
         let cap = Stations.defaultSearchLimit
-        // Oversample so demoted hits don't crowd out quality primary candidates.
-        let searchLimit = originStationCode == nil ? cap : cap * 3
-        let all = search(query, limit: searchLimit)
+        // Search the full match set so disabled stations cannot consume either cap.
+        let all = search(query, limit: Stations.all.count)
         let originSystems = originStationCode.map(systemStringsForStation) ?? []
         var primary: [String] = []
         var other: [String] = []
+        var availableCandidateCount = 0
         for name in all {
             guard let code = getStationCode(name) else { continue }
+            guard isStationAvailable(code) else { continue }
+
+            // Without an origin, preserve the shared cap and ordering of the
+            // ungrouped search after removing disabled-only candidates.
+            if originStationCode == nil {
+                guard availableCandidateCount < cap else { break }
+                availableCandidateCount += 1
+            }
+
             let visible = isStationVisible(code, withSystems: selectedSystems)
             let originOverlap = originSystems.isEmpty
                 || !originSystems.isDisjoint(with: systemStringsForStation(code))
