@@ -228,8 +228,8 @@ describe('AVAILABLE_SYSTEMS', () => {
     expect(AVAILABLE_SYSTEMS.length).toBe(SYSTEM_ORDER.length - DISABLED_SYSTEMS.size);
   });
 
-  it('currently hides BART, WMATA, MBTA, and Metra', () => {
-    expect([...DISABLED_SYSTEMS].sort()).toEqual(['BART', 'MBTA', 'METRA', 'WMATA']);
+  it('currently hides BART, WMATA, MBTA, Metra, and SEPTA (RR + Metro)', () => {
+    expect([...DISABLED_SYSTEMS].sort()).toEqual(['BART', 'MBTA', 'METRA', 'SEPTA_METRO', 'SEPTA_RR', 'WMATA']);
   });
 
   it('keeps disabled systems in SYSTEM_ORDER and SYSTEM_NAMES for code lookups', () => {
@@ -252,9 +252,9 @@ describe('AVAILABLE_SYSTEMS', () => {
 });
 
 describe('ALERT_CAPABLE_SYSTEMS', () => {
-  it('is the MTA systems plus NJT and SEPTA', () => {
+  it('is the MTA systems plus NJT, with disabled systems (SEPTA) filtered out', () => {
     expect([...ALERT_CAPABLE_SYSTEMS].sort()).toEqual([
-      'LIRR', 'MNR', 'NJT', 'SEPTA_METRO', 'SEPTA_RR', 'SUBWAY',
+      'LIRR', 'MNR', 'NJT', 'SUBWAY',
     ]);
   });
 

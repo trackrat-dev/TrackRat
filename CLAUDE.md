@@ -343,7 +343,7 @@ bash scripts/create-and-restore-db-then-train-model.sh
 **Disabled Train Systems (feature flag):**
 - `TRACKRAT_DISABLED_DATA_SOURCES` (comma-separated) fully disables a data source: collection, schedule generation, GTFS refresh, service-alert polling, and API serving
 - iOS mirrors the set in `TrainSystem.disabledSystems` (use `TrainSystem.availableCases` for user-facing lists); web mirrors it in `DISABLED_SYSTEMS` in `webpage_v2/src/data/stations.ts`
-- Currently `BART,WMATA,MBTA,METRA` are disabled in staging and production (set in `infra_v2/terraform/compute.tf`)
+- Currently `BART,WMATA,MBTA,METRA,SEPTA_RR,SEPTA_METRO` are disabled in staging and production (set in `infra_v2/terraform/compute.tf`)
 
 **iOS Architecture:**
 - MVVM embedded within view files (no separate ViewModel files)

@@ -15,6 +15,7 @@ from trackrat.collectors.service_alerts import (
     ParsedAlert,
     _remap_septa_alert,
     classify_alert_type,
+    deactivate_disabled_source_alerts,
     extract_english_text,
     fetch_and_parse_njt_alerts,
     parse_alert_entity,
@@ -1029,3 +1030,95 @@ class TestNjtUpsertServiceAlerts:
         rows = result.scalars().all()
         assert len(rows) == 1, f"Expected 1 row, got {len(rows)} (duplicate inserted)"
         assert rows[0].is_active is True
+
+
+@pytest.mark.asyncio
+class TestDeactivateDisabledSourceAlerts:
+    """Tests for deactivate_disabled_source_alerts().
+
+    When a source is turned off via TRACKRAT_DISABLED_DATA_SOURCES its feed is
+    skipped, so upsert_service_alerts never deactivates its still-active rows.
+    This sweep does — otherwise /alerts/service and the route-alert push
+    evaluator (both filter only on is_active) keep surfacing stale alerts for a
+    source that is supposed to be off. Regression guard for PR #1595.
+    """
+
+    def _alert(self, alert_id: str) -> ParsedAlert:
+        return ParsedAlert(
+            alert_id=alert_id,
+            alert_type="alert",
+            affected_route_ids=[],
+            header_text="Service adjustment",
+            description_text=None,
+            active_periods=[],
+        )
+
+    async def test_deactivates_only_disabled_sources(self, db_session: AsyncSession):
+        """Active alerts for disabled sources go inactive; enabled sources untouched."""
+        # SEPTA_RR + SEPTA_METRO (to be disabled) and SUBWAY (stays enabled).
+        await upsert_service_alerts(db_session, [self._alert("septa-rr-1")], "SEPTA_RR")
+        await upsert_service_alerts(
+            db_session, [self._alert("septa-metro-1")], "SEPTA_METRO"
+        )
+        await upsert_service_alerts(db_session, [self._alert("subway-1")], "SUBWAY")
+        await db_session.flush()
+
+        count = await deactivate_disabled_source_alerts(
+            db_session, {"SEPTA_RR", "SEPTA_METRO"}
+        )
+        # Bulk UPDATE bypasses the identity map; force ORM reload before asserting.
+        db_session.expire_all()
+
+        assert count == 2, f"Expected 2 SEPTA alerts deactivated, got {count}"
+
+        septa_rows = (
+            (
+                await db_session.execute(
+                    select(ServiceAlert).where(
+                        ServiceAlert.data_source.in_(["SEPTA_RR", "SEPTA_METRO"])
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert len(septa_rows) == 2
+        assert all(not r.is_active for r in septa_rows), (
+            "Disabled SEPTA alerts must be inactive: "
+            f"{[(r.data_source, r.is_active) for r in septa_rows]}"
+        )
+
+        subway_row = (
+            await db_session.execute(
+                select(ServiceAlert).where(ServiceAlert.data_source == "SUBWAY")
+            )
+        ).scalar_one()
+        assert subway_row.is_active is True, "Enabled SUBWAY alert must stay active"
+
+    async def test_empty_disabled_set_is_noop(self, db_session: AsyncSession):
+        """With no disabled sources, nothing is deactivated."""
+        await upsert_service_alerts(db_session, [self._alert("subway-2")], "SUBWAY")
+        await db_session.flush()
+
+        count = await deactivate_disabled_source_alerts(db_session, set())
+        db_session.expire_all()
+
+        assert count == 0
+        row = (
+            await db_session.execute(
+                select(ServiceAlert).where(ServiceAlert.alert_id == "subway-2")
+            )
+        ).scalar_one()
+        assert row.is_active is True
+
+    async def test_idempotent_when_already_inactive(self, db_session: AsyncSession):
+        """Re-running after everything is inactive deactivates nothing (count 0)."""
+        await upsert_service_alerts(db_session, [self._alert("septa-rr-2")], "SEPTA_RR")
+        await db_session.flush()
+
+        first = await deactivate_disabled_source_alerts(db_session, {"SEPTA_RR"})
+        db_session.expire_all()
+        assert first == 1
+
+        second = await deactivate_disabled_source_alerts(db_session, {"SEPTA_RR"})
+        assert second == 0, "Already-inactive rows must not be re-counted"

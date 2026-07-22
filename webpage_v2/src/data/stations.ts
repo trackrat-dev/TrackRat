@@ -2470,7 +2470,7 @@ export const SYSTEM_ORDER: TransitSystem[] = ['NJT', 'PATH', 'LIRR', 'MNR', 'SUB
 // TRACKRAT_DISABLED_DATA_SOURCES flag and the iOS app's TrainSystem.disabledSystems).
 // SYSTEM_ORDER / SYSTEM_NAMES are intentionally left intact so lookup-by-code of a
 // user's persisted or historical data on a disabled system still resolves its name.
-export const DISABLED_SYSTEMS: ReadonlySet<TransitSystem> = new Set<TransitSystem>(['BART', 'WMATA', 'MBTA', 'METRA']);
+export const DISABLED_SYSTEMS: ReadonlySet<TransitSystem> = new Set<TransitSystem>(['BART', 'WMATA', 'MBTA', 'METRA', 'SEPTA_RR', 'SEPTA_METRO']);
 
 // User-facing systems in display order: SYSTEM_ORDER minus DISABLED_SYSTEMS.
 // Use this anywhere systems are presented to the user for selection or display.
@@ -2479,9 +2479,12 @@ export const AVAILABLE_SYSTEMS: TransitSystem[] = SYSTEM_ORDER.filter(s => !DISA
 // Systems with backend service-alert collection (MTA GTFS-RT feeds, NJT's
 // getStationMSG API, and SEPTA's alert feeds). Single source of truth for the
 // ServiceAlertBanner's fetch gate; mirrors the systems iOS treats as
-// alert-capable for planned-work toggles.
-// None of these are disabled, so no DISABLED_SYSTEMS filtering is needed.
-export const ALERT_CAPABLE_SYSTEMS: TransitSystem[] = ['SUBWAY', 'LIRR', 'MNR', 'NJT', 'SEPTA_RR', 'SEPTA_METRO'];
+// alert-capable for planned-work toggles. Filtered through DISABLED_SYSTEMS so an
+// app-wide-disabled system (whose backend alert collection is also off) is never
+// fetched — e.g. SEPTA once it is disabled.
+export const ALERT_CAPABLE_SYSTEMS: TransitSystem[] = (
+  ['SUBWAY', 'LIRR', 'MNR', 'NJT', 'SEPTA_RR', 'SEPTA_METRO'] as TransitSystem[]
+).filter(s => !DISABLED_SYSTEMS.has(s));
 
 // Aliases for codes that share a physical station with another system's code.
 // The duplicate entry is hidden from the picker, but route data and shareable

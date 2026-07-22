@@ -32,7 +32,7 @@ enum TrainSystem: String, CaseIterable, Codable, Identifiable {
     /// NOTE: `allCases` is intentionally left unfiltered so decoding and lookup of an
     /// already-persisted selection for a disabled system still succeed. Only *display*
     /// sites use `availableCases`.
-    static let disabledSystems: Set<TrainSystem> = [.bart, .wmata, .mbta, .metra]
+    static let disabledSystems: Set<TrainSystem> = [.bart, .wmata, .mbta, .metra, .septaRegionalRail, .septaMetro]
 
     /// User-facing systems: `allCases` minus `disabledSystems`. Use this anywhere a
     /// system is presented to the user for selection or display.

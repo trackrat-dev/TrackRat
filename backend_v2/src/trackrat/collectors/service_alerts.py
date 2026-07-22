@@ -15,12 +15,13 @@ Upserts into the service_alerts table. Supports alert types:
 import hashlib
 import logging
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, cast
 
 import httpx
 from google.transit import gtfs_realtime_pb2
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.collectors.njt.client import NJTransitAPIError, NJTransitClient
@@ -509,6 +510,40 @@ async def upsert_service_alerts(
     return stats
 
 
+async def deactivate_disabled_source_alerts(
+    session: AsyncSession, disabled_sources: set[str]
+) -> int:
+    """Mark active service alerts for disabled data sources inactive.
+
+    A disabled source's alert feed is skipped by ``collect_service_alerts``, so
+    ``upsert_service_alerts``' normal "no longer in the feed -> is_active=False"
+    sweep never runs for it. Without this, any alerts that were active at the
+    moment the source was disabled stay ``is_active=True`` indefinitely and keep
+    being served by ``GET /alerts/service`` and pushed by the route-alert
+    evaluator (both of which only filter on ``is_active``). This sweep silences
+    them, so disabling a source via ``TRACKRAT_DISABLED_DATA_SOURCES`` also turns
+    off its service alerts.
+
+    Returns the number of rows deactivated (0 when there are no disabled sources
+    or none have active alerts, so it is idempotent across runs).
+    """
+    if not disabled_sources:
+        return 0
+    result = cast(
+        CursorResult[tuple[()]],
+        await session.execute(
+            update(ServiceAlert)
+            .where(
+                ServiceAlert.is_active.is_(True),
+                ServiceAlert.data_source.in_(disabled_sources),
+            )
+            .values(is_active=False)
+            .execution_options(synchronize_session=False)
+        ),
+    )
+    return result.rowcount or 0
+
+
 async def collect_service_alerts() -> dict[str, Any]:
     """Collect service alerts from all feeds (MTA + NJT).
 
@@ -521,6 +556,27 @@ async def collect_service_alerts() -> dict[str, Any]:
     all_stats: dict[str, Any] = {}
 
     async with get_session() as session:
+        # Turn off any still-active alerts for disabled sources first — their
+        # feeds are skipped below, so upsert_service_alerts never deactivates
+        # them. Isolated in a savepoint so a failure here can't abort the rest
+        # of the collection run.
+        try:
+            async with session.begin_nested():
+                deactivated = await deactivate_disabled_source_alerts(
+                    session, settings.disabled_data_source_set
+                )
+            if deactivated:
+                all_stats["disabled_deactivated"] = deactivated
+                logger.info(
+                    "Deactivated %d active alert(s) for disabled source(s): %s",
+                    deactivated,
+                    sorted(settings.disabled_data_source_set),
+                )
+        except Exception as e:
+            logger.error(
+                "Failed to deactivate disabled-source alerts: %s", e, exc_info=True
+            )
+
         # MTA feeds (GTFS-RT)
         for data_source, feed_url in MTA_ALERT_FEEDS.items():
             if settings.is_data_source_disabled(data_source):

@@ -167,7 +167,7 @@ webpage_v2/
 │   ├── store/
 │   │   └── appStore.ts     # Zustand global state
 │   ├── data/
-│   │   ├── stations.ts     # Static station list (1500+ stations, 13 transit systems); DISABLED_SYSTEMS / AVAILABLE_SYSTEMS hide app-wide-disabled systems (currently BART, WMATA, MBTA, Metra — mirrors backend TRACKRAT_DISABLED_DATA_SOURCES)
+│   │   ├── stations.ts     # Static station list (1500+ stations, 13 transit systems); DISABLED_SYSTEMS / AVAILABLE_SYSTEMS hide app-wide-disabled systems (currently BART, WMATA, MBTA, Metra, SEPTA RR + Metro — mirrors backend TRACKRAT_DISABLED_DATA_SOURCES)
 │   │   ├── routeTopology.ts # Route topology for smart search and filtering
 │   │   └── subwayLines.ts  # Subway line definitions and color mappings
 │   ├── types/

@@ -52,7 +52,7 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metr
 - **Subscription Tiers**: $4.99/month or $49.99/year after trial
 
 ### Train System Filtering
-- **App-Wide Disabled Systems**: `TrainSystem.disabledSystems` (currently BART, WMATA, MBTA, Metra) removes systems from every surface — onboarding, Settings, maps, route alerts — mirroring the backend's `TRACKRAT_DISABLED_DATA_SOURCES` flag
+- **App-Wide Disabled Systems**: `TrainSystem.disabledSystems` (currently BART, WMATA, MBTA, Metra, SEPTA RR + Metro) removes systems from every surface — onboarding, Settings, maps, route alerts — mirroring the backend's `TRACKRAT_DISABLED_DATA_SOURCES` flag
 - **Per-System Toggles**: Users can enable/disable each transit system in Settings
 - **Default Systems**: NJT and Amtrak enabled by default; others require opt-in
 - **Simple Toggles**: Each system is on or off (Amtrak shows all routes when enabled)
