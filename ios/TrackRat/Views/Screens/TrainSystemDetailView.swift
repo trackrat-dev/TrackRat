@@ -83,7 +83,6 @@ struct TrainSystemDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             mapViewModel.highlightMode = system.preferredHighlightMode
-            mapViewModel.showRoutes = true
             mapViewModel.showStations = false
             // Seed the draft when no system-wide subscription exists yet, so the
             // AlertConfigurationSection has a stable binding to mutate.
@@ -135,7 +134,6 @@ struct TrainSystemDetailView: View {
                 segments: mapViewModel.segments,
                 individualSegments: [],
                 stations: [],
-                showRoutes: mapViewModel.showRoutes,
                 selectedSystems: [system],
                 highlightMode: mapViewModel.highlightMode,
                 onSegmentTap: { segment in
@@ -247,8 +245,8 @@ struct TrainSystemDetailView: View {
     }
 
     /// Alphabetically-ordered key for a station pair so A↔B collapses to a
-    /// single canonical entry. Matches the convention used by
-    /// `buildMergedAggregatedOverlays` in `CongestionMapView`.
+    /// single canonical entry. Matches the convention used by the free
+    /// `buildMergedAggregatedOverlays` function in `CongestionMapView.swift`.
     private static func canonicalPairKey(_ a: String, _ b: String) -> String {
         a < b ? "\(a)|\(b)" : "\(b)|\(a)"
     }

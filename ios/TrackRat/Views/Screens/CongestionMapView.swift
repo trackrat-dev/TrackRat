@@ -4,501 +4,6 @@ import UIKit
 import Combine
 import ActivityKit
 
-struct CongestionMapView: View {
-    @EnvironmentObject private var appState: AppState
-    @Environment(\.scenePhase) private var scenePhase
-    @ObservedObject private var subscriptionService = SubscriptionService.shared
-    @StateObject private var viewModel = CongestionMapViewModel()
-    @State private var region = MKCoordinateRegion.newarkPennDefault // Updated to selected systems on appear
-    @State private var routeStatusContext: RouteStatusContext?
-    @State private var selectedIndividualSegment: IndividualJourneySegment?
-    @State private var showingFilters = false
-    @State private var timeWindow = 2
-    @State private var selectedDataSource: String = "All"
-    @State private var showingLayers = false
-    @State private var showingPaywall = false
-    @State private var hasSetInitialRegion = false
-
-    var body: some View {
-        ZStack {
-            // Map
-            // Note: segments/individualSegments arrays are controlled by applyDisplayModeFilter()
-            // which sets them based on highlightMode - no need for ternary checks here
-            SystemCongestionMapView(
-                region: $region,
-                segments: viewModel.segments,
-                individualSegments: viewModel.individualSegments,
-                stations: viewModel.showStations ? (viewModel.showRoutes ? viewModel.routeStations : viewModel.stations) : [],
-                showRoutes: viewModel.showRoutes,
-                selectedSystems: appState.selectedSystems,
-                highlightMode: viewModel.highlightMode,
-                onSegmentTap: { segment in
-                    guard appState.enableSegmentTap else { return }
-                    let route = RouteTopology.routeContaining(
-                        from: segment.navFromStation,
-                        to: segment.navToStation,
-                        dataSource: segment.dataSource
-                    )
-                    routeStatusContext = RouteStatusContext(
-                        dataSource: segment.dataSource,
-                        lineId: route?.id,
-                        fromStationCode: segment.navFromStation,
-                        toStationCode: segment.navToStation
-                    )
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                },
-                onIndividualSegmentTap: { individualSegment in
-                    guard appState.enableSegmentTap else { return }
-                    selectedIndividualSegment = individualSegment
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
-            )
-            .ignoresSafeArea()
-
-            // Controls overlay
-            VStack {
-                // Header
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Train Traffic")
-                            .font(.largeTitle)
-                            .fontWeight(.bold)
-
-                        if viewModel.isLoading {
-                            Text("Loading...")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        } else {
-                            Text(headerSubtitle)
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-
-                    Spacer()
-
-                    HStack(spacing: 12) {
-                        // Layers button
-                        Button {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                showingLayers.toggle()
-                            }
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        } label: {
-                            Image(systemName: "square.3.layers.3d")
-                                .font(.title2)
-                                .foregroundColor(showingLayers ? .white : .orange)
-                                .padding(10)
-                                .background {
-                                    if showingLayers {
-                                        Circle().fill(Color.orange)
-                                    } else {
-                                        Circle().fill(.ultraThinMaterial)
-                                    }
-                                }
-                        }
-                        .buttonStyle(.plain)
-
-                        // Filter button
-                        Button {
-                            showingFilters.toggle()
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        } label: {
-                            Image(systemName: "slider.horizontal.3")
-                                .font(.title2)
-                                .foregroundColor(.orange)
-                                .padding(10)
-                                .background(
-                                    Circle()
-                                        .fill(.ultraThinMaterial)
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.top, 60)
-                .background(
-                    LinearGradient(
-                        colors: [.black, .clear],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .ignoresSafeArea()
-                )
-
-                Spacer()
-
-                // Bottom panel: Layers + Legend
-                VStack(spacing: 12) {
-                    // Layer Controls (collapsible)
-                    if showingLayers {
-                        HStack {
-                            Spacer()
-                            layerControlsView
-                        }
-                        .transition(.opacity.combined(with: .move(edge: .bottom)))
-                    }
-
-                    // Segment Legend (only when highlighting is visible)
-                    if viewModel.highlightMode != .off {
-                        segmentLegendView
-                    }
-                }
-                .padding()
-            }
-        }
-        .sheet(isPresented: $showingFilters) {
-            FilterSheet(
-                timeWindow: $timeWindow,
-                selectedDataSource: $selectedDataSource,
-                onApply: {
-                    Task {
-                        if selectedDataSource == "All" {
-                            await viewModel.fetchCongestionData(
-                                timeWindowHours: timeWindow,
-                                systems: appState.selectedSystems
-                            )
-                        } else {
-                            await viewModel.fetchCongestionData(
-                                timeWindowHours: timeWindow,
-                                dataSource: selectedDataSource
-                            )
-                        }
-                    }
-                }
-            )
-        }
-        .sheet(item: $routeStatusContext) { context in
-            RouteStatusView(context: context)
-        }
-        .sheet(item: $selectedIndividualSegment) { segment in
-            TrainDetailsView(
-                trainNumber: segment.trainId,
-                fromStation: segment.fromStation,
-                journeyDate: segment.actualDeparture,
-                dataSource: segment.dataSource,
-                isSheet: true
-            )
-            .presentationDetents([.large])
-            .presentationDragIndicator(.visible)
-        }
-        .sheet(isPresented: $showingPaywall) {
-            PaywallView(context: .trainSystems)
-        }
-        .task {
-            viewModel.setSelectedSystems(appState.selectedSystems, refetch: false)
-            await viewModel.fetchCongestionData(systems: appState.selectedSystems)
-            viewModel.startAutoRefresh()
-        }
-        .onChange(of: appState.selectedSystems) { _, newSystems in
-            viewModel.setSelectedSystems(newSystems)
-            // Re-center map to show the newly selected systems
-            withAnimation(.easeInOut(duration: 0.3)) {
-                region = newSystems.combinedMapRegion
-            }
-        }
-        .onChange(of: appState.mapHighlightMode) { _, newMode in
-            viewModel.highlightMode = newMode
-        }
-        .onChange(of: appState.showMapStations) { _, newValue in
-            viewModel.showStations = newValue
-        }
-        .onAppear {
-            // Sync AppState settings to ViewModel on appear
-            viewModel.setSelectedSystems(appState.selectedSystems)
-            viewModel.highlightMode = appState.mapHighlightMode
-            viewModel.showStations = appState.showMapStations
-            // Set initial region based on selected systems (only on first appear)
-            if !hasSetInitialRegion {
-                region = appState.selectedSystems.combinedMapRegion
-                hasSetInitialRegion = true
-            }
-        }
-        .onDisappear {
-            viewModel.stopAutoRefresh()
-        }
-        .onChange(of: scenePhase) { _, newPhase in
-            switch newPhase {
-            case .active:
-                viewModel.refreshIfStale()
-                viewModel.startAutoRefresh()
-            case .background, .inactive:
-                viewModel.stopAutoRefresh()
-            @unknown default:
-                break
-            }
-        }
-    }
-
-    // MARK: - Computed Properties
-
-    private var headerSubtitle: String {
-        var parts: [String] = []
-        if viewModel.highlightMode != .off && !viewModel.segments.isEmpty {
-            parts.append("\(viewModel.segments.count) segments")
-        }
-        if viewModel.showRoutes {
-            // Count only routes for selected systems
-            let selectedSystemStrings = appState.selectedSystems.asRawStrings
-            let filteredRouteCount = RouteTopology.allRoutes.filter { selectedSystemStrings.contains($0.dataSource) }.count
-            parts.append("\(filteredRouteCount) routes")
-        }
-        if viewModel.showStations {
-            let stationCount = viewModel.showRoutes ? viewModel.routeStations.count : viewModel.stations.count
-            if stationCount > 0 {
-                parts.append("\(stationCount) stations")
-            }
-        }
-        return parts.isEmpty ? "No layers visible" : parts.joined(separator: " · ")
-    }
-
-    // MARK: - Layer Controls View
-
-    private var layerControlsView: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Layers")
-                .font(.headline)
-                .fontWeight(.semibold)
-
-            // Segment visibility toggle (on/off — per-segment coloring is automatic)
-            LayerToggleButton(
-                label: "Segments",
-                icon: viewModel.highlightMode != .off ? "waveform.path.ecg" : "eye.slash",
-                isOn: viewModel.highlightMode != .off,
-                detail: viewModel.highlightMode != .off ? "On" : "Off"
-            ) {
-                let wasOff = viewModel.highlightMode == .off
-                viewModel.cycleHighlightMode()
-                appState.mapHighlightMode = viewModel.highlightMode
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-
-                // Reload congestion data when turning on (from off state)
-                if wasOff && viewModel.highlightMode != .off {
-                    Task {
-                        await viewModel.fetchCongestionData(systems: appState.selectedSystems)
-                    }
-                }
-            }
-
-            // Detail mode toggle (Summary vs Trains) - only show when segments are visible
-            if viewModel.highlightMode != .off {
-                LayerToggleButton(
-                    label: "Detail",
-                    icon: viewModel.detailMode.iconName,
-                    isOn: viewModel.detailMode == .trains,
-                    detail: viewModel.detailMode.rawValue
-                ) {
-                    viewModel.cycleDetailMode()
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
-            }
-
-            // Routes toggle
-            LayerToggleButton(
-                label: "Routes",
-                icon: "point.topleft.down.to.point.bottomright.curvepath",
-                isOn: viewModel.showRoutes,
-                detail: viewModel.showRoutes ? "On" : "Off"
-            ) {
-                viewModel.showRoutes.toggle()
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            }
-
-            // Stations toggle
-            LayerToggleButton(
-                label: "Stations",
-                icon: "mappin.circle.fill",
-                isOn: viewModel.showStations,
-                detail: viewModel.showStations ? "On" : "Off"
-            ) {
-                viewModel.showStations.toggle()
-                appState.showMapStations = viewModel.showStations
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            }
-
-            Divider()
-                .background(Color.white.opacity(0.2))
-
-            // Train Systems section
-            Text("Train Systems")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-
-            ForEach(TrainSystem.availableCases, id: \.self) { system in
-                let isSelected = appState.isSystemSelected(system)
-                let atFreeLimit = !subscriptionService.isPro
-                    && !isSelected
-                    && appState.selectedSystems.count >= SubscriptionService.freeTrainSystemLimit
-                SystemToggleButton(
-                    system: system,
-                    isSelected: isSelected,
-                    action: {
-                        if atFreeLimit {
-                            showingPaywall = true
-                        } else {
-                            appState.toggleSystem(system)
-                        }
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    }
-                )
-            }
-        }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.ultraThinMaterial)
-        )
-        .fixedSize(horizontal: true, vertical: false)
-    }
-
-    // MARK: - Segment Legend View
-
-    @ViewBuilder
-    private var segmentLegendView: some View {
-        if viewModel.highlightMode != .off {
-            let dataSources = Set(viewModel.segments.map(\.dataSource))
-            let hasFrequencySystems = dataSources.contains { TrainSystem(rawValue: $0)?.preferredHighlightMode == .health }
-            let hasDelaySystems = dataSources.contains { TrainSystem(rawValue: $0)?.preferredHighlightMode != .health }
-
-            VStack(alignment: .leading, spacing: 12) {
-                if hasFrequencySystems {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Service Health")
-                            .trackRatSectionHeader()
-
-                        HStack(spacing: 16) {
-                            LegendItem(color: .green, label: "Healthy")
-                            LegendItem(color: .yellow, label: "Moderate")
-                            LegendItem(color: .orange, label: "Reduced")
-                            LegendItem(color: .red, label: "Severe")
-                        }
-
-                        if let summary = frequencySummaryText {
-                            Text(summary)
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        } else {
-                            Text("Train count vs typical for this time")
-                                .font(.caption2)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-
-                if hasDelaySystems {
-                    VStack(alignment: .leading, spacing: 8) {
-                        Text("Delay Levels")
-                            .trackRatSectionHeader()
-
-                        HStack(spacing: 16) {
-                            LegendItem(color: .green, label: "Normal")
-                            LegendItem(color: .yellow, label: "Moderate")
-                            LegendItem(color: .orange, label: "Heavy")
-                            LegendItem(color: .red, label: "Severe")
-                        }
-
-                        LegendItem(color: .red, label: "Cancellations")
-                    }
-                }
-            }
-            .padding()
-            .background(
-                RoundedRectangle(cornerRadius: 12)
-                    .fill(.ultraThinMaterial)
-            )
-        }
-    }
-
-    /// Summarize headway across visible segments for the legend subtitle
-    private var frequencySummaryText: String? {
-        let segmentsWithData = viewModel.segments.filter { $0.hasFrequencyData }
-        guard !segmentsWithData.isEmpty else { return nil }
-
-        let headways = segmentsWithData.compactMap {
-            $0.currentHeadwayMinutes(timeWindowHours: viewModel.lastTimeWindowHours)
-        }
-        guard !headways.isEmpty else { return nil }
-
-        let avgHeadway = Int((headways.reduce(0, +) / Double(headways.count)).rounded())
-        let totalTrains = segmentsWithData.compactMap(\.trainCount).reduce(0, +)
-
-        if avgHeadway <= 1 {
-            return "\(totalTrains) trains · Avg every ~1 min"
-        }
-        return "\(totalTrains) trains · Avg every ~\(avgHeadway) min"
-    }
-}
-
-// MARK: - Layer Toggle Button
-
-private struct LayerToggleButton: View {
-    let label: String
-    let icon: String
-    let isOn: Bool
-    let detail: String
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: icon)
-                    .font(.body)
-                    .foregroundColor(isOn ? .orange : .secondary)
-                    .frame(width: 20)
-
-                Text(label)
-                    .font(.subheadline)
-                    .foregroundColor(.primary)
-
-                Text(detail)
-                    .font(.caption)
-                    .foregroundColor(isOn ? .orange : .secondary)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
-                    .background(
-                        Capsule()
-                            .fill(isOn ? Color.orange.opacity(0.2) : Color.secondary.opacity(0.1))
-                    )
-            }
-            .padding(.vertical, 4)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-// MARK: - System Toggle Button
-
-private struct SystemToggleButton: View {
-    let system: TrainSystem
-    let isSelected: Bool
-    let action: () -> Void
-
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: system.icon)
-                    .font(.body)
-                    .foregroundColor(isSelected ? .orange : .secondary)
-                    .frame(width: 20)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(system.displayName)
-                        .font(.subheadline)
-                        .foregroundColor(.primary)
-
-                }
-
-                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(.body)
-                    .foregroundColor(isSelected ? .orange : .secondary.opacity(0.5))
-            }
-            .padding(.vertical, 4)
-        }
-        .buttonStyle(.plain)
-    }
-}
-
 // MARK: - View Model
 
 /// Display mode for individual vs aggregated segments (when highlighting is on)
@@ -527,13 +32,11 @@ class CongestionMapViewModel: ObservableObject {
     // Note: These are synced from AppState on view appear via onChange handlers
     @Published var highlightMode: SegmentHighlightMode = .off
     @Published var detailMode: SegmentDetailMode = .summary  // Summary vs individual trains
-    @Published var showRoutes: Bool = false  // Default: Off
     @Published var showStations: Bool = false  // Default: Off
 
     // MARK: - Data
     @Published var segments: [CongestionSegment] = []
     @Published var individualSegments: [IndividualJourneySegment] = []
-    @Published var stations: [MapStation] = []
     @Published var routeStations: [MapStation] = []  // Stations from route topology
     @Published var isLoading = false
     @Published var error: String?
@@ -542,7 +45,6 @@ class CongestionMapViewModel: ObservableObject {
     // MARK: - Internal State
     private var allAggregatedSegments: [CongestionSegment] = []
     private var allIndividualSegments: [IndividualJourneySegment] = []
-    private var allStations: [MapStation] = []
     private var allRouteStations: [MapStation] = []
 
     // Current journey filter
@@ -750,66 +252,11 @@ class CongestionMapViewModel: ObservableObject {
                 }
             }
 
-            // OPTIMIZATION: Process station data in background to avoid blocking UI
-            // This moves the heavy coordinate lookups off the main thread
-            let processedData = await Task.detached(priority: .userInitiated) {
-                // Store segments (immutable copy for background processing)
-                let aggregatedSegments = response.aggregatedSegments
-                let individualSegments = response.individualSegments
-
-                // Extract unique stations from both segment types
-                var stationMap: [String: MapStation] = [:]
-
-                // From aggregated segments
-                for segment in aggregatedSegments {
-                    if let coords = Stations.getCoordinates(for: segment.fromStation) {
-                        stationMap[segment.fromStation] = MapStation(
-                            code: segment.fromStation,
-                            name: segment.fromStationDisplayName,
-                            coordinate: coords
-                        )
-                    }
-                    if let coords = Stations.getCoordinates(for: segment.toStation) {
-                        stationMap[segment.toStation] = MapStation(
-                            code: segment.toStation,
-                            name: segment.toStationDisplayName,
-                            coordinate: coords
-                        )
-                    }
-                }
-
-                // From individual segments
-                for segment in individualSegments {
-                    if let coords = Stations.getCoordinates(for: segment.fromStation) {
-                        stationMap[segment.fromStation] = MapStation(
-                            code: segment.fromStation,
-                            name: segment.fromStationName,
-                            coordinate: coords
-                        )
-                    } else {
-                        print("🚦 ⚠️ No coordinates for station: \(segment.fromStation)")
-                    }
-                    if let coords = Stations.getCoordinates(for: segment.toStation) {
-                        stationMap[segment.toStation] = MapStation(
-                            code: segment.toStation,
-                            name: segment.toStationName,
-                            coordinate: coords
-                        )
-                    } else {
-                        print("🚦 ⚠️ No coordinates for station: \(segment.toStation)")
-                    }
-                }
-
-                let stations = Array(stationMap.values)
-                print("🚦 Processed \(stations.count) stations from segments in background")
-
-                return (aggregatedSegments, individualSegments, stations)
-            }.value
-
-            // Update state on main thread with processed data
-            allAggregatedSegments = processedData.0
-            allIndividualSegments = processedData.1
-            allStations = processedData.2
+            // Segments arrive ready to use; the map draws its base network from route
+            // topology and station pins from `routeStations`, so no per-segment station
+            // extraction is needed here.
+            allAggregatedSegments = response.aggregatedSegments
+            allIndividualSegments = response.individualSegments
 
             // Filter based on current display mode
             applyDisplayModeFilter()
@@ -865,7 +312,6 @@ class CongestionMapViewModel: ObservableObject {
         // First filter by effective systems
         let systemFilteredAggregated = allAggregatedSegments.filter { effectiveSystemStrings.contains($0.dataSource) }
         let systemFilteredIndividual = allIndividualSegments.filter { effectiveSystemStrings.contains($0.dataSource) }
-        let systemFilteredStations = allStations.filter { Stations.isStationVisible($0.code, withSystems: effectiveSystems) }
 
         // Update route station visibility to match effective systems
         routeStations = allRouteStations.filter { station in
@@ -881,7 +327,6 @@ class CongestionMapViewModel: ObservableObject {
             // Hide all segment data
             segments = []
             individualSegments = []
-            stations = systemFilteredStations
             print("🚦 Segments hidden")
         } else {
             // Show segments based on detail mode
@@ -890,14 +335,12 @@ class CongestionMapViewModel: ObservableObject {
                 // Show aggregated segments only
                 segments = filteredAggregated
                 individualSegments = []
-                stations = systemFilteredStations
                 print("🚦 Applied summary filter: \(segments.count) aggregated segments, mode: \(highlightMode.displayName)")
 
             case .trains:
                 // Show individual journey segments
                 segments = filteredAggregated // Keep aggregated for reference (dimmed)
                 individualSegments = filteredIndividual
-                stations = systemFilteredStations
                 print("🚦 Applied trains filter: \(individualSegments.count) individual segments, mode: \(highlightMode.displayName)")
             }
         }
@@ -1067,7 +510,6 @@ struct SystemCongestionMapView: UIViewRepresentable {
     let segments: [CongestionSegment]
     let individualSegments: [IndividualJourneySegment]
     let stations: [MapStation]
-    let showRoutes: Bool
     let selectedSystems: Set<TrainSystem>
     let highlightMode: SegmentHighlightMode
     let onSegmentTap: (CongestionSegment) -> Void
@@ -1079,7 +521,6 @@ struct SystemCongestionMapView: UIViewRepresentable {
         segments: [CongestionSegment],
         individualSegments: [IndividualJourneySegment],
         stations: [MapStation],
-        showRoutes: Bool,
         selectedSystems: Set<TrainSystem>,
         highlightMode: SegmentHighlightMode,
         onSegmentTap: @escaping (CongestionSegment) -> Void,
@@ -1090,7 +531,6 @@ struct SystemCongestionMapView: UIViewRepresentable {
         self.segments = segments
         self.individualSegments = individualSegments
         self.stations = stations
-        self.showRoutes = showRoutes
         self.selectedSystems = selectedSystems
         self.highlightMode = highlightMode
         self.onSegmentTap = onSegmentTap
@@ -1136,7 +576,7 @@ struct SystemCongestionMapView: UIViewRepresentable {
         // Check if anything changed (congestion, routes, stations, systems, or highlight mode)
         let congestionChanged = desiredAggregatedState != context.coordinator.currentAggregatedOverlayState ||
                                desiredIndividualState != context.coordinator.currentIndividualOverlayState
-        let desiredBaseRoutes = RouteTopology.congestionMapBaseRoutes(selectedDataSources: selectedSystems.asRawStrings, showRoutes: showRoutes)
+        let desiredBaseRoutes = RouteTopology.congestionMapBaseRoutes(selectedDataSources: selectedSystems.asRawStrings)
         let desiredRouteIDs = Set(desiredBaseRoutes.map(\.id))
         let routeOverlaysChanged = desiredRouteIDs != context.coordinator.renderedRouteIDs
         let desiredStationCodes = Set(stations.map { $0.code })
@@ -1248,10 +688,9 @@ struct SystemCongestionMapView: UIViewRepresentable {
             }
         }
 
-        // Handle route topology overlays. Always drawn for schedule-only lines (PATCO, and
-        // SEPTA Metro's Broad St / Market-Frankford) because they never produce congestion
-        // segments; real-time lines are gated by the Routes toggle. See
-        // `RouteTopology.congestionMapBaseRoutes` for the rules.
+        // Handle route topology overlays. The full base network for the selected systems is
+        // always drawn (issue #1602) so low-frequency systems like Amtrak aren't reduced to
+        // scattered congestion segments over empty map. See `RouteTopology.congestionMapBaseRoutes`.
         if routeOverlaysChanged {
             // Remove existing overlays
             if !context.coordinator.routeTopologyOverlays.isEmpty {
@@ -1916,12 +1355,6 @@ struct MapStation: Identifiable {
     let code: String
     let name: String
     let coordinate: CLLocationCoordinate2D
-}
-
-// MARK: - Preview
-
-#Preview {
-    CongestionMapView()
 }
 
 

@@ -546,7 +546,7 @@ class TrainSystemTests: XCTestCase {
                       "SystemChips sort order should be deterministic")
     }
 
-    // Congestion-map base-route selection (schedule-only lines always drawn; real-time lines
-    // gated by the Routes toggle) now lives in `RouteTopology.congestionMapBaseRoutes` and is
-    // tested in RouteTopologyTests, since it filters per route rather than per system.
+    // Congestion-map base-route selection (the full network for the selected systems is always
+    // drawn — issue #1602) lives in `RouteTopology.congestionMapBaseRoutes` and is tested in
+    // RouteTopologyTests.
 }

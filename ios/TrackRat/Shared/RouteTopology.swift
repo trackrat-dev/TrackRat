@@ -41,44 +41,18 @@ struct RouteTopology {
 
     static let allRoutes: [RouteLine] = njtRoutes + amtrakRoutes + pathRoutes + patcoRoutes + lirrRoutes + mnrRoutes + subwayRoutes + wmataRoutes + bartRoutes + mbtaRoutes + septaRegionalRailRoutes + septaMetroRoutes
 
-    // MARK: - Schedule-Only Route Selection (congestion map base layer)
+    // MARK: - Congestion Map Base Layer
 
-    /// SEPTA Metro's schedule-only line IDs: Broad Street (Local/Express/Ridge Spur) and
-    /// Market-Frankford. SEPTA feeds these from static schedules only — the backend never
-    /// produces congestion segments for them — while NHSL and the trolleys are real-time.
-    /// Kept as an explicit per-line list because SEPTA Metro is the one hybrid system where
-    /// "schedule-only" is a property of the line, not the whole data source.
-    static let scheduleOnlySeptaMetroRouteIDs: Set<String> = ["SEPTA-B1", "SEPTA-B2", "SEPTA-B3", "SEPTA-L1"]
-
-    /// Route IDs the backend serves schedule-only, so the congestion map always draws them as
-    /// a white base line even with the Routes layer off — they never produce congestion
-    /// segments and would otherwise be invisible. Combines PATCO (fully schedule-only, so all
-    /// of `patcoRoutes` qualify) with SEPTA Metro's schedule-only lines.
+    /// Route topology lines to draw as the white base network on the congestion map for the
+    /// user's selected data sources.
     ///
-    /// Deliberately expressed from the route arrays rather than `TrainSystem`, because this
-    /// file is also compiled into the Live Activity widget extension, which does not include
-    /// `TrainSystem`.
-    static let scheduleOnlyRouteIDs: Set<String> = {
-        var ids = Set(patcoRoutes.map(\.id))
-        ids.formUnion(scheduleOnlySeptaMetroRouteIDs)
-        return ids
-    }()
-
-    /// Route topology lines to draw as the white base layer on the congestion map, given the
-    /// user's selected data sources and whether the Routes layer is enabled.
-    ///
-    /// - Schedule-only lines (`scheduleOnlyRouteIDs`) are always drawn when their system is
-    ///   selected, since they never produce congestion segments and would otherwise be invisible.
-    /// - Every other (real-time) line is drawn only when `showRoutes` is on, so the user's Routes
-    ///   toggle keeps its meaning for real-time lines — including SEPTA Metro's NHSL and trolleys.
-    static func congestionMapBaseRoutes(
-        selectedDataSources: Set<String>,
-        showRoutes: Bool
-    ) -> [RouteLine] {
-        allRoutes.filter { route in
-            guard selectedDataSources.contains(route.dataSource) else { return false }
-            return showRoutes || scheduleOnlyRouteIDs.contains(route.id)
-        }
+    /// The full network is always drawn (issue #1602). Otherwise a low-frequency system like
+    /// Amtrak renders as a handful of scattered congestion segments floating over an empty map,
+    /// with no connecting track between them. Live congestion segments are painted on top of
+    /// this base layer. This matches the always-on base layer already used by the route-status
+    /// map and the system-detail screen.
+    static func congestionMapBaseRoutes(selectedDataSources: Set<String>) -> [RouteLine] {
+        allRoutes.filter { selectedDataSources.contains($0.dataSource) }
     }
 
     // MARK: - NJ Transit Routes
