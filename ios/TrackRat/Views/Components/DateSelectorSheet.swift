@@ -48,6 +48,7 @@ struct DateSelectorSheet: View {
                     }
                     .foregroundColor(.white.opacity(0.7))
                 }
+                .hidingToolbarItemGlass()
             }
         }
         .presentationDetents([.medium])

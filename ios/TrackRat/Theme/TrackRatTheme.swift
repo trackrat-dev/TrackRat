@@ -271,3 +271,19 @@ extension View {
     }
 }
 
+// MARK: - Toolbar (iOS 26 Liquid Glass)
+extension ToolbarContent {
+    /// On iOS 26+, hides the Liquid Glass capsule the system draws behind a toolbar
+    /// item. On a force-dark glass/opaque sheet that capsule renders as an opaque dark
+    /// chip behind Cancel/Done-style buttons; hiding it restores the flat pre-26 look.
+    /// No-op on iOS 18.x, which has no such system backing.
+    @ToolbarContentBuilder
+    func hidingToolbarItemGlass() -> some ToolbarContent {
+        if #available(iOS 26, *) {
+            self.sharedBackgroundVisibility(.hidden)
+        } else {
+            self
+        }
+    }
+}
+

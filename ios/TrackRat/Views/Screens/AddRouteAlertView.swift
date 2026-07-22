@@ -59,6 +59,7 @@ struct AddRouteAlertView: View {
                         Button("Done") { dismiss() }
                             .foregroundColor(.orange)
                     }
+                    .hidingToolbarItemGlass()
                 }
         }
         .preferredColorScheme(.dark)

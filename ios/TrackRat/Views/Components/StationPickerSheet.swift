@@ -261,6 +261,7 @@ struct StationPickerSheet: View {
                     }
                     .foregroundColor(.white)
                 }
+                .hidingToolbarItemGlass()
             }
         }
         .preferredColorScheme(.dark)

@@ -80,6 +80,7 @@ struct JourneyFeedbackPromptView: View {
                             .foregroundColor(.white.opacity(0.6))
                     }
                 }
+                .hidingToolbarItemGlass()
             }
         }
         .presentationDetents([.height(380)])
