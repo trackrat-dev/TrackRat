@@ -1418,6 +1418,7 @@ class GTFSService:
         limit: int = 50,
         data_sources: list[str] | None = None,
         time_from: datetime | None = None,
+        label_matched_stop: bool = False,
     ) -> DeparturesResponse:
         """Get scheduled departures from GTFS data for a future date.
 
@@ -1432,6 +1433,8 @@ class GTFSService:
                 Applied after sort, before limit — critical for high-frequency
                 providers (e.g. SUBWAY) whose first `limit` trains would
                 otherwise all fall inside the overnight window.
+            label_matched_stop: Label boarding and alighting with the concrete
+                equivalent stop matched in GTFS instead of the requested code.
 
         Returns:
             DeparturesResponse with scheduled trains
@@ -1471,13 +1474,14 @@ class GTFSService:
 
         for data_source, service_ids in all_services.items():
             source_departures = await self._query_departures_for_source(
-                db,
-                data_source,
-                service_ids,
-                from_station,
-                to_station,
-                target_date,
-                time_from,
+                db=db,
+                data_source=data_source,
+                service_ids=service_ids,
+                from_station=from_station,
+                to_station=to_station,
+                target_date=target_date,
+                time_from=time_from,
+                label_matched_stop=label_matched_stop,
             )
             departures.extend(source_departures)
 
@@ -1517,6 +1521,7 @@ class GTFSService:
         to_station: str | None,
         target_date: date,
         time_from: datetime | None = None,
+        label_matched_stop: bool = False,
     ) -> list[TrainDeparture]:
         """Query GTFS tables for departures from a specific data source."""
         departures: list[TrainDeparture] = []
@@ -1552,6 +1557,7 @@ class GTFSService:
                 GTFSRoute.route_color,
                 GTFSStopTime.departure_time,
                 GTFSStopTime.stop_sequence,
+                GTFSStopTime.station_code,
             )
             .join(GTFSRoute, GTFSTrip.route_id == GTFSRoute.id)
             .join(GTFSStopTime, GTFSTrip.id == GTFSStopTime.trip_id)
@@ -1566,16 +1572,16 @@ class GTFSService:
         trips_data = result.all()
 
         # Pre-fetch destination station data in one query to avoid N+1 problem
-        to_station_data: dict[int, tuple[str, int]] = (
-            {}
-        )  # trip_id -> (arrival_time, sequence)
+        to_station_data: dict[int, list[tuple[str | None, str | None, int, str]]] = {}
         if to_station and trips_data:
             trip_ids = [row[0] for row in trips_data]
             dest_result = await db.execute(
                 select(
                     GTFSStopTime.trip_id,
                     GTFSStopTime.arrival_time,
+                    GTFSStopTime.departure_time,
                     GTFSStopTime.stop_sequence,
+                    GTFSStopTime.station_code,
                 ).where(
                     and_(
                         GTFSStopTime.trip_id.in_(trip_ids),
@@ -1584,7 +1590,9 @@ class GTFSService:
                 )
             )
             for dest_row in dest_result.all():
-                to_station_data[dest_row[0]] = (dest_row[1], dest_row[2])
+                to_station_data.setdefault(dest_row[0], []).append(
+                    (dest_row[1], dest_row[2], dest_row[3], dest_row[4])
+                )
 
         for row in trips_data:
             (
@@ -1599,16 +1607,29 @@ class GTFSService:
                 route_color,
                 dep_time_str,
                 dep_sequence,
+                matched_from_station,
             ) = row
 
             # If to_station specified, verify this trip also stops there after from_station
             arrival_time_str = None
+            matched_to_station = None
             if to_station:
-                dest_info = to_station_data.get(db_trip_id)
-                if not dest_info or dest_info[1] <= dep_sequence:
+                dest_info = min(
+                    (
+                        candidate
+                        for candidate in to_station_data.get(db_trip_id, [])
+                        if candidate[2] > dep_sequence
+                    ),
+                    key=lambda candidate: candidate[2],
+                    default=None,
+                )
+                if not dest_info:
                     # Trip doesn't stop at destination, or stops before origin
                     continue
                 arrival_time_str = dest_info[0]
+                if label_matched_stop and not arrival_time_str:
+                    arrival_time_str = dest_info[1]
+                matched_to_station = dest_info[3]
 
             # Parse times
             departure_dt = self._parse_gtfs_time(dep_time_str, target_date, data_source)
@@ -1802,8 +1823,10 @@ class GTFSService:
                 ),
                 destination=headsign or "Unknown",
                 departure=StationInfo(
-                    code=from_station,
-                    name=get_station_name(from_station),
+                    code=(matched_from_station if label_matched_stop else from_station),
+                    name=get_station_name(
+                        matched_from_station if label_matched_stop else from_station
+                    ),
                     scheduled_time=departure_dt,
                     updated_time=None,
                     actual_time=None,
@@ -1811,14 +1834,26 @@ class GTFSService:
                 ),
                 arrival=(
                     StationInfo(
-                        code=to_station,
-                        name=get_station_name(to_station),
+                        code=(
+                            matched_to_station
+                            if label_matched_stop and matched_to_station
+                            else to_station
+                        ),
+                        name=get_station_name(
+                            matched_to_station
+                            if label_matched_stop and matched_to_station
+                            else to_station
+                        ),
                         scheduled_time=arrival_dt,
                         updated_time=None,
                         actual_time=None,
                         track=None,
                     )
-                    if to_station and arrival_dt
+                    if to_station
+                    and (
+                        arrival_dt
+                        or (label_matched_stop and matched_to_station is not None)
+                    )
                     else None
                 ),
                 train_position=TrainPosition(
