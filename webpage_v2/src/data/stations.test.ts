@@ -164,15 +164,52 @@ describe('searchStationsPartitioned', () => {
     }
   });
 
-  it('combined results match unfiltered searchStations', () => {
+  it('combined results match searchStations across available systems', () => {
     const query = 'new';
     const systems: ('NJT' | 'AMTRAK')[] = ['NJT', 'AMTRAK'];
     const { matched, other } = searchStationsPartitioned(query, systems, 100);
-    const all = searchStations(query, undefined, 100);
+    const available = searchStations(query, AVAILABLE_SYSTEMS, 100);
     const partitionedCodes = new Set([...matched, ...other].map(s => s.code));
-    for (const station of all) {
-      expect(partitionedCodes.has(station.code)).toBe(true);
-    }
+    expect(partitionedCodes).toEqual(new Set(available.map(s => s.code)));
+  });
+
+  it.each([
+    ['BART_EMBR', 'BART'],
+    ['B03', 'WMATA'],
+    ['BNST', 'MBTA'],
+    ['NCSGRAYSLK', 'METRA'],
+    ['SEPR90302', 'SEPTA_RR'],
+    ['SEPM1392', 'SEPTA_METRO'],
+  ] as const)('excludes disabled-only station %s from %s', (query, disabledSystem) => {
+    const { matched, other } = searchStationsPartitioned(query, ['NJT', disabledSystem], 100);
+    const results = [...matched, ...other];
+
+    expect(results.some(station => station.system === disabledSystem)).toBe(false);
+  });
+
+  it('keeps available but unselected systems in the other partition', () => {
+    const { matched, other } = searchStationsPartitioned('Christopher Street', ['NJT']);
+
+    expect(matched).toEqual([]);
+    expect(other).toEqual([expect.objectContaining({ code: 'PCH', system: 'PATH' })]);
+  });
+
+  it('keeps the available entry for a code shared with a disabled system', () => {
+    const { matched, other } = searchStationsPartitioned('PVD', ['NJT'], 100);
+    const providenceResults = [...matched, ...other].filter(station => station.code === 'PVD');
+
+    expect(providenceResults).toEqual([
+      expect.objectContaining({ code: 'PVD', system: 'AMTRAK' }),
+    ]);
+  });
+
+  it('filters disabled matches before applying partition limits', () => {
+    const { matched, other } = searchStationsPartitioned('union station', ['NJT'], 1);
+
+    expect(matched).toEqual([]);
+    expect(other).toEqual([
+      expect.objectContaining({ code: 'WS', system: 'AMTRAK' }),
+    ]);
   });
 
   it('limits each partition independently', () => {
