@@ -14,7 +14,32 @@ import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.models.database import CachedApiResponse
-from trackrat.services.api_cache import CONGESTION_PROVIDERS, ApiCacheService
+from trackrat.services.api_cache import (
+    CONGESTION_PROVIDERS,
+    ROUTE_HISTORY_CACHE_TTL_SECONDS,
+    ApiCacheService,
+)
+
+# The route-history precompute runs on IntervalTrigger(minutes=5) in
+# scheduler.py; keep in sync if that interval changes.
+_ROUTE_HISTORY_PRECOMPUTE_INTERVAL_SECONDS = 5 * 60
+
+
+def test_route_history_cache_ttl_exceeds_precompute_interval():
+    """The route-history cache TTL must outlast the precompute interval (#1607).
+
+    If the TTL is <= the interval, a warmed entry can expire (and be deleted by
+    cleanup_expired_cache) before the next precompute pass re-warms it, dropping
+    the route out of the demand-discovered precompute set and forcing a cold
+    ~42s recompute that times clients out.
+    """
+    assert (
+        ROUTE_HISTORY_CACHE_TTL_SECONDS > _ROUTE_HISTORY_PRECOMPUTE_INTERVAL_SECONDS
+    ), (
+        f"ROUTE_HISTORY_CACHE_TTL_SECONDS ({ROUTE_HISTORY_CACHE_TTL_SECONDS}s) must "
+        f"exceed the {_ROUTE_HISTORY_PRECOMPUTE_INTERVAL_SECONDS}s precompute interval "
+        f"so warmed entries survive until the next pass re-warms them."
+    )
 
 
 @asynccontextmanager

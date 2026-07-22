@@ -42,6 +42,17 @@ CONGESTION_PROVIDERS = [
     "SEPTA_METRO",
 ]
 
+# TTL for cached /api/v2/routes/history responses. Must exceed the route-history
+# precompute interval (5 min, IntervalTrigger in scheduler.py) so a computed
+# entry stays warm until the next precompute pass re-warms it. When the demand
+# path stored a shorter TTL (was 120s) than this interval, a freshly-computed
+# route expired — and cleanup_expired_cache DELETEd the row — before precompute
+# re-warmed it, dropping the route out of the demand-discovered precompute set
+# and forcing the next request to recompute cold (~42s for the full 1 line,
+# timing clients out). The demand path and the precompute now share this value
+# so they can't drift back apart (#1607).
+ROUTE_HISTORY_CACHE_TTL_SECONDS = 600
+
 
 class ApiCacheService:
     """Service for pre-computing and caching expensive API responses."""
@@ -656,7 +667,7 @@ class ApiCacheService:
                         endpoint="/api/v2/routes/history",
                         params=params,
                         response=response.model_dump(mode="json"),
-                        ttl_seconds=600,
+                        ttl_seconds=ROUTE_HISTORY_CACHE_TTL_SECONDS,
                     )
 
                 logger.info(

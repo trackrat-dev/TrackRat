@@ -12,6 +12,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from trackrat.models.api import (
+    AggregateStats,
+    HistoricalRouteInfo,
+    RouteHistoryResponse,
+)
+from trackrat.services.api_cache import ROUTE_HISTORY_CACHE_TTL_SECONDS
+
 
 @pytest.mark.asyncio
 async def test_route_history_timeout_returns_504(client):
@@ -96,4 +103,62 @@ async def test_route_history_uses_dedicated_session(client):
     assert captured_db_arg[0] is session_from_get_session, (
         "compute_route_history should receive the dedicated session from get_session(), "
         "not the request's main db session"
+    )
+
+
+@pytest.mark.asyncio
+async def test_route_history_demand_cache_ttl_matches_precompute(client):
+    """The on-demand cache write must use ROUTE_HISTORY_CACHE_TTL_SECONDS (#1607).
+
+    Regression guard for the cold-cache timeout: the demand path previously
+    stored a 120s TTL while the precompute (and its 5-min interval) used 600s.
+    A freshly-computed route therefore expired — and cleanup_expired_cache
+    DELETEd its row — before precompute re-warmed it, dropping the route out of
+    the demand-discovered precompute set so the next request recomputed cold
+    (~42s for the full subway 1 line, timing clients out). Demand and precompute
+    now share the constant, so the entry survives until the next precompute pass.
+    """
+    computed = RouteHistoryResponse(
+        route=HistoricalRouteInfo(
+            from_station="S101",
+            to_station="S142",
+            total_trains=3150,
+            data_source="SUBWAY",
+        ),
+        aggregate_stats=AggregateStats(cancellation_rate=0.0),
+    )
+
+    async def _fast_computation(*args, **kwargs):
+        return computed
+
+    captured_store_kwargs: list[dict] = []
+
+    async def _capture_store(**kwargs):
+        captured_store_kwargs.append(kwargs)
+
+    mock_cache = MagicMock()
+    mock_cache.get_cached_response = AsyncMock(return_value=None)  # cache miss
+    mock_cache.store_cached_response = AsyncMock(side_effect=_capture_store)
+
+    with (
+        patch("trackrat.api.routes.ApiCacheService", return_value=mock_cache),
+        patch(
+            "trackrat.api.routes.compute_route_history", side_effect=_fast_computation
+        ),
+    ):
+        response = client.get(
+            "/api/v2/routes/history"
+            "?from_station=S101&to_station=S142&data_source=SUBWAY"
+        )
+
+    assert response.status_code == 200, response.text
+    assert len(captured_store_kwargs) == 1, (
+        "get_route_history should store exactly one route-history cache entry "
+        "on a cache miss"
+    )
+    stored_ttl = captured_store_kwargs[0]["ttl_seconds"]
+    assert stored_ttl == ROUTE_HISTORY_CACHE_TTL_SECONDS, (
+        f"Demand-path cache TTL {stored_ttl}s must equal the shared "
+        f"ROUTE_HISTORY_CACHE_TTL_SECONDS ({ROUTE_HISTORY_CACHE_TTL_SECONDS}s); "
+        f"a shorter TTL reintroduces the #1607 cold-cache drop-out."
     )

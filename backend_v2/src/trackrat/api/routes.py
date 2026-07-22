@@ -37,7 +37,11 @@ from trackrat.models.api import (
     SegmentCongestion as SegmentCongestionModel,
 )
 from trackrat.models.database import JourneyStop, TrainJourney
-from trackrat.services.api_cache import CONGESTION_PROVIDERS, ApiCacheService
+from trackrat.services.api_cache import (
+    CONGESTION_PROVIDERS,
+    ROUTE_HISTORY_CACHE_TTL_SECONDS,
+    ApiCacheService,
+)
 from trackrat.services.congestion import CongestionAnalyzer
 from trackrat.services.departure import DepartureService, active_data_sources
 from trackrat.services.summary import TrainDelaySummary
@@ -184,7 +188,7 @@ async def get_route_history(
                 endpoint="/api/v2/routes/history",
                 params=cache_params,
                 response=response.model_dump(mode="json"),
-                ttl_seconds=120,
+                ttl_seconds=ROUTE_HISTORY_CACHE_TTL_SECONDS,
             )
         except Exception as e:
             logger.warning("route_history_cache_storage_failed", error=str(e))
