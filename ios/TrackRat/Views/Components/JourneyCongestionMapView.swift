@@ -334,85 +334,9 @@ struct CongestionMapKitView: UIViewRepresentable {
            abs(currentRegion.span.longitudeDelta - region.span.longitudeDelta) > threshold {
             mapView.setRegion(region, animated: true)
         }
-        
-        // Sync the static route-topology base layer. Inserted at the bottom of
-        // the overlay stack so live congestion segments always draw on top.
-        if baseRouteStationCodes != context.coordinator.baseRouteStationCodes {
-            context.coordinator.baseRouteStationCodes = baseRouteStationCodes
-            if !context.coordinator.baseRoutePolylines.isEmpty {
-                mapView.removeOverlays(context.coordinator.baseRoutePolylines)
-                context.coordinator.baseRoutePolylines = []
-            }
-            let coordinateRuns = Self.baseRoutePolylineCoordinates(stationCodes: baseRouteStationCodes)
-            for (index, coordinates) in coordinateRuns.enumerated() {
-                let polyline = RouteTopologyPolyline(coordinates: coordinates, count: coordinates.count)
-                mapView.insertOverlay(polyline, at: index)
-                context.coordinator.baseRoutePolylines.append(polyline)
-            }
-        }
 
-        // Build desired overlay state (include congestionLevel to catch visual changes)
-        let desiredOverlayState = Set(segments.map { OverlayIdentity(segmentID: $0.id, congestionLevel: $0.congestionLevel) })
-        let highlightModeChanged = highlightMode != context.coordinator.highlightMode
-
-        // If highlight mode changed, update existing overlay renderers
-        if highlightModeChanged {
-            context.coordinator.highlightMode = highlightMode
-            for polyline in context.coordinator.polylines {
-                if let renderer = mapView.renderer(for: polyline) as? MKPolylineRenderer,
-                   let segment = polyline.segment {
-                    renderer.strokeColor = context.coordinator.colorForSegment(segment)
-                    renderer.setNeedsDisplay()
-                }
-            }
-        }
-
-        // Early exit if nothing changed
-        guard desiredOverlayState != context.coordinator.currentOverlayState else {
-            return
-        }
-
-        // Diff overlays
-        let toRemove = context.coordinator.currentOverlayState.subtracting(desiredOverlayState)
-        let toAdd = desiredOverlayState.subtracting(context.coordinator.currentOverlayState)
-
-        // Remove old overlays (batch operation)
-        if !toRemove.isEmpty {
-            let overlaysToRemove = toRemove.compactMap { context.coordinator.overlayMap[$0.segmentID] }
-            if !overlaysToRemove.isEmpty {
-                mapView.removeOverlays(overlaysToRemove)
-            }
-            toRemove.forEach { context.coordinator.overlayMap.removeValue(forKey: $0.segmentID) }
-            context.coordinator.polylines.removeAll { polyline in
-                toRemove.contains { $0.segmentID == polyline.segment?.id }
-            }
-        }
-
-        // Add new overlays (batch operation)
-        if !toAdd.isEmpty {
-            let segmentsToAdd = segments.filter { toAdd.contains(OverlayIdentity(segmentID: $0.id, congestionLevel: $0.congestionLevel)) }
-            let sortedSegments = segmentsToAdd.sorted { $0.congestionFactor < $1.congestionFactor }
-
-            var newOverlays: [CongestionPolyline] = []
-            for segment in sortedSegments {
-                if let fromCoords = Stations.getCoordinates(for: segment.fromStation),
-                   let toCoords = Stations.getCoordinates(for: segment.toStation) {
-                    // Use GTFS shape data for smooth curves, fall back to straight line
-                    let coordinates = RouteShapes.coordinates(from: segment.fromStation, to: segment.toStation) ?? [fromCoords, toCoords]
-                    let polyline = CongestionPolyline(coordinates: coordinates, count: coordinates.count)
-                    polyline.segment = segment
-                    newOverlays.append(polyline)
-                    context.coordinator.overlayMap[segment.id] = polyline
-                    context.coordinator.polylines.append(polyline)
-                }
-            }
-            if !newOverlays.isEmpty {
-                mapView.addOverlays(newOverlays)
-            }
-        }
-
-        // Update state
-        context.coordinator.currentOverlayState = desiredOverlayState
+        reconcileLiveOverlays(on: mapView, coordinator: context.coordinator)
+        reconcileBaseRouteOverlays(on: mapView, coordinator: context.coordinator)
 
         // Always clear and re-add annotations (they're lightweight)
         mapView.removeAnnotations(mapView.annotations.filter { !($0 is MKUserLocation) })
@@ -450,21 +374,81 @@ struct CongestionMapKitView: UIViewRepresentable {
             }
         }
         
-        // Update coordinator with current segments for tap handling
-        context.coordinator.segments = segments
-        context.coordinator.onSegmentTap = onSegmentTap
-        context.coordinator.mapView = mapView
     }
     
+    /// Reconciles only the live congestion collection; annotations and the static route
+    /// layer remain independent in `updateUIView`.
+    func reconcileLiveOverlays(on mapView: MKMapView, coordinator: Coordinator) {
+        coordinator.segments = segments
+        coordinator.onSegmentTap = onSegmentTap
+        coordinator.mapView = mapView
+        let latestSegmentsByID = congestionSegmentsByID(segments)
+        for polyline in coordinator.polylines {
+            guard let representedSegment = polyline.segment else { continue }
+            polyline.segment = latestSegmentsByID[representedSegment.id]
+        }
+
+        let sortedSegments = sortedJourneyCongestionSegments(segments)
+        let desiredOverlayState = journeyCongestionOverlayState(for: segments)
+        let highlightModeChanged = highlightMode != coordinator.highlightMode
+        if highlightModeChanged {
+            coordinator.highlightMode = highlightMode
+            for polyline in coordinator.polylines {
+                if let renderer = mapView.renderer(for: polyline) as? MKPolylineRenderer,
+                   let segment = polyline.segment {
+                    renderer.strokeColor = coordinator.colorForSegment(segment)
+                    renderer.setNeedsDisplay()
+                }
+            }
+        }
+
+        guard desiredOverlayState != coordinator.currentOverlayState else { return }
+        if !coordinator.polylines.isEmpty {
+            mapView.removeOverlays(coordinator.polylines)
+        }
+        coordinator.polylines = []
+
+        for segment in sortedSegments {
+            guard let fromCoords = Stations.getCoordinates(for: segment.fromStation),
+                  let toCoords = Stations.getCoordinates(for: segment.toStation) else {
+                continue
+            }
+            let coordinates = RouteShapes.coordinates(
+                from: segment.fromStation,
+                to: segment.toStation
+            ) ?? [fromCoords, toCoords]
+            let polyline = CongestionPolyline(coordinates: coordinates, count: coordinates.count)
+            polyline.segment = segment
+            coordinator.polylines.append(polyline)
+        }
+        if !coordinator.polylines.isEmpty {
+            mapView.addOverlays(coordinator.polylines)
+        }
+        coordinator.currentOverlayState = desiredOverlayState
+    }
+
+    /// Keeps the static topology underneath live overlays without coupling it to live state.
+    func reconcileBaseRouteOverlays(on mapView: MKMapView, coordinator: Coordinator) {
+        guard baseRouteStationCodes != coordinator.baseRouteStationCodes else { return }
+        coordinator.baseRouteStationCodes = baseRouteStationCodes
+        if !coordinator.baseRoutePolylines.isEmpty {
+            mapView.removeOverlays(coordinator.baseRoutePolylines)
+            coordinator.baseRoutePolylines = []
+        }
+        let coordinateRuns = Self.baseRoutePolylineCoordinates(
+            stationCodes: baseRouteStationCodes
+        )
+        for (index, coordinates) in coordinateRuns.enumerated() {
+            let polyline = RouteTopologyPolyline(coordinates: coordinates, count: coordinates.count)
+            mapView.insertOverlay(polyline, at: index)
+            coordinator.baseRoutePolylines.append(polyline)
+        }
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator()
     }
     
-    struct OverlayIdentity: Hashable {
-        let segmentID: String
-        let congestionLevel: String
-    }
-
     class Coordinator: NSObject, MKMapViewDelegate {
         var segments: [CongestionSegment] = []
         var onSegmentTap: (CongestionSegment) -> Void = { _ in }
@@ -472,8 +456,7 @@ struct CongestionMapKitView: UIViewRepresentable {
         weak var mapView: MKMapView?
         var highlightMode: SegmentHighlightMode = .delays
 
-        var currentOverlayState: Set<OverlayIdentity> = []
-        var overlayMap: [String: CongestionPolyline] = [:]
+        var currentOverlayState: [CongestionOverlayIdentity] = []
 
         // Route-topology base layer state (not tappable, so kept out of `polylines`)
         var baseRouteStationCodes: [String] = []
