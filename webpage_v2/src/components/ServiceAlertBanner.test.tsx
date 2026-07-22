@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, within, act } from '@testing-library/react';
 import { ServiceAlertBanner } from './ServiceAlertBanner';
 import { apiService } from '../services/api';
 import { ServiceAlert, ServiceAlertsResponse } from '../types';
@@ -11,6 +11,7 @@ vi.mock('../services/api', () => ({
 }));
 
 const mockedGetServiceAlerts = vi.mocked(apiService.getServiceAlerts);
+const ALERTS_POLL_MS = 120_000;
 
 function makeAlert(overrides: Partial<ServiceAlert> = {}): ServiceAlert {
   return {
@@ -35,21 +36,95 @@ describe('ServiceAlertBanner', () => {
     mockedGetServiceAlerts.mockReset();
   });
 
-  it('collapses alerts by default and expands them on click (NJT, newly alert-capable)', async () => {
+  it('surfaces an active real-time headline while remaining collapsed by default', async () => {
     mockAlerts([makeAlert({ header_text: 'NJT service change' })]);
 
     render(<ServiceAlertBanner dataSource="NJT" />);
 
-    // Collapsed by default (#1543): the section shows a count-bearing toggle,
-    // but the individual alert cards are not rendered until the user expands.
-    const toggle = await screen.findByRole('button', { name: /show service alerts \(1\)/i });
-    expect(screen.queryByText('NJT service change')).not.toBeInTheDocument();
-
-    fireEvent.click(toggle);
-
-    expect(await screen.findByText('NJT service change')).toBeInTheDocument();
+    const toggle = await screen.findByRole('button', {
+      name: /show service alerts \(1\): njt service change/i,
+    });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(within(toggle).getByText('NJT service change')).toBeInTheDocument();
+    expect(within(toggle).getByText('1')).toBeInTheDocument();
     // usePolling threads an AbortSignal through so in-flight fetches cancel on unmount.
     expect(mockedGetServiceAlerts).toHaveBeenCalledWith('NJT', undefined, expect.any(AbortSignal));
+  });
+
+  it('prioritizes a real-time headline in a mixed alert set', async () => {
+    mockAlerts([
+      makeAlert({
+        alert_id: 'planned-1',
+        alert_type: 'planned_work',
+        header_text: 'Weekend track work',
+      }),
+      makeAlert({ alert_id: 'alert-1', header_text: 'Trains bypass Secaucus' }),
+    ]);
+
+    render(<ServiceAlertBanner dataSource="NJT" />);
+
+    const toggle = await screen.findByRole('button', {
+      name: /show service alerts \(2\): trains bypass secaucus/i,
+    });
+    expect(within(toggle).getByText('Trains bypass Secaucus')).toBeInTheDocument();
+    expect(within(toggle).getByText('2')).toBeInTheDocument();
+    expect(screen.queryByText('Weekend track work')).not.toBeInTheDocument();
+  });
+
+  it('keeps planned-work-only alerts compact and identifies their type', async () => {
+    mockAlerts([
+      makeAlert({ alert_type: 'planned_work', header_text: 'Weekend track work' }),
+    ]);
+
+    render(<ServiceAlertBanner dataSource="NJT" />);
+
+    const toggle = await screen.findByRole('button', {
+      name: /show service alerts \(1\): planned work/i,
+    });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(within(toggle).getByText('Planned Work')).toBeInTheDocument();
+    expect(screen.queryByText('Weekend track work')).not.toBeInTheDocument();
+  });
+
+  it('keeps elevator-only alerts compact and identifies their type', async () => {
+    mockAlerts([
+      makeAlert({ alert_type: 'elevator', header_text: 'Elevator unavailable at Newark Penn' }),
+    ]);
+
+    render(<ServiceAlertBanner dataSource="NJT" />);
+
+    const toggle = await screen.findByRole('button', {
+      name: /show service alerts \(1\): elevator outage/i,
+    });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    expect(within(toggle).getByText('Elevator Outage')).toBeInTheDocument();
+    expect(screen.queryByText('Elevator unavailable at Newark Penn')).not.toBeInTheDocument();
+  });
+
+  it('does not mislabel a mixed planned-work and elevator summary', async () => {
+    mockAlerts([
+      makeAlert({ alert_id: 'planned-1', alert_type: 'planned_work' }),
+      makeAlert({ alert_id: 'elevator-1', alert_type: 'elevator' }),
+    ]);
+
+    render(<ServiceAlertBanner dataSource="NJT" />);
+
+    const toggle = await screen.findByRole('button', {
+      name: /show service alerts \(2\): planned work and elevator outage/i,
+    });
+    expect(within(toggle).getByText('Service Alerts')).toBeInTheDocument();
+  });
+
+  it('clamps a long real-time headline without removing its accessible text', async () => {
+    const longHeadline = 'Major service changes affect Northeast Corridor trains between New York and Trenton throughout the evening rush';
+    mockAlerts([makeAlert({ header_text: longHeadline })]);
+
+    render(<ServiceAlertBanner dataSource="NJT" />);
+
+    const toggle = await screen.findByRole('button', { name: new RegExp(longHeadline, 'i') });
+    const headline = within(toggle).getByText(longHeadline);
+    expect(headline).toHaveClass('line-clamp-2', 'break-words');
+    expect(headline.parentElement).toHaveClass('min-w-0');
   });
 
   it('renders MTA (SUBWAY) alerts once expanded — fetch behavior unchanged', async () => {
@@ -63,18 +138,69 @@ describe('ServiceAlertBanner', () => {
     expect(mockedGetServiceAlerts).toHaveBeenCalledWith('SUBWAY', undefined, expect.any(AbortSignal));
   });
 
-  it('collapses again when the toggle is clicked a second time', async () => {
+  it('toggles expansion and restores the compact headline on collapse', async () => {
     mockAlerts([makeAlert({ header_text: 'NJT service change' })]);
 
     render(<ServiceAlertBanner dataSource="NJT" />);
 
     const toggle = await screen.findByRole('button', { name: /show service alerts/i });
     fireEvent.click(toggle);
-    expect(await screen.findByText('NJT service change')).toBeInTheDocument();
+    const expandedToggle = screen.getByRole('button', { name: /hide service alerts/i });
+    expect(expandedToggle).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getAllByRole('button')).toHaveLength(2);
+    expect(screen.getByText('NJT service change')).toBeInTheDocument();
 
-    // While expanded the toggle's accessible label flips to "Hide".
-    fireEvent.click(screen.getByRole('button', { name: /hide service alerts/i }));
-    expect(screen.queryByText('NJT service change')).not.toBeInTheDocument();
+    fireEvent.click(expandedToggle);
+
+    const collapsedToggle = screen.getByRole('button', { name: /show service alerts/i });
+    expect(collapsedToggle).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getAllByRole('button')).toHaveLength(1);
+    expect(within(collapsedToggle).getByText('NJT service change')).toBeInTheDocument();
+  });
+
+  it('updates the collapsed summary on polling without resetting the user choice', async () => {
+    vi.useFakeTimers();
+    Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+    Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    mockedGetServiceAlerts
+      .mockResolvedValueOnce({
+        alerts: [makeAlert({ alert_type: 'planned_work', header_text: 'Weekend track work' })],
+        count: 1,
+      })
+      .mockResolvedValue({
+        alerts: [makeAlert({ alert_id: 'alert-2', header_text: 'Northeast Corridor suspended' })],
+        count: 1,
+      });
+
+    try {
+      render(<ServiceAlertBanner dataSource="NJT" />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      const initialToggle = screen.getByRole('button', { name: /show service alerts \(1\): planned work/i });
+      fireEvent.click(initialToggle);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(ALERTS_POLL_MS);
+      });
+
+      const updatedToggle = screen.getByRole('button', {
+        name: /hide service alerts \(1\): northeast corridor suspended/i,
+      });
+      expect(updatedToggle).toHaveAttribute('aria-expanded', 'true');
+      expect(screen.getByText('Northeast Corridor suspended')).toBeInTheDocument();
+
+      fireEvent.click(updatedToggle);
+      const collapsedToggle = screen.getByRole('button', {
+        name: /show service alerts \(1\): northeast corridor suspended/i,
+      });
+      expect(collapsedToggle).toHaveAttribute('aria-expanded', 'false');
+      expect(within(collapsedToggle).getByText('Northeast Corridor suspended')).toBeInTheDocument();
+      expect(mockedGetServiceAlerts).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('does not fetch and renders nothing for a system without backend alerts (PATH)', async () => {

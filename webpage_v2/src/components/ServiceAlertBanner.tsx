@@ -95,10 +95,17 @@ export function ServiceAlertBanner({ dataSource, routeIds }: ServiceAlertBannerP
   });
 
   // Section is collapsed by default so alert-heavy routes (e.g. HL/NY) don't lead
-  // with a wall of alerts (#1543). The collapsed header is tinted by the
-  // highest-severity alert (sortedAlerts[0]) so an active real-time alert still
-  // stands out without needing to expand.
-  const topStyle = getAlertStyle(sortedAlerts[0].alert_type);
+  // with a wall of alerts (#1543). Keep the highest-priority real-time headline
+  // visible in the compact summary so active disruptions are still actionable.
+  const topAlert = sortedAlerts[0];
+  const topStyle = getAlertStyle(topAlert.alert_type);
+  const alertTypeLabels = [...new Set(sortedAlerts.map(alert => getAlertTypeLabel(alert.alert_type)))];
+  const summaryLabel = topAlert.alert_type === 'alert'
+    ? (sortedAlerts.length === 1 ? 'Service Alert' : 'Service Alerts')
+    : (alertTypeLabels.length === 1 ? getAlertTypeLabel(topAlert.alert_type) : 'Service Alerts');
+  const summaryContext = topAlert.alert_type === 'alert'
+    ? topAlert.header_text
+    : alertTypeLabels.join(' and ');
 
   return (
     <div className="mb-4">
@@ -106,14 +113,19 @@ export function ServiceAlertBanner({ dataSource, routeIds }: ServiceAlertBannerP
         onClick={() => setSectionExpanded(prev => !prev)}
         className={`w-full flex items-center gap-2 p-3 rounded-xl border ${topStyle.bg} ${topStyle.border} text-left transition-all`}
         aria-expanded={sectionExpanded}
-        aria-label={`${sectionExpanded ? 'Hide' : 'Show'} service alerts (${sortedAlerts.length})`}
+        aria-label={`${sectionExpanded ? 'Hide' : 'Show'} service alerts (${sortedAlerts.length}): ${summaryContext}`}
       >
-        <AlertTypeIcon alertType={sortedAlerts[0].alert_type} className={`${topStyle.icon} shrink-0`} />
-        <span className="text-sm font-semibold text-text-primary">
-          {sortedAlerts.length === 1 ? 'Service Alert' : 'Service Alerts'}
-        </span>
-        <span className={`text-xs font-semibold ${topStyle.icon}`}>{sortedAlerts.length}</span>
-        <ChevronIcon direction={sectionExpanded ? 'up' : 'down'} size={16} className="text-text-muted shrink-0 ml-auto" />
+        <AlertTypeIcon alertType={topAlert.alert_type} className={`${topStyle.icon} shrink-0`} />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-semibold text-text-primary">{summaryLabel}</span>
+            <span className={`text-xs font-semibold shrink-0 ${topStyle.icon}`}>{sortedAlerts.length}</span>
+          </div>
+          {!sectionExpanded && topAlert.alert_type === 'alert' && (
+            <p className="text-xs text-text-secondary line-clamp-2 break-words">{topAlert.header_text}</p>
+          )}
+        </div>
+        <ChevronIcon direction={sectionExpanded ? 'up' : 'down'} size={16} className="text-text-muted shrink-0" />
       </button>
 
       {sectionExpanded && (
