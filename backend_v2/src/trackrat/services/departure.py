@@ -383,6 +383,7 @@ class DepartureService:
                 limit=limit,
                 data_sources=allowed_sources,
                 time_from=aware_time_from,
+                line_codes=line_codes,
             )
             response.departures = [
                 d
@@ -744,6 +745,7 @@ class DepartureService:
                     limit=200,  # Fetch more, we'll filter after merge
                     data_sources=allowed_sources,
                     time_from=gtfs_lower_bound,
+                    line_codes=line_codes,
                 )
 
                 # Filter GTFS departures:
