@@ -135,6 +135,7 @@ struct FeedbackButton: View {
                 Text("What you write here is automatically worked on!")
                     .font(.caption2)
                     .opacity(0.8)
+                    .multilineTextAlignment(.center)
             }
             .foregroundColor(textColor)
         }
