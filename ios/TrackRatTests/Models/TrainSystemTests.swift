@@ -240,6 +240,145 @@ class TrainSystemTests: XCTestCase {
                             "Should have at least some results for '\(query)'")
     }
 
+    func testStationAvailability_excludesEveryDisabledOnlySystem() {
+        let disabledStations: [(name: String, system: TrainSystem)] = [
+            ("Media", .septaRegionalRail),
+            ("Olney Transit Center - B1", .septaMetro),
+            ("West Oakland", .bart),
+            ("Metro Center", .wmata),
+            ("North Station", .mbta),
+            ("Naperville Metra", .metra),
+        ]
+
+        for station in disabledStations {
+            guard let code = Stations.getStationCode(station.name) else {
+                XCTFail("Missing station code for \(station.name)")
+                continue
+            }
+            XCTAssertEqual(
+                Stations.systemsForStation(code),
+                Set([station.system]),
+                "\(station.name) must remain attributable to \(station.system.displayName)"
+            )
+            XCTAssertFalse(
+                Stations.isStationAvailable(code),
+                "\(station.name) should be excluded while \(station.system.displayName) is disabled"
+            )
+        }
+    }
+
+    func testStationAvailability_keepsSharedAvailableStation() {
+        let systems = Stations.systemsForStation("BOS")
+        XCTAssertTrue(systems.contains(.amtrak))
+        XCTAssertTrue(systems.contains(.mbta))
+        XCTAssertTrue(
+            Stations.isStationAvailable("BOS"),
+            "Boston South should remain available through Amtrak while MBTA is disabled"
+        )
+    }
+
+    func testStationAvailability_keepsUnknownStation() {
+        XCTAssertTrue(
+            Stations.systemStringsForStation("UNKNOWN-STATION").isEmpty,
+            "Test precondition: the station code must remain unclassified"
+        )
+        XCTAssertTrue(
+            Stations.isStationAvailable("UNKNOWN-STATION"),
+            "Unknown stations should not be treated as conclusively disabled"
+        )
+    }
+
+    func testSearchGrouped_excludesDisabledOnlyStations() {
+        let disabledQueries = [
+            "Media",
+            "Olney Transit Center - B1",
+            "West Oakland",
+            "Metro Center",
+            "North Station",
+            "Naperville Metra",
+        ]
+
+        for query in disabledQueries {
+            let grouped = Stations.searchGrouped(query, selectedSystems: [.njt])
+            XCTAssertTrue(
+                grouped.primary.isEmpty && grouped.other.isEmpty,
+                "Disabled-only query '\(query)' should return no selectable result, got \(grouped)"
+            )
+        }
+    }
+
+    func testSearchGrouped_keepsAvailableMembershipOfSharedStation() {
+        let grouped = Stations.searchGrouped("Boston South", selectedSystems: [.njt])
+        XCTAssertTrue(grouped.primary.isEmpty)
+        XCTAssertTrue(
+            grouped.other.contains("Boston South"),
+            "Boston South should remain discoverable as an unselected Amtrak station"
+        )
+    }
+
+    func testSearchGrouped_originFilterExcludesManyDisabledMatches() {
+        let query = "Station"
+        let rawMatches = Stations.search(query, limit: Stations.all.count)
+        let disabledMatches = rawMatches.filter { name in
+            guard let code = Stations.getStationCode(name) else { return false }
+            return !Stations.isStationAvailable(code)
+        }
+        XCTAssertGreaterThan(
+            disabledMatches.count,
+            5,
+            "Test precondition: '\(query)' must match several disabled-only stations"
+        )
+
+        let grouped = Stations.searchGrouped(
+            query,
+            selectedSystems: Set(TrainSystem.availableCases),
+            originStationCode: "NY"
+        )
+        for name in grouped.primary + grouped.other {
+            guard let code = Stations.getStationCode(name) else {
+                XCTFail("Grouped result has no station code: \(name)")
+                continue
+            }
+            XCTAssertTrue(
+                Stations.isStationAvailable(code),
+                "Origin-filtered results must exclude disabled-only station \(name)"
+            )
+        }
+    }
+
+    func testSearchGrouped_disabledMatchesDoNotConsumeResultCap() {
+        let cap = Stations.defaultSearchLimit
+        let candidateQueries = ["north", "park", "west", "center", "station", "chicago", "media"]
+        let query = candidateQueries.first { candidate in
+            let firstPage = Stations.search(candidate)
+            let allMatches = Stations.search(candidate, limit: Stations.all.count)
+            let firstPageHasDisabledMatch = firstPage.contains { name in
+                guard let code = Stations.getStationCode(name) else { return false }
+                return !Stations.isStationAvailable(code)
+            }
+            let availableMatchCount = allMatches.filter { name in
+                guard let code = Stations.getStationCode(name) else { return false }
+                return Stations.isStationAvailable(code)
+            }.count
+            return firstPageHasDisabledMatch && availableMatchCount >= cap
+        }
+
+        guard let query else {
+            XCTFail("Test corpus needs a query where disabled matches would consume the first result cap")
+            return
+        }
+
+        let grouped = Stations.searchGrouped(
+            query,
+            selectedSystems: Set(TrainSystem.availableCases)
+        )
+        XCTAssertEqual(
+            grouped.primary.count + grouped.other.count,
+            cap,
+            "Disabled matches for '\(query)' must not prevent valid matches from filling the result cap"
+        )
+    }
+
     // MARK: - systemsForStation
 
     func testSystemsForStation_multiSystem() {
