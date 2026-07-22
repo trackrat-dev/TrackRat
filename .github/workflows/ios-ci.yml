@@ -22,12 +22,28 @@ concurrency:
 jobs:
   test-ios:
     name: iOS Build & Test
-    runs-on: macos-15
+    # macos-26 so the default toolchain ships the iOS 26 SDK. The app calls iOS 26
+    # Liquid Glass APIs (e.g. sharedBackgroundVisibility, containerBackground(.navigation))
+    # behind #available(iOS 26, *); those are runtime gates, but the symbols must still
+    # exist at compile time. An older SDK (Xcode 16.x / iOS 18.5) fails to compile them.
+    runs-on: macos-26
     timeout-minutes: 30
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v7
+
+      - name: Select latest Xcode (needs iOS 26 SDK)
+        run: |
+          LATEST=$(ls -d /Applications/Xcode_*.app 2>/dev/null | grep -vi beta | sort -V | tail -1)
+          if [ -z "$LATEST" ]; then
+            echo "::error::No Xcode found under /Applications"
+            exit 1
+          fi
+          echo "Selecting $LATEST"
+          sudo xcode-select -s "$LATEST/Contents/Developer"
+          xcodebuild -version
+          xcodebuild -showsdks | grep -i "iphonesimulator" || true
 
       - name: Select simulator destination
         id: sim
