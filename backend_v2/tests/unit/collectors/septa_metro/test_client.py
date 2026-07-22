@@ -8,13 +8,14 @@ skipped). Unlike Regional Rail, times here are absolute (``arrival.time``), like
 MBTA.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
 from google.transit import gtfs_realtime_pb2
 
+from trackrat.collectors.septa_common import SeptaFeedFetchError
 from trackrat.collectors.septa_metro.client import (
     SeptaMetroArrival,
     SeptaMetroClient,
@@ -65,11 +66,11 @@ def _add_metro_trip(
 
 def _serialize(feed) -> bytes:
     feed.header.gtfs_realtime_version = "2.0"
-    feed.header.timestamp = int(datetime.now(timezone.utc).timestamp())
+    feed.header.timestamp = int(datetime.now(UTC).timestamp())
     return feed.SerializeToString()
 
 
-_T = datetime(2026, 7, 18, 15, 0, 0, tzinfo=timezone.utc)
+_T = datetime(2026, 7, 18, 15, 0, 0, tzinfo=UTC)
 
 
 class TestSeptaMetroModel:
@@ -146,17 +147,17 @@ class TestSeptaMetroClientBasics:
 
     def test_cache_valid_within_ttl(self, client):
         client._cache = []
-        client._cache_time = datetime.now(timezone.utc)
+        client._cache_time = datetime.now(UTC)
         assert client._is_cache_valid()
 
     def test_cache_invalid_when_expired(self, client):
         client._cache = []
-        client._cache_time = datetime.now(timezone.utc) - timedelta(seconds=60)
+        client._cache_time = datetime.now(UTC) - timedelta(seconds=60)
         assert not client._is_cache_valid()
 
     def test_clear_cache(self, client):
         client._cache = []
-        client._cache_time = datetime.now(timezone.utc)
+        client._cache_time = datetime.now(UTC)
         client.clear_cache()
         assert client._cache is None
         assert client._cache_time is None
@@ -326,18 +327,46 @@ class TestSeptaMetroGetAllArrivals:
             )
         ]
         client._cache = cached
-        client._cache_time = datetime.now(timezone.utc)
+        client._cache_time = datetime.now(UTC)
         assert await client.get_all_arrivals() is cached
 
     @pytest.mark.asyncio
-    async def test_http_error_returns_empty(self, client):
+    async def test_batch_fetch_bypasses_valid_cache(self, client):
+        client._cache = [
+            SeptaMetroArrival(
+                station_code="SEPM1272",
+                gtfs_stop_id="1272",
+                trip_id="cached_trip",
+                route_id="M1",
+                direction_id=0,
+                headsign=None,
+                arrival_time=_T,
+                departure_time=None,
+                delay_seconds=0,
+                track=None,
+            )
+        ]
+        client._cache_time = datetime.now(UTC)
+        feed = gtfs_realtime_pb2.FeedMessage()
+        mock_response = MagicMock(spec=httpx.Response)
+        mock_response.content = _serialize(feed)
+        mock_response.raise_for_status = MagicMock()
+        client._session = AsyncMock(spec=httpx.AsyncClient)
+        client._session.get.return_value = mock_response
+
+        assert await client.get_all_arrivals(use_cache=False) == []
+        client._session.get.assert_awaited_once()
+
+    @pytest.mark.asyncio
+    async def test_http_error_raises_fetch_error(self, client):
         mock_session = AsyncMock(spec=httpx.AsyncClient)
         mock_session.get.side_effect = httpx.HTTPError("boom")
         client._session = mock_session
-        assert await client.get_all_arrivals() == []
+        with pytest.raises(SeptaFeedFetchError):
+            await client.get_all_arrivals()
 
     @pytest.mark.asyncio
-    async def test_http_error_returns_stale_cache(self, client):
+    async def test_http_error_does_not_return_stale_cache(self, client):
         cached = [
             SeptaMetroArrival(
                 station_code="SEPM1273",
@@ -353,11 +382,12 @@ class TestSeptaMetroGetAllArrivals:
             )
         ]
         client._cache = cached
-        client._cache_time = datetime.now(timezone.utc) - timedelta(seconds=120)
+        client._cache_time = datetime.now(UTC) - timedelta(seconds=120)
         mock_session = AsyncMock(spec=httpx.AsyncClient)
         mock_session.get.side_effect = httpx.HTTPError("boom")
         client._session = mock_session
-        assert await client.get_all_arrivals() == cached
+        with pytest.raises(SeptaFeedFetchError):
+            await client.get_all_arrivals()
 
     @pytest.mark.asyncio
     async def test_fetches_and_parses_protobuf(self, client):
