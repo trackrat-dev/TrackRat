@@ -1460,7 +1460,7 @@ class TestGetScheduledDeparturesTimeFrom:
 
     @pytest.mark.asyncio
     async def test_time_from_passed_to_query(self):
-        """get_scheduled_departures must thread time_from down to the SQL query."""
+        """Scheduled-departure filters must reach the per-source SQL query."""
         target_date = date(2026, 4, 23)
         cutoff = ET.localize(datetime.combine(target_date, time(8, 0)))
         mock_db = AsyncMock()
@@ -1480,11 +1480,12 @@ class TestGetScheduledDeparturesTimeFrom:
                 limit=5,
                 data_sources=["SUBWAY"],
                 time_from=cutoff,
+                label_matched_stop=True,
             )
 
         assert query_mock.await_count == 1
-        # time_from is the 7th positional arg
-        assert query_mock.await_args.args[6] == cutoff
+        assert query_mock.await_args.kwargs["time_from"] == cutoff
+        assert query_mock.await_args.kwargs["label_matched_stop"] is True
 
     def test_gtfs_time_cutoff_returns_none_before_target_midnight(self):
         """Cutoff at or before target_date midnight means no SQL filter is needed."""
