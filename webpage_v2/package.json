@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "date-fns": "^4.4.0",
-    "maplibre-gl": "^5.22.0",
+    "maplibre-gl": "^6.0.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-map-gl": "^8.1.0",
