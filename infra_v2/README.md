@@ -145,13 +145,13 @@ Manual deploy from the repo root:
 | `project_id` | trackrat-v2 | GCP project |
 | `region` | us-east4 | GCP region |
 | `zone` | us-east4-a | GCP zone |
-| `machine_type` | t2d-standard-2 | Production VM machine type (staging overrides to t2d-standard-1 via `local.machine_type`) |
+| `machine_type` | t2d-standard-1 | VM machine type, shared by staging and production |
 | `disk_size_gb` | 40 | Persistent disk size |
 | `snapshot_retention_days` | 7 | Snapshot retention period |
 | `consolidate_api_lb` | true | Production cutover: tear down the dedicated API frontend; `apiv2.trackrat.net` served by the consolidated webpage LB. No effect on staging. |
 | `frontend_via_cloudflare` | false | Tear down the dedicated API frontend in favor of a Cloudflare Tunnel (`cloudflared`). Flip only after the tunnel connector is healthy and DNS is cut over. |
 
-**Note:** Staging uses spot VMs for cost savings; production uses on-demand VMs for stability. Staging also runs a smaller `t2d-standard-1` (1 vCPU / 4 GB) as a cost experiment, while production stays on `t2d-standard-2` (2 vCPU / 8 GB).
+**Note:** Staging and production are kept in sync on resources — same `machine_type` (`t2d-standard-1`, 1 vCPU / 4 GB), same disk size, same MIG target size — so staging is a faithful rehearsal of production and a sizing change reaches both environments at once. The **only** intended divergence is the provisioning model: staging uses spot VMs for cost savings, production uses on-demand VMs for stability. Size changes go in the shared `machine_type` variable, not a per-environment override.
 
 ### Outputs
 
