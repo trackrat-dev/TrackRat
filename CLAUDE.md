@@ -142,7 +142,7 @@ poetry run python3 ../scripts/ground-truth-validate.py --provider SEPTA_RR --ver
 poetry run python3 ../scripts/ground-truth-validate.py --all --verbose
 ```
 
-Options: `--all` (run all providers sequentially), `--tolerance N` (minutes, default 2.0; supports decimals e.g. 2.0 = 120s), `--far-future N` (minutes, default 12; GT arrivals beyond this are WARN not FAIL), `--verbose` (show raw GT/TR data and nearest-match on FAILs), `--stop-order-warn` (report NJT stop-order inversions as WARN instead of FAIL; NJT also runs a stop-order check comparing TrackRat's persisted `stop_sequence` order against NJT `getTrainStopList` geographic order — see #1538).
+Options: `--all` (run all providers sequentially), `--tolerance N` (minutes, default 2.0; supports decimals e.g. 2.0 = 120s), `--window N` (minutes, default 120; GT departures beyond this are ignored), `--far-future N` (minutes, default 12; GT arrivals beyond this are WARN not FAIL), `--verbose` (show raw GT/TR data and nearest-match on FAILs), `--stop-order-warn` (report NJT stop-order inversions as WARN instead of FAIL; NJT also runs a stop-order check comparing TrackRat's persisted `stop_sequence` order against NJT `getTrainStopList` geographic order — see #1538).
 Default target is staging; pass a URL as first positional arg for production.
 
 The NJT API token can be set via `NJT_TOKEN` env var, `TRACKRAT_NJT_API_TOKEN` env var,
@@ -234,6 +234,10 @@ bash scripts/scrub-staging-db.sh
 
 # Generate subway station data from GTFS
 python3 scripts/generate_subway_data.py
+
+# Generate SEPTA station/route config modules from the SEPTA GTFS static feeds
+# (writes config/stations/septa_rr.py and septa_metro.py; --only rr|metro for one)
+python3 scripts/generate_septa_data.py
 
 # Generate route shape coordinates from GTFS for iOS map rendering
 cd backend_v2 && poetry run python3 ../scripts/generate_route_shapes.py
@@ -431,8 +435,12 @@ npm run build        # TypeScript compile + Vite build
 npm run preview      # Preview production build locally
 ```
 
-**Deployment:** Manual via `./scripts/deploy-webpage.sh` (syncs to GCS → `https://trackrat.net`)
-- Dry run: `./scripts/deploy-webpage.sh --dry-run`
+**Deployment:** Automatic via Cloud Build triggers (defined in `infra_v2/terraform-webpage/`) — push to `main` with `webpage_v2/` changes → `staging.trackrat.net`, push to `production` → `trackrat.net`.
+
+Manual deploy from the repo root:
+```bash
+./scripts/deploy-webpage.sh [staging|production] [--bucket=<name>] [--dry-run]
+```
 
 ### Infrastructure Management
 ```bash

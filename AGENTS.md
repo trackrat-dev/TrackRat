@@ -82,6 +82,7 @@ bash scripts/validate-staging.sh --no-random             # Skip Phase 2 random r
 bash scripts/validate-staging.sh --skip-logs             # Skip GCP log check (no creds needed)
 bash scripts/validate-staging.sh --no-wait --no-random   # Fast: health + fixed routes only
 bash scripts/validate-staging.sh --ground-truth           # Include ground truth validation (all providers)
+bash scripts/validate-staging.sh --coverage               # Include line-coverage sweep (every active line)
 
 # Against production:
 bash scripts/validate-staging.sh https://apiv2.trackrat.net
@@ -106,7 +107,7 @@ The E2E script prints response bodies on HTTP errors and flags slow responses (>
 **Ground Truth Validation:**
 
 Compares TrackRat departures against raw transit provider APIs to verify data quality.
-Run from `backend_v2/` using poetry. Supports PATH, NJT, AMTRAK, LIRR, MNR, SUBWAY, WMATA.
+Run from `backend_v2/` using poetry. Supports PATH, NJT, AMTRAK, LIRR, MNR, SUBWAY, WMATA, SEPTA_RR.
 
 ```bash
 cd backend_v2
@@ -132,11 +133,16 @@ poetry run python3 ../scripts/ground-truth-validate.py --provider SUBWAY --verbo
 # WMATA (needs token via TRACKRAT_WMATA_API_KEY or WMATA_API_KEY env var)
 poetry run python3 ../scripts/ground-truth-validate.py --provider WMATA --verbose
 
+# SEPTA Regional Rail (no auth; ground truth is SEPTA's rider-facing Arrivals REST
+# API, since the GTFS-RT feed TrackRat consumes is delay-only. SEPTA Metro is
+# schedule-first with no independent real-time departure API, so it is not covered.)
+poetry run python3 ../scripts/ground-truth-validate.py --provider SEPTA_RR --verbose
+
 # All providers at once
 poetry run python3 ../scripts/ground-truth-validate.py --all --verbose
 ```
 
-Options: `--all` (run all providers sequentially), `--tolerance N` (minutes, default 2.0; supports decimals e.g. 2.0 = 120s), `--far-future N` (minutes, default 12; GT arrivals beyond this are WARN not FAIL), `--verbose` (show raw GT/TR data and nearest-match on FAILs).
+Options: `--all` (run all providers sequentially), `--tolerance N` (minutes, default 2.0; supports decimals e.g. 2.0 = 120s), `--window N` (minutes, default 120; GT departures beyond this are ignored), `--far-future N` (minutes, default 12; GT arrivals beyond this are WARN not FAIL), `--verbose` (show raw GT/TR data and nearest-match on FAILs), `--stop-order-warn` (report NJT stop-order inversions as WARN instead of FAIL; NJT also runs a stop-order check comparing TrackRat's persisted `stop_sequence` order against NJT `getTrainStopList` geographic order — see #1538).
 Default target is staging; pass a URL as first positional arg for production.
 
 The NJT API token can be set via `NJT_TOKEN` env var, `TRACKRAT_NJT_API_TOKEN` env var,
@@ -144,6 +150,27 @@ or `.njt-token` file (gitignored) in the repo root. Priority: TRACKRAT_NJT_API_T
 
 The WMATA API key is set via `TRACKRAT_WMATA_API_KEY` env var for the backend.
 The ground-truth validation script also accepts `WMATA_API_KEY` as a fallback.
+
+**Line Coverage Sweep:**
+
+Catches a whole line silently going dark (e.g. SEPTA Metro's Market-Frankford line
+serving zero trains) that the hardcoded E2E route list doesn't exercise. Data-driven
+from `route_topology`, so new lines are covered automatically. Reads `/health` for the
+deployment's active (non-disabled) sources, then probes every line of every active
+system — a few adjacent segments per line, in both directions, so through-routed /
+branch-to-hub lines (LIRR branches transferring at Jamaica, SEPTA RR branches through
+Center City) aren't false-flagged — and reports any line with zero departures. AMTRAK
+is skipped (single national line_code; verified via `--provider AMTRAK` ground truth).
+
+```bash
+cd backend_v2
+poetry run python3 ../scripts/ground-truth-validate.py --coverage            # WARN on empty lines
+poetry run python3 ../scripts/ground-truth-validate.py --coverage --verbose  # also list live lines
+poetry run python3 ../scripts/ground-truth-validate.py --coverage --fail-empty  # exit 1 on any empty line (CI gate)
+```
+
+Empty lines are WARN by default (low-frequency / overnight gaps can be legitimate);
+`--fail-empty` escalates to FAIL for CI. Also wired into `validate-staging.sh --coverage`.
 
 **Server Usage Report:**
 
@@ -208,6 +235,10 @@ bash scripts/scrub-staging-db.sh
 # Generate subway station data from GTFS
 python3 scripts/generate_subway_data.py
 
+# Generate SEPTA station/route config modules from the SEPTA GTFS static feeds
+# (writes config/stations/septa_rr.py and septa_metro.py; --only rr|metro for one)
+python3 scripts/generate_septa_data.py
+
 # Generate route shape coordinates from GTFS for iOS map rendering
 cd backend_v2 && poetry run python3 ../scripts/generate_route_shapes.py
 
@@ -225,12 +256,16 @@ bash scripts/create-and-restore-db-then-train-model.sh
 5. Validation (hourly) - ensures coverage
 
 > **⚠️ NJT `updated_arrival` / `updated_departure` semantic mismatch:**
-> On `JourneyStop`, these fields are raw NJT API passthroughs with *inverted* meanings
-> depending on stop type. At **intermediate stops**, `updated_departure` = original schedule
-> (DEP_TIME) while `updated_arrival` = live delayed estimate (TIME). Consumers must use
-> `max(updated_departure, updated_arrival)` to get the true delayed time. For all other
-> providers (Amtrak, GTFS-RT, PATH, WMATA), both fields are genuine live estimates and
-> the `max()` is harmless. See `database.py` JourneyStop model for the authoritative docs.
+> On `JourneyStop`, these fields are raw NJT TIME/DEP_TIME passthroughs whose meaning
+> depends on stop position. At **intermediate stops**, `updated_departure` = original
+> schedule (DEP_TIME) and `updated_arrival` = live delayed estimate (TIME). At the
+> **origin** it's the reverse (`updated_departure` is the live estimate). At the
+> **terminal**, `updated_departure` can be a later *turnaround* departure that must not
+> be shown as the arrival (issue #1492). NEVER read these raw for NJT — use
+> `utils/train.effective_njt_updated_times` + `terminal_stop_index` (SQL twin:
+> `GREATEST(updated_departure, updated_arrival)` guarded to NJT). This family shipped as
+> a bug five times before being single-sourced. For all other providers both fields are
+> genuine live estimates. Full reference: `backend_v2/docs/journey-lifecycle.md`.
 
 **Backend Data Collection (PATH - Unified):**
 - Single collector runs every 4 minutes using native RidePATH API
@@ -274,6 +309,16 @@ bash scripts/create-and-restore-db-then-train-model.sh
 **Backend Data Collection (PATCO - Schedule-only):**
 - Uses GTFS static schedules from National RTAP feed
 - No real-time API available; times are scheduled only
+
+**Backend Data Collection (SEPTA Regional Rail - Unified GTFS-RT, delay-based):**
+- Single collector runs every 4 minutes over SEPTA's public `septarail-pa-us` GTFS-RT feed (no auth)
+- Feed is **delay-based**: each stop_time_update carries a `delay` (seconds) keyed by `stop_sequence`, with no stop_id/absolute times — the collector joins the GTFS static schedule by exact `(trip_id, stop_sequence)` and applies the propagated delay to reconstruct absolute times, then reuses `mta_common` (`collectors/septa_rr/`)
+- Real-time, on-time-first; stable rider-facing train numbers (`trip_short_name`)
+
+**Backend Data Collection (SEPTA Metro - Unified GTFS-RT, schedule-first):**
+- Single collector runs every 4 minutes over the shared `septa-pa-us` feed, filtered to Metro rail routes (route_type 0/1: Broad St, Market-Frankford, Norristown HSL, trolleys); GTFS static load is route-filtered so the `google_bus.zip` bundle's ~131 bus routes are excluded (`GTFS_ROUTE_TYPE_FILTER`)
+- Frequency-first; served **schedule-first** (kept out of `REAL_TIME_DATA_SOURCES`) so Broad St / Market-Frankford — which SEPTA does not feed in real time — show from the timetable like PATCO, while the collector upgrades to OBSERVED whatever lines SEPTA does feed (NHSL, trolleys). No config change is needed if that real-time coverage grows (`collectors/septa_metro/`)
+- Two data sources: `SEPTA_RR` and `SEPTA_METRO`
 
 **MTA Service Alerts Collection:**
 - Collector in `backend_v2/src/trackrat/collectors/service_alerts.py`
@@ -390,8 +435,12 @@ npm run build        # TypeScript compile + Vite build
 npm run preview      # Preview production build locally
 ```
 
-**Deployment:** Manual via `./scripts/deploy-webpage.sh` (syncs to GCS → `https://trackrat.net`)
-- Dry run: `./scripts/deploy-webpage.sh --dry-run`
+**Deployment:** Automatic via Cloud Build triggers (defined in `infra_v2/terraform-webpage/`) — push to `main` with `webpage_v2/` changes → `staging.trackrat.net`, push to `production` → `trackrat.net`.
+
+Manual deploy from the repo root:
+```bash
+./scripts/deploy-webpage.sh [staging|production] [--bucket=<name>] [--dry-run]
+```
 
 ### Infrastructure Management
 ```bash
@@ -504,7 +553,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Backend API endpoints: `backend_v2/src/trackrat/api/`
 - Backend models: `backend_v2/src/trackrat/models/`
 - Backend entrypoint: `backend_v2/src/trackrat/main.py`, `backend_v2/src/trackrat/settings.py`
-- Backend collectors: `backend_v2/src/trackrat/collectors/` (base.py, mta_common.py, mta_extensions.py, service_alerts.py at root; njt/, amtrak/, path/, lirr/, mnr/, subway/, bart/, mbta/, metra/, wmata/ as packages)
+- Backend collectors: `backend_v2/src/trackrat/collectors/` (base.py, mta_common.py, mta_extensions.py, service_alerts.py at root; njt/, amtrak/, path/, lirr/, mnr/, subway/, bart/, mbta/, metra/, wmata/, septa_rr/, septa_metro/ as packages)
 - Backend config: `backend_v2/src/trackrat/config/` (stations/ package, route_topology, station_configs, platform_mappings, transfer_points)
 - Backend utilities: `backend_v2/src/trackrat/utils/` (logging, metrics, request_stats, locks, time, train, sanitize, scheduler_utils, system_stats)
 - Backend database: `backend_v2/src/trackrat/db/` (database.py, engine.py, migrations_runner.py, partitioning.py, migrations/)
@@ -524,7 +573,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Web services: `webpage_v2/src/services/`
 - Web store: `webpage_v2/src/store/appStore.ts`
 - Web data: `webpage_v2/src/data/` (routeTopology, stations, subwayLines)
-- Web utilities: `webpage_v2/src/utils/` (date, share, formatting, routes, ratsense, trainSearch)
+- Web utilities: `webpage_v2/src/utils/` (date, share, formatting, routes, ratsense, trainSearch, congestion, stationSelection, trips, usePolling, useBackNavigation)
 - Web types: `webpage_v2/src/types/`
 - Web tests: `webpage_v2/src/` (colocated `*.test.ts` and `*.test.tsx` files, Vitest + React Testing Library)
 - Test fixtures: `backend_v2/tests/fixtures/` (mock API responses)

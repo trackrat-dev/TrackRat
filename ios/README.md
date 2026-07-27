@@ -206,7 +206,7 @@ TrackRatTests/                   # Test suite
 ├── Models/                     # Model tests
 ├── Services/                   # Service tests
 ├── ViewModels/                 # ViewModel tests
-├── Views/                      # View tests (AlertConfiguration, LineSelection)
+├── Views/                      # View tests (AlertConfiguration, LineSelection, ServiceAlertsSection, CongestionMapKitView, StationPickerSheet)
 ├── TestUtilities/              # Test helpers
 └── TestFixtures/               # Swift test data (TrainTestData)
 ```
@@ -214,8 +214,8 @@ TrackRatTests/                   # Test suite
 ## 🚀 Getting Started
 
 ### Prerequisites
-- macOS 14.0+ (Sonoma or later)
-- Xcode 16.0+
+- macOS version required by Xcode 26
+- Xcode 26+ (the app compiles against iOS 26 Liquid Glass APIs behind `#available(iOS 26, *)` guards; Xcode 16.x fails to build)
 - iOS 18.0+ deployment target
 - Apple Developer account (for device testing)
 
