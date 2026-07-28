@@ -243,5 +243,36 @@ describe('TrainListPage', () => {
         expect.objectContaining({ lines: ['MA', 'Ma'] })
       );
     });
+
+    it('hides already-departed trains, matching the unscoped board', async () => {
+      // `/trips/search` hardcodes hide_departed=true, but `/trains/departures`
+      // defaults it to false. Without this the scoped board would keep listing a
+      // train that has left the origin, which the combined board never shows.
+      renderAt('/trains/HB/SF?data_source=NJT&lines=MA%2CMa');
+
+      await vi.waitFor(() => expect(apiService.getDepartures).toHaveBeenCalled());
+      expect(apiService.getDepartures).toHaveBeenCalledWith(
+        'HB',
+        expect.objectContaining({ hideDeparted: true })
+      );
+    });
+
+    it('forwards the selected date so a future board is not silently today', async () => {
+      // The heading says the chosen date; without the date param the API
+      // defaults to today and the board would contradict its own label.
+      const { container } = renderAt('/trains/HB/SF?data_source=NJT&lines=MA%2CMa');
+
+      await vi.waitFor(() => expect(apiService.getDepartures).toHaveBeenCalled());
+
+      const datePicker = container.querySelector('input[type="date"]') as HTMLInputElement;
+      fireEvent.change(datePicker, { target: { value: '2999-01-20' } });
+
+      await vi.waitFor(() =>
+        expect(apiService.getDepartures).toHaveBeenCalledWith(
+          'HB',
+          expect.objectContaining({ date: '2999-01-20', lines: ['MA', 'Ma'] })
+        )
+      );
+    });
   });
 });

@@ -46,7 +46,7 @@ export function TrainListPage() {
 
   // Line scope carried in the query string by `buildDeparturesUrl` (issue #1625).
   // Absent on ordinary station-pair URLs, which keep the combined trip search.
-  // `linesKey` is the stable dependency: `parseLinesParam` allocates a fresh
+  // `linesKey` is the stable dependency: `parseLineCodes` allocates a fresh
   // array every render, and feeding that to usePolling's raw dep list would
   // abort and refetch on every render.
   const linesKey = searchParams.get('lines') ?? '';
@@ -80,6 +80,14 @@ export function TrainListPage() {
           limit: 50,
           dataSources: scopedDataSource,
           lines: scopedLines,
+          // The date picker drives both paths; without this the scoped board
+          // would silently show today's trains under a future date's heading.
+          date: selectedDate || undefined,
+          // `/trips/search` hardcodes hide_departed=true while `/trains/departures`
+          // defaults it to false, and both share DepartureService's filter. Passing
+          // it keeps the scoped board from listing trains that have already left
+          // the origin but are still running further down the line.
+          hideDeparted: true,
           signal,
         });
 

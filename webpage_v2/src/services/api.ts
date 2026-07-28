@@ -148,6 +148,8 @@ export class APIService {
       dataSources?: string;
       /** Scope to specific line codes (line-detail view); filtered server-side before the limit. */
       lines?: string[];
+      /** Journey date (YYYY-MM-DD). Omit for today; future dates are served from GTFS. */
+      date?: string;
       hideDeparted?: boolean;
       signal?: AbortSignal;
     }
@@ -157,6 +159,7 @@ export class APIService {
     params.set('limit', String(opts?.limit ?? 50));
     if (opts?.dataSources) params.set('data_sources', opts.dataSources);
     if (opts?.lines && opts.lines.length > 0) params.set('lines', opts.lines.join(','));
+    if (opts?.date) params.set('date', opts.date);
     if (opts?.hideDeparted) params.set('hide_departed', 'true');
     const url = `${BASE_URL}/trains/departures?${params.toString()}`;
     return this.fetch<DeparturesResponse>(url, false, opts?.signal); // Uncached — the station board polls

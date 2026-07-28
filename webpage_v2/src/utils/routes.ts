@@ -144,11 +144,6 @@ export function parseLineCodes(raw: string | null | undefined): string[] {
     .filter((code) => code.length > 0);
 }
 
-/** `parseLineCodes` against the `lines` param of a query string. */
-export function parseLinesParam(params: URLSearchParams): string[] {
-  return parseLineCodes(params.get('lines'));
-}
-
 /**
  * Parse the compact `/trip?date&legs&walk` format produced by `buildTripUrl`.
  * Returns null for any missing or malformed input so callers can fall back to

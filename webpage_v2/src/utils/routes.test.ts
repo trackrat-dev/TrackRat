@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TripOption } from '../types';
-import { buildDeparturesUrl, buildRouteStatusUrl, buildTrainUrl, buildTripUrl, parseLineCodes, parseLinesParam, parseTripLegsParam, parseTripParam } from './routes';
+import { buildDeparturesUrl, buildRouteStatusUrl, buildTrainUrl, buildTripUrl, parseLineCodes, parseTripLegsParam, parseTripParam } from './routes';
 
 describe('buildTrainUrl', () => {
   it('builds a route-scoped train URL with query params', () => {
@@ -208,10 +208,12 @@ describe('buildDeparturesUrl', () => {
     expect(buildDeparturesUrl({ from: 'A/B', to: 'NY' })).toBe('/trains/A%2FB/NY');
   });
 
-  it('round-trips through parseLinesParam', () => {
+  it('round-trips through parseLineCodes', () => {
+    // The URL is only useful if the page can read back exactly what the link
+    // wrote — encoding the comma and re-splitting it must be lossless.
     const url = buildDeparturesUrl({ from: 'HB', to: 'SF', dataSource: 'NJT', lines: ['MA', 'Ma'] });
     const params = new URLSearchParams(url.split('?')[1]);
-    expect(parseLinesParam(params)).toEqual(['MA', 'Ma']);
+    expect(parseLineCodes(params.get('lines'))).toEqual(['MA', 'Ma']);
     expect(params.get('data_source')).toBe('NJT');
   });
 });
@@ -239,15 +241,5 @@ describe('parseLineCodes', () => {
 
   it('drops blank entries but keeps the real ones', () => {
     expect(parseLineCodes('MA,,Ma,')).toEqual(['MA', 'Ma']);
-  });
-});
-
-describe('parseLinesParam', () => {
-  it('reads the lines param', () => {
-    expect(parseLinesParam(new URLSearchParams('lines=MA,Ma'))).toEqual(['MA', 'Ma']);
-  });
-
-  it('returns no codes when the param is absent', () => {
-    expect(parseLinesParam(new URLSearchParams('data_source=NJT'))).toEqual([]);
   });
 });
