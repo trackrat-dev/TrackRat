@@ -78,6 +78,21 @@ class Route:
         """Check if both stations exist on this route. O(1) lookup."""
         return from_station in self._station_set and to_station in self._station_set
 
+    def sequence_containing(self, *station_codes: str) -> tuple[str, ...] | None:
+        """The one ordered sequence holding every given code, or None.
+
+        `_station_set` is the union of both directions, so membership in it
+        does NOT imply membership in `stations`. Any caller about to compare
+        positions must resolve the sequence through this method first —
+        indices are only meaningful within a single direction's path, and
+        `stations.index()` on a code that only exists in `reverse_stations`
+        raises ValueError.
+        """
+        for sequence in (self.stations, self.reverse_stations):
+            if sequence and all(code in sequence for code in station_codes):
+                return sequence
+        return None
+
     def get_intermediate_stations(
         self, from_station: str, to_station: str
     ) -> list[str] | None:
@@ -88,22 +103,19 @@ class Route:
         If from_station comes after to_station on the route, returns
         the reversed sequence.
 
-        Returns None if either station is not on this route.
+        Returns None if either station is not on this route, or if they sit
+        on opposite directions — each direction is a physical path on its
+        own, but concatenating the two is not.
         """
-        # Try the forward path first, then the opposite-direction path. Each is
-        # a physical sequence on its own; concatenating them is not, so a pair
-        # is only expandable when both stations sit on the *same* one.
-        for sequence in (self.stations, self.reverse_stations):
-            try:
-                from_idx = sequence.index(from_station)
-                to_idx = sequence.index(to_station)
-            except ValueError:
-                continue
-            if from_idx < to_idx:
-                return list(sequence[from_idx : to_idx + 1])
-            # Reverse direction
-            return list(reversed(sequence[to_idx : from_idx + 1]))
-        return None
+        sequence = self.sequence_containing(from_station, to_station)
+        if sequence is None:
+            return None
+        from_idx = sequence.index(from_station)
+        to_idx = sequence.index(to_station)
+        if from_idx < to_idx:
+            return list(sequence[from_idx : to_idx + 1])
+        # Reverse direction
+        return list(reversed(sequence[to_idx : from_idx + 1]))
 
     def expand_to_canonical_segments(
         self, from_station: str, to_station: str

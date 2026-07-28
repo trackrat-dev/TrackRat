@@ -171,6 +171,89 @@ class TestDirectRouteDetection:
         assert _has_direct_route(INBOUND_CURB, "SEPM20965", ["SEPTA_METRO"]) is False
 
 
+class TestDirectionFilter:
+    """`_filter_by_direction` must resolve the sequence before indexing.
+
+    `_station_set` is the union of both directions, so a journey between two
+    inbound-only codes passes the membership guard. Indexing the outbound
+    `route.stations` for it raises ValueError — and `evaluate_route_alerts`
+    has no per-subscription handler, so one such subscription would abort the
+    entire alert run for every user.
+    """
+
+    class _Journey:
+        """Minimal stand-in: `_filter_by_direction` reads only these two fields."""
+
+        def __init__(self, origin: str, terminal: str):
+            self.origin_station_code = origin
+            self.terminal_station_code = terminal
+
+    def _t2(self):
+        route = next(r for r in _metro_routes() if r.id == "septa-metro-t2")
+        assert route.reverse_stations, "T2 must have an inbound sequence"
+        return route
+
+    def test_inbound_journey_does_not_raise(self):
+        from trackrat.services.alert_evaluator import _filter_by_direction
+
+        route = self._t2()
+        journey = self._Journey(route.reverse_stations[0], route.reverse_stations[-1])
+        # Direction given as the *outbound* terminus, which is what a
+        # subscription created from the outbound station list would carry.
+        _filter_by_direction([journey], route, route.stations[-1])
+
+    def test_inbound_journey_matches_its_own_terminus(self):
+        from trackrat.services.alert_evaluator import _filter_by_direction
+
+        route = self._t2()
+        journey = self._Journey(route.reverse_stations[0], route.reverse_stations[-1])
+        kept = _filter_by_direction([journey], route, route.reverse_stations[-1])
+        assert kept == [journey]
+
+    def test_inbound_journey_is_dropped_for_the_opposite_terminus(self):
+        from trackrat.services.alert_evaluator import _filter_by_direction
+
+        route = self._t2()
+        journey = self._Journey(route.reverse_stations[-1], route.reverse_stations[0])
+        assert _filter_by_direction([journey], route, route.reverse_stations[-1]) == []
+
+    def test_outbound_journey_still_filters_normally(self):
+        from trackrat.services.alert_evaluator import _filter_by_direction
+
+        route = self._t2()
+        forward = self._Journey(route.stations[0], route.stations[-1])
+        backward = self._Journey(route.stations[-1], route.stations[0])
+        kept = _filter_by_direction([forward, backward], route, route.stations[-1])
+        assert kept == [forward]
+
+    def test_njt_route_is_unaffected(self):
+        """Single-sequence routes behave exactly as before."""
+        from trackrat.config.route_topology import get_route_by_line_code
+        from trackrat.services.alert_evaluator import _filter_by_direction
+
+        route = get_route_by_line_code("NJT", "NE")
+        assert route is not None and route.reverse_stations == ()
+        forward = self._Journey(route.stations[0], route.stations[-1])
+        backward = self._Journey(route.stations[-1], route.stations[0])
+        assert _filter_by_direction([forward, backward], route, route.stations[-1]) == [
+            forward
+        ]
+
+    def test_sequence_containing_requires_one_shared_sequence(self):
+        route = self._t2()
+        inbound_only = next(
+            c for c in route.reverse_stations if c not in route.stations
+        )
+        outbound_only = next(
+            c for c in route.stations if c not in route.reverse_stations
+        )
+        assert route.sequence_containing(inbound_only) == route.reverse_stations
+        assert route.sequence_containing(outbound_only) == route.stations
+        # One code from each direction shares no sequence.
+        assert route.sequence_containing(inbound_only, outbound_only) is None
+        assert route.sequence_containing("SEPM99999") is None
+
+
 class TestTransferPointIndexes:
     """`transfer_points` builds its indexes by iterating route stations."""
 

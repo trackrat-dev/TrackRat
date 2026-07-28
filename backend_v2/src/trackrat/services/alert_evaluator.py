@@ -716,11 +716,14 @@ def _filter_by_direction(
     keep trains where terminal_idx > origin_idx (forward).  If it
     equals the first station, keep trains where terminal_idx < origin_idx
     (reverse).
-    """
-    station_list = route.stations
-    station_set = route._station_set
 
-    if direction not in station_set:
+    A route may carry two ordered sequences (SEPTA Metro's directions visit
+    different station codes), so the sequence is resolved per journey. Indices
+    from different sequences are not comparable, and indexing the wrong one
+    raises ValueError — which would abort the whole alert run, since
+    `evaluate_route_alerts` has no per-subscription handler.
+    """
+    if direction not in route._station_set:
         logger.warning(
             "unknown_alert_direction",
             direction=direction,
@@ -729,17 +732,18 @@ def _filter_by_direction(
         )
         return journeys
 
-    toward_end = direction == station_list[-1]
-
     filtered = []
     for j in journeys:
-        if (
-            j.origin_station_code not in station_set
-            or j.terminal_station_code not in station_set
-        ):
+        origin = j.origin_station_code
+        terminal = j.terminal_station_code
+        if origin is None or terminal is None:
             continue
-        o_idx = station_list.index(j.origin_station_code)
-        t_idx = station_list.index(j.terminal_station_code)
+        station_list = route.sequence_containing(origin, terminal, direction)
+        if station_list is None:
+            continue
+        o_idx = station_list.index(origin)
+        t_idx = station_list.index(terminal)
+        toward_end = direction == station_list[-1]
         if toward_end and t_idx > o_idx:
             filtered.append(j)
         elif not toward_end and t_idx < o_idx:
