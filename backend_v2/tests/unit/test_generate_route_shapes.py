@@ -366,6 +366,80 @@ class TestGenerateSwiftEncoding:
         assert len(decoded["NP-NY"]) == 6, "most-points version must win"
 
 
+class TestIncrementalLookupEmission:
+    """The emitted lookup must decode one segment at a time.
+
+    Before issue #1626 the file built a [String: [Double]] of the entire
+    dataset on first access, so drawing one polyline parsed all 2086 segments
+    / 60269 points. These assertions pin the shape of the emitted Swift,
+    because the Python round-trip tests above only cover the data lines and
+    would keep passing if the lookup regressed to an eager parse.
+    """
+
+    ALL_SHAPES = {
+        "NJT": {"A-B": [(40.1, -74.0), (40.2, -74.1), (40.3, -74.2)]},
+        "SUBWAY": {"C-D": [(40.7, -73.9), (40.8, -73.8)]},
+    }
+
+    def _emit(self, tmp_path):
+        path = tmp_path / "RouteShapes.swift"
+        generate_swift(self.ALL_SHAPES, str(path))
+        return path.read_text()
+
+    def test_index_maps_keys_to_undecoded_substrings(self, tmp_path):
+        text = self._emit(tmp_path)
+        assert "private static let encodedByKey: [String: Substring]" in text, (
+            "the index must hold undecoded Substrings; a [String: [Double]] "
+            "index would decode every segment on first access, which is the "
+            "exact cost issue #1626 removes"
+        )
+        # Substrings share the literal's storage — no second copy of 1.3 MB.
+        assert "line[line.index(after: separator)...]" in text
+
+    def test_no_eager_full_dataset_decode(self, tmp_path):
+        text = self._emit(tmp_path)
+        assert "shapeData" not in text, (
+            "the eager [String: [Double]] dictionary must be gone"
+        )
+        # Double conversion must live in the per-segment decoder, not in the
+        # index builder. Exactly one place converts text to Doubles.
+        assert text.count("Double(") == 1, (
+            "Double conversion should occur only in decode(_:), so a lookup "
+            f"parses one segment's numbers; found {text.count('Double(')}"
+        )
+
+    def test_decoder_is_per_segment_and_rejects_malformed(self, tmp_path):
+        text = self._emit(tmp_path)
+        assert (
+            "private static func decode(_ encoded: Substring) "
+            "-> [CLLocationCoordinate2D]?" in text
+        )
+        # Same guards the eager parser had: a malformed record yields nil
+        # (straight-line fallback) rather than a partial polyline.
+        assert "guard values.count >= 4, values.count.isMultiple(of: 2) else { return nil }" in text
+        assert "guard let value = Double(field) else { return nil }" in text
+
+    def test_decoded_cache_is_bounded(self, tmp_path):
+        text = self._emit(tmp_path)
+        # An unbounded memo would end up holding a decoded copy of the whole
+        # dataset alongside the string literal — worse than the eager parse.
+        assert "NSCache<NSString, DecodedSegment>" in text
+        assert "cache.countLimit = 128" in text
+        assert "import Foundation" in text, "NSCache needs Foundation"
+
+    def test_reverse_order_still_derived_from_canonical(self, tmp_path):
+        text = self._emit(tmp_path)
+        # Only the canonical (alphabetical) direction is stored; the reverse
+        # is produced on read. Losing this silently draws backwards polylines.
+        assert "return fromStation > toStation ? points.reversed() : points" in text
+
+    def test_emission_is_deterministic(self, tmp_path):
+        first = self._emit(tmp_path)
+        second_path = tmp_path / "Again.swift"
+        generate_swift(self.ALL_SHAPES, str(second_path))
+        assert first == second_path.read_text()
+
+
 class TestIOSFileParsers:
     """Parse the real iOS files — regex drift must fail loudly, not silently
     produce an empty base-layer key set."""
