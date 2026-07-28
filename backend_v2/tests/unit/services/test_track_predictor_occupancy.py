@@ -16,18 +16,28 @@ had two holes:
 These tests pin the corrected behavior: filtering and renormalization apply
 at every level including the static fallback, and an all-occupied
 distribution is served unfiltered rather than replaced.
+
+The filtering/renormalization branch logic is pinned with the same mocked
+distribution pattern as test_track_predictor_hierarchy.py; the final test
+runs the full predict_track path end-to-end against the real Postgres test
+database with the real TrackOccupancyService, so an integration break in
+the SQL or service wiring cannot stay green.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock
 
 import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.models.api import OccupiedTracksResponse
+from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.historical_track_predictor import (
     MIN_TRAIN_ID_RECORDS,
     HistoricalTrackPredictor,
 )
+from trackrat.services.track_occupancy import TrackOccupancyService
+from trackrat.utils.time import now_et
 
 
 class FakeOccupancyService:
@@ -166,3 +176,93 @@ async def test_unconfigured_station_returns_none():
     result = await _predict(predictor, station_code="HB", data_source="NJT")
 
     assert result is None
+
+
+async def _seed_np_journey(
+    db: AsyncSession,
+    train_id: str,
+    journey_date: datetime,
+    track: str,
+    scheduled_departure: datetime,
+) -> None:
+    """Seed a journey with a tracked stop at Newark Penn (NP)."""
+    journey = TrainJourney(
+        train_id=train_id,
+        journey_date=journey_date.date(),
+        line_code="NE",
+        destination="Test Destination",
+        origin_station_code="NP",
+        terminal_station_code="NY",
+        data_source="NJT",
+        scheduled_departure=scheduled_departure,
+    )
+    db.add(journey)
+    await db.flush()
+    db.add(
+        JourneyStop(
+            journey_id=journey.id,
+            journey_date=journey.journey_date,
+            station_code="NP",
+            station_name="Newark Penn Station",
+            stop_sequence=1,
+            scheduled_departure=scheduled_departure,
+            track=track,
+        )
+    )
+    await db.commit()
+
+
+@pytest.mark.asyncio
+async def test_end_to_end_occupancy_filtering_real_db(db_session: AsyncSession):
+    """Full predict_track path against real Postgres with the real
+    TrackOccupancyService: historical distribution comes from seeded
+    journeys, the occupied set from a currently-boarding train, and the
+    occupied track must be excluded and renormalized away.
+
+    NP has no platform mappings, so tracks pass through 1:1 and the math
+    is directly observable end to end."""
+    now = now_et()
+
+    # Historical runs of train 9001 at NP: 6 on track 1, 4 on track 2 —
+    # journey_dates older than the occupancy service's 2-day bound so only
+    # the boarding train below contributes to the occupied set.
+    for i in range(MIN_TRAIN_ID_RECORDS):
+        day = now - timedelta(days=3 + i)
+        await _seed_np_journey(
+            db_session,
+            "9001",
+            journey_date=day,
+            track="1" if i < 6 else "2",
+            scheduled_departure=day,
+        )
+
+    # A different train boarding on track 1 right now.
+    await _seed_np_journey(
+        db_session,
+        "9002",
+        journey_date=now,
+        track="1",
+        scheduled_departure=now + timedelta(minutes=10),
+    )
+
+    predictor = HistoricalTrackPredictor()
+    # Real occupancy service — fresh instance so its 60s TTL cache cannot
+    # carry state across tests.
+    predictor._occupancy_service = TrackOccupancyService()
+
+    result = await predictor.predict_track(
+        station_code="NP",
+        train_id="9001",
+        line_code="NE",
+        data_source="NJT",
+        scheduled_departure=now + timedelta(minutes=30),
+        db=db_session,
+    )
+
+    assert result is not None
+    print("end-to-end result:", result)
+    assert result["features_used"]["prediction_level"] == "train_id"
+    assert result["features_used"]["occupied_tracks"] == ["1"]
+    assert result["features_used"]["occupied_tracks_removed"] == 1
+    assert result["platform_probabilities"] == {"2": pytest.approx(1.0)}
+    assert result["primary_prediction"] == "2"

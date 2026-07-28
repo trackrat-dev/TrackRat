@@ -41,18 +41,26 @@ async def _seed_stop(
     scheduled_arrival: datetime | None = None,
     updated_departure: datetime | None = None,
     updated_arrival: datetime | None = None,
+    actual_arrival: datetime | None = None,
     has_departed_station: bool = False,
     is_cancelled: bool = False,
+    terminal_station_code: str = "BOS",
+    journey_date: datetime | None = None,
 ) -> None:
-    """Create a journey with a single stop at NY Penn with the given times."""
+    """Create a journey with a single stop at NY Penn with the given times.
+
+    Pass terminal_station_code=STATION to make the stop a terminal stop
+    (the train terminates at NY Penn); the default "BOS" makes it a
+    through/origin stop.
+    """
     now = now_et()
     journey = TrainJourney(
         train_id=train_id,
-        journey_date=now.date(),
+        journey_date=(journey_date or now).date(),
         line_code="AM" if data_source == "AMTRAK" else "NE",
         destination="Test Destination",
         origin_station_code="WAS",
-        terminal_station_code="BOS",
+        terminal_station_code=terminal_station_code,
         data_source=data_source,
         scheduled_departure=scheduled_departure or scheduled_arrival or now,
         is_cancelled=is_cancelled,
@@ -70,6 +78,7 @@ async def _seed_stop(
         scheduled_arrival=scheduled_arrival,
         updated_departure=updated_departure,
         updated_arrival=updated_arrival,
+        actual_arrival=actual_arrival,
         track=track,
         has_departed_station=has_departed_station,
     )
@@ -193,8 +202,51 @@ async def test_terminating_train_included(db_session: AsyncSession) -> None:
         "14",
         scheduled_arrival=now - timedelta(minutes=10),
         updated_arrival=now - timedelta(minutes=5),
+        terminal_station_code=STATION,
     )
     assert await _occupied(db_session) == {"14"}
+
+
+@pytest.mark.asyncio
+async def test_terminal_flagged_departed_on_arrival_included(
+    db_session: AsyncSession,
+) -> None:
+    """Regression (#1677 review): the shared MTA collectors set
+    has_departed_station=True the moment a train arrives at its terminal
+    (mta_common.update_stop_departure_status paths A/B). The terminal
+    branch must ignore that flag — arrival is exactly when the track
+    becomes occupied."""
+    now = now_et()
+    await _seed_stop(
+        db_session,
+        "L200",
+        "16",
+        data_source="LIRR",
+        scheduled_arrival=now - timedelta(minutes=6),
+        actual_arrival=now - timedelta(minutes=5),
+        has_departed_station=True,
+        terminal_station_code=STATION,
+    )
+    assert await _occupied(db_session) == {"16"}
+
+
+@pytest.mark.asyncio
+async def test_inbound_terminal_not_occupied_before_arrival(
+    db_session: AsyncSession,
+) -> None:
+    """Regression (#1677 review): a terminating train still inbound (arrival
+    estimate in the future) has a track *reservation*, not occupancy — the
+    boarding-window future bound applies to departures only."""
+    now = now_et()
+    await _seed_stop(
+        db_session,
+        "A113",
+        "18",
+        scheduled_arrival=now + timedelta(minutes=10),
+        updated_arrival=now + timedelta(minutes=10),
+        terminal_station_code=STATION,
+    )
+    assert await _occupied(db_session) == set()
 
 
 @pytest.mark.asyncio
@@ -207,6 +259,22 @@ async def test_old_terminated_arrival_excluded(db_session: AsyncSession) -> None
         "15",
         scheduled_arrival=now_et()
         - timedelta(minutes=OCCUPIED_WINDOW_PAST_MINUTES + 15),
+        terminal_station_code=STATION,
+    )
+    assert await _occupied(db_session) == set()
+
+
+@pytest.mark.asyncio
+async def test_old_journey_date_excluded(db_session: AsyncSession) -> None:
+    """The sargable journey_date pre-filter (partition pruning) drops rows
+    from journeys older than 2 days regardless of their stop times."""
+    now = now_et()
+    await _seed_stop(
+        db_session,
+        "A114",
+        "19",
+        scheduled_departure=now + timedelta(minutes=5),
+        journey_date=now - timedelta(days=5),
     )
     assert await _occupied(db_session) == set()
 
@@ -267,7 +335,11 @@ async def test_multiple_trains_union_of_tracks(db_session: AsyncSession) -> None
         updated_arrival=now - timedelta(minutes=30),
     )
     await _seed_stop(
-        db_session, "A111", "4", scheduled_arrival=now - timedelta(minutes=8)
+        db_session,
+        "A111",
+        "4",
+        scheduled_arrival=now - timedelta(minutes=8),
+        terminal_station_code=STATION,
     )
     await _seed_stop(
         db_session,
