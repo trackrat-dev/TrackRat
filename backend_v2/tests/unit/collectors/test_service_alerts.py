@@ -1128,6 +1128,72 @@ class TestSeptaStationLineIndex:
             ),
         )
 
+    def test_multimodal_shared_name_does_not_borrow(self):
+        """A name shared across modes must not merge L1 with the trolleys.
+
+        "15th St/City Hall" names a Market-Frankford platform (SEPM1392) and a
+        subway-surface trolley platform (SEPM31140). SEPM20659 shares that name
+        but sits on no direction-0 sequence; borrowing the union would assert a
+        trolley curb stop is on L1 and push a trolley disruption to L1 riders.
+        """
+        index = _SEPTA_STATION_LINES["SEPTA_METRO"]
+        assert index.get("SEPM1392") == ("SEPTA-L1",)
+        assert index.get("SEPM31140") == (
+            "SEPTA-T1",
+            "SEPTA-T2",
+            "SEPTA-T3",
+            "SEPTA-T4",
+            "SEPTA-T5",
+        )
+        assert "SEPM20659" not in index, (
+            "twins disagreeing on lines are not directional twins; "
+            "SEPM20659 must stay unresolved rather than claim L1 + T1-T5"
+        )
+        assert "SEPM20662" not in index  # Drexel Station at 30th St, same shape
+
+    def test_multimodal_shared_name_alert_is_kept_unscoped(self):
+        """The end-to-end consequence: kept (it is ours), but never mis-attributed."""
+        alert = ParsedAlert(
+            alert_id="septa-20659",
+            alert_type="unknown",
+            affected_route_ids=[],
+            affected_stop_ids=["20659"],
+            header_text="Trolley detour at 15th St",
+            description_text=None,
+            active_periods=[],
+        )
+        result = _remap_septa_alert(alert, "SEPTA_METRO")
+        assert result is not None, "a served stop must not be dropped"
+        assert result.affected_route_ids == [], (
+            "an unresolvable multimodal stop stays unscoped rather than "
+            "claiming lines it may not be on"
+        )
+
+    def test_borrowed_lines_are_a_subset_of_a_real_twins_lines(self):
+        """Every borrowed set must equal some same-named station's actual lines.
+
+        This is the invariant the multimodal case violates: a borrowed value may
+        never be a union assembled across stations that disagree.
+        """
+        index = _SEPTA_STATION_LINES["SEPTA_METRO"]
+        direct: dict[str, set[str]] = {}
+        for route_id, stations in SEPTA_METRO_ROUTE_STATIONS.items():
+            for station in stations:
+                direct.setdefault(station, set()).add(route_id)
+
+        for station, lines in index.items():
+            if station in direct:
+                continue  # resolved directly, not borrowed
+            twins = [
+                t
+                for t, name in SEPTA_METRO_STATION_NAMES.items()
+                if name == SEPTA_METRO_STATION_NAMES[station] and t in direct
+            ]
+            twin_line_sets = {frozenset(index[t]) for t in twins if t in index}
+            assert (
+                frozenset(lines) in twin_line_sets
+            ), f"{station} borrowed {lines}, which no same-named station has"
+
     def test_twin_borrowing_covers_stations_absent_from_route_lists(self):
         """The reason the index exists, measured rather than asserted abstractly."""
         index = _SEPTA_STATION_LINES["SEPTA_METRO"]

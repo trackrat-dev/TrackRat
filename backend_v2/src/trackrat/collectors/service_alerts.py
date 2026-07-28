@@ -89,6 +89,15 @@ def _build_septa_station_lines(
     generated from the same GTFS name. Without that, 271 of the 633 SEPTA Metro
     stations would resolve to no line at all.
 
+    A shared display name is only evidence of a directional twin when every
+    same-named station carrying direct membership agrees on the same lines. At a
+    multimodal complex it does not: "15th St/City Hall" and "Drexel Station at
+    30th St" each name a Market-Frankford platform *and* a subway-surface
+    trolley platform, so borrowing their union would assert that a trolley curb
+    stop is on L1 and push a trolley disruption to Market-Frankford riders.
+    Those stay unresolved and fall back to an unscoped alert, which over-shows
+    without claiming something false.
+
     Line order follows the route table, so results are deterministic.
     """
     code_map = _SEPTA_ROUTE_TO_LINE_CODE[data_source]
@@ -112,8 +121,15 @@ def _build_septa_station_lines(
     for station in station_names:
         lines = set(direct.get(station, ()))
         if not lines:
-            for twin in by_name.get(station_names[station], ()):
-                lines.update(direct.get(twin, ()))
+            twin_lines = {
+                frozenset(direct[twin])
+                for twin in by_name.get(station_names[station], ())
+                if twin in direct
+            }
+            # One agreed line set = a directional twin. Several = a multimodal
+            # complex whose name says nothing about which mode this stop serves.
+            if len(twin_lines) == 1:
+                lines = set(next(iter(twin_lines)))
         if lines:
             resolved[station] = tuple(sorted(lines, key=lambda c: order[c]))
     return resolved
