@@ -68,6 +68,125 @@ def _make_stops_data(station_codes: list[str]) -> list[dict]:
     return stops
 
 
+class TestStationBoardCancellationDetection:
+    """The station-board refresh must apply NJT's cancellation rule (#1670).
+
+    This is the highest-frequency NJT refresh path — it runs on every departure
+    board JIT refresh, far more often than getTrainStopList collection — and it
+    stamps last_updated_at, marking the journey fresh for the periodic sweep and
+    the JIT staleness check. Reading the board's STOP_STATUS values without
+    acting on them therefore actively *delays* cancellation detection rather
+    than merely failing to help.
+
+    Train 3918 (2026-07-28) is the reference case: it left Trenton, was annulled
+    en route, and TrackRat reported it running for 65 minutes.
+    """
+
+    def test_terminal_cancelled_marks_journey_cancelled(self):
+        """3918's shape: origin departed and on time, every later stop CANCELLED."""
+        service = DepartureService()
+
+        stops = [_make_stop(code, i) for i, code in enumerate(["TR", "PJ", "NY"])]
+        journey = _make_journey_mock(train_id="3918", stops=stops)
+        journey.is_cancelled = False
+        journey.cancellation_reason = None
+
+        stops_data = _make_stops_data(["TR", "PJ", "NY"])
+        stops_data[0]["STOP_STATUS"] = "ON TIME"
+        stops_data[0]["DEPARTED"] = "YES"
+        stops_data[1]["STOP_STATUS"] = "CANCELLED"
+        stops_data[2]["STOP_STATUS"] = "CANCELLED"
+
+        asyncio.run(
+            service._update_stops_from_embedded_data(AsyncMock(), journey, stops_data)
+        )
+
+        assert journey.is_cancelled is True
+        assert journey.cancellation_reason == (
+            "Journey terminated before reaching destination"
+        )
+
+    def test_all_stops_cancelled_marks_journey_cancelled(self):
+        """A train annulled before it ever ran."""
+        service = DepartureService()
+
+        stops = [_make_stop(code, i) for i, code in enumerate(["TR", "PJ", "NY"])]
+        journey = _make_journey_mock(stops=stops)
+        journey.is_cancelled = False
+        journey.cancellation_reason = None
+
+        stops_data = _make_stops_data(["TR", "PJ", "NY"])
+        for stop_data in stops_data:
+            stop_data["STOP_STATUS"] = "CANCELLED"
+
+        asyncio.run(
+            service._update_stops_from_embedded_data(AsyncMock(), journey, stops_data)
+        )
+
+        assert journey.is_cancelled is True
+        assert journey.cancellation_reason == "All stops cancelled by NJT"
+
+    def test_running_train_is_not_marked_cancelled(self):
+        """No false positives on a normal board payload."""
+        service = DepartureService()
+
+        stops = [_make_stop(code, i) for i, code in enumerate(["TR", "PJ", "NY"])]
+        journey = _make_journey_mock(stops=stops)
+        journey.is_cancelled = False
+        journey.cancellation_reason = None
+
+        stops_data = _make_stops_data(["TR", "PJ", "NY"])
+        stops_data[1]["STOP_STATUS"] = "LATE"
+
+        asyncio.run(
+            service._update_stops_from_embedded_data(AsyncMock(), journey, stops_data)
+        )
+
+        assert journey.is_cancelled is False
+        assert journey.cancellation_reason is None
+
+    def test_intermediate_only_cancellation_does_not_cancel_journey(self):
+        """A skipped intermediate stop is not a cancelled train — the terminal
+        still being served means the train completes its journey."""
+        service = DepartureService()
+
+        stops = [_make_stop(code, i) for i, code in enumerate(["TR", "PJ", "NY"])]
+        journey = _make_journey_mock(stops=stops)
+        journey.is_cancelled = False
+        journey.cancellation_reason = None
+
+        stops_data = _make_stops_data(["TR", "PJ", "NY"])
+        stops_data[1]["STOP_STATUS"] = "CANCELLED"
+
+        asyncio.run(
+            service._update_stops_from_embedded_data(AsyncMock(), journey, stops_data)
+        )
+
+        assert journey.is_cancelled is False
+
+    def test_existing_cancellation_reason_is_not_overwritten(self):
+        """Clearing/re-deriving a cancellation is discovery's job (#1498); this
+        path only ever sets the flag, and never restates a reason already
+        recorded by the fuller getTrainStopList collection."""
+        service = DepartureService()
+
+        stops = [_make_stop(code, i) for i, code in enumerate(["TR", "NY"])]
+        journey = _make_journey_mock(stops=stops)
+        journey.is_cancelled = True
+        journey.cancellation_reason = "All stops cancelled by NJT"
+
+        stops_data = _make_stops_data(["TR", "NY"])
+        stops_data[0]["STOP_STATUS"] = "ON TIME"
+        stops_data[1]["STOP_STATUS"] = "CANCELLED"
+
+        asyncio.run(
+            service._update_stops_from_embedded_data(AsyncMock(), journey, stops_data)
+        )
+
+        assert journey.is_cancelled is True
+        assert journey.cancellation_reason == "All stops cancelled by NJT"
+
+
 class TestStopsByCodeLookup:
     """Verify _update_stops_from_embedded_data uses journey.stops for lookup."""
 

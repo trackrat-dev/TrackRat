@@ -22,7 +22,7 @@ from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import now_et, parse_njt_time, validate_journey_date
 from trackrat.utils.train import (
     is_amtrak_train,
-    njt_stops_indicate_cancellation,
+    njt_cancellation_reason,
     normalize_njt_destination,
 )
 
@@ -572,21 +572,37 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                             # indicating cancellation (same rule as
                             # collect_journey_details). Absent/ambiguous STOPS
                             # clear as before, preserving the #1498 recovery.
-                            if (
-                                existing.is_cancelled
-                                and not njt_stops_indicate_cancellation(
-                                    [
-                                        stop.get("STOP_STATUS")
-                                        for stop in (train_data.get("STOPS") or [])
-                                    ]
-                                )
-                            ):
+                            #
+                            # The converse also holds and is applied here: the
+                            # board's STOP_STATUS values are the same evidence
+                            # collect_journey_details acts on, and
+                            # _populate_stop_times_from_discovery bumps
+                            # last_updated_at below, so if discovery sees an
+                            # annulled train and does nothing, the row reads
+                            # fresh-and-running until it goes stale enough for
+                            # a full collection (issue #1670).
+                            board_cancellation = njt_cancellation_reason(
+                                [
+                                    stop.get("STOP_STATUS")
+                                    for stop in (train_data.get("STOPS") or [])
+                                ]
+                            )
+                            if existing.is_cancelled and not board_cancellation:
                                 existing.is_cancelled = False
                                 existing.cancellation_reason = None
                                 logger.info(
                                     "reactivated_cancelled_train",
                                     train_id=train_id,
                                     journey_date=journey_date,
+                                )
+                            elif board_cancellation and not existing.is_cancelled:
+                                existing.is_cancelled = True
+                                existing.cancellation_reason = board_cancellation
+                                logger.info(
+                                    "cancelled_train_detected_during_discovery",
+                                    train_id=train_id,
+                                    journey_date=journey_date,
+                                    reason=board_cancellation,
                                 )
 
                             # Mark as observed if it was previously scheduled

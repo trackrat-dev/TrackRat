@@ -33,8 +33,10 @@ from trackrat.models.api import NJTransitStopData
 from trackrat.models.database import Base, JourneyStop, TrainJourney
 from trackrat.utils.time import now_et
 from trackrat.utils.train import (
+    NJT_CANCELLATION_REASON_ALL_STOPS,
+    NJT_CANCELLATION_REASON_TERMINATED,
     is_njt_stop_cancelled,
-    njt_stops_indicate_cancellation,
+    njt_cancellation_reason,
 )
 
 # ---------------------------------------------------------------------------
@@ -76,8 +78,8 @@ class TestIsNjtStopCancelled:
 
 
 class TestNjtStopsIndicateCancellation:
-    """Unit tests for the train-level cancellation rule shared by the collector
-    and discovery (PR #1519)."""
+    """Unit tests for the train-level cancellation rule shared by the collector,
+    the departure-board refresh and discovery (PR #1519, issue #1670)."""
 
     @pytest.mark.parametrize(
         "statuses,expected",
@@ -98,7 +100,36 @@ class TestNjtStopsIndicateCancellation:
         ],
     )
     def test_train_level_cancellation_rule(self, statuses, expected):
-        assert njt_stops_indicate_cancellation(statuses) is expected
+        assert (njt_cancellation_reason(statuses) is not None) is expected
+
+
+class TestNjtCancellationReason:
+    """The recorded reason, not just the yes/no outcome. Every call site — the
+    collector, the departure-board refresh and discovery — takes both the
+    decision and the stored `cancellation_reason` from this one function, so a
+    train shows the same explanation whichever path notices it (issue #1670)."""
+
+    @pytest.mark.parametrize(
+        "statuses,expected",
+        [
+            (
+                ["CANCELLED", "CANCELLED", "CANCELLED"],
+                NJT_CANCELLATION_REASON_ALL_STOPS,
+            ),
+            (["CANCELED", "CANCELLED"], NJT_CANCELLATION_REASON_ALL_STOPS),
+            # Train 3918 (2026-07-28): left Trenton, then annulled — origin
+            # reads departed/on-time while the terminal is CANCELLED.
+            (
+                ["ON TIME", "CANCELLED", "CANCELLED", "CANCELLED"],
+                NJT_CANCELLATION_REASON_TERMINATED,
+            ),
+            (["ON TIME", "CANCELLED", "ON TIME"], None),
+            (["ON TIME", "LATE"], None),
+            ([], None),
+        ],
+    )
+    def test_reason_matches_the_rule(self, statuses, expected):
+        assert njt_cancellation_reason(statuses) == expected
 
 
 # ---------------------------------------------------------------------------

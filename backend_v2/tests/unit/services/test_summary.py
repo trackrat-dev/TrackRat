@@ -2183,3 +2183,285 @@ class TestComputeTrainsByHeadway:
         assert [t.train_id for t in result[HEADWAY_BIN_5_10]] == ["B"]
         assert [t.train_id for t in result[HEADWAY_BIN_10_20]] == ["C"]
         assert [t.train_id for t in result[HEADWAY_BIN_20_PLUS]] == ["D"]
+
+
+class TestStalledTrainNotCountedOnTime:
+    """Regression for issue #1670.
+
+    NJT train 3918 departed Trenton on 2026-07-28 and then stopped moving. NJT
+    kept republishing every remaining stop's original schedule as its live
+    estimate, so `updated_*` sat frozen at the timetable while the train went
+    nowhere. `_calculate_departure_stats` compared estimate-vs-schedule, got a
+    delay of zero, and reported the train on time — at 06:45, at 07:00, at
+    07:25. The status bar read "Past two hours: 100% on time" for the entire
+    65 minutes the train was dead on the track.
+
+    A live estimate that is already in the past cannot be taken at face value
+    for a train that has not departed: the earliest it can now leave is *now*,
+    so it is at least that late.
+    """
+
+    @pytest.fixture
+    def summary_service(self):
+        return SummaryService()
+
+    @staticmethod
+    def _stalled_journey(
+        current_time,
+        *,
+        data_source="NJT",
+        observation_type="OBSERVED",
+        has_departed_station=False,
+        minutes_since_scheduled=48,
+    ):
+        """A train whose live estimate equals its schedule and is long past."""
+        journey = Mock(spec=TrainJourney)
+        journey.id = 1
+        journey.train_id = "3918"
+        journey.is_cancelled = False
+        journey.data_source = data_source
+        journey.observation_type = observation_type
+        journey.last_updated_at = current_time - timedelta(minutes=78)
+
+        scheduled = current_time - timedelta(minutes=minutes_since_scheduled)
+        boarding_stop = Mock()
+        boarding_stop.station_code = "PJ"
+        boarding_stop.stop_sequence = 2
+        boarding_stop.scheduled_departure = scheduled
+        boarding_stop.actual_departure = None
+        # The frozen estimate: NJT never moved it off the timetable.
+        boarding_stop.updated_departure = scheduled
+        boarding_stop.updated_arrival = scheduled
+        boarding_stop.has_departed_station = has_departed_station
+
+        dest_stop = Mock()
+        dest_stop.station_code = "NY"
+        dest_stop.stop_sequence = 5
+
+        journey.stops = [boarding_stop, dest_stop]
+        return journey
+
+    def test_frozen_on_time_estimate_counts_as_delayed(self, summary_service):
+        """The headline case: 48 minutes past a schedule the feed still calls
+        on time must not be reported as on time."""
+        current_time = datetime.now(UTC)
+
+        stats = summary_service._calculate_departure_stats(
+            [self._stalled_journey(current_time)], "PJ", current_time=current_time
+        )
+
+        assert stats.total_count == 1
+        assert stats.on_time_percentage == 0.0, (
+            "a train stalled 48 minutes past its schedule was reported 100% on "
+            "time before issue #1670"
+        )
+        assert 47 <= stats.average_delay_minutes <= 49
+        assert len(stats.trains_by_category[DELAY_CATEGORY_ON_TIME]) == 0
+        assert len(stats.trains_by_category[DELAY_CATEGORY_DELAYED]) == 1
+
+    def test_estimate_within_grace_still_counts_as_on_time(self, summary_service):
+        """Ordinary feed lag — an estimate a minute or so in the past — must not
+        flip a punctual train to delayed."""
+        current_time = datetime.now(UTC)
+
+        journey = self._stalled_journey(current_time, minutes_since_scheduled=1)
+
+        stats = summary_service._calculate_departure_stats(
+            [journey], "PJ", current_time=current_time
+        )
+
+        assert stats.on_time_percentage == 100.0
+        assert stats.average_delay_minutes == 0.0
+
+    def test_departed_stop_is_not_penalised(self, summary_service):
+        """If the train has left, a stale estimate says nothing about lateness —
+        we simply lack a departure timestamp."""
+        current_time = datetime.now(UTC)
+
+        journey = self._stalled_journey(current_time, has_departed_station=True)
+
+        stats = summary_service._calculate_departure_stats(
+            [journey], "PJ", current_time=current_time
+        )
+
+        assert stats.on_time_percentage == 100.0
+
+    def test_schedule_first_source_is_not_penalised(self, summary_service):
+        """PATCO and SEPTA Metro have no real-time feed: their `updated_*` values
+        are the timetable, so those being in the past is meaningless and must
+        not mark every past train massively delayed."""
+        current_time = datetime.now(UTC)
+
+        journey = self._stalled_journey(current_time, data_source="PATCO")
+
+        stats = summary_service._calculate_departure_stats(
+            [journey], "PJ", current_time=current_time
+        )
+
+        assert stats.on_time_percentage == 100.0
+        assert stats.average_delay_minutes == 0.0
+
+    def test_never_observed_journey_is_not_penalised(self, summary_service):
+        """A SCHEDULED row has never been seen live, so its stop times are the
+        timetable rather than an estimate that has gone stale. Trains that never
+        ran are the cancellation reconciler's business, not the delay stats'."""
+        current_time = datetime.now(UTC)
+
+        journey = self._stalled_journey(current_time, observation_type="SCHEDULED")
+
+        stats = summary_service._calculate_departure_stats(
+            [journey], "PJ", current_time=current_time
+        )
+
+        assert stats.on_time_percentage == 100.0
+
+    def test_genuinely_delayed_estimate_still_wins_when_later_than_now(
+        self, summary_service
+    ):
+        """The floor only raises the delay; a feed that already admits a bigger
+        delay than wall clock keeps its own number."""
+        current_time = datetime.now(UTC)
+
+        journey = self._stalled_journey(current_time, minutes_since_scheduled=10)
+        # Feed says it will leave 30 min after schedule — 20 min in the future.
+        journey.stops[0].updated_departure = journey.stops[
+            0
+        ].scheduled_departure + timedelta(minutes=30)
+        journey.stops[0].updated_arrival = journey.stops[0].updated_departure
+
+        stats = summary_service._calculate_departure_stats(
+            [journey], "PJ", current_time=current_time
+        )
+
+        assert 29 <= stats.average_delay_minutes <= 31
+
+
+class TestCancellationWordingConsistency:
+    """Regression for the follow-up report on issue #1670: the status bar showed
+    the headline "1 cancellation" directly above "100% of similar NJ Transit
+    trains departing on time".
+
+    Cancelled trains are excluded from the on-time denominator, which is
+    defensible statistically and reads as a flat contradiction to a rider. When
+    a cancellation is reported alongside a percentage, name the population the
+    percentage is over.
+    """
+
+    @pytest.fixture
+    def summary_service(self):
+        return SummaryService()
+
+    def test_train_body_qualifies_percentage_when_a_train_was_cancelled(
+        self, summary_service
+    ):
+        dep_stats = OnTimeStats(
+            on_time_percentage=100.0,
+            average_delay_minutes=0.0,
+            total_count=19,
+            cancellation_count=1,
+        )
+        train_stats = OnTimeStats(
+            on_time_percentage=0.0,
+            average_delay_minutes=0.0,
+            total_count=0,
+            cancellation_count=0,
+        )
+
+        headline, body = summary_service._format_train_headline_body(
+            dep_stats, None, train_stats, "3918", "NJ Transit", 1
+        )
+
+        assert headline == "1 cancellation"
+        assert "100% of the 19 similar NJ Transit trains that ran departed on time" in (
+            body
+        )
+        assert "100% of similar NJ Transit trains departing on time" not in body
+
+    def test_train_body_keeps_plain_wording_without_cancellations(
+        self, summary_service
+    ):
+        dep_stats = OnTimeStats(
+            on_time_percentage=90.0,
+            average_delay_minutes=1.0,
+            total_count=20,
+            cancellation_count=0,
+        )
+        train_stats = OnTimeStats(
+            on_time_percentage=0.0,
+            average_delay_minutes=0.0,
+            total_count=0,
+            cancellation_count=0,
+        )
+
+        _, body = summary_service._format_train_headline_body(
+            dep_stats, None, train_stats, "3918", "NJ Transit", 0
+        )
+
+        assert "90% of similar NJ Transit trains departing on time" in body
+        assert "that ran" not in body
+
+    def test_no_on_time_sentence_when_nothing_ran(self, summary_service):
+        """An all-cancelled window has an empty denominator; "0% ... departing on
+        time" is noise next to the cancellation sentence."""
+        dep_stats = OnTimeStats(
+            on_time_percentage=0.0,
+            average_delay_minutes=0.0,
+            total_count=0,
+            cancellation_count=2,
+        )
+        train_stats = OnTimeStats(
+            on_time_percentage=0.0,
+            average_delay_minutes=0.0,
+            total_count=0,
+            cancellation_count=0,
+        )
+
+        headline, body = summary_service._format_train_headline_body(
+            dep_stats, None, train_stats, "3918", "NJ Transit", 2
+        )
+
+        assert headline == "2 cancellations"
+        assert body == "2 similar trains cancelled."
+
+    def test_singular_train_wording(self, summary_service):
+        dep_stats = OnTimeStats(
+            on_time_percentage=100.0,
+            average_delay_minutes=0.0,
+            total_count=1,
+            cancellation_count=1,
+        )
+        train_stats = OnTimeStats(
+            on_time_percentage=0.0,
+            average_delay_minutes=0.0,
+            total_count=0,
+            cancellation_count=0,
+        )
+
+        _, body = summary_service._format_train_headline_body(
+            dep_stats, None, train_stats, "3918", "NJ Transit", 1
+        )
+
+        assert (
+            "100% of the 1 similar NJ Transit train that ran departed on time" in body
+        )
+
+    def test_network_body_qualifies_percentage_when_trains_were_cancelled(
+        self, summary_service
+    ):
+        headline, body = summary_service._format_network_headline_body(
+            on_time_pct=100.0, avg_delay=0.0, cancellations=1
+        )
+
+        assert headline == "1 cancellation"
+        assert (
+            body == "1 train cancelled. 100% of the trains that ran arriving on time."
+        )
+
+    def test_network_body_keeps_plain_wording_without_cancellations(
+        self, summary_service
+    ):
+        _, body = summary_service._format_network_headline_body(
+            on_time_pct=97.0, avg_delay=0.0, cancellations=0
+        )
+
+        assert body == "97% of trains arriving on time."

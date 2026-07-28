@@ -224,25 +224,40 @@ def is_njt_stop_cancelled(status: str | None) -> bool:
     return status.strip().upper() in ("CANCELLED", "CANCELED")
 
 
-def njt_stops_indicate_cancellation(stop_statuses: list[str | None]) -> bool:
-    """True if a train's NJT stop statuses indicate the train is cancelled.
+NJT_CANCELLATION_REASON_ALL_STOPS = "All stops cancelled by NJT"
+NJT_CANCELLATION_REASON_TERMINATED = "Journey terminated before reaching destination"
 
-    Mirrors the collector's cancellation rule (``collect_journey_details``):
-    a train is cancelled if NJT marks *every* stop cancelled (train never ran)
-    OR the *terminal* stop is cancelled (train didn't complete its journey —
-    origin may read "ON TIME" while every later stop is "CANCELLED").
+
+def njt_cancellation_reason(stop_statuses: list[str | None]) -> str | None:
+    """The reason a train's NJT stop statuses indicate cancellation, else None.
+
+    This is the single source of NJT's cancellation rule: a train is cancelled
+    if NJT marks *every* stop cancelled (train never ran) OR the *terminal*
+    stop is cancelled (train didn't complete its journey — origin may read
+    "ON TIME" while every later stop is "CANCELLED").
 
     ``stop_statuses`` must be in stop order; the last element is treated as the
     terminal stop. An empty list is not a cancellation (absent evidence), so
     callers gating on this stay conservative.
+
+    Every path that ingests NJT stop statuses must apply this rule, not just
+    the full ``getTrainStopList`` collection: the station-board payload carries
+    the same STOP_STATUS values *and* marks the journey fresh, so a path that
+    reads the board without evaluating cancellation leaves the row looking
+    up-to-date and not-cancelled while NJT is annulling the train (issue
+    #1670).
     """
     if not stop_statuses:
-        return False
+        return None
     cancelled = [is_njt_stop_cancelled(s) for s in stop_statuses]
     cancelled_count = sum(cancelled)
     if not cancelled_count:
-        return False
-    return cancelled_count == len(stop_statuses) or cancelled[-1]
+        return None
+    if cancelled_count == len(stop_statuses):
+        return NJT_CANCELLATION_REASON_ALL_STOPS
+    if cancelled[-1]:
+        return NJT_CANCELLATION_REASON_TERMINATED
+    return None
 
 
 def normalize_njt_destination(destination: str | None) -> str:
