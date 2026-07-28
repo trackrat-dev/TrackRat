@@ -194,7 +194,7 @@ webpage_v2/
 
 - `/` - Landing page (marketing, open-source info)
 - `/departures` - Trip selection (origin + destination pickers, last route restore)
-- `/trains/:from/:to` - Train list for route (filter, summary, date picker, alerts)
+- `/trains/:from/:to` - Train list for route (filter, summary, date picker, alerts). Optional `?data_source&lines` scopes the board to one line (built by `buildDeparturesUrl`): the scoped form fetches `/trains/departures` with a server-side `lines` filter instead of the combined `/trips/search`, and scopes the summary and service alerts to match. Without `lines` the behaviour is unchanged.
 - `/train/:trainId/:from?/:to?` - Train details (predictions, history, alerts)
 - `/station/:code` - Single-station details view
 - `/trip` - Multi-leg trip details view (transfer connections); compact URL `?date&legs&walk` with `legs` as `dataSource:trainId:boardingCode:alightingCode` (legacy `?trip=<JSON>` still parsed)

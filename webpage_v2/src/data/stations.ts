@@ -2486,6 +2486,19 @@ export const ALERT_CAPABLE_SYSTEMS: TransitSystem[] = (
   ['SUBWAY', 'LIRR', 'MNR', 'NJT', 'SEPTA_RR', 'SEPTA_METRO'] as TransitSystem[]
 ).filter(s => !DISABLED_SYSTEMS.has(s));
 
+// Systems whose topology `lineCodes` use the same vocabulary as the
+// `affected_route_ids` on a service alert, so line codes can be used directly to
+// scope alerts to one line.
+//
+// NJT alerts are parsed from MSG_LINE_SCOPE into our own two-letter codes ("MA"),
+// and SUBWAY route_ids are the line letter/number ("1"), so both match topology.
+// LIRR and MNR do NOT: their alerts carry the raw MTA GTFS route_id ("1", "2",
+// ...) while topology uses "LIRR-BB" / "MNR-HUD", so filtering by line code
+// there would match nothing and silently hide every route-scoped alert, leaving
+// only system-wide ones. Those systems intentionally stay unscoped (showing all
+// of the system's alerts) until a code -> GTFS route_id map exists (issue #1625).
+export const LINE_SCOPED_ALERT_SYSTEMS: TransitSystem[] = ['NJT', 'SUBWAY'];
+
 // Aliases for codes that share a physical station with another system's code.
 // The duplicate entry is hidden from the picker, but route data and shareable
 // URLs may still reference the alias code — resolve those to the canonical entry.

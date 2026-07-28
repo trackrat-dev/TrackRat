@@ -49,8 +49,11 @@ export function ServiceAlertBanner({ dataSource, routeIds }: ServiceAlertBannerP
   const [sectionExpanded, setSectionExpanded] = useState(false);
   const [failed, setFailed] = useState(false);
 
-  // Stabilize routeIds reference for the polling dependency
-  const routeIdsKey = useMemo(() => routeIds?.sort().join(',') ?? '', [routeIds]);
+  // Stabilize routeIds reference for the polling dependency. Copy before
+  // sorting: callers pass shared arrays (the module-level `lineCodes` on a
+  // `RouteDefinition`), and sorting in place would permanently reorder the
+  // caller's data — which also feeds the `lines=` query string.
+  const routeIdsKey = useMemo(() => (routeIds ? [...routeIds].sort().join(',') : ''), [routeIds]);
   // Systems with backend service-alert collection (MTA + NJT).
   const isAlertCapable = ALERT_CAPABLE_SYSTEMS.includes(dataSource as TransitSystem);
 

@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Train, TripSearchResponse } from '../types';
 import { apiService } from '../services/api';
 import { formatTime } from '../utils/date';
-import { buildTrainUrl } from '../utils/routes';
+import { buildDeparturesUrl, buildTrainUrl } from '../utils/routes';
 import { tripLegToTrain } from '../utils/trips';
 import { usePolling } from '../utils/usePolling';
 import { TrainCard } from './TrainCard';
@@ -85,13 +85,19 @@ interface ViewProps {
   from: string;
   to: string;
   onSelect: (train: Train) => void;
+  /**
+   * Target for "View All Departures". The container builds it so the line scope
+   * it already fetches with is carried into the link; defaults to the plain
+   * station-pair board when omitted.
+   */
+  viewAllUrl?: string;
 }
 
 /**
  * Presentational timeline. Kept separate from data fetching so it can be
  * rendered and tested directly with constructed rows (no API mocking).
  */
-export function DeparturesTimelineView({ rows, from, to, onSelect }: ViewProps) {
+export function DeparturesTimelineView({ rows, from, to, onSelect, viewAllUrl }: ViewProps) {
   // "No more trains" when nothing sits after the NOW divider.
   const nowIndex = rows.findIndex((r) => r.kind === 'now');
   const hasUpcoming = nowIndex >= 0 && nowIndex < rows.length - 1;
@@ -119,7 +125,7 @@ export function DeparturesTimelineView({ rows, from, to, onSelect }: ViewProps) 
         )}
       </div>
       <Link
-        to={`/trains/${from}/${to}`}
+        to={viewAllUrl ?? buildDeparturesUrl({ from, to })}
         className="block mt-3 text-xs text-accent hover:text-accent/80 font-medium text-center"
       >
         View All Departures →
@@ -221,6 +227,15 @@ export function DeparturesTimeline({ from, to, dataSource, lineCodes }: Props) {
       rows={rows}
       from={from}
       to={to}
+      // Carry this timeline's scope into "View All" so the full board matches
+      // what the timeline showed, and survives reload/share (issue #1625).
+      // Only in line mode: without line codes the timeline itself is the ordinary
+      // combined station-pair board, so the link stays the plain unscoped path.
+      viewAllUrl={
+        lineCodes && lineCodes.length > 0
+          ? buildDeparturesUrl({ from, to, dataSource, lines: lineCodes })
+          : buildDeparturesUrl({ from, to })
+      }
       onSelect={(train) =>
         navigate(
           buildTrainUrl({

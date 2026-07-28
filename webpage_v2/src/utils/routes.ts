@@ -34,6 +34,14 @@ export interface RouteStatusParams {
   dataSource?: TransitSystem | string;
 }
 
+export interface DeparturesRouteParams {
+  from: string;
+  to: string;
+  dataSource?: TransitSystem | string;
+  /** Line codes to scope the board to; omitted entirely when empty. */
+  lines?: string[];
+}
+
 export function buildTrainUrl({
   trainId,
   from,
@@ -92,6 +100,53 @@ export function buildRouteStatusUrl({
     data_source: dataSource,
   });
   return `${path}?${searchParams.toString()}`;
+}
+
+/**
+ * Departures board URL, optionally scoped to one line.
+ *
+ * Without `lines` this is the plain `/trains/:from/:to` path every other caller
+ * already produces, so unscoped links keep their combined behaviour. With
+ * `lines` the scope lives in the query string rather than in component state,
+ * which is what makes a line-scoped board survive reload and sharing — the
+ * route pattern itself carries no line identity (issue #1625). `data_source`
+ * rides along because a line code alone is ambiguous across systems.
+ */
+export function buildDeparturesUrl({
+  from,
+  to,
+  dataSource,
+  lines,
+}: DeparturesRouteParams): string {
+  const path = `/trains/${encodeURIComponent(from)}/${encodeURIComponent(to)}`;
+
+  const searchParams = new URLSearchParams();
+  if (dataSource) searchParams.set('data_source', dataSource);
+  if (lines && lines.length > 0) searchParams.set('lines', lines.join(','));
+
+  const query = searchParams.toString();
+  return query ? `${path}?${query}` : path;
+}
+
+/**
+ * Split a raw comma-separated `lines` value into codes. Blank/whitespace-only
+ * entries are dropped so `?lines=` and `?lines=,,` behave like no filter at all
+ * rather than sending an empty code to the API.
+ *
+ * Takes the raw string rather than the `URLSearchParams` so callers can memoize
+ * on that string — re-parsing produces a fresh array on every render, which is
+ * unsafe to hand straight to a hook dependency list.
+ */
+export function parseLineCodes(raw: string | null | undefined): string[] {
+  return (raw ?? '')
+    .split(',')
+    .map((code) => code.trim())
+    .filter((code) => code.length > 0);
+}
+
+/** `parseLineCodes` against the `lines` param of a query string. */
+export function parseLinesParam(params: URLSearchParams): string[] {
+  return parseLineCodes(params.get('lines'));
 }
 
 /**

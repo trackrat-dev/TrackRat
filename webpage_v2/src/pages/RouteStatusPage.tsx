@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { RouteHistoryResponse, OperationsSummaryResponse } from '../types';
 import { apiService } from '../services/api';
-import { getStationByCode } from '../data/stations';
+import { getStationByCode, LINE_SCOPED_ALERT_SYSTEMS } from '../data/stations';
 import { getRouteById } from '../data/routeTopology';
 import { Skeleton } from '../components/Skeleton';
 import { ErrorMessage } from '../components/ErrorMessage';
@@ -72,6 +72,12 @@ export function RouteStatusPage() {
   const backFallback = line ? `/system/${line.dataSource}` : from && to ? `/trains/${from}/${to}` : '/departures';
   const goBack = useBackNavigation(backFallback);
 
+  // Only scope alerts by line code where the codes share a vocabulary with the
+  // alert feed's affected_route_ids — see LINE_SCOPED_ALERT_SYSTEMS. Elsewhere
+  // (LIRR/MNR) staying unscoped shows extra alerts; scoping would hide real ones.
+  const alertRouteIds =
+    line && LINE_SCOPED_ALERT_SYSTEMS.includes(line.dataSource) ? line.lineCodes : undefined;
+
   const loadData = useCallback(() => {
     if (!from || !to) return;
 
@@ -137,8 +143,10 @@ export function RouteStatusPage() {
         </p>
       </div>
 
-      {/* Service alerts */}
-      <ServiceAlertBanner dataSource={dataSource} />
+      {/* Service alerts — line-scoped in line mode so a shared-terminal sibling's
+          disruption isn't attributed to this line. System-wide alerts (empty
+          affected_route_ids) are preserved by the banner's own filter. */}
+      <ServiceAlertBanner dataSource={dataSource} routeIds={alertRouteIds} />
 
       {/* Operations summary */}
       {summary && (

@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { RouteStatusPage } from './RouteStatusPage';
-import { AggregateStats, RouteHistoryResponse } from '../types';
+import { AggregateStats, RouteHistoryResponse, ServiceAlert, Train, TripOption } from '../types';
 
 // RouteStatusPage and its children (DeparturesTimeline, ServiceAlertBanner) all
 // read from apiService, so mock the whole module.
@@ -37,6 +37,59 @@ function makeHistory(onTimePercentage: number): RouteHistoryResponse {
     route: { from_station: 'NP', to_station: 'NY', total_trains: 100, data_source: 'NJT', baseline_train_count: null },
     aggregate_stats: makeStats(onTimePercentage),
     highlighted_train: null,
+  };
+}
+
+/** A service alert as the /alerts/service endpoint returns it. */
+function makeAlert(alertId: string, header: string, affectedRouteIds: string[]): ServiceAlert {
+  return {
+    alert_id: alertId,
+    data_source: 'NJT',
+    alert_type: 'alert',
+    affected_route_ids: affectedRouteIds,
+    header_text: header,
+    description_text: `${header} — details.`,
+    active_periods: [],
+  };
+}
+
+/** A departure as /trains/departures returns it; enough to render one card. */
+function makeDeparture(trainId: string): Train {
+  return {
+    train_id: trainId,
+    journey_date: '2025-01-15',
+    line: { code: 'MA', name: 'Main Line', color: '#FFAA00' },
+    destination: 'Suffern',
+    departure: { code: 'HB', name: 'Hoboken', scheduled_time: '2025-01-15T14:00:00-05:00' },
+    arrival: { code: 'SF', name: 'Suffern', scheduled_time: '2025-01-15T15:10:00-05:00' },
+    data_freshness: { last_updated: '', age_seconds: 0, update_count: 0, collection_method: null },
+    data_source: 'NJT',
+    observation_type: 'OBSERVED',
+    is_cancelled: false,
+  };
+}
+
+/** Wrap a Train as the single direct leg `/trips/search` returns. */
+function makeDirectTrip(train: Train): TripOption {
+  return {
+    legs: [
+      {
+        train_id: train.train_id,
+        journey_date: train.journey_date,
+        line: train.line,
+        data_source: train.data_source,
+        destination: train.destination,
+        boarding: train.departure,
+        alighting: train.arrival,
+        observation_type: train.observation_type,
+        is_cancelled: train.is_cancelled,
+      },
+    ],
+    transfers: [],
+    departure_time: train.departure.scheduled_time ?? '',
+    arrival_time: train.arrival.scheduled_time ?? '',
+    total_duration_minutes: 70,
+    is_direct: true,
   };
 }
 
@@ -124,6 +177,20 @@ describe('RouteStatusPage', () => {
     expect(screen.queryByRole('status', { name: 'Loading route status' })).not.toBeInTheDocument();
   });
 
+  it('leaves the "View All Departures" link unscoped in station-pair mode', async () => {
+    // No line context here, so the link must stay the plain path — a scoped URL
+    // would push an ordinary station-pair board onto the line-filtered fetch.
+    vi.mocked(apiService.getRouteHistory).mockResolvedValue(makeHistory(90));
+    vi.mocked(apiService.searchTrips).mockResolvedValue({
+      trips: [makeDirectTrip(makeDeparture('3515'))],
+    } as never);
+
+    renderPage();
+
+    const link = (await screen.findByText('View All Departures \u2192')).closest('a');
+    expect(link).toHaveAttribute('href', '/trains/NP/NY');
+  });
+
   describe('line mode (/line/:lineId)', () => {
     it('titles the page with the line name and queries its endpoints', async () => {
       vi.mocked(apiService.getRouteHistory).mockResolvedValue(makeHistory(90));
@@ -182,6 +249,60 @@ describe('RouteStatusPage', () => {
         'HB',
         expect.objectContaining({ to: 'SF', lines: ['BE', 'Be'], hideDeparted: true })
       );
+    });
+
+    it('filters service alerts to the line, keeping system-wide ones', async () => {
+      // Main and Bergen share HB->SF, so a Bergen disruption must not surface on
+      // the Main line page — while a genuinely system-wide NJT alert must (#1625).
+      vi.mocked(apiService.getRouteHistory).mockResolvedValue(makeHistory(90));
+      vi.mocked(apiService.getServiceAlerts).mockResolvedValue({
+        alerts: [
+          makeAlert('m1', 'Main Line signal trouble', ['MA']),
+          makeAlert('s1', 'Bergen County Line detour', ['BE']),
+          makeAlert('w1', 'NJT systemwide advisory', []),
+        ],
+        count: 3,
+      } as never);
+
+      renderLine('njt-main');
+      await screen.findByRole('heading', { name: 'Main Line' });
+
+      fireEvent.click(await screen.findByRole('button', { name: /show service alerts \(2\)/i }));
+
+      expect(await screen.findByText('Main Line signal trouble')).toBeInTheDocument();
+      expect(screen.getByText('NJT systemwide advisory')).toBeInTheDocument();
+      expect(screen.queryByText('Bergen County Line detour')).not.toBeInTheDocument();
+    });
+
+    it('leaves alerts unscoped for systems whose line codes differ from alert route ids', async () => {
+      // LIRR topology uses "LIRR-BB" while its alerts carry the raw MTA GTFS
+      // route_id ("1"). Filtering by line code there would match nothing and
+      // hide every route-scoped alert, so LIRR stays unscoped (#1625).
+      vi.mocked(apiService.getRouteHistory).mockResolvedValue(makeHistory(90));
+      vi.mocked(apiService.getServiceAlerts).mockResolvedValue({
+        alerts: [makeAlert('l1', 'Babylon Branch delays', ['1'])],
+        count: 1,
+      } as never);
+
+      renderLine('lirr-babylon');
+      await screen.findByRole('heading', { name: 'Babylon Branch' });
+
+      fireEvent.click(await screen.findByRole('button', { name: /show service alerts/i }));
+      expect(await screen.findByText('Babylon Branch delays')).toBeInTheDocument();
+    });
+
+    it('carries the line scope into the "View All Departures" link', async () => {
+      // The route pattern has no line identity, so the scope has to ride in the
+      // query string for the resulting board to survive reload and sharing.
+      vi.mocked(apiService.getRouteHistory).mockResolvedValue(makeHistory(90));
+      vi.mocked(apiService.getDepartures).mockResolvedValue({
+        departures: [makeDeparture('3515')],
+      } as never);
+
+      renderLine('njt-main');
+
+      const link = (await screen.findByText('View All Departures \u2192')).closest('a');
+      expect(link).toHaveAttribute('href', '/trains/HB/SF?data_source=NJT&lines=MA%2CMa');
     });
 
     it('shows an error for an unknown line id', () => {
