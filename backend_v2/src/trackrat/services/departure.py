@@ -333,10 +333,14 @@ class DepartureService:
         ``line_codes`` optionally scopes results to specific lines (raw match
         against ``TrainDeparture.line.code``, same semantics as the
         /routes/history ``lines`` filter) so lines sharing terminal stations
-        (e.g. NJT Main/Bergen HB-SF) get distinct boards. Applied to the
-        merged real-time + GTFS list *before* the limit, so a shared-terminal
-        sibling can't consume the limit and hide this line's next train
-        (issue #1567 / PR #1585 review).
+        (e.g. NJT Main/Bergen HB-SF) get distinct boards. On the today/past
+        path it is applied to the merged real-time + GTFS list *before* the
+        limit, so a shared-terminal sibling can't consume the limit and hide
+        this line's next train (issue #1567 / PR #1585 review). The
+        future-date path does **not** carry this guarantee:
+        ``GTFSService.get_scheduled_departures`` takes no line filter, so it
+        truncates to ``limit`` across all lines and the filter below only
+        narrows what survives.
 
         ``label_matched_stop`` labels each departure's boarding/alighting
         ``StationInfo.code`` with the *actual* stop the journey was matched on

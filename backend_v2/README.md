@@ -165,8 +165,8 @@ Get trains between stations with filtering:
 - `from`/`to`: Station codes (works for any segment)
 - `limit`: Max results (default: 50)
 - `data_sources`: Comma-separated list of NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, BART, MBTA, METRA, WMATA, SEPTA_RR, SEPTA_METRO (default: all)
-- `lines`: Comma-separated line codes (e.g. `MA,Ma`) to scope shared-terminal routes to one line; filtered server-side before the limit. Mirrors the `/routes/history` and `/routes/summary?scope=route` filter.
-- `date` / `time_from` / `time_to`: Journey date and time window (default: today, now → +24h)
+- `lines`: Comma-separated line codes (e.g. `MA,Ma`) to scope shared-terminal routes to one line. Mirrors the `/routes/history` and `/routes/summary?scope=route` filter. For today/past dates the real-time rows are filtered by line before the limit is applied, so a shared-terminal sibling can't consume the limit. For a **future** `date` the request is served from GTFS, which truncates to `limit` first and filters by line afterwards — a low-frequency line at a busy station can come back short or empty.
+- `date` / `time_from` / `time_to`: Journey date and time window. Defaults to today, and — for today/past dates — local (ET) midnight of the query date through midnight + 26h, not `now` → `+24h`. The 26h span covers after-midnight departures still belonging to the service day.
 - `hide_departed`: Skip trains that have already departed (default: false). When true, also skips expensive past-train refresh for better performance.
 - Returns both SCHEDULED and OBSERVED trains
 
