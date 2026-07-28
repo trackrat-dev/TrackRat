@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { RouteStatusPage } from './RouteStatusPage';
+import { getRouteById } from '../data/routeTopology';
 import { AggregateStats, RouteHistoryResponse } from '../types';
 
 // RouteStatusPage and its children (DeparturesTimeline, ServiceAlertBanner) all
@@ -188,6 +189,81 @@ describe('RouteStatusPage', () => {
       renderLine('does-not-exist');
       expect(screen.getByText(/Unknown line/)).toBeInTheDocument();
       expect(apiService.getRouteHistory).not.toHaveBeenCalled();
+    });
+
+    // Issue #1625: the line page's two exits used to drop line identity.
+    it('keeps line scope in the "View All Departures" link so it survives reload and sharing', async () => {
+      vi.mocked(apiService.getRouteHistory).mockResolvedValue(makeHistory(90));
+      // The timeline only renders once a poll returns something.
+      vi.mocked(apiService.getDepartures).mockResolvedValue({
+        departures: [
+          {
+            train_id: '1',
+            journey_date: '2026-07-28',
+            line: { code: 'MA', name: 'Main', color: '#fff' },
+            destination: 'Suffern',
+            departure: { code: 'HB', name: 'Hoboken', scheduled_time: '2026-07-28T23:00:00-04:00' },
+            arrival: null,
+            data_source: 'NJT',
+            observation_type: 'OBSERVED',
+            is_cancelled: false,
+            data_freshness: { last_updated: '2026-07-28T22:00:00-04:00', is_stale: false },
+          },
+        ],
+      } as never);
+
+      renderLine('njt-main');
+      await screen.findByRole('heading', { name: 'Main Line' });
+
+      const link = await screen.findByText('View All Departures →');
+      expect(link.closest('a')).toHaveAttribute(
+        'href',
+        '/trains/HB/SF?data_source=NJT&lines=MA%2CMa'
+      );
+    });
+
+    it('filters line-page service alerts to the line while keeping system-wide notices', async () => {
+      vi.mocked(apiService.getRouteHistory).mockResolvedValue(makeHistory(90));
+      vi.mocked(apiService.getServiceAlerts).mockResolvedValue({
+        alerts: [
+          {
+            alert_id: 'bergen-only',
+            alert_type: 'alert',
+            header_text: 'Bergen County delays',
+            description_text: null,
+            affected_route_ids: ['BE'],
+            active_periods: [],
+            data_source: 'NJT',
+          },
+          {
+            alert_id: 'system-wide',
+            alert_type: 'alert',
+            header_text: 'NJ Transit systemwide notice',
+            description_text: null,
+            affected_route_ids: [],
+            active_periods: [],
+            data_source: 'NJT',
+          },
+        ],
+      } as never);
+
+      renderLine('njt-main');
+      await screen.findByRole('heading', { name: 'Main Line' });
+
+      // Main must not surface Bergen's alert, but must keep the system-wide one.
+      expect(await screen.findByText('NJ Transit systemwide notice')).toBeInTheDocument();
+      expect(screen.queryByText('Bergen County delays')).not.toBeInTheDocument();
+    });
+
+    it('does not mutate the shared topology lineCodes array when sorting for the alert key', () => {
+      // ServiceAlertBanner sorts routeIds to build a stable polling key; an
+      // in-place sort would permanently reorder the module-level ROUTES entry.
+      const before = [...(getRouteById('njt-main')?.lineCodes ?? [])];
+      vi.mocked(apiService.getRouteHistory).mockResolvedValue(makeHistory(90));
+
+      renderLine('njt-main');
+
+      expect(getRouteById('njt-main')?.lineCodes).toEqual(before);
     });
   });
 });

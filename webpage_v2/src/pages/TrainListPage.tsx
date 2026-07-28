@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Train, TripOption, OperationsSummaryResponse } from '../types';
 import { apiService } from '../services/api';
 import { useAppStore } from '../store/appStore';
@@ -22,7 +22,19 @@ const RouteMap = lazy(() => import('../components/RouteMap').then((m) => ({ defa
 
 export function TrainListPage() {
   const { from, to } = useParams<{ from: string; to: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+
+  // Optional line scope carried in the URL by "View All Departures" off a
+  // line-detail page, so reload and share preserve which line was meant
+  // (issue #1625). Absent params keep the ordinary combined station-pair view.
+  const dataSourceParam = searchParams.get('data_source') || undefined;
+  const linesParam = searchParams.get('lines');
+  const lineCodes = useMemo(
+    () => linesParam?.split(',').map((c) => c.trim()).filter(Boolean) ?? [],
+    [linesParam]
+  );
+  const isLineScoped = lineCodes.length > 0;
   const goBack = useBackNavigation('/departures');
   const { addRecentTrip } = useAppStore();
 
@@ -57,7 +69,39 @@ export function TrainListPage() {
   const fetchTrains = useCallback(async (signal?: AbortSignal) => {
     if (!from || !to) return;
 
+    const sortDepartedLast = (list: Train[]): Train[] =>
+      [...list].sort((a, b) => {
+        const aDeparted = hasTrainDeparted(a);
+        const bDeparted = hasTrainDeparted(b);
+        if (aDeparted !== bDeparted) return aDeparted ? 1 : -1;
+        return 0;
+      });
+
     try {
+      // Line-scoped views go to /trains/departures, which applies the line
+      // filter server-side before its limit — a shared-terminal sibling can't
+      // crowd out this line's trains (issue #1567). Trip search takes no line
+      // argument, so it can only ever return the combined board. A line is by
+      // definition a direct route, so there are no transfer trips to show.
+      if (isLineScoped) {
+        const response = await apiService.getDepartures(from, {
+          to,
+          dataSources: dataSourceParam,
+          lines: lineCodes,
+          date: selectedDate || undefined,
+          limit: 50,
+          signal,
+        });
+
+        setTrains(sortDepartedLast(response.departures));
+        setTransferTrips([]);
+        setIsTransferSearch(false);
+        setLastUpdated(new Date());
+        setError(null);
+        setLoading(false);
+        return;
+      }
+
       const response = await apiService.searchTrips(from, to, 50, selectedDate || undefined, signal);
 
       // Split response into direct and transfer trips
@@ -66,14 +110,8 @@ export function TrainListPage() {
 
       // Convert direct trips to Train objects for existing TrainCard
       const directTrains = directTrips.map(tripLegToTrain);
-      const sorted = [...directTrains].sort((a, b) => {
-        const aDeparted = hasTrainDeparted(a);
-        const bDeparted = hasTrainDeparted(b);
-        if (aDeparted !== bDeparted) return aDeparted ? 1 : -1;
-        return 0;
-      });
 
-      setTrains(sorted);
+      setTrains(sortDepartedLast(directTrains));
       setTransferTrips(transferTripsResult);
       setIsTransferSearch(transferTripsResult.length > 0 && directTrips.length === 0);
       setLastUpdated(new Date());
@@ -84,11 +122,13 @@ export function TrainListPage() {
       setError(err instanceof Error ? err.message : 'Failed to load trains');
       setLoading(false);
     }
-  }, [from, to, selectedDate]);
+  }, [from, to, selectedDate, isLineScoped, lineCodes, dataSourceParam]);
 
   // Polling: visibility-aware, aborts in-flight on unmount/dep change.
   // Future-dated views show only scheduled data, so polling is meaningless.
-  usePolling(fetchTrains, [from, to, selectedDate], { enabled: !isViewingFutureDate });
+  usePolling(fetchTrains, [from, to, selectedDate, isLineScoped, lineCodes, dataSourceParam], {
+    enabled: !isViewingFutureDate,
+  });
 
   // One-shot fetch for future dates (usePolling skips entirely when disabled).
   useEffect(() => {
@@ -155,12 +195,14 @@ export function TrainListPage() {
   const routeStatusUrl = useMemo(() => {
     if (!from || !to) return '/departures';
 
+    // Prefer the URL's data source so a line-scoped view round-trips back to
+    // the same scope instead of re-deriving it from whatever results loaded.
     return buildRouteStatusUrl({
       from,
       to,
-      dataSource: directRouteDataSource,
+      dataSource: dataSourceParam ?? directRouteDataSource,
     });
-  }, [from, to, directRouteDataSource]);
+  }, [from, to, dataSourceParam, directRouteDataSource]);
 
   if (!from || !to || !fromStation || !toStation) {
     return (
@@ -194,9 +236,14 @@ export function TrainListPage() {
         )}
       </div>
 
-      {/* Service alerts for MTA systems */}
+      {/* Service alerts for MTA systems; line-scoped when the URL carries a
+          line, so a sibling line's alerts aren't attributed to this one.
+          System-wide alerts are preserved by the banner (issue #1625). */}
       {serviceAlertDataSource && (
-        <ServiceAlertBanner dataSource={serviceAlertDataSource} />
+        <ServiceAlertBanner
+          dataSource={serviceAlertDataSource}
+          routeIds={isLineScoped ? lineCodes : undefined}
+        />
       )}
 
       {/* Route map (lazy-loaded) */}

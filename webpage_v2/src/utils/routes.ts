@@ -34,6 +34,14 @@ export interface RouteStatusParams {
   dataSource?: TransitSystem | string;
 }
 
+export interface TrainListParams {
+  from: string;
+  to: string;
+  dataSource?: TransitSystem | string;
+  /** Line codes scoping the list to one line of a shared-terminal pair. */
+  lines?: string[];
+}
+
 export function buildTrainUrl({
   trainId,
   from,
@@ -92,6 +100,32 @@ export function buildRouteStatusUrl({
     data_source: dataSource,
   });
   return `${path}?${searchParams.toString()}`;
+}
+
+/**
+ * Emit the station-pair departures URL, optionally scoped to one line.
+ *
+ * Line scope has to live in the URL, not just in props: without it, "View All
+ * Departures" off a line-detail page silently widens to the combined board for
+ * shared-terminal lines (NJT Main/Bergen HB↔SF), and a reload or share can't
+ * recover which line was meant (issue #1625). `data_source` mirrors
+ * `buildRouteStatusUrl`, and `lines` uses the same comma-joined form the API
+ * client and backend already speak, so the param round-trips unchanged.
+ */
+export function buildTrainListUrl({
+  from,
+  to,
+  dataSource,
+  lines,
+}: TrainListParams): string {
+  const path = `/trains/${encodeURIComponent(from)}/${encodeURIComponent(to)}`;
+
+  const searchParams = new URLSearchParams();
+  if (dataSource) searchParams.set('data_source', dataSource);
+  if (lines && lines.length > 0) searchParams.set('lines', lines.join(','));
+
+  const query = searchParams.toString();
+  return query ? `${path}?${query}` : path;
 }
 
 /**

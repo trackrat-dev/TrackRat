@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TripOption } from '../types';
-import { buildRouteStatusUrl, buildTrainUrl, buildTripUrl, parseTripLegsParam, parseTripParam } from './routes';
+import { buildRouteStatusUrl, buildTrainListUrl, buildTrainUrl, buildTripUrl, parseTripLegsParam, parseTripParam } from './routes';
 
 describe('buildTrainUrl', () => {
   it('builds a route-scoped train URL with query params', () => {
@@ -169,5 +169,48 @@ describe('buildRouteStatusUrl', () => {
       from: 'NY',
       to: 'NP',
     })).toBe('/route/NY/NP');
+  });
+});
+
+describe('buildTrainListUrl', () => {
+  it('carries both data source and line codes so line scope survives a reload', () => {
+    expect(buildTrainListUrl({
+      from: 'HB',
+      to: 'SF',
+      dataSource: 'NJT',
+      lines: ['MA', 'Ma'],
+    })).toBe('/trains/HB/SF?data_source=NJT&lines=MA%2CMa');
+  });
+
+  it('produces a distinct URL per line for a shared-terminal pair', () => {
+    // Main and Bergen County share HB↔SF; the URLs must not collide or the
+    // combined board reappears on reload (issue #1625).
+    const main = buildTrainListUrl({ from: 'HB', to: 'SF', dataSource: 'NJT', lines: ['MA', 'Ma'] });
+    const bergen = buildTrainListUrl({ from: 'HB', to: 'SF', dataSource: 'NJT', lines: ['BC'] });
+    expect(main).not.toBe(bergen);
+    expect(bergen).toBe('/trains/HB/SF?data_source=NJT&lines=BC');
+  });
+
+  it('omits the query entirely when unscoped, preserving the plain station-pair URL', () => {
+    expect(buildTrainListUrl({ from: 'TR', to: 'NY' })).toBe('/trains/TR/NY');
+  });
+
+  it('emits only data_source when lines is empty', () => {
+    expect(buildTrainListUrl({
+      from: 'TR',
+      to: 'NY',
+      dataSource: 'NJT',
+      lines: [],
+    })).toBe('/trains/TR/NY?data_source=NJT');
+  });
+
+  it('emits only lines when the data source is absent', () => {
+    expect(buildTrainListUrl({ from: 'TR', to: 'NY', lines: ['NEC'] })).toBe(
+      '/trains/TR/NY?lines=NEC'
+    );
+  });
+
+  it('encodes station codes containing URL-significant characters', () => {
+    expect(buildTrainListUrl({ from: 'A/B', to: 'C D' })).toBe('/trains/A%2FB/C%20D');
   });
 });

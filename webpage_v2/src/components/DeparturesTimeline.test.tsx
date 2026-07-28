@@ -224,6 +224,25 @@ describe('DeparturesTimelineView', () => {
     const link = screen.getByText('View All Departures →').closest('a');
     expect(link).toHaveAttribute('href', '/trains/TR/NY');
   });
+
+  it('carries line scope into the "View All" link so it does not widen to the combined board', () => {
+    // Without this the link drops line identity and a shared-terminal sibling's
+    // trains reappear on the full list (issue #1625).
+    renderView(buildDeparturesTimeline([], [makeTrain('B')]), {
+      from: 'HB',
+      to: 'SF',
+      dataSource: 'NJT',
+      lineCodes: ['MA', 'Ma'],
+    });
+    const link = screen.getByText('View All Departures →').closest('a');
+    expect(link).toHaveAttribute('href', '/trains/HB/SF?data_source=NJT&lines=MA%2CMa');
+  });
+
+  it('carries the data source alone when the view is not line-scoped', () => {
+    renderView(buildDeparturesTimeline([], [makeTrain('B')]), { dataSource: 'NJT' });
+    const link = screen.getByText('View All Departures →').closest('a');
+    expect(link).toHaveAttribute('href', '/trains/TR/NY?data_source=NJT');
+  });
 });
 
 describe('directUpcomingTrains', () => {

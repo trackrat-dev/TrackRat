@@ -8,6 +8,7 @@ import { Skeleton } from '../components/Skeleton';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { DeparturesTimeline } from '../components/DeparturesTimeline';
+import { buildTrainListUrl } from '../utils/routes';
 import { useBackNavigation } from '../utils/useBackNavigation';
 
 type Period = '1h' | '6h' | '24h' | '7d' | '30d' | '90d';
@@ -69,7 +70,11 @@ export function RouteStatusPage() {
   const fromName = fromStation?.name ?? from;
   const toName = toStation?.name ?? to;
 
-  const backFallback = line ? `/system/${line.dataSource}` : from && to ? `/trains/${from}/${to}` : '/departures';
+  const backFallback = line
+    ? `/system/${line.dataSource}`
+    : from && to
+      ? buildTrainListUrl({ from, to, dataSource: searchParams.get('data_source') ?? undefined })
+      : '/departures';
   const goBack = useBackNavigation(backFallback);
 
   const loadData = useCallback(() => {
@@ -137,8 +142,10 @@ export function RouteStatusPage() {
         </p>
       </div>
 
-      {/* Service alerts */}
-      <ServiceAlertBanner dataSource={dataSource} />
+      {/* Service alerts — scoped to this line in line mode. The banner keeps
+          alerts with no affected routes, so genuinely system-wide notices
+          still surface (issue #1625). */}
+      <ServiceAlertBanner dataSource={dataSource} routeIds={line?.lineCodes} />
 
       {/* Operations summary */}
       {summary && (

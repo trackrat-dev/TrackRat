@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { Train, TripSearchResponse } from '../types';
 import { apiService } from '../services/api';
 import { formatTime } from '../utils/date';
-import { buildTrainUrl } from '../utils/routes';
+import { buildTrainListUrl, buildTrainUrl } from '../utils/routes';
 import { tripLegToTrain } from '../utils/trips';
 import { usePolling } from '../utils/usePolling';
 import { TrainCard } from './TrainCard';
@@ -84,6 +84,10 @@ interface ViewProps {
   rows: TimelineRow[];
   from: string;
   to: string;
+  /** Page's data source; carried into the "View All" URL so scope survives. */
+  dataSource?: string;
+  /** Line codes scoping this timeline; carried into the "View All" URL. */
+  lineCodes?: string[];
   onSelect: (train: Train) => void;
 }
 
@@ -91,7 +95,14 @@ interface ViewProps {
  * Presentational timeline. Kept separate from data fetching so it can be
  * rendered and tested directly with constructed rows (no API mocking).
  */
-export function DeparturesTimelineView({ rows, from, to, onSelect }: ViewProps) {
+export function DeparturesTimelineView({
+  rows,
+  from,
+  to,
+  dataSource,
+  lineCodes,
+  onSelect,
+}: ViewProps) {
   // "No more trains" when nothing sits after the NOW divider.
   const nowIndex = rows.findIndex((r) => r.kind === 'now');
   const hasUpcoming = nowIndex >= 0 && nowIndex < rows.length - 1;
@@ -119,7 +130,7 @@ export function DeparturesTimelineView({ rows, from, to, onSelect }: ViewProps) 
         )}
       </div>
       <Link
-        to={`/trains/${from}/${to}`}
+        to={buildTrainListUrl({ from, to, dataSource, lines: lineCodes })}
         className="block mt-3 text-xs text-accent hover:text-accent/80 font-medium text-center"
       >
         View All Departures →
@@ -221,6 +232,8 @@ export function DeparturesTimeline({ from, to, dataSource, lineCodes }: Props) {
       rows={rows}
       from={from}
       to={to}
+      dataSource={dataSource}
+      lineCodes={lineCodes}
       onSelect={(train) =>
         navigate(
           buildTrainUrl({
