@@ -12,8 +12,11 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.collectors.service_alerts import (
+    _SEPTA_ROUTE_TO_LINE_CODE,
+    _SEPTA_STATION_LINES,
     ParsedAlert,
     _remap_septa_alert,
+    _septa_lines_serving_stations,
     classify_alert_type,
     deactivate_disabled_source_alerts,
     extract_english_text,
@@ -23,6 +26,12 @@ from trackrat.collectors.service_alerts import (
     parse_njt_message,
     parse_njt_station_scope,
     upsert_service_alerts,
+)
+from trackrat.config.stations import (
+    SEPTA_METRO_ROUTE_STATIONS,
+    SEPTA_METRO_STATION_NAMES,
+    SEPTA_RR_STATION_NAMES,
+    map_septa_metro_gtfs_stop,
 )
 from trackrat.models.database import ServiceAlert
 
@@ -102,6 +111,7 @@ class TestParseAlertEntity:
         header: str = "G train: No service",
         description: str | None = "Planned maintenance work",
         periods: list[tuple[int, int]] | None = None,
+        stop_ids: list[str] | None = None,
     ) -> MagicMock:
         """Build a mock GTFS-RT entity for testing."""
         entity = MagicMock()
@@ -111,13 +121,22 @@ class TestParseAlertEntity:
         alert = MagicMock()
         entity.alert = alert
 
-        # Route IDs
+        # Informed entities. A real EntitySelector defaults every unset string
+        # field to "", so stop_id must be set explicitly here — an unset
+        # MagicMock attribute is a truthy MagicMock, which would look like a
+        # stop scope the entity does not have.
         if route_ids is None:
             route_ids = ["G"]
         informed_entities = []
         for rid in route_ids:
             ie = MagicMock()
             ie.route_id = rid
+            ie.stop_id = ""
+            informed_entities.append(ie)
+        for sid in stop_ids or []:
+            ie = MagicMock()
+            ie.route_id = ""
+            ie.stop_id = sid
             informed_entities.append(ie)
         alert.informed_entity = informed_entities
 
@@ -219,6 +238,44 @@ class TestParseAlertEntity:
 
         assert result is not None
         assert result.affected_route_ids == ["G"]
+
+    def test_stop_ids_are_retained(self):
+        """Stop entities survive the parse (issue #1630).
+
+        A stop_id is the only scope some alerts carry; discarding it left them
+        indistinguishable from a genuinely system-wide alert.
+        """
+        entity = self._make_entity(route_ids=[], stop_ids=["1272", "140"])
+        result = parse_alert_entity(entity)
+
+        assert result is not None
+        assert result.affected_route_ids == []
+        assert result.affected_stop_ids == ["1272", "140"]
+
+    def test_deduplicates_stop_ids(self):
+        """Repeated stop entities collapse, as route IDs already do."""
+        entity = self._make_entity(route_ids=[], stop_ids=["140", "140", "1272"])
+        result = parse_alert_entity(entity)
+
+        assert result is not None
+        assert result.affected_stop_ids == ["140", "1272"]
+
+    def test_route_only_alert_has_no_stop_ids(self):
+        """A route-scoped entity must not acquire a phantom stop scope."""
+        entity = self._make_entity(route_ids=["G"])
+        result = parse_alert_entity(entity)
+
+        assert result is not None
+        assert result.affected_stop_ids == []
+
+    def test_routes_and_stops_are_both_captured(self):
+        """An alert scoped by both keeps both, in feed order."""
+        entity = self._make_entity(route_ids=["G", "4"], stop_ids=["1272"])
+        result = parse_alert_entity(entity)
+
+        assert result is not None
+        assert result.affected_route_ids == ["G", "4"]
+        assert result.affected_stop_ids == ["1272"]
 
 
 class TestFetchAndParseAlertsDedupe:
@@ -824,11 +881,13 @@ class TestRemapSeptaAlert:
         route_ids: list[str],
         header: str = "Service adjustment",
         alert_id: str = "septa-1",
+        stop_ids: list[str] | None = None,
     ) -> ParsedAlert:
         return ParsedAlert(
             alert_id=alert_id,
             alert_type="unknown",  # SEPTA entity IDs are opaque; remap reclassifies
             affected_route_ids=route_ids,
+            affected_stop_ids=stop_ids or [],
             header_text=header,
             description_text=None,
             active_periods=[],
@@ -897,6 +956,209 @@ class TestRemapSeptaAlert:
         assert result is not None
         assert result.alert_id == "septa-xyz"
         assert result.header_text == "Weekend detour"
+
+
+class TestSeptaStopScopedAlerts:
+    """Issue #1630: a stop-only bus alert must not become a Metro-wide alert.
+
+    The ``septa-pa-us`` feed mixes bus and Metro alerts. A route-tagged bus alert
+    is dropped because its route_id isn't one we track, but a bus disruption
+    scoped purely by ``stop_id`` names no route at all — so it used to be stored
+    with an empty ``affected_route_ids``, which every consumer reads as
+    system-wide: the alerts API returns it for any SEPTA_METRO query, the web
+    banner shows it when ``affected_route_ids.length === 0``, and system-wide
+    subscribers are pushed it.
+
+    Real feed IDs are used throughout: stop "1272" is Wyoming on the Broad Street
+    Line, "20965" is Fern Rock TC, "90401" is a Regional Rail Airport Line stop,
+    and "283" is the 13th St trolley station. Bus stop IDs are not in either
+    station map.
+    """
+
+    def _alert(
+        self,
+        route_ids: list[str],
+        stop_ids: list[str] | None = None,
+        header: str = "Detour in effect",
+        alert_id: str = "septa-stop-1",
+    ) -> ParsedAlert:
+        return ParsedAlert(
+            alert_id=alert_id,
+            alert_type="unknown",
+            affected_route_ids=route_ids,
+            affected_stop_ids=stop_ids or [],
+            header_text=header,
+            description_text=None,
+            active_periods=[],
+        )
+
+    def test_bus_stop_only_alert_is_dropped(self):
+        """The #1630 bug: stops we don't serve, no routes -> not our alert."""
+        alert = self._alert([], stop_ids=["31415", "999999"])
+        assert _remap_septa_alert(alert, "SEPTA_METRO") is None
+
+    def test_bus_stop_only_alert_was_previously_system_wide(self):
+        """Pin why this matters: the same alert has no route scope to fall back on.
+
+        Retaining it would store affected_route_ids=[], the exact value every
+        consumer treats as "applies to the whole system".
+        """
+        alert = self._alert([], stop_ids=["31415"])
+        assert alert.affected_route_ids == []
+        assert _remap_septa_alert(alert, "SEPTA_METRO") is None
+
+    def test_metro_stop_only_alert_is_kept_and_scoped_to_its_line(self):
+        """A served stop scopes the alert to the line(s) serving it."""
+        result = _remap_septa_alert(self._alert([], stop_ids=["1272"]), "SEPTA_METRO")
+        assert result is not None
+        assert result.affected_route_ids == ["SEPTA-B1"], (
+            "Wyoming is a Broad Street Line station, so the alert must be "
+            "scoped to B1 rather than left system-wide"
+        )
+
+    def test_stop_serving_several_lines_scopes_to_all_of_them(self):
+        """13th St is shared by every trolley route; none may be dropped."""
+        result = _remap_septa_alert(self._alert([], stop_ids=["283"]), "SEPTA_METRO")
+        assert result is not None
+        assert result.affected_route_ids == [
+            "SEPTA-T1",
+            "SEPTA-T2",
+            "SEPTA-T3",
+            "SEPTA-T4",
+            "SEPTA-T5",
+        ]
+
+    def test_mixed_served_and_unserved_stops_scope_to_the_served_one(self):
+        """A bus stop alongside a Metro stop must not widen or void the scope."""
+        result = _remap_septa_alert(
+            self._alert([], stop_ids=["31415", "1272", "999999"]), "SEPTA_METRO"
+        )
+        assert result is not None
+        assert result.affected_route_ids == ["SEPTA-B1"]
+
+    def test_named_route_wins_over_stop_entities(self):
+        """Stops never widen an already route-scoped alert."""
+        result = _remap_septa_alert(
+            self._alert(["B1"], stop_ids=["283"]), "SEPTA_METRO"
+        )
+        assert result is not None
+        assert result.affected_route_ids == [
+            "SEPTA-B1"
+        ], "the trolley stop must not add T1-T5 to a Broad Street alert"
+
+    def test_bus_route_with_metro_stop_is_still_dropped(self):
+        """An alert that names only bus routes stays dropped, stops or not.
+
+        Conservative by design: a bus route is positive evidence the alert is
+        about the bus network, so a nearby shared stop must not resurrect it.
+        """
+        alert = self._alert(["17"], stop_ids=["1272"])
+        assert _remap_septa_alert(alert, "SEPTA_METRO") is None
+
+    def test_alert_with_neither_routes_nor_stops_stays_system_wide(self):
+        """A genuinely unscoped agency advisory is still kept and unscoped."""
+        result = _remap_septa_alert(self._alert([], stop_ids=[]), "SEPTA_RR")
+        assert result is not None
+        assert result.affected_route_ids == []
+
+    def test_regional_rail_stop_only_alert_is_scoped(self):
+        """The same rule applies to the Regional Rail feed."""
+        result = _remap_septa_alert(self._alert([], stop_ids=["90401"]), "SEPTA_RR")
+        assert result is not None
+        assert result.affected_route_ids == ["SEPTA-AIR"]
+
+    def test_unserved_stop_on_the_rail_feed_is_dropped(self):
+        """A stop ID absent from the RR station map is not a rail stop."""
+        assert (
+            _remap_septa_alert(self._alert([], stop_ids=["31415"]), "SEPTA_RR") is None
+        )
+
+    def test_unresolvable_served_stop_is_kept_unscoped(self):
+        """A served stop whose line can't be resolved is kept, not dropped.
+
+        One-way trolley curb stops can be absent from every direction-0 route
+        sequence and have no same-named twin. Over-showing a genuine Metro alert
+        beats hiding it — unlike a bus alert, it is at least ours.
+        """
+        assert map_septa_metro_gtfs_stop("21098") is not None, "fixture must be served"
+        result = _remap_septa_alert(self._alert([], stop_ids=["21098"]), "SEPTA_METRO")
+        assert result is not None
+        assert result.affected_route_ids == []
+
+    def test_stop_scoping_preserves_type_classification(self):
+        """Header-based elevator classification still runs on stop-only alerts."""
+        result = _remap_septa_alert(
+            self._alert([], stop_ids=["20965"], header="Elevator out at Fern Rock"),
+            "SEPTA_METRO",
+        )
+        assert result is not None
+        assert result.alert_type == "elevator"
+        assert result.affected_route_ids  # and it is still scoped
+
+
+class TestSeptaStationLineIndex:
+    """The station -> line index that scopes stop-only alerts.
+
+    ``*_ROUTE_STATIONS`` holds only the direction_id=0 sequence and each trolley
+    curb stop is its own station, so a naive membership test leaves 271 of the
+    633 SEPTA Metro stations on no line. The index closes that by letting a
+    station borrow its same-named twin's lines — the two are one physical stop.
+    """
+
+    def test_direct_route_membership_resolves(self):
+        assert _septa_lines_serving_stations({"SEPM1272"}, "SEPTA_METRO") == [
+            "SEPTA-B1"
+        ]
+
+    def test_unknown_station_resolves_to_nothing(self):
+        assert _septa_lines_serving_stations({"SEPM_NOPE"}, "SEPTA_METRO") == []
+
+    def test_lines_are_unioned_across_stations(self):
+        lines = _septa_lines_serving_stations({"SEPM1272", "SEPM283"}, "SEPTA_METRO")
+        assert "SEPTA-B1" in lines
+        assert "SEPTA-T1" in lines
+
+    def test_line_order_follows_the_route_table(self):
+        """Deterministic ordering, so a stable alert doesn't churn on upsert."""
+        lines = _septa_lines_serving_stations({"SEPM1272", "SEPM283"}, "SEPTA_METRO")
+        assert lines == sorted(
+            lines,
+            key=lambda c: list(_SEPTA_ROUTE_TO_LINE_CODE["SEPTA_METRO"].values()).index(
+                c
+            ),
+        )
+
+    def test_twin_borrowing_covers_stations_absent_from_route_lists(self):
+        """The reason the index exists, measured rather than asserted abstractly."""
+        index = _SEPTA_STATION_LINES["SEPTA_METRO"]
+        direct = {
+            station
+            for stations in SEPTA_METRO_ROUTE_STATIONS.values()
+            for station in stations
+        }
+        borrowed = set(index) - direct
+        assert borrowed, "twin borrowing must resolve stations no route lists"
+        for station in borrowed:
+            assert index[station], "a borrowed station must carry real lines"
+
+    def test_every_indexed_station_is_a_real_station(self):
+        for source, names in (
+            ("SEPTA_METRO", SEPTA_METRO_STATION_NAMES),
+            ("SEPTA_RR", SEPTA_RR_STATION_NAMES),
+        ):
+            unknown = set(_SEPTA_STATION_LINES[source]) - set(names)
+            assert not unknown, f"{source} index has phantom stations: {unknown}"
+
+    def test_every_indexed_line_is_a_tracked_line(self):
+        for source in ("SEPTA_METRO", "SEPTA_RR"):
+            valid = set(_SEPTA_ROUTE_TO_LINE_CODE[source].values())
+            for station, lines in _SEPTA_STATION_LINES[source].items():
+                assert set(lines) <= valid, f"{source}/{station} has untracked lines"
+
+    def test_regional_rail_stations_all_resolve(self):
+        """Every RR station sits on a line; a gap there would be a config bug."""
+        missing = set(SEPTA_RR_STATION_NAMES) - set(_SEPTA_STATION_LINES["SEPTA_RR"])
+        assert not missing, f"unresolved Regional Rail stations: {sorted(missing)}"
 
 
 @pytest.mark.asyncio
