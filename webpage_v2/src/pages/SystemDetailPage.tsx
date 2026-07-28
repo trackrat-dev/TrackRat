@@ -8,9 +8,11 @@ import { averageRouteDelay } from '../utils/congestion';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { ErrorBoundary } from '../components/ErrorBoundary';
+import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ChevronIcon } from '../components/icons';
 import { usePolling } from '../utils/usePolling';
 import { useBackNavigation } from '../utils/useBackNavigation';
+import { formatTime } from '../utils/date';
 
 // Shares the lazy MapLibre chunk with RouteMap / NetworkStatusPage.
 const CongestionMap = lazy(() => import('../components/CongestionMap').then((m) => ({ default: m.CongestionMap })));
@@ -28,16 +30,34 @@ export function SystemDetailPage() {
 
   const [segments, setSegments] = useState<SegmentCongestion[]>([]);
   const [summary, setSummary] = useState<OperationsSummaryResponse | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [generatedAt, setGeneratedAt] = useState<string | null>(null);
 
   const fetchData = useCallback(async (signal?: AbortSignal) => {
     if (!isKnownSystem) return;
-    const [congestion, systemSummary] = await Promise.all([
-      apiService.getCongestion(signal),
-      // Summary is optional context; a failure must not blank the page.
-      apiService.getNetworkSummary(system, signal).catch(() => null),
-    ]);
-    setSegments(congestion.aggregated_segments.filter((seg) => seg.data_source === system));
-    setSummary(systemSummary);
+    try {
+      const [congestion, systemSummary] = await Promise.all([
+        apiService.getCongestion(signal),
+        // Summary is optional context: the service already returns null for
+        // every failure except cancellation, so it never fails the load. Don't
+        // catch here — that would swallow the AbortError too, turning a
+        // cancelled request into a spurious "no summary".
+        apiService.getNetworkSummary(system, signal),
+      ]);
+      setSegments(congestion.aggregated_segments.filter((seg) => seg.data_source === system));
+      setSummary(systemSummary);
+      // Stamped on every success, including a zero-segment one: it is what
+      // distinguishes "loaded and quiet" from "never loaded".
+      setGeneratedAt(congestion.generated_at);
+      setError(null);
+      setLoading(false);
+    } catch (err) {
+      // Cancellation (unmount, tab hidden, next tick) is not a failure.
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      setError(err instanceof Error ? err.message : 'Failed to load system status');
+      setLoading(false);
+    }
     // Congestion updates less frequently than per-route data.
   }, [system, isKnownSystem]);
 
@@ -49,6 +69,14 @@ export function SystemDetailPage() {
   }
 
   const routes = getRoutesForSystem(system);
+  // A completed load is marked by `generatedAt`, never by segment count — a
+  // successful response with no congested segments is a valid empty state.
+  const hasLoaded = generatedAt !== null;
+
+  if (loading && !hasLoaded) return <LoadingSpinner label="Loading system status" />;
+  // Without prior data there is nothing to show but the failure; falling through
+  // would render an empty routes list that reads as a healthy system.
+  if (error && !hasLoaded) return <ErrorMessage message={error} onRetry={() => fetchData()} />;
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -62,7 +90,18 @@ export function SystemDetailPage() {
         <h2 className="text-2xl font-bold text-text-primary text-center">
           {SYSTEM_NAMES[system]}
         </h2>
+        {generatedAt && (
+          <div className="text-sm text-text-muted mt-1 text-center">
+            Updated at {formatTime(new Date(generatedAt).toISOString())}
+          </div>
+        )}
       </div>
+
+      {/* Refresh failure: keep the last good values mounted, but mark them stale
+          rather than letting them pass as current. */}
+      {error && hasLoaded && (
+        <div className="mb-4 text-center text-xs text-error">⚠️ {error} — showing last loaded data</div>
+      )}
 
       {/* Service alerts (only alert-capable systems fetch) */}
       <ServiceAlertBanner dataSource={system} />
@@ -82,6 +121,13 @@ export function SystemDetailPage() {
             <CongestionMap segments={segments} />
           </Suspense>
         </ErrorBoundary>
+      )}
+
+      {/* Say the board is empty on purpose, so it can't be read as a failed load. */}
+      {segments.length === 0 && (
+        <div className="mb-4 text-center text-xs text-text-muted">
+          No congestion reported for this system.
+        </div>
       )}
 
       {/* Routes list */}
