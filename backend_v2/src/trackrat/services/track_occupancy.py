@@ -6,7 +6,7 @@ import asyncio
 from datetime import timedelta
 
 from cachetools import TTLCache
-from sqlalchemy import and_, select
+from sqlalchemy import and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
@@ -18,6 +18,19 @@ from trackrat.settings import get_settings
 from trackrat.utils.time import now_et
 
 logger = get_logger(__name__)
+
+# A track counts as occupied when a not-yet-departed train's effective
+# departure (or arrival, for trains terminating at this station) falls within
+# this window around now. The future bound covers the boarding window during
+# which equipment is already sitting on the track before its departure time;
+# the past bound covers delayed trains whose scheduled time has slipped past
+# and terminating trains dwelling on the track after arrival, while keeping
+# stale/abandoned rows from pinning a track "occupied" indefinitely.
+# (Issue #1676: the previous "scheduled_departure within the next 2 hours"
+# window both over-included far-future reservations and missed delayed and
+# terminating trains entirely.)
+OCCUPIED_WINDOW_PAST_MINUTES = 20
+OCCUPIED_WINDOW_FUTURE_MINUTES = 20
 
 
 class TrackOccupancyService:
@@ -105,10 +118,41 @@ class TrackOccupancyService:
     async def _get_database_tracks(
         self, station_code: str, session: AsyncSession
     ) -> set[str]:
-        """Get tracks from trains in database that haven't departed yet."""
-        # Look for trains departing within the next 2 hours
-        cutoff_time = now_et() + timedelta(hours=2)
-        current_time = now_et()
+        """Get tracks with a train at (or imminently at) the platform now."""
+        now = now_et()
+        window_start = now - timedelta(minutes=OCCUPIED_WINDOW_PAST_MINUTES)
+        window_end = now + timedelta(minutes=OCCUPIED_WINDOW_FUTURE_MINUTES)
+
+        # Live departure estimate, correcting the NJT TIME/DEP_TIME inversion
+        # via the documented SQL twin of utils/train.effective_njt_updated_times:
+        # GREATEST(updated_departure, updated_arrival) guarded to NJT rows with
+        # both fields present (see JourneyStop model docs / journey-lifecycle.md
+        # §2). At an NJT terminal the GREATEST yields the turnaround departure
+        # when present — which is genuinely when the track frees up, so no
+        # terminal exemption is needed for occupancy.
+        live_departure = case(
+            (
+                and_(
+                    TrainJourney.data_source == "NJT",
+                    JourneyStop.updated_departure.is_not(None),
+                    JourneyStop.updated_arrival.is_not(None),
+                ),
+                func.greatest(
+                    JourneyStop.updated_departure, JourneyStop.updated_arrival
+                ),
+            ),
+            else_=JourneyStop.updated_departure,
+        )
+
+        # When the train is expected to leave the track: live then scheduled
+        # departure; for trains terminating here (no departure at all), the
+        # arrival — the past window then grants them dwell time on the track.
+        occupies_until = func.coalesce(
+            live_departure,
+            JourneyStop.scheduled_departure,
+            JourneyStop.updated_arrival,
+            JourneyStop.scheduled_arrival,
+        )
 
         stmt = (
             select(JourneyStop.track)
@@ -118,8 +162,8 @@ class TrackOccupancyService:
                     JourneyStop.station_code.in_(expand_station_codes(station_code)),
                     JourneyStop.track.is_not(None),
                     JourneyStop.has_departed_station.is_not(True),
-                    JourneyStop.scheduled_departure >= current_time,
-                    JourneyStop.scheduled_departure <= cutoff_time,
+                    occupies_until >= window_start,
+                    occupies_until <= window_end,
                     TrainJourney.is_cancelled.is_not(True),
                 )
             )
