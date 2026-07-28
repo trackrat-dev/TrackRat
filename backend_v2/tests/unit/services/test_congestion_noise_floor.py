@@ -212,6 +212,17 @@ class TestNormalizerFrequencyFloor:
         assert seg.frequency_level == "healthy"
 
 
+# A real consecutive pair on the Route 10 trolley (T1): 63rd-Malvern followed by
+# Malvern Av & 63rd St. Placeholder codes were fine while SEPTA_METRO was exempt
+# from route-match filtering, but that exemption existed only because the
+# topology was missing a direction (#1573). With both directions generated the
+# guard is back on (#1632), so a segment between codes on no route is correctly
+# dropped as a phantom jump — and these tests are about the sub-minute delay
+# floor, not topology, so they need a pair that really is adjacent.
+SHORT_HOP_FROM = "SEPM31294"
+SHORT_HOP_TO = "SEPM20610"
+
+
 async def _add_short_hop_journey(
     db: AsyncSession,
     train_id: str,
@@ -220,8 +231,8 @@ async def _add_short_hop_journey(
     *,
     departure: datetime,
     data_source: str = "SEPTA_METRO",
-    from_station: str = "SEPM_A",
-    to_station: str = "SEPM_B",
+    from_station: str = SHORT_HOP_FROM,
+    to_station: str = SHORT_HOP_TO,
     is_cancelled: bool = False,
 ) -> None:
     """Create a two-stop journey whose scheduled and actual inter-stop times are
@@ -298,7 +309,7 @@ class TestDelayFloorRealDB:
             (
                 s
                 for s in segments
-                if (s.from_station, s.to_station) == ("SEPM_A", "SEPM_B")
+                if (s.from_station, s.to_station) == (SHORT_HOP_FROM, SHORT_HOP_TO)
             ),
             None,
         )
@@ -329,7 +340,7 @@ class TestDelayFloorRealDB:
             (
                 s
                 for s in segments
-                if (s.from_station, s.to_station) == ("SEPM_A", "SEPM_B")
+                if (s.from_station, s.to_station) == (SHORT_HOP_FROM, SHORT_HOP_TO)
             ),
             None,
         )

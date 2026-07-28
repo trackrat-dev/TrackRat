@@ -6,7 +6,9 @@ re-run the generator to refresh.
 
 Internal station codes are prefixed ``SEPM`` to stay unique across every
 TrackRat provider. Subway stations group their directional platforms into one
-code; each trolley curb stop is its own station.
+code; each trolley curb stop is its own station, so route topology is generated
+for both directions (``SEPTA_METRO_ROUTE_STATIONS`` and
+``SEPTA_METRO_ROUTE_STATIONS_INBOUND``).
 """
 
 # GTFS-RT feeds (public, no authentication). One combined feed covers the whole
@@ -34,8 +36,8 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM2455": "13th St",
     "SEPM283": "13th St",
     "SEPM1392": "15th St/City Hall",
-    "SEPM31140": "15th St/City Hall",
     "SEPM20659": "15th St/City Hall",
+    "SEPM31140": "15th St/City Hall",
     "SEPM33029": "15th St/City Hall - B1",
     "SEPM1281": "15th St/City Hall - B2",
     "SEPM20646": "19th St",
@@ -44,16 +46,16 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM20661": "22nd St",
     "SEPM21072": "26th St & Poplar St",
     "SEPM428": "2nd St",
-    "SEPM20658": "33rd St",
     "SEPM20642": "33rd St",
+    "SEPM20658": "33rd St",
     "SEPM2453": "34th St",
     "SEPM20665": "36th St & Lancaster Av",
-    "SEPM20664": "36th St & Market St",
     "SEPM20640": "36th St & Market St",
+    "SEPM20664": "36th St & Market St",
     "SEPM20641": "36th St Portal",
     "SEPM287": "36th St Portal",
-    "SEPM20733": "36th-Sansom",
     "SEPM20732": "36th-Sansom",
+    "SEPM20733": "36th-Sansom",
     "SEPM20731": "37th-Spruce",
     "SEPM20734": "37th-Spruce",
     "SEPM2452": "40th St",
@@ -75,8 +77,8 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM21432": "42nd St & Baltimore Av",
     "SEPM21456": "42nd St & Baltimore Av",
     "SEPM21433": "42nd St & Chester Av",
-    "SEPM30820": "42nd St & Pine St",
     "SEPM21431": "42nd St & Pine St",
+    "SEPM30820": "42nd St & Pine St",
     "SEPM21457": "42nd St & Spruce St",
     "SEPM2451": "46th St",
     "SEPM20897": "49th St & Paschall Av",
@@ -91,8 +93,8 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM599": "61st-Baltimore",
     "SEPM2447": "63rd St",
     "SEPM20695": "63rd St & Columbia Av",
-    "SEPM20693": "63rd St & Jefferson St",
     "SEPM20612": "63rd St & Jefferson St",
+    "SEPM20693": "63rd St & Jefferson St",
     "SEPM20611": "63rd St & Lebanon Av",
     "SEPM31294": "63rd-Malvern",
     "SEPM20781": "65th St & Belmar Av",
@@ -100,8 +102,8 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM20782": "65th St & Chester Av",
     "SEPM20827": "65th St & Chester St",
     "SEPM20843": "65th St & Kingsessing Av",
-    "SEPM416": "69th St Transit Center",
     "SEPM15497": "69th St Transit Center",
+    "SEPM416": "69th St Transit Center",
     "SEPM612": "80th St/Eastwick",
     "SEPM2457": "8th-Market",
     "SEPM20772": "9th St & Cedar Av",
@@ -109,10 +111,10 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM20768": "9th St & Ridge Av",
     "SEPM20770": "9th St & Summit St",
     "SEPM20771": "9th St & Summit St - MBFS",
-    "SEPM18626": "Anderson Av",
     "SEPM18603": "Anderson Av",
-    "SEPM15334": "Andrews Av",
+    "SEPM18626": "Anderson Av",
     "SEPM15333": "Andrews Av",
+    "SEPM15334": "Andrews Av",
     "SEPM1923": "Ardmore Av",
     "SEPM30519": "Ardmore Junction",
     "SEPM16395": "Aronimink",
@@ -120,27 +122,27 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM217": "Arrott Transit Center",
     "SEPM1938": "Avon Rd",
     "SEPM1957": "Avon Rd",
-    "SEPM30376": "Baltimore Av",
     "SEPM1959": "Baltimore Av",
-    "SEPM20879": "Baltimore Av & 42nd St",
+    "SEPM30376": "Baltimore Av",
     "SEPM20876": "Baltimore Av & 42nd St",
-    "SEPM20880": "Baltimore Av & 43rd St",
+    "SEPM20879": "Baltimore Av & 42nd St",
     "SEPM20875": "Baltimore Av & 43rd St",
+    "SEPM20880": "Baltimore Av & 43rd St",
     "SEPM20874": "Baltimore Av & 44th St",
     "SEPM20881": "Baltimore Av & 44th St",
     "SEPM20873": "Baltimore Av & 45th St",
     "SEPM20882": "Baltimore Av & 45th St",
     "SEPM20872": "Baltimore Av & 46th St",
     "SEPM20883": "Baltimore Av & 46th St",
-    "SEPM20884": "Baltimore Av & 47th St",
     "SEPM20871": "Baltimore Av & 47th St",
+    "SEPM20884": "Baltimore Av & 47th St",
     "SEPM20885": "Baltimore Av & 48th St",
-    "SEPM601": "Baltimore Av & 49th St",
     "SEPM600": "Baltimore Av & 49th St",
-    "SEPM20886": "Baltimore Av & 50th St",
+    "SEPM601": "Baltimore Av & 49th St",
     "SEPM20869": "Baltimore Av & 50th St",
-    "SEPM20887": "Baltimore Av & 51st St",
+    "SEPM20886": "Baltimore Av & 50th St",
     "SEPM20868": "Baltimore Av & 51st St",
+    "SEPM20887": "Baltimore Av & 51st St",
     "SEPM20888": "Baltimore Av & 52nd St",
     "SEPM20866": "Baltimore Av & 53rd St",
     "SEPM20889": "Baltimore Av & 53rd St",
@@ -150,24 +152,24 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM20891": "Baltimore Av & 55th St",
     "SEPM20863": "Baltimore Av & 56th St",
     "SEPM20892": "Baltimore Av & 56th St",
-    "SEPM20893": "Baltimore Av & 57th St",
     "SEPM20862": "Baltimore Av & 57th St",
-    "SEPM20894": "Baltimore Av & 58th St",
+    "SEPM20893": "Baltimore Av & 57th St",
     "SEPM20861": "Baltimore Av & 58th St",
+    "SEPM20894": "Baltimore Av & 58th St",
     "SEPM20860": "Baltimore Av & 59th St",
     "SEPM20895": "Baltimore Av & 59th St",
-    "SEPM20896": "Baltimore Av & 60th St",
     "SEPM20859": "Baltimore Av & 60th St",
+    "SEPM20896": "Baltimore Av & 60th St",
     "SEPM20867": "Baltimore Av & Broomall St",
     "SEPM20870": "Baltimore Av & Florence Av",
-    "SEPM4726": "Bartram Av",
     "SEPM18842": "Bartram Av",
+    "SEPM4726": "Bartram Av",
     "SEPM18608": "Beatty Rd",
     "SEPM18620": "Beatty Rd",
     "SEPM1908": "Beechwood-Brookline",
     "SEPM2460": "Berks",
-    "SEPM18630": "Beverly Blvd",
     "SEPM18599": "Beverly Blvd",
+    "SEPM18630": "Beverly Blvd",
     "SEPM1892": "Bridgeport",
     "SEPM142": "Broad-Allegheny",
     "SEPM20966": "Broad-Girard",
@@ -184,28 +186,28 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM20809": "Chester Av & 45th St",
     "SEPM20799": "Chester Av & 46th St",
     "SEPM20810": "Chester Av & 46th St",
-    "SEPM20811": "Chester Av & 47th St",
     "SEPM20790": "Chester Av & 47th St",
-    "SEPM20812": "Chester Av & 48th St",
+    "SEPM20811": "Chester Av & 47th St",
     "SEPM20789": "Chester Av & 48th St",
-    "SEPM322": "Chester Av & 49th St",
+    "SEPM20812": "Chester Av & 48th St",
     "SEPM321": "Chester Av & 49th St",
+    "SEPM322": "Chester Av & 49th St",
     "SEPM20797": "Chester Av & 51st St",
     "SEPM20814": "Chester Av & 51st St",
     "SEPM20796": "Chester Av & 52nd St",
     "SEPM20815": "Chester Av & 52nd St",
-    "SEPM20816": "Chester Av & 53rd St",
     "SEPM20795": "Chester Av & 53rd St",
-    "SEPM20817": "Chester Av & 54th St",
+    "SEPM20816": "Chester Av & 53rd St",
     "SEPM20794": "Chester Av & 54th St",
-    "SEPM20818": "Chester Av & 55th St",
+    "SEPM20817": "Chester Av & 54th St",
     "SEPM20793": "Chester Av & 55th St",
+    "SEPM20818": "Chester Av & 55th St",
     "SEPM20792": "Chester Av & 56th St",
     "SEPM20819": "Chester Av & 56th St",
-    "SEPM20820": "Chester Av & 57th St",
     "SEPM20791": "Chester Av & 57th St",
-    "SEPM323": "Chester Av & 58th St",
+    "SEPM20820": "Chester Av & 57th St",
     "SEPM320": "Chester Av & 58th St",
+    "SEPM323": "Chester Av & 58th St",
     "SEPM20788": "Chester Av & 59th St",
     "SEPM20821": "Chester Av & 59th St",
     "SEPM20822": "Chester Av & 60th St",
@@ -216,8 +218,8 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM20836": "Chester Av & Cedar Av",
     "SEPM20778": "Chester Av & Church Ln",
     "SEPM20831": "Chester Av & Church Ln",
-    "SEPM20833": "Chester Av & Duncan Av",
     "SEPM20776": "Chester Av & Duncan Av",
+    "SEPM20833": "Chester Av & Duncan Av",
     "SEPM20775": "Chester Av & Stetser Av",
     "SEPM20834": "Chester Av & Stetser Av",
     "SEPM20777": "Chester Av & Yeadon Av",
@@ -228,47 +230,47 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM18636": "Clifton-Aldan",
     "SEPM30374": "Clifton-Aldan",
     "SEPM21075": "College Av & 24th St - FS",
-    "SEPM15344": "Congress Av",
     "SEPM15322": "Congress Av",
+    "SEPM15344": "Congress Av",
     "SEPM1931": "County Line",
-    "SEPM15339": "Creek Rd",
     "SEPM15328": "Creek Rd",
+    "SEPM15339": "Creek Rd",
     "SEPM305": "Darby Transit Center",
     "SEPM1935": "DeKalb St",
     "SEPM1940": "Drexel Hill Junction",
     "SEPM1955": "Drexel Hill Junction",
-    "SEPM18846": "Drexel Manor",
     "SEPM15326": "Drexel Manor",
+    "SEPM18846": "Drexel Manor",
     "SEPM18600": "Drexel Park",
     "SEPM18629": "Drexel Park",
-    "SEPM21532": "Drexel Station at 30th St",
     "SEPM20643": "Drexel Station at 30th St",
     "SEPM20662": "Drexel Station at 30th St",
+    "SEPM21532": "Drexel Station at 30th St",
     "SEPM18604": "Drexelbrook",
     "SEPM18625": "Drexelbrook",
-    "SEPM18624": "Drexeline",
     "SEPM18605": "Drexeline",
-    "SEPM18618": "Edgmont St",
+    "SEPM18624": "Drexeline",
     "SEPM18610": "Edgmont St",
+    "SEPM18618": "Edgmont St",
     "SEPM1284": "Ellsworth-Federal",
     "SEPM20902": "Elmwood Av & 56th St",
     "SEPM20949": "Elmwood Av & 56th St",
-    "SEPM20948": "Elmwood Av & 57th St",
     "SEPM20903": "Elmwood Av & 57th St",
-    "SEPM20947": "Elmwood Av & 58th St",
+    "SEPM20948": "Elmwood Av & 57th St",
     "SEPM20904": "Elmwood Av & 58th St",
-    "SEPM20946": "Elmwood Av & 59th St",
+    "SEPM20947": "Elmwood Av & 58th St",
     "SEPM20905": "Elmwood Av & 59th St",
+    "SEPM20946": "Elmwood Av & 59th St",
     "SEPM20907": "Elmwood Av & 61st St",
     "SEPM20944": "Elmwood Av & 61st St",
     "SEPM20908": "Elmwood Av & 62nd St",
     "SEPM20943": "Elmwood Av & 62nd St",
-    "SEPM20942": "Elmwood Av & 63rd St",
     "SEPM20909": "Elmwood Av & 63rd St",
+    "SEPM20942": "Elmwood Av & 63rd St",
     "SEPM20910": "Elmwood Av & 64th St",
     "SEPM20941": "Elmwood Av & 64th St",
-    "SEPM20940": "Elmwood Av & 65th St",
     "SEPM20911": "Elmwood Av & 65th St",
+    "SEPM20940": "Elmwood Av & 65th St",
     "SEPM20912": "Elmwood Av & 66th St",
     "SEPM20939": "Elmwood Av & 66th St",
     "SEPM20913": "Elmwood Av & 67th St",
@@ -277,8 +279,8 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM20937": "Elmwood Av & 68th St",
     "SEPM20915": "Elmwood Av & 69th St",
     "SEPM20936": "Elmwood Av & 69th St",
-    "SEPM20935": "Elmwood Av & 70th St",
     "SEPM20916": "Elmwood Av & 70th St",
+    "SEPM20935": "Elmwood Av & 70th St",
     "SEPM20917": "Elmwood Av & 71st St",
     "SEPM20934": "Elmwood Av & 71st St",
     "SEPM20918": "Elmwood Av & 72nd St",
@@ -303,62 +305,62 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM61": "Frankford Transit Center",
     "SEPM353": "Front-Girard",
     "SEPM1927": "Garrett Hill",
-    "SEPM15341": "Garrettford",
     "SEPM15325": "Garrettford",
+    "SEPM15341": "Garrettford",
     "SEPM21001": "Girard Av & 11th St",
     "SEPM21087": "Girard Av & 11th St",
-    "SEPM21086": "Girard Av & 12th St",
     "SEPM21002": "Girard Av & 12th St",
-    "SEPM21083": "Girard Av & 16th St",
+    "SEPM21086": "Girard Av & 12th St",
     "SEPM21005": "Girard Av & 16th St",
-    "SEPM21082": "Girard Av & 17th St",
+    "SEPM21083": "Girard Av & 16th St",
     "SEPM21006": "Girard Av & 17th St",
+    "SEPM21082": "Girard Av & 17th St",
     "SEPM21080": "Girard Av & 19th St",
     "SEPM30290": "Girard Av & 19th St",
     "SEPM21009": "Girard Av & 20th St",
     "SEPM21079": "Girard Av & 20th St",
     "SEPM30791": "Girard Av & 24th St",
-    "SEPM21071": "Girard Av & 26th St",
     "SEPM21016": "Girard Av & 26th St",
-    "SEPM21070": "Girard Av & 27th St",
+    "SEPM21071": "Girard Av & 26th St",
     "SEPM21017": "Girard Av & 27th St",
-    "SEPM21069": "Girard Av & 28th St",
+    "SEPM21070": "Girard Av & 27th St",
     "SEPM21018": "Girard Av & 28th St",
-    "SEPM21068": "Girard Av & 29th St",
+    "SEPM21069": "Girard Av & 28th St",
     "SEPM21019": "Girard Av & 29th St",
+    "SEPM21068": "Girard Av & 29th St",
     "SEPM20993": "Girard Av & 2nd St",
     "SEPM21096": "Girard Av & 2nd St",
-    "SEPM21067": "Girard Av & 31st St",
     "SEPM21021": "Girard Av & 31st St",
+    "SEPM21067": "Girard Av & 31st St",
     "SEPM21022": "Girard Av & 33rd St",
-    "SEPM30292": "Girard Av & 34th St - MBFS",
     "SEPM30291": "Girard Av & 34th St - MBFS",
-    "SEPM21063": "Girard Av & 39th St",
+    "SEPM30292": "Girard Av & 34th St - MBFS",
     "SEPM21025": "Girard Av & 39th St",
-    "SEPM21095": "Girard Av & 3rd St",
+    "SEPM21063": "Girard Av & 39th St",
     "SEPM20994": "Girard Av & 3rd St",
+    "SEPM21095": "Girard Av & 3rd St",
     "SEPM350": "Girard Av & 40th St",
     "SEPM344": "Girard Av & 40th St - FS",
     "SEPM21026": "Girard Av & 41st St",
     "SEPM21062": "Girard Av & 41st St",
-    "SEPM21061": "Girard Av & 42nd St",
     "SEPM21027": "Girard Av & 42nd St",
+    "SEPM21061": "Girard Av & 42nd St",
     "SEPM21030": "Girard Av & 49th St",
     "SEPM20995": "Girard Av & 4th St",
     "SEPM21032": "Girard Av & 51st St",
     "SEPM21056": "Girard Av & 51st St",
     "SEPM21033": "Girard Av & 52nd St",
     "SEPM21055": "Girard Av & 52nd St",
-    "SEPM21053": "Girard Av & 54th St",
     "SEPM21035": "Girard Av & 54th St",
-    "SEPM21051": "Girard Av & 56th St",
+    "SEPM21053": "Girard Av & 54th St",
     "SEPM21037": "Girard Av & 56th St",
-    "SEPM21050": "Girard Av & 57th St",
+    "SEPM21051": "Girard Av & 56th St",
     "SEPM21038": "Girard Av & 57th St",
+    "SEPM21050": "Girard Av & 57th St",
     "SEPM345": "Girard Av & 59th St",
     "SEPM349": "Girard Av & 59th St",
-    "SEPM21093": "Girard Av & 5th St",
     "SEPM20996": "Girard Av & 5th St",
+    "SEPM21093": "Girard Av & 5th St",
     "SEPM21040": "Girard Av & 60th St",
     "SEPM21048": "Girard Av & 60th St",
     "SEPM21047": "Girard Av & 61st St",
@@ -366,8 +368,8 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM21044": "Girard Av & 63rd St - MBFS",
     "SEPM20998": "Girard Av & 7th St",
     "SEPM21091": "Girard Av & 7th St",
-    "SEPM21090": "Girard Av & 8th St",
     "SEPM20999": "Girard Av & 8th St",
+    "SEPM21090": "Girard Av & 8th St",
     "SEPM21028": "Girard Av & Belmont Av",
     "SEPM21060": "Girard Av & Belmont Av - FS",
     "SEPM20986": "Girard Av & Berks St",
@@ -376,17 +378,17 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM352": "Girard Av & Broad St",
     "SEPM20989": "Girard Av & Columbia Av",
     "SEPM21100": "Girard Av & Columbia Av",
-    "SEPM21078": "Girard Av & Corinthian Av",
     "SEPM21010": "Girard Av & Corinthian Av",
+    "SEPM21078": "Girard Av & Corinthian Av",
     "SEPM20991": "Girard Av & Frankford Av",
     "SEPM21098": "Girard Av & Frankford Av- FS",
-    "SEPM342": "Girard Av & Front St",
     "SEPM20978": "Girard Av & Front St",
+    "SEPM342": "Girard Av & Front St",
     "SEPM21058": "Girard Av & Lancaster Av",
     "SEPM30550": "Girard Av & Merion Av",
     "SEPM30605": "Girard Av & Merion Av",
-    "SEPM21101": "Girard Av & Palmer St",
     "SEPM20988": "Girard Av & Palmer St",
+    "SEPM21101": "Girard Av & Palmer St",
     "SEPM21105": "Girard Av & Richmond St",
     "SEPM21008": "Girard Av & Ridge Av",
     "SEPM21081": "Girard Av & Ridge Av",
@@ -398,8 +400,8 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM21042": "Haverford Av & 62nd St",
     "SEPM21481": "Haverford Av & 63rd St",
     "SEPM1924": "Haverford South",
-    "SEPM18631": "Hilltop Rd",
     "SEPM18598": "Hilltop Rd",
+    "SEPM18631": "Hilltop Rd",
     "SEPM15349": "Huey Av",
     "SEPM15376": "Huey Av",
     "SEPM1934": "Hughes Park",
@@ -407,8 +409,8 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM2462": "Huntingdon",
     "SEPM18601": "Irvington Rd",
     "SEPM18628": "Irvington Rd",
-    "SEPM20927": "Island Av & Lindbergh Blvd - FS",
     "SEPM20923": "Island Av & Lindbergh Blvd - FS",
+    "SEPM20927": "Island Av & Lindbergh Blvd - FS",
     "SEPM24738": "Island Av & Suffolk Av - MBFS",
     "SEPM605": "Island Av & Suffolk Av - MBNS",
     "SEPM20921": "Island Av & Tanager St",
@@ -417,17 +419,17 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM18617": "Jackson St",
     "SEPM60": "Kensington-Allegheny",
     "SEPM20786": "Kingsessing Av & 60th St",
-    "SEPM20824": "Kingsessing Av & 61st St",
     "SEPM20784": "Kingsessing Av & 61st St",
-    "SEPM20825": "Kingsessing Av & 62nd St",
+    "SEPM20824": "Kingsessing Av & 61st St",
     "SEPM20785": "Kingsessing Av & 62nd St",
+    "SEPM20825": "Kingsessing Av & 62nd St",
     "SEPM20826": "Kingsessing Av & 65th St",
     "SEPM20639": "Lancaster Av & 36th St",
     "SEPM20638": "Lancaster Av & 38th St",
     "SEPM20663": "Lancaster Av & 38th St",
     "SEPM20635": "Lancaster Av & 40th St",
-    "SEPM20671": "Lancaster Av & 41st St",
     "SEPM20634": "Lancaster Av & 41st St",
+    "SEPM20671": "Lancaster Av & 41st St",
     "SEPM20633": "Lancaster Av & 42nd St",
     "SEPM20672": "Lancaster Av & 42nd St",
     "SEPM20632": "Lancaster Av & 43th St",
@@ -445,15 +447,15 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM20669": "Lancaster Av & Haverford Av",
     "SEPM20674": "Lancaster Av & Ogden St",
     "SEPM20673": "Lancaster Av & Parrish St",
-    "SEPM32722": "Lancaster Av & Powelton Av",
     "SEPM31488": "Lancaster Av & Powelton Av",
+    "SEPM32722": "Lancaster Av & Powelton Av",
     "SEPM20636": "Lancaster Av & Spring Garden St",
     "SEPM20668": "Lancaster Av & Spring Garden St",
     "SEPM20627": "Lancaster Av & Thompson St",
     "SEPM20670": "Lancaster Av & Wallace St",
     "SEPM20675": "Lancaster Av & Westminster St",
-    "SEPM30494": "Lansdowne Av",
     "SEPM1939": "Lansdowne Av",
+    "SEPM30494": "Lansdowne Av",
     "SEPM20623": "Lansdowne Av & 54th St",
     "SEPM20683": "Lansdowne Av & 54th St",
     "SEPM20622": "Lansdowne Av & 55th St",
@@ -464,8 +466,8 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM20686": "Lansdowne Av & 57th St",
     "SEPM20617": "Lansdowne Av & 58th St",
     "SEPM20687": "Lansdowne Av & 58th St",
-    "SEPM20688": "Lansdowne Av & 59th St",
     "SEPM20616": "Lansdowne Av & 59th St",
+    "SEPM20688": "Lansdowne Av & 59th St",
     "SEPM15271": "Lansdowne Av & 60th St",
     "SEPM20689": "Lansdowne Av & 60th St",
     "SEPM20615": "Lansdowne Av & 61st St",
@@ -486,20 +488,20 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM1283": "Lombard-South",
     "SEPM2099": "MacDade Blvd",
     "SEPM29523": "MacDade Blvd",
-    "SEPM18843": "Magnolia Av",
     "SEPM10011": "Magnolia Av",
-    "SEPM20762": "Main St & 2nd St",
+    "SEPM18843": "Magnolia Av",
     "SEPM20702": "Main St & 2nd St",
+    "SEPM20762": "Main St & 2nd St",
     "SEPM20701": "Main St & 3rd St",
     "SEPM20763": "Main St & 3rd St",
     "SEPM20700": "Main St & 4th St",
     "SEPM20764": "Main St & 4th St",
-    "SEPM20765": "Main St & 5th St",
     "SEPM20699": "Main St & 5th St",
+    "SEPM20765": "Main St & 5th St",
     "SEPM20698": "Main St & 6th St",
     "SEPM20766": "Main St & 6th St",
-    "SEPM20761": "Main St & Front St",
     "SEPM20703": "Main St & Front St",
+    "SEPM20761": "Main St & Front St",
     "SEPM24568": "Main St & Mill St",
     "SEPM25241": "Main St & Powell Av",
     "SEPM20697": "Main St & Summit St",
@@ -511,21 +513,21 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM15340": "Marshall Rd",
     "SEPM1932": "Matsonford",
     "SEPM2446": "Millbourne",
-    "SEPM15380": "Monroe St",
     "SEPM15379": "Monroe St",
-    "SEPM324": "Mt. Moriah",
+    "SEPM15380": "Monroe St",
     "SEPM319": "Mt. Moriah",
+    "SEPM324": "Mt. Moriah",
     "SEPM152": "NRG Station",
     "SEPM30520": "Norristown Transit Center",
     "SEPM2439": "North Philadelphia",
-    "SEPM1964": "North St",
     "SEPM1961": "North St",
-    "SEPM18616": "Olive St",
+    "SEPM1964": "North St",
     "SEPM18612": "Olive St",
+    "SEPM18616": "Olive St",
     "SEPM33027": "Olney Transit Center - B1",
     "SEPM82": "Olney Transit Center - B2 & B3",
-    "SEPM1948": "Orange St/Media",
     "SEPM1947": "Orange St/Media",
+    "SEPM1948": "Orange St/Media",
     "SEPM20967": "Oregon",
     "SEPM20024": "Paper Mill Rd",
     "SEPM20025": "Paper Mill Rd",
@@ -533,8 +535,8 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM1919": "Penfield",
     "SEPM15329": "Penn St",
     "SEPM30375": "Penn St",
-    "SEPM15366": "Pine Ridge",
     "SEPM15358": "Pine Ridge",
+    "SEPM15366": "Pine Ridge",
     "SEPM21014": "Poplar St & 25th St",
     "SEPM21073": "Poplar St & Stillman St",
     "SEPM1946": "Providence Rd/Media",
@@ -547,17 +549,17 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM21111": "Richmond St & Ann St",
     "SEPM20982": "Richmond St & Cambria St",
     "SEPM21110": "Richmond St & Cambria St",
-    "SEPM21113": "Richmond St & Clearfield St",
     "SEPM20979": "Richmond St & Clearfield St",
+    "SEPM21113": "Richmond St & Clearfield St",
     "SEPM649": "Richmond St & Cumberland St",
     "SEPM650": "Richmond St & Cumberland St",
     "SEPM25779": "Richmond St & Girard Av",
-    "SEPM21107": "Richmond St & Huntingdon St",
     "SEPM20984": "Richmond St & Huntingdon St",
-    "SEPM21108": "Richmond St & Lehigh Av",
+    "SEPM21107": "Richmond St & Huntingdon St",
     "SEPM20983": "Richmond St & Lehigh Av",
-    "SEPM21109": "Richmond St & Somerset St",
+    "SEPM21108": "Richmond St & Lehigh Av",
     "SEPM12218": "Richmond St & Somerset St",
+    "SEPM21109": "Richmond St & Somerset St",
     "SEPM341": "Richmond St & Westmoreland St Loop",
     "SEPM1902": "Roberts Rd",
     "SEPM15355": "Saxer Av",
@@ -576,21 +578,21 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM22129": "Spruce St & 38th St",
     "SEPM22128": "Spruce St & 39th St",
     "SEPM672": "Spruce St & 40th St - FS",
-    "SEPM22147": "Spruce St & 41st St",
     "SEPM22127": "Spruce St & 41st St",
+    "SEPM22147": "Spruce St & 41st St",
     "SEPM22151": "Spruce St & 42nd St",
     "SEPM1900": "Stadium",
     "SEPM1276": "Susquehanna-Dauphin",
     "SEPM1285": "Tasker-Morris",
-    "SEPM18621": "Thomson Av",
     "SEPM18607": "Thomson Av",
+    "SEPM18621": "Thomson Av",
     "SEPM2463": "Tioga",
     "SEPM1918": "Township Line Rd",
     "SEPM18613": "Veterans Sq",
     "SEPM18615": "Veterans Sq",
     "SEPM1929": "Villanova South",
-    "SEPM18632": "Walnut St",
     "SEPM18597": "Walnut St",
+    "SEPM18632": "Walnut St",
     "SEPM1282": "Walnut-Locust",
     "SEPM1943": "Woodland Av",
     "SEPM1952": "Woodland Av",
@@ -598,8 +600,8 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM20736": "Woodland Av & 42nd St",
     "SEPM20737": "Woodland Av & 43rd St",
     "SEPM20728": "Woodland Av & 45th St",
-    "SEPM20739": "Woodland Av & 46th St",
     "SEPM20727": "Woodland Av & 46th St",
+    "SEPM20739": "Woodland Av & 46th St",
     "SEPM20958": "Woodland Av & 47th St",
     "SEPM20726": "Woodland Av & 48th St",
     "SEPM20740": "Woodland Av & 48th St",
@@ -611,16 +613,16 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM20741": "Woodland Av & 51st St",
     "SEPM20723": "Woodland Av & 52nd St",
     "SEPM20742": "Woodland Av & 52nd St",
-    "SEPM21208": "Woodland Av & 53rd St",
     "SEPM20743": "Woodland Av & 53rd St",
-    "SEPM20744": "Woodland Av & 54th St",
+    "SEPM21208": "Woodland Av & 53rd St",
     "SEPM20722": "Woodland Av & 54th St",
+    "SEPM20744": "Woodland Av & 54th St",
     "SEPM20721": "Woodland Av & 55th St",
     "SEPM20745": "Woodland Av & 55th St",
     "SEPM20720": "Woodland Av & 56th St",
     "SEPM20746": "Woodland Av & 56th St",
-    "SEPM20747": "Woodland Av & 57th St",
     "SEPM20719": "Woodland Av & 57th St",
+    "SEPM20747": "Woodland Av & 57th St",
     "SEPM20718": "Woodland Av & 58th St",
     "SEPM20748": "Woodland Av & 58th St",
     "SEPM20716": "Woodland Av & 60th St",
@@ -629,16 +631,16 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM20750": "Woodland Av & 61st St",
     "SEPM20715": "Woodland Av & 62nd St",
     "SEPM303": "Woodland Av & 62nd St",
-    "SEPM20751": "Woodland Av & 63rd St",
     "SEPM20714": "Woodland Av & 63rd St",
-    "SEPM20752": "Woodland Av & 64th St",
+    "SEPM20751": "Woodland Av & 63rd St",
     "SEPM20713": "Woodland Av & 64th St",
+    "SEPM20752": "Woodland Av & 64th St",
     "SEPM20712": "Woodland Av & 65th St",
     "SEPM20753": "Woodland Av & 65th St",
     "SEPM20711": "Woodland Av & 66th St",
     "SEPM20754": "Woodland Av & 66th St",
-    "SEPM20755": "Woodland Av & 67th St",
     "SEPM20710": "Woodland Av & 67th St",
+    "SEPM20755": "Woodland Av & 67th St",
     "SEPM20709": "Woodland Av & 68th St",
     "SEPM20756": "Woodland Av & 68th St",
     "SEPM20708": "Woodland Av & 69th St",
@@ -649,14 +651,14 @@ SEPTA_METRO_STATION_NAMES: dict[str, str] = {
     "SEPM20759": "Woodland Av & 71st St",
     "SEPM20705": "Woodland Av & 72nd St",
     "SEPM20760": "Woodland Av & 72nd St",
-    "SEPM304": "Woodland Av & Island Av",
     "SEPM20704": "Woodland Av & Island Av",
-    "SEPM18844": "Woodlawn-Providence",
+    "SEPM304": "Woodland Av & Island Av",
     "SEPM12048": "Woodlawn-Providence",
+    "SEPM18844": "Woodlawn-Providence",
     "SEPM1921": "Wynnewood Rd",
     "SEPM1273": "Wyoming",
-    "SEPM325": "Yeadon",
     "SEPM20774": "Yeadon",
+    "SEPM325": "Yeadon",
     "SEPM2461": "York-Dauphin",
 }
 
@@ -1886,6 +1888,499 @@ SEPTA_METRO_ROUTE_STATIONS: dict[str, tuple[str, ...]] = {
 }
 
 
+# Ordered station sequences per route for the opposite direction
+# (direction_id=1), from route_stops.txt.
+#
+# This is NOT the outbound sequence reversed. Each trolley curb stop is its own
+# station code, so the inbound path visits a largely different set of codes:
+# the opposite curb of the same corner where the street carries both
+# directions, and genuinely different stops where the route runs on a one-way
+# pair (Route 10 runs outbound on 40th St and inbound on 41st St). Of the 633
+# Metro station codes, 271 appear only here — they were absent from route
+# topology entirely before issue #1632.
+SEPTA_METRO_ROUTE_STATIONS_INBOUND: dict[str, tuple[str, ...]] = {
+    "B1": (
+        "SEPM152",
+        "SEPM20967",
+        "SEPM1286",
+        "SEPM1285",
+        "SEPM1284",
+        "SEPM1283",
+        "SEPM1282",
+        "SEPM33029",
+        "SEPM1280",
+        "SEPM1279",
+        "SEPM1278",
+        "SEPM20966",
+        "SEPM1277",
+        "SEPM1276",
+        "SEPM2439",
+        "SEPM142",
+        "SEPM140",
+        "SEPM1274",
+        "SEPM1273",
+        "SEPM1272",
+        "SEPM33027",
+        "SEPM20965",
+    ),
+    "B2": (
+        "SEPM152",
+        "SEPM1282",
+        "SEPM1281",
+        "SEPM1280",
+        "SEPM1279",
+        "SEPM20966",
+        "SEPM140",
+        "SEPM82",
+        "SEPM20965",
+    ),
+    "B3": (
+        "SEPM2457",
+        "SEPM2440",
+        "SEPM1278",
+        "SEPM20966",
+        "SEPM2439",
+        "SEPM140",
+        "SEPM82",
+        "SEPM20965",
+    ),
+    "D1": (
+        "SEPM1948",
+        "SEPM18615",
+        "SEPM18616",
+        "SEPM18617",
+        "SEPM15380",
+        "SEPM18618",
+        "SEPM18619",
+        "SEPM1949",
+        "SEPM18620",
+        "SEPM15366",
+        "SEPM20025",
+        "SEPM1951",
+        "SEPM18621",
+        "SEPM1952",
+        "SEPM18622",
+        "SEPM15370",
+        "SEPM18623",
+        "SEPM1953",
+        "SEPM18624",
+        "SEPM18625",
+        "SEPM18626",
+        "SEPM16395",
+        "SEPM18627",
+        "SEPM15376",
+        "SEPM1955",
+        "SEPM18628",
+        "SEPM18629",
+        "SEPM30494",
+        "SEPM15344",
+        "SEPM18630",
+        "SEPM18631",
+        "SEPM1957",
+        "SEPM18632",
+        "SEPM15348",
+        "SEPM15497",
+    ),
+    "D2": (
+        "SEPM20431",
+        "SEPM29523",
+        "SEPM15334",
+        "SEPM18842",
+        "SEPM1964",
+        "SEPM18843",
+        "SEPM18844",
+        "SEPM30374",
+        "SEPM30544",
+        "SEPM30375",
+        "SEPM30376",
+        "SEPM15339",
+        "SEPM15340",
+        "SEPM18846",
+        "SEPM15341",
+        "SEPM1955",
+        "SEPM18628",
+        "SEPM18629",
+        "SEPM30494",
+        "SEPM15344",
+        "SEPM18630",
+        "SEPM18631",
+        "SEPM1957",
+        "SEPM18632",
+        "SEPM15348",
+        "SEPM15497",
+    ),
+    "G1": (
+        "SEPM21044",
+        "SEPM31443",
+        "SEPM21047",
+        "SEPM21048",
+        "SEPM349",
+        "SEPM21050",
+        "SEPM21051",
+        "SEPM21053",
+        "SEPM21055",
+        "SEPM21056",
+        "SEPM21058",
+        "SEPM30605",
+        "SEPM21060",
+        "SEPM21061",
+        "SEPM21062",
+        "SEPM350",
+        "SEPM21063",
+        "SEPM30292",
+        "SEPM21067",
+        "SEPM21068",
+        "SEPM21069",
+        "SEPM21070",
+        "SEPM21071",
+        "SEPM21072",
+        "SEPM21073",
+        "SEPM21075",
+        "SEPM21078",
+        "SEPM21079",
+        "SEPM21080",
+        "SEPM21081",
+        "SEPM21082",
+        "SEPM21083",
+        "SEPM352",
+        "SEPM21086",
+        "SEPM21087",
+        "SEPM21090",
+        "SEPM21091",
+        "SEPM21093",
+        "SEPM21095",
+        "SEPM21096",
+        "SEPM20978",
+        "SEPM31540",
+        "SEPM24038",
+        "SEPM31347",
+        "SEPM23992",
+        "SEPM21098",
+        "SEPM21100",
+        "SEPM21101",
+        "SEPM21103",
+        "SEPM21105",
+        "SEPM649",
+        "SEPM21107",
+        "SEPM21108",
+        "SEPM21109",
+        "SEPM21110",
+        "SEPM21111",
+        "SEPM21113",
+        "SEPM21114",
+        "SEPM341",
+    ),
+    "L1": (
+        "SEPM61",
+        "SEPM217",
+        "SEPM2464",
+        "SEPM838",
+        "SEPM2463",
+        "SEPM60",
+        "SEPM797",
+        "SEPM2462",
+        "SEPM2461",
+        "SEPM2460",
+        "SEPM353",
+        "SEPM2459",
+        "SEPM428",
+        "SEPM2458",
+        "SEPM2457",
+        "SEPM2456",
+        "SEPM2455",
+        "SEPM1392",
+        "SEPM21532",
+        "SEPM2453",
+        "SEPM2452",
+        "SEPM2451",
+        "SEPM2450",
+        "SEPM2449",
+        "SEPM2448",
+        "SEPM2447",
+        "SEPM2446",
+        "SEPM416",
+    ),
+    "M1": (
+        "SEPM30520",
+        "SEPM1892",
+        "SEPM1935",
+        "SEPM1934",
+        "SEPM1895",
+        "SEPM1932",
+        "SEPM1931",
+        "SEPM1930",
+        "SEPM1929",
+        "SEPM1900",
+        "SEPM1927",
+        "SEPM1902",
+        "SEPM1925",
+        "SEPM1924",
+        "SEPM1923",
+        "SEPM30519",
+        "SEPM1921",
+        "SEPM1908",
+        "SEPM1919",
+        "SEPM1918",
+        "SEPM1917",
+        "SEPM416",
+    ),
+    "T1": (
+        "SEPM283",
+        "SEPM20659",
+        "SEPM20660",
+        "SEPM20661",
+        "SEPM20662",
+        "SEPM20658",
+        "SEPM287",
+        "SEPM20664",
+        "SEPM20665",
+        "SEPM31488",
+        "SEPM20663",
+        "SEPM20668",
+        "SEPM20669",
+        "SEPM279",
+        "SEPM351",
+        "SEPM30823",
+        "SEPM364",
+        "SEPM21465",
+        "SEPM567",
+        "SEPM20670",
+        "SEPM20671",
+        "SEPM20672",
+        "SEPM20673",
+        "SEPM20674",
+        "SEPM20675",
+        "SEPM20677",
+        "SEPM290",
+        "SEPM20678",
+        "SEPM20679",
+        "SEPM20681",
+        "SEPM20683",
+        "SEPM20684",
+        "SEPM20685",
+        "SEPM20686",
+        "SEPM20687",
+        "SEPM20688",
+        "SEPM20689",
+        "SEPM20690",
+        "SEPM20691",
+        "SEPM20692",
+        "SEPM20693",
+        "SEPM20695",
+        "SEPM31294",
+    ),
+    "T2": (
+        "SEPM283",
+        "SEPM20659",
+        "SEPM20660",
+        "SEPM20661",
+        "SEPM20662",
+        "SEPM20658",
+        "SEPM20733",
+        "SEPM20734",
+        "SEPM301",
+        "SEPM21248",
+        "SEPM21425",
+        "SEPM21426",
+        "SEPM22230",
+        "SEPM22147",
+        "SEPM22151",
+        "SEPM21431",
+        "SEPM21432",
+        "SEPM20879",
+        "SEPM20880",
+        "SEPM20881",
+        "SEPM20882",
+        "SEPM20883",
+        "SEPM20884",
+        "SEPM20885",
+        "SEPM601",
+        "SEPM20886",
+        "SEPM20887",
+        "SEPM20888",
+        "SEPM20889",
+        "SEPM20890",
+        "SEPM20891",
+        "SEPM20892",
+        "SEPM20893",
+        "SEPM20894",
+        "SEPM20895",
+        "SEPM20896",
+        "SEPM599",
+        "SEPM304",
+        "SEPM610",
+    ),
+    "T3": (
+        "SEPM283",
+        "SEPM20659",
+        "SEPM20660",
+        "SEPM20661",
+        "SEPM20662",
+        "SEPM20658",
+        "SEPM20733",
+        "SEPM20734",
+        "SEPM301",
+        "SEPM21248",
+        "SEPM21425",
+        "SEPM21426",
+        "SEPM22230",
+        "SEPM22147",
+        "SEPM22151",
+        "SEPM21431",
+        "SEPM21432",
+        "SEPM21433",
+        "SEPM20807",
+        "SEPM20808",
+        "SEPM20809",
+        "SEPM20810",
+        "SEPM20811",
+        "SEPM20812",
+        "SEPM322",
+        "SEPM20814",
+        "SEPM20815",
+        "SEPM20816",
+        "SEPM20817",
+        "SEPM20818",
+        "SEPM20819",
+        "SEPM20820",
+        "SEPM323",
+        "SEPM20821",
+        "SEPM20822",
+        "SEPM20823",
+        "SEPM20824",
+        "SEPM20825",
+        "SEPM324",
+        "SEPM20826",
+        "SEPM20827",
+        "SEPM31218",
+        "SEPM21209",
+        "SEPM20831",
+        "SEPM30865",
+        "SEPM20833",
+        "SEPM20834",
+        "SEPM325",
+        "SEPM20835",
+        "SEPM20836",
+        "SEPM20838",
+        "SEPM20839",
+        "SEPM20840",
+        "SEPM20841",
+        "SEPM30866",
+        "SEPM305",
+    ),
+    "T4": (
+        "SEPM283",
+        "SEPM20659",
+        "SEPM20660",
+        "SEPM20661",
+        "SEPM20662",
+        "SEPM20658",
+        "SEPM20733",
+        "SEPM20734",
+        "SEPM21248",
+        "SEPM21425",
+        "SEPM21426",
+        "SEPM22230",
+        "SEPM22147",
+        "SEPM22151",
+        "SEPM21431",
+        "SEPM21432",
+        "SEPM21433",
+        "SEPM301",
+        "SEPM20736",
+        "SEPM20737",
+        "SEPM20739",
+        "SEPM20740",
+        "SEPM302",
+        "SEPM317",
+        "SEPM20741",
+        "SEPM20742",
+        "SEPM20743",
+        "SEPM20744",
+        "SEPM20745",
+        "SEPM20746",
+        "SEPM20747",
+        "SEPM20748",
+        "SEPM20749",
+        "SEPM20750",
+        "SEPM303",
+        "SEPM20751",
+        "SEPM20752",
+        "SEPM20753",
+        "SEPM20754",
+        "SEPM20755",
+        "SEPM20756",
+        "SEPM20757",
+        "SEPM20758",
+        "SEPM20759",
+        "SEPM20760",
+        "SEPM304",
+        "SEPM20761",
+        "SEPM20762",
+        "SEPM20763",
+        "SEPM20764",
+        "SEPM20765",
+        "SEPM20766",
+        "SEPM20767",
+        "SEPM25241",
+        "SEPM305",
+    ),
+    "T5": (
+        "SEPM283",
+        "SEPM20659",
+        "SEPM20660",
+        "SEPM20661",
+        "SEPM20662",
+        "SEPM20658",
+        "SEPM20733",
+        "SEPM20734",
+        "SEPM21248",
+        "SEPM21425",
+        "SEPM21426",
+        "SEPM22230",
+        "SEPM22147",
+        "SEPM22151",
+        "SEPM21432",
+        "SEPM21433",
+        "SEPM301",
+        "SEPM20736",
+        "SEPM20737",
+        "SEPM20739",
+        "SEPM20740",
+        "SEPM302",
+        "SEPM20897",
+        "SEPM30595",
+        "SEPM20899",
+        "SEPM20900",
+        "SEPM20901",
+        "SEPM20902",
+        "SEPM20903",
+        "SEPM20904",
+        "SEPM20905",
+        "SEPM20906",
+        "SEPM20907",
+        "SEPM20908",
+        "SEPM20909",
+        "SEPM20910",
+        "SEPM20911",
+        "SEPM20912",
+        "SEPM20913",
+        "SEPM20914",
+        "SEPM20915",
+        "SEPM20916",
+        "SEPM20917",
+        "SEPM20918",
+        "SEPM610",
+        "SEPM20919",
+        "SEPM611",
+        "SEPM20921",
+        "SEPM20923",
+        "SEPM24738",
+        "SEPM612",
+    ),
+}
+
+
 # Station coordinates for map visualization
 SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM30866": {"lat": 39.920121, "lon": -75.263141},  # 10th St & Main St
@@ -1897,8 +2392,8 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM2455": {"lat": 39.952101, "lon": -75.16145},  # 13th St
     "SEPM283": {"lat": 39.952532, "lon": -75.162559},  # 13th St
     "SEPM1392": {"lat": 39.952609, "lon": -75.165286},  # 15th St/City Hall
-    "SEPM31140": {"lat": 39.952502, "lon": -75.165369},  # 15th St/City Hall
     "SEPM20659": {"lat": 39.952672, "lon": -75.165345},  # 15th St/City Hall
+    "SEPM31140": {"lat": 39.952502, "lon": -75.165369},  # 15th St/City Hall
     "SEPM33029": {"lat": 39.952468, "lon": -75.164092},  # 15th St/City Hall - B1
     "SEPM1281": {"lat": 39.952468, "lon": -75.164094},  # 15th St/City Hall - B2
     "SEPM20646": {"lat": 39.953327, "lon": -75.171637},  # 19th St
@@ -1907,16 +2402,16 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM20661": {"lat": 39.954051, "lon": -75.176571},  # 22nd St
     "SEPM21072": {"lat": 39.972701, "lon": -75.179198},  # 26th St & Poplar St
     "SEPM428": {"lat": 39.949827, "lon": -75.143752},  # 2nd St
-    "SEPM20658": {"lat": 39.954871, "lon": -75.189499},  # 33rd St
     "SEPM20642": {"lat": 39.954782, "lon": -75.189523},  # 33rd St
+    "SEPM20658": {"lat": 39.954871, "lon": -75.189499},  # 33rd St
     "SEPM2453": {"lat": 39.955866, "lon": -75.19148},  # 34th St
     "SEPM20665": {"lat": 39.958404, "lon": -75.193585},  # 36th St & Lancaster Av
-    "SEPM20664": {"lat": 39.956058, "lon": -75.194113},  # 36th St & Market St
     "SEPM20640": {"lat": 39.956281, "lon": -75.194218},  # 36th St & Market St
+    "SEPM20664": {"lat": 39.956058, "lon": -75.194113},  # 36th St & Market St
     "SEPM20641": {"lat": 39.955335, "lon": -75.194162},  # 36th St Portal
     "SEPM287": {"lat": 39.955451, "lon": -75.194233},  # 36th St Portal
-    "SEPM20733": {"lat": 39.95389, "lon": -75.194722},  # 36th-Sansom
     "SEPM20732": {"lat": 39.953854, "lon": -75.194533},  # 36th-Sansom
+    "SEPM20733": {"lat": 39.95389, "lon": -75.194722},  # 36th-Sansom
     "SEPM20731": {"lat": 39.950993, "lon": -75.196586},  # 37th-Spruce
     "SEPM20734": {"lat": 39.951048, "lon": -75.197306},  # 37th-Spruce
     "SEPM2452": {"lat": 39.957152, "lon": -75.201963},  # 40th St
@@ -1938,8 +2433,8 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM21432": {"lat": 39.949879, "lon": -75.207241},  # 42nd St & Baltimore Av
     "SEPM21456": {"lat": 39.949709, "lon": -75.207076},  # 42nd St & Baltimore Av
     "SEPM21433": {"lat": 39.948594, "lon": -75.207174},  # 42nd St & Chester Av
-    "SEPM30820": {"lat": 39.951075, "lon": -75.207072},  # 42nd St & Pine St
     "SEPM21431": {"lat": 39.951253, "lon": -75.207189},  # 42nd St & Pine St
+    "SEPM30820": {"lat": 39.951075, "lon": -75.207072},  # 42nd St & Pine St
     "SEPM21457": {"lat": 39.952163, "lon": -75.206867},  # 42nd St & Spruce St
     "SEPM2451": {"lat": 39.958655, "lon": -75.214028},  # 46th St
     "SEPM20897": {"lat": 39.93998, "lon": -75.211652},  # 49th St & Paschall Av
@@ -1954,8 +2449,8 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM599": {"lat": 39.943963, "lon": -75.246342},  # 61st-Baltimore
     "SEPM2447": {"lat": 39.96275, "lon": -75.246767},  # 63rd St
     "SEPM20695": {"lat": 39.980582, "lon": -75.246461},  # 63rd St & Columbia Av
-    "SEPM20693": {"lat": 39.978234, "lon": -75.24603},  # 63rd St & Jefferson St
     "SEPM20612": {"lat": 39.97835, "lon": -75.246184},  # 63rd St & Jefferson St
+    "SEPM20693": {"lat": 39.978234, "lon": -75.24603},  # 63rd St & Jefferson St
     "SEPM20611": {"lat": 39.980912, "lon": -75.246661},  # 63rd St & Lebanon Av
     "SEPM31294": {"lat": 39.983838, "lon": -75.245957},  # 63rd-Malvern
     "SEPM20781": {"lat": 39.92905, "lon": -75.24108},  # 65th St & Belmar Av
@@ -1963,8 +2458,8 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM20782": {"lat": 39.928628, "lon": -75.238897},  # 65th St & Chester Av
     "SEPM20827": {"lat": 39.92893, "lon": -75.238223},  # 65th St & Chester St
     "SEPM20843": {"lat": 39.927902, "lon": -75.23714},  # 65th St & Kingsessing Av
-    "SEPM416": {"lat": 39.962577, "lon": -75.258867},  # 69th St Transit Center
     "SEPM15497": {"lat": 39.96217, "lon": -75.259677},  # 69th St Transit Center
+    "SEPM416": {"lat": 39.962578, "lon": -75.258867},  # 69th St Transit Center
     "SEPM612": {"lat": 39.898748, "lon": -75.23926},  # 80th St/Eastwick
     "SEPM2457": {"lat": 39.951138, "lon": -75.153589},  # 8th-Market
     "SEPM20772": {"lat": 39.922566, "lon": -75.255994},  # 9th St & Cedar Av
@@ -1972,10 +2467,10 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM20768": {"lat": 39.919921, "lon": -75.260545},  # 9th St & Ridge Av
     "SEPM20770": {"lat": 39.921142, "lon": -75.258866},  # 9th St & Summit St
     "SEPM20771": {"lat": 39.92205, "lon": -75.257482},  # 9th St & Summit St - MBFS
-    "SEPM18626": {"lat": 39.947826, "lon": -75.312636},  # Anderson Av
     "SEPM18603": {"lat": 39.94796, "lon": -75.312825},  # Anderson Av
-    "SEPM15334": {"lat": 39.911684, "lon": -75.281832},  # Andrews Av
+    "SEPM18626": {"lat": 39.947826, "lon": -75.312636},  # Anderson Av
     "SEPM15333": {"lat": 39.911613, "lon": -75.281997},  # Andrews Av
+    "SEPM15334": {"lat": 39.911684, "lon": -75.281832},  # Andrews Av
     "SEPM1923": {"lat": 39.9999, "lon": -75.309449},  # Ardmore Av
     "SEPM30519": {"lat": 39.996275, "lon": -75.303724},  # Ardmore Junction
     "SEPM16395": {"lat": 39.949203, "lon": -75.306033},  # Aronimink
@@ -1983,27 +2478,27 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM217": {"lat": 40.016587, "lon": -75.083844},  # Arrott Transit Center
     "SEPM1938": {"lat": 39.957649, "lon": -75.269301},  # Avon Rd
     "SEPM1957": {"lat": 39.95772, "lon": -75.268888},  # Avon Rd
-    "SEPM30376": {"lat": 39.931313, "lon": -75.292841},  # Baltimore Av
     "SEPM1959": {"lat": 39.931233, "lon": -75.292912},  # Baltimore Av
-    "SEPM20879": {"lat": 39.949861, "lon": -75.206945},  # Baltimore Av & 42nd St
+    "SEPM30376": {"lat": 39.931313, "lon": -75.292841},  # Baltimore Av
     "SEPM20876": {"lat": 39.949736, "lon": -75.207265},  # Baltimore Av & 42nd St
-    "SEPM20880": {"lat": 39.949641, "lon": -75.209154},  # Baltimore Av & 43rd St
+    "SEPM20879": {"lat": 39.949861, "lon": -75.206945},  # Baltimore Av & 42nd St
     "SEPM20875": {"lat": 39.949481, "lon": -75.20932},  # Baltimore Av & 43rd St
+    "SEPM20880": {"lat": 39.949641, "lon": -75.209154},  # Baltimore Av & 43rd St
     "SEPM20874": {"lat": 39.949181, "lon": -75.21127},  # Baltimore Av & 44th St
     "SEPM20881": {"lat": 39.949332, "lon": -75.211092},  # Baltimore Av & 44th St
     "SEPM20873": {"lat": 39.949006, "lon": -75.213018},  # Baltimore Av & 45th St
     "SEPM20882": {"lat": 39.949148, "lon": -75.212828},  # Baltimore Av & 45th St
     "SEPM20872": {"lat": 39.948786, "lon": -75.215061},  # Baltimore Av & 46th St
     "SEPM20883": {"lat": 39.948937, "lon": -75.214884},  # Baltimore Av & 46th St
-    "SEPM20884": {"lat": 39.948691, "lon": -75.21701},  # Baltimore Av & 47th St
     "SEPM20871": {"lat": 39.94854, "lon": -75.217188},  # Baltimore Av & 47th St
+    "SEPM20884": {"lat": 39.948691, "lon": -75.21701},  # Baltimore Av & 47th St
     "SEPM20885": {"lat": 39.948472, "lon": -75.219101},  # Baltimore Av & 48th St
-    "SEPM601": {"lat": 39.948261, "lon": -75.221109},  # Baltimore Av & 49th St
     "SEPM600": {"lat": 39.948101, "lon": -75.221404},  # Baltimore Av & 49th St
-    "SEPM20886": {"lat": 39.948041, "lon": -75.223199},  # Baltimore Av & 50th St
+    "SEPM601": {"lat": 39.948261, "lon": -75.221109},  # Baltimore Av & 49th St
     "SEPM20869": {"lat": 39.947872, "lon": -75.223377},  # Baltimore Av & 50th St
-    "SEPM20887": {"lat": 39.94783, "lon": -75.225266},  # Baltimore Av & 51st St
+    "SEPM20886": {"lat": 39.948041, "lon": -75.223199},  # Baltimore Av & 50th St
     "SEPM20868": {"lat": 39.947715, "lon": -75.225456},  # Baltimore Av & 51st St
+    "SEPM20887": {"lat": 39.94783, "lon": -75.225266},  # Baltimore Av & 51st St
     "SEPM20888": {"lat": 39.947842, "lon": -75.227309},  # Baltimore Av & 52nd St
     "SEPM20866": {"lat": 39.947766, "lon": -75.229612},  # Baltimore Av & 53rd St
     "SEPM20889": {"lat": 39.947846, "lon": -75.229317},  # Baltimore Av & 53rd St
@@ -2013,24 +2508,24 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM20891": {"lat": 39.947442, "lon": -75.233522},  # Baltimore Av & 55th St
     "SEPM20863": {"lat": 39.946785, "lon": -75.235602},  # Baltimore Av & 56th St
     "SEPM20892": {"lat": 39.946936, "lon": -75.235519},  # Baltimore Av & 56th St
-    "SEPM20893": {"lat": 39.946431, "lon": -75.237763},  # Baltimore Av & 57th St
     "SEPM20862": {"lat": 39.946386, "lon": -75.237327},  # Baltimore Av & 57th St
-    "SEPM20894": {"lat": 39.945988, "lon": -75.239937},  # Baltimore Av & 58th St
+    "SEPM20893": {"lat": 39.946431, "lon": -75.237763},  # Baltimore Av & 57th St
     "SEPM20861": {"lat": 39.945783, "lon": -75.240304},  # Baltimore Av & 58th St
+    "SEPM20894": {"lat": 39.945988, "lon": -75.239937},  # Baltimore Av & 58th St
     "SEPM20860": {"lat": 39.945197, "lon": -75.241899},  # Baltimore Av & 59th St
     "SEPM20895": {"lat": 39.945411, "lon": -75.241698},  # Baltimore Av & 59th St
-    "SEPM20896": {"lat": 39.944468, "lon": -75.244322},  # Baltimore Av & 60th St
     "SEPM20859": {"lat": 39.944299, "lon": -75.244429},  # Baltimore Av & 60th St
+    "SEPM20896": {"lat": 39.944468, "lon": -75.244322},  # Baltimore Av & 60th St
     "SEPM20867": {"lat": 39.947727, "lon": -75.227912},  # Baltimore Av & Broomall St
     "SEPM20870": {"lat": 39.948312, "lon": -75.219503},  # Baltimore Av & Florence Av
-    "SEPM4726": {"lat": 39.914605, "lon": -75.284222},  # Bartram Av
     "SEPM18842": {"lat": 39.914703, "lon": -75.284092},  # Bartram Av
+    "SEPM4726": {"lat": 39.914605, "lon": -75.284222},  # Bartram Av
     "SEPM18608": {"lat": 39.916249, "lon": -75.376967},  # Beatty Rd
     "SEPM18620": {"lat": 39.916071, "lon": -75.376861},  # Beatty Rd
     "SEPM1908": {"lat": 39.986517, "lon": -75.291466},  # Beechwood-Brookline
     "SEPM2460": {"lat": 39.978626, "lon": -75.133507},  # Berks
-    "SEPM18630": {"lat": 39.955326, "lon": -75.274066},  # Beverly Blvd
     "SEPM18599": {"lat": 39.955095, "lon": -75.274822},  # Beverly Blvd
+    "SEPM18630": {"lat": 39.955326, "lon": -75.274066},  # Beverly Blvd
     "SEPM1892": {"lat": 40.104955, "lon": -75.348141},  # Bridgeport
     "SEPM142": {"lat": 40.001589, "lon": -75.152875},  # Broad-Allegheny
     "SEPM20966": {"lat": 39.971469, "lon": -75.15944},  # Broad-Girard
@@ -2047,28 +2542,28 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM20809": {"lat": 39.947878, "lon": -75.211403},  # Chester Av & 45th St
     "SEPM20799": {"lat": 39.946827, "lon": -75.212682},  # Chester Av & 46th St
     "SEPM20810": {"lat": 39.947006, "lon": -75.212658},  # Chester Av & 46th St
-    "SEPM20811": {"lat": 39.94608, "lon": -75.213959},  # Chester Av & 47th St
     "SEPM20790": {"lat": 39.945901, "lon": -75.213984},  # Chester Av & 47th St
-    "SEPM20812": {"lat": 39.945154, "lon": -75.215285},  # Chester Av & 48th St
+    "SEPM20811": {"lat": 39.94608, "lon": -75.213959},  # Chester Av & 47th St
     "SEPM20789": {"lat": 39.944958, "lon": -75.215344},  # Chester Av & 48th St
-    "SEPM322": {"lat": 39.944281, "lon": -75.216527},  # Chester Av & 49th St
+    "SEPM20812": {"lat": 39.945154, "lon": -75.215285},  # Chester Av & 48th St
     "SEPM321": {"lat": 39.944041, "lon": -75.216622},  # Chester Av & 49th St
+    "SEPM322": {"lat": 39.944281, "lon": -75.216527},  # Chester Av & 49th St
     "SEPM20797": {"lat": 39.942349, "lon": -75.219048},  # Chester Av & 51st St
     "SEPM20814": {"lat": 39.942519, "lon": -75.219012},  # Chester Av & 51st St
     "SEPM20796": {"lat": 39.941539, "lon": -75.220184},  # Chester Av & 52nd St
     "SEPM20815": {"lat": 39.941726, "lon": -75.220124},  # Chester Av & 52nd St
-    "SEPM20816": {"lat": 39.940764, "lon": -75.221485},  # Chester Av & 53rd St
     "SEPM20795": {"lat": 39.940577, "lon": -75.221556},  # Chester Av & 53rd St
-    "SEPM20817": {"lat": 39.939785, "lon": -75.222893},  # Chester Av & 54th St
+    "SEPM20816": {"lat": 39.940764, "lon": -75.221485},  # Chester Av & 53rd St
     "SEPM20794": {"lat": 39.939607, "lon": -75.222952},  # Chester Av & 54th St
-    "SEPM20818": {"lat": 39.938832, "lon": -75.224253},  # Chester Av & 55th St
+    "SEPM20817": {"lat": 39.939785, "lon": -75.222893},  # Chester Av & 54th St
     "SEPM20793": {"lat": 39.938654, "lon": -75.224301},  # Chester Av & 55th St
+    "SEPM20818": {"lat": 39.938832, "lon": -75.224253},  # Chester Av & 55th St
     "SEPM20792": {"lat": 39.937701, "lon": -75.225661},  # Chester Av & 56th St
     "SEPM20819": {"lat": 39.937871, "lon": -75.225625},  # Chester Av & 56th St
-    "SEPM20820": {"lat": 39.936802, "lon": -75.227163},  # Chester Av & 57th St
     "SEPM20791": {"lat": 39.936642, "lon": -75.227187},  # Chester Av & 57th St
-    "SEPM323": {"lat": 39.935832, "lon": -75.2285},  # Chester Av & 58th St
+    "SEPM20820": {"lat": 39.936802, "lon": -75.227163},  # Chester Av & 57th St
     "SEPM320": {"lat": 39.935653, "lon": -75.228572},  # Chester Av & 58th St
+    "SEPM323": {"lat": 39.935832, "lon": -75.2285},  # Chester Av & 58th St
     "SEPM20788": {"lat": 39.934754, "lon": -75.229944},  # Chester Av & 59th St
     "SEPM20821": {"lat": 39.93495, "lon": -75.229849},  # Chester Av & 59th St
     "SEPM20822": {"lat": 39.933784, "lon": -75.231469},  # Chester Av & 60th St
@@ -2079,8 +2574,8 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM20836": {"lat": 39.923012, "lon": -75.255946},  # Chester Av & Cedar Av
     "SEPM20778": {"lat": 39.92631, "lon": -75.246565},  # Chester Av & Church Ln
     "SEPM20831": {"lat": 39.926577, "lon": -75.246044},  # Chester Av & Church Ln
-    "SEPM20833": {"lat": 39.92576, "lon": -75.249045},  # Chester Av & Duncan Av
     "SEPM20776": {"lat": 39.925617, "lon": -75.249175},  # Chester Av & Duncan Av
+    "SEPM20833": {"lat": 39.92576, "lon": -75.249045},  # Chester Av & Duncan Av
     "SEPM20775": {"lat": 39.925102, "lon": -75.250817},  # Chester Av & Stetser Av
     "SEPM20834": {"lat": 39.925245, "lon": -75.250699},  # Chester Av & Stetser Av
     "SEPM20777": {"lat": 39.92607, "lon": -75.247486},  # Chester Av & Yeadon Av
@@ -2091,47 +2586,47 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM18636": {"lat": 39.925723, "lon": -75.290161},  # Clifton-Aldan
     "SEPM30374": {"lat": 39.92575, "lon": -75.289984},  # Clifton-Aldan
     "SEPM21075": {"lat": 39.97239, "lon": -75.175384},  # College Av & 24th St - FS
-    "SEPM15344": {"lat": 39.952976, "lon": -75.279078},  # Congress Av
     "SEPM15322": {"lat": 39.953092, "lon": -75.279101},  # Congress Av
+    "SEPM15344": {"lat": 39.952976, "lon": -75.279078},  # Congress Av
     "SEPM1931": {"lat": 40.05009, "lon": -75.347383},  # County Line
-    "SEPM15339": {"lat": 39.9351, "lon": -75.295136},  # Creek Rd
     "SEPM15328": {"lat": 39.9351, "lon": -75.295278},  # Creek Rd
+    "SEPM15339": {"lat": 39.9351, "lon": -75.295136},  # Creek Rd
     "SEPM305": {"lat": 39.919085, "lon": -75.262376},  # Darby Transit Center
     "SEPM1935": {"lat": 40.098759, "lon": -75.352066},  # DeKalb St
     "SEPM1940": {"lat": 39.947092, "lon": -75.292764},  # Drexel Hill Junction
     "SEPM1955": {"lat": 39.947012, "lon": -75.292575},  # Drexel Hill Junction
-    "SEPM18846": {"lat": 39.942196, "lon": -75.296446},  # Drexel Manor
     "SEPM15326": {"lat": 39.942205, "lon": -75.296611},  # Drexel Manor
+    "SEPM18846": {"lat": 39.942196, "lon": -75.296446},  # Drexel Manor
     "SEPM18600": {"lat": 39.949915, "lon": -75.286772},  # Drexel Park
     "SEPM18629": {"lat": 39.949709, "lon": -75.286949},  # Drexel Park
-    "SEPM21532": {"lat": 39.95485, "lon": -75.183264},  # Drexel Station at 30th St
     "SEPM20643": {"lat": 39.954815, "lon": -75.1835},  # Drexel Station at 30th St
     "SEPM20662": {"lat": 39.954894, "lon": -75.183169},  # Drexel Station at 30th St
+    "SEPM21532": {"lat": 39.95485, "lon": -75.183264},  # Drexel Station at 30th St
     "SEPM18604": {"lat": 39.94724, "lon": -75.316144},  # Drexelbrook
     "SEPM18625": {"lat": 39.947106, "lon": -75.315955},  # Drexelbrook
-    "SEPM18624": {"lat": 39.944559, "lon": -75.321592},  # Drexeline
     "SEPM18605": {"lat": 39.944666, "lon": -75.321757},  # Drexeline
-    "SEPM18618": {"lat": 39.917333, "lon": -75.385772},  # Edgmont St
+    "SEPM18624": {"lat": 39.944559, "lon": -75.321592},  # Drexeline
     "SEPM18610": {"lat": 39.917467, "lon": -75.385524},  # Edgmont St
+    "SEPM18618": {"lat": 39.917333, "lon": -75.385772},  # Edgmont St
     "SEPM1284": {"lat": 39.936177, "lon": -75.167129},  # Ellsworth-Federal
     "SEPM20902": {"lat": 39.931173, "lon": -75.217711},  # Elmwood Av & 56th St
     "SEPM20949": {"lat": 39.930986, "lon": -75.217747},  # Elmwood Av & 56th St
-    "SEPM20948": {"lat": 39.929935, "lon": -75.219226},  # Elmwood Av & 57th St
     "SEPM20903": {"lat": 39.930131, "lon": -75.219202},  # Elmwood Av & 57th St
-    "SEPM20947": {"lat": 39.928964, "lon": -75.220586},  # Elmwood Av & 58th St
+    "SEPM20948": {"lat": 39.929935, "lon": -75.219226},  # Elmwood Av & 57th St
     "SEPM20904": {"lat": 39.929152, "lon": -75.220539},  # Elmwood Av & 58th St
-    "SEPM20946": {"lat": 39.928039, "lon": -75.221994},  # Elmwood Av & 59th St
+    "SEPM20947": {"lat": 39.928964, "lon": -75.220586},  # Elmwood Av & 58th St
     "SEPM20905": {"lat": 39.928226, "lon": -75.221958},  # Elmwood Av & 59th St
+    "SEPM20946": {"lat": 39.928039, "lon": -75.221994},  # Elmwood Av & 59th St
     "SEPM20907": {"lat": 39.926241, "lon": -75.224844},  # Elmwood Av & 61st St
     "SEPM20944": {"lat": 39.926044, "lon": -75.224868},  # Elmwood Av & 61st St
     "SEPM20908": {"lat": 39.925065, "lon": -75.226441},  # Elmwood Av & 62nd St
     "SEPM20943": {"lat": 39.924842, "lon": -75.22656},  # Elmwood Av & 62nd St
-    "SEPM20942": {"lat": 39.923934, "lon": -75.227778},  # Elmwood Av & 63rd St
     "SEPM20909": {"lat": 39.924157, "lon": -75.227671},  # Elmwood Av & 63rd St
+    "SEPM20942": {"lat": 39.923934, "lon": -75.227778},  # Elmwood Av & 63rd St
     "SEPM20910": {"lat": 39.923204, "lon": -75.229067},  # Elmwood Av & 64th St
     "SEPM20941": {"lat": 39.922972, "lon": -75.229126},  # Elmwood Av & 64th St
-    "SEPM20940": {"lat": 39.922082, "lon": -75.230404},  # Elmwood Av & 65th St
     "SEPM20911": {"lat": 39.922305, "lon": -75.230285},  # Elmwood Av & 65th St
+    "SEPM20940": {"lat": 39.922082, "lon": -75.230404},  # Elmwood Av & 65th St
     "SEPM20912": {"lat": 39.921432, "lon": -75.231562},  # Elmwood Av & 66th St
     "SEPM20939": {"lat": 39.921236, "lon": -75.231587},  # Elmwood Av & 66th St
     "SEPM20913": {"lat": 39.920524, "lon": -75.23284},  # Elmwood Av & 67th St
@@ -2140,8 +2635,8 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM20937": {"lat": 39.91925, "lon": -75.234425},  # Elmwood Av & 68th St
     "SEPM20915": {"lat": 39.918297, "lon": -75.236056},  # Elmwood Av & 69th St
     "SEPM20936": {"lat": 39.918101, "lon": -75.236081},  # Elmwood Av & 69th St
-    "SEPM20935": {"lat": 39.91713, "lon": -75.237452},  # Elmwood Av & 70th St
     "SEPM20916": {"lat": 39.917327, "lon": -75.237428},  # Elmwood Av & 70th St
+    "SEPM20935": {"lat": 39.91713, "lon": -75.237452},  # Elmwood Av & 70th St
     "SEPM20917": {"lat": 39.916249, "lon": -75.238965},  # Elmwood Av & 71st St
     "SEPM20934": {"lat": 39.91608, "lon": -75.239013},  # Elmwood Av & 71st St
     "SEPM20918": {"lat": 39.915305, "lon": -75.240349},  # Elmwood Av & 72nd St
@@ -2169,62 +2664,62 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM61": {"lat": 40.022996, "lon": -75.07795},  # Frankford Transit Center
     "SEPM353": {"lat": 39.968886, "lon": -75.136199},  # Front-Girard
     "SEPM1927": {"lat": 40.027961, "lon": -75.336408},  # Garrett Hill
-    "SEPM15341": {"lat": 39.944088, "lon": -75.295781},  # Garrettford
     "SEPM15325": {"lat": 39.944052, "lon": -75.295958},  # Garrettford
+    "SEPM15341": {"lat": 39.944088, "lon": -75.295781},  # Garrettford
     "SEPM21001": {"lat": 39.970845, "lon": -75.154021},  # Girard Av & 11th St
     "SEPM21087": {"lat": 39.970756, "lon": -75.154222},  # Girard Av & 11th St
-    "SEPM21086": {"lat": 39.970965, "lon": -75.155816},  # Girard Av & 12th St
     "SEPM21002": {"lat": 39.971045, "lon": -75.155603},  # Girard Av & 12th St
-    "SEPM21083": {"lat": 39.971828, "lon": -75.162806},  # Girard Av & 16th St
+    "SEPM21086": {"lat": 39.970965, "lon": -75.155816},  # Girard Av & 12th St
     "SEPM21005": {"lat": 39.971908, "lon": -75.162605},  # Girard Av & 16th St
-    "SEPM21082": {"lat": 39.972028, "lon": -75.164352},  # Girard Av & 17th St
+    "SEPM21083": {"lat": 39.971828, "lon": -75.162806},  # Girard Av & 16th St
     "SEPM21006": {"lat": 39.972116, "lon": -75.164151},  # Girard Av & 17th St
+    "SEPM21082": {"lat": 39.972028, "lon": -75.164352},  # Girard Av & 17th St
     "SEPM21080": {"lat": 39.972427, "lon": -75.16754},  # Girard Av & 19th St
     "SEPM30290": {"lat": 39.972507, "lon": -75.167339},  # Girard Av & 19th St
     "SEPM21009": {"lat": 39.972715, "lon": -75.168874},  # Girard Av & 20th St
     "SEPM21079": {"lat": 39.972636, "lon": -75.169087},  # Girard Av & 20th St
     "SEPM30791": {"lat": 39.972453, "lon": -75.175844},  # Girard Av & 24th St
-    "SEPM21071": {"lat": 39.973896, "lon": -75.178946},  # Girard Av & 26th St
     "SEPM21016": {"lat": 39.973976, "lon": -75.178733},  # Girard Av & 26th St
-    "SEPM21070": {"lat": 39.974113, "lon": -75.180504},  # Girard Av & 27th St
+    "SEPM21071": {"lat": 39.973896, "lon": -75.178946},  # Girard Av & 26th St
     "SEPM21017": {"lat": 39.974202, "lon": -75.18028},  # Girard Av & 27th St
-    "SEPM21069": {"lat": 39.974286, "lon": -75.181969},  # Girard Av & 28th St
+    "SEPM21070": {"lat": 39.974113, "lon": -75.180504},  # Girard Av & 27th St
     "SEPM21018": {"lat": 39.974375, "lon": -75.181756},  # Girard Av & 28th St
-    "SEPM21068": {"lat": 39.974486, "lon": -75.183622},  # Girard Av & 29th St
+    "SEPM21069": {"lat": 39.974286, "lon": -75.181969},  # Girard Av & 28th St
     "SEPM21019": {"lat": 39.974574, "lon": -75.183361},  # Girard Av & 29th St
+    "SEPM21068": {"lat": 39.974486, "lon": -75.183622},  # Girard Av & 29th St
     "SEPM20993": {"lat": 39.9695, "lon": -75.13945},  # Girard Av & 2nd St
     "SEPM21096": {"lat": 39.969439, "lon": -75.139805},  # Girard Av & 2nd St
-    "SEPM21067": {"lat": 39.974938, "lon": -75.18675},  # Girard Av & 31st St
     "SEPM21021": {"lat": 39.975009, "lon": -75.186549},  # Girard Av & 31st St
+    "SEPM21067": {"lat": 39.974938, "lon": -75.18675},  # Girard Av & 31st St
     "SEPM21022": {"lat": 39.975199, "lon": -75.188002},  # Girard Av & 33rd St
-    "SEPM30292": {"lat": 39.974841, "lon": -75.196733},  # Girard Av & 34th St - MBFS
     "SEPM30291": {"lat": 39.975126, "lon": -75.196472},  # Girard Av & 34th St - MBFS
-    "SEPM21063": {"lat": 39.974297, "lon": -75.201802},  # Girard Av & 39th St
+    "SEPM30292": {"lat": 39.974841, "lon": -75.196733},  # Girard Av & 34th St - MBFS
     "SEPM21025": {"lat": 39.974511, "lon": -75.201683},  # Girard Av & 39th St
-    "SEPM21095": {"lat": 39.969711, "lon": -75.141599},  # Girard Av & 3rd St
+    "SEPM21063": {"lat": 39.974297, "lon": -75.201802},  # Girard Av & 39th St
     "SEPM20994": {"lat": 39.969799, "lon": -75.141386},  # Girard Av & 3rd St
+    "SEPM21095": {"lat": 39.969711, "lon": -75.141599},  # Girard Av & 3rd St
     "SEPM350": {"lat": 39.974043, "lon": -75.204531},  # Girard Av & 40th St
     "SEPM344": {"lat": 39.974159, "lon": -75.204543},  # Girard Av & 40th St - FS
     "SEPM21026": {"lat": 39.973966, "lon": -75.206268},  # Girard Av & 41st St
     "SEPM21062": {"lat": 39.973823, "lon": -75.206528},  # Girard Av & 41st St
-    "SEPM21061": {"lat": 39.973542, "lon": -75.208975},  # Girard Av & 42nd St
     "SEPM21027": {"lat": 39.973658, "lon": -75.208797},  # Girard Av & 42nd St
+    "SEPM21061": {"lat": 39.973542, "lon": -75.208975},  # Girard Av & 42nd St
     "SEPM21030": {"lat": 39.972917, "lon": -75.219064},  # Girard Av & 49th St
     "SEPM20995": {"lat": 39.96999, "lon": -75.142968},  # Girard Av & 4th St
     "SEPM21032": {"lat": 39.971987, "lon": -75.223438},  # Girard Av & 51st St
     "SEPM21056": {"lat": 39.971845, "lon": -75.223745},  # Girard Av & 51st St
     "SEPM21033": {"lat": 39.971473, "lon": -75.22579},  # Girard Av & 52nd St
     "SEPM21055": {"lat": 39.971357, "lon": -75.225908},  # Girard Av & 52nd St
-    "SEPM21053": {"lat": 39.971041, "lon": -75.228803},  # Girard Av & 54th St
     "SEPM21035": {"lat": 39.971165, "lon": -75.228614},  # Girard Av & 54th St
-    "SEPM21051": {"lat": 39.970636, "lon": -75.232667},  # Girard Av & 56th St
+    "SEPM21053": {"lat": 39.971041, "lon": -75.228803},  # Girard Av & 54th St
     "SEPM21037": {"lat": 39.970761, "lon": -75.232477},  # Girard Av & 56th St
-    "SEPM21050": {"lat": 39.97046, "lon": -75.234285},  # Girard Av & 57th St
+    "SEPM21051": {"lat": 39.970636, "lon": -75.232667},  # Girard Av & 56th St
     "SEPM21038": {"lat": 39.970585, "lon": -75.234096},  # Girard Av & 57th St
+    "SEPM21050": {"lat": 39.97046, "lon": -75.234285},  # Girard Av & 57th St
     "SEPM345": {"lat": 39.970224, "lon": -75.237334},  # Girard Av & 59th St
     "SEPM349": {"lat": 39.970099, "lon": -75.237523},  # Girard Av & 59th St
-    "SEPM21093": {"lat": 39.970129, "lon": -75.145094},  # Girard Av & 5th St
     "SEPM20996": {"lat": 39.970218, "lon": -75.144905},  # Girard Av & 5th St
+    "SEPM21093": {"lat": 39.970129, "lon": -75.145094},  # Girard Av & 5th St
     "SEPM21040": {"lat": 39.970039, "lon": -75.238988},  # Girard Av & 60th St
     "SEPM21048": {"lat": 39.969897, "lon": -75.239366},  # Girard Av & 60th St
     "SEPM21047": {"lat": 39.969801, "lon": -75.241221},  # Girard Av & 61st St
@@ -2232,8 +2727,8 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM21044": {"lat": 39.970226, "lon": -75.244598},  # Girard Av & 63rd St - MBFS
     "SEPM20998": {"lat": 39.970484, "lon": -75.148022},  # Girard Av & 7th St
     "SEPM21091": {"lat": 39.970386, "lon": -75.148211},  # Girard Av & 7th St
-    "SEPM21090": {"lat": 39.97047, "lon": -75.150042},  # Girard Av & 8th St
     "SEPM20999": {"lat": 39.970568, "lon": -75.149853},  # Girard Av & 8th St
+    "SEPM21090": {"lat": 39.97047, "lon": -75.150042},  # Girard Av & 8th St
     "SEPM21028": {"lat": 39.973315, "lon": -75.212094},  # Girard Av & Belmont Av
     "SEPM21060": {"lat": 39.973208, "lon": -75.211964},  # Girard Av & Belmont Av - FS
     "SEPM20986": {"lat": 39.971869, "lon": -75.125833},  # Girard Av & Berks St
@@ -2242,17 +2737,17 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM352": {"lat": 39.971428, "lon": -75.159594},  # Girard Av & Broad St
     "SEPM20989": {"lat": 39.970265, "lon": -75.130423},  # Girard Av & Columbia Av
     "SEPM21100": {"lat": 39.970122, "lon": -75.130542},  # Girard Av & Columbia Av
-    "SEPM21078": {"lat": 39.972817, "lon": -75.170421},  # Girard Av & Corinthian Av
     "SEPM21010": {"lat": 39.972888, "lon": -75.17022},  # Girard Av & Corinthian Av
+    "SEPM21078": {"lat": 39.972817, "lon": -75.170421},  # Girard Av & Corinthian Av
     "SEPM20991": {"lat": 39.968891, "lon": -75.134397},  # Girard Av & Frankford Av
     "SEPM21098": {"lat": 39.968855, "lon": -75.134244},  # Girard Av & Frankford Av- FS
-    "SEPM342": {"lat": 39.968903, "lon": -75.136075},  # Girard Av & Front St
     "SEPM20978": {"lat": 39.968851, "lon": -75.136358},  # Girard Av & Front St
+    "SEPM342": {"lat": 39.968903, "lon": -75.136075},  # Girard Av & Front St
     "SEPM21058": {"lat": 39.972978, "lon": -75.218521},  # Girard Av & Lancaster Av
     "SEPM30550": {"lat": 39.972814, "lon": -75.216277},  # Girard Av & Merion Av
     "SEPM30605": {"lat": 39.972725, "lon": -75.216431},  # Girard Av & Merion Av
-    "SEPM21101": {"lat": 39.97084, "lon": -75.128519},  # Girard Av & Palmer St
     "SEPM20988": {"lat": 39.970983, "lon": -75.1284},  # Girard Av & Palmer St
+    "SEPM21101": {"lat": 39.97084, "lon": -75.128519},  # Girard Av & Palmer St
     "SEPM21105": {"lat": 39.972988, "lon": -75.119769},  # Girard Av & Richmond St
     "SEPM21008": {"lat": 39.97238, "lon": -75.166217},  # Girard Av & Ridge Av
     "SEPM21081": {"lat": 39.972309, "lon": -75.166572},  # Girard Av & Ridge Av
@@ -2264,8 +2759,8 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM21042": {"lat": 39.971642, "lon": -75.242704},  # Haverford Av & 62nd St
     "SEPM21481": {"lat": 39.971895, "lon": -75.244641},  # Haverford Av & 63rd St
     "SEPM1924": {"lat": 40.009799, "lon": -75.31514},  # Haverford South
-    "SEPM18631": {"lat": 39.955967, "lon": -75.272718},  # Hilltop Rd
     "SEPM18598": {"lat": 39.955896, "lon": -75.273131},  # Hilltop Rd
+    "SEPM18631": {"lat": 39.955967, "lon": -75.272718},  # Hilltop Rd
     "SEPM15349": {"lat": 39.947597, "lon": -75.29764},  # Huey Av
     "SEPM15376": {"lat": 39.94741, "lon": -75.297688},  # Huey Av
     "SEPM1934": {"lat": 40.081526, "lon": -75.349127},  # Hughes Park
@@ -2273,13 +2768,13 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM2462": {"lat": 39.988834, "lon": -75.127303},  # Huntingdon
     "SEPM18601": {"lat": 39.948864, "lon": -75.288982},  # Irvington Rd
     "SEPM18628": {"lat": 39.948668, "lon": -75.289148},  # Irvington Rd
-    "SEPM20927": {
-        "lat": 39.904257,
-        "lon": -75.240461,
-    },  # Island Av & Lindbergh Blvd - FS
     "SEPM20923": {
         "lat": 39.903855,
         "lon": -75.240403,
+    },  # Island Av & Lindbergh Blvd - FS
+    "SEPM20927": {
+        "lat": 39.904257,
+        "lon": -75.240461,
     },  # Island Av & Lindbergh Blvd - FS
     "SEPM24738": {"lat": 39.899525, "lon": -75.239352},  # Island Av & Suffolk Av - MBFS
     "SEPM605": {"lat": 39.899471, "lon": -75.23927},  # Island Av & Suffolk Av - MBNS
@@ -2289,17 +2784,17 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM18617": {"lat": 39.917843, "lon": -75.389584},  # Jackson St
     "SEPM60": {"lat": 39.996502, "lon": -75.11347},  # Kensington-Allegheny
     "SEPM20786": {"lat": 39.932479, "lon": -75.230316},  # Kingsessing Av & 60th St
-    "SEPM20824": {"lat": 39.93125, "lon": -75.232291},  # Kingsessing Av & 61st St
     "SEPM20784": {"lat": 39.931045, "lon": -75.232386},  # Kingsessing Av & 61st St
-    "SEPM20825": {"lat": 39.9302, "lon": -75.233793},  # Kingsessing Av & 62nd St
+    "SEPM20824": {"lat": 39.93125, "lon": -75.232291},  # Kingsessing Av & 61st St
     "SEPM20785": {"lat": 39.929994, "lon": -75.233888},  # Kingsessing Av & 62nd St
+    "SEPM20825": {"lat": 39.9302, "lon": -75.233793},  # Kingsessing Av & 62nd St
     "SEPM20826": {"lat": 39.927982, "lon": -75.236963},  # Kingsessing Av & 65th St
     "SEPM20639": {"lat": 39.958565, "lon": -75.193786},  # Lancaster Av & 36th St
     "SEPM20638": {"lat": 39.960267, "lon": -75.197016},  # Lancaster Av & 38th St
     "SEPM20663": {"lat": 39.96024, "lon": -75.196721},  # Lancaster Av & 38th St
     "SEPM20635": {"lat": 39.963151, "lon": -75.20244},  # Lancaster Av & 40th St
-    "SEPM20671": {"lat": 39.965102, "lon": -75.205386},  # Lancaster Av & 41st St
     "SEPM20634": {"lat": 39.965093, "lon": -75.205564},  # Lancaster Av & 41st St
+    "SEPM20671": {"lat": 39.965102, "lon": -75.205386},  # Lancaster Av & 41st St
     "SEPM20633": {"lat": 39.966391, "lon": -75.207662},  # Lancaster Av & 42nd St
     "SEPM20672": {"lat": 39.966399, "lon": -75.207485},  # Lancaster Av & 42nd St
     "SEPM20632": {"lat": 39.967725, "lon": -75.209878},  # Lancaster Av & 43th St
@@ -2317,8 +2812,8 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM20669": {"lat": 39.9629, "lon": -75.201826},  # Lancaster Av & Haverford Av
     "SEPM20674": {"lat": 39.968565, "lon": -75.210998},  # Lancaster Av & Ogden St
     "SEPM20673": {"lat": 39.96767, "lon": -75.20956},  # Lancaster Av & Parrish St
-    "SEPM32722": {"lat": 39.959774, "lon": -75.19612},  # Lancaster Av & Powelton Av
     "SEPM31488": {"lat": 39.959631, "lon": -75.195542},  # Lancaster Av & Powelton Av
+    "SEPM32722": {"lat": 39.959774, "lon": -75.19612},  # Lancaster Av & Powelton Av
     "SEPM20636": {
         "lat": 39.962004,
         "lon": -75.200353,
@@ -2330,8 +2825,8 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM20627": {"lat": 39.973748, "lon": -75.219747},  # Lancaster Av & Thompson St
     "SEPM20670": {"lat": 39.963857, "lon": -75.203371},  # Lancaster Av & Wallace St
     "SEPM20675": {"lat": 39.969353, "lon": -75.212283},  # Lancaster Av & Westminster St
-    "SEPM30494": {"lat": 39.951614, "lon": -75.282328},  # Lansdowne Av
     "SEPM1939": {"lat": 39.951694, "lon": -75.282422},  # Lansdowne Av
+    "SEPM30494": {"lat": 39.951614, "lon": -75.282328},  # Lansdowne Av
     "SEPM20623": {"lat": 39.977013, "lon": -75.229908},  # Lansdowne Av & 54th St
     "SEPM20683": {"lat": 39.977129, "lon": -75.229755},  # Lansdowne Av & 54th St
     "SEPM20622": {"lat": 39.976811, "lon": -75.231858},  # Lansdowne Av & 55th St
@@ -2342,8 +2837,8 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM20686": {"lat": 39.976522, "lon": -75.235249},  # Lansdowne Av & 57th St
     "SEPM20617": {"lat": 39.976248, "lon": -75.236904},  # Lansdowne Av & 58th St
     "SEPM20687": {"lat": 39.976363, "lon": -75.23675},  # Lansdowne Av & 58th St
-    "SEPM20688": {"lat": 39.97617, "lon": -75.238499},  # Lansdowne Av & 59th St
     "SEPM20616": {"lat": 39.976054, "lon": -75.238653},  # Lansdowne Av & 59th St
+    "SEPM20688": {"lat": 39.97617, "lon": -75.238499},  # Lansdowne Av & 59th St
     "SEPM15271": {"lat": 39.975851, "lon": -75.240378},  # Lansdowne Av & 60th St
     "SEPM20689": {"lat": 39.975976, "lon": -75.240153},  # Lansdowne Av & 60th St
     "SEPM20615": {"lat": 39.975693, "lon": -75.241879},  # Lansdowne Av & 61st St
@@ -2367,20 +2862,20 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM1283": {"lat": 39.944073, "lon": -75.165424},  # Lombard-South
     "SEPM2099": {"lat": 39.910255, "lon": -75.280973},  # MacDade Blvd
     "SEPM29523": {"lat": 39.910282, "lon": -75.280832},  # MacDade Blvd
-    "SEPM18843": {"lat": 39.919419, "lon": -75.28675},  # Magnolia Av
     "SEPM10011": {"lat": 39.919517, "lon": -75.287045},  # Magnolia Av
-    "SEPM20762": {"lat": 39.916614, "lon": -75.250319},  # Main St & 2nd St
+    "SEPM18843": {"lat": 39.919419, "lon": -75.28675},  # Magnolia Av
     "SEPM20702": {"lat": 39.916579, "lon": -75.250567},  # Main St & 2nd St
+    "SEPM20762": {"lat": 39.916614, "lon": -75.250319},  # Main St & 2nd St
     "SEPM20701": {"lat": 39.916866, "lon": -75.251841},  # Main St & 3rd St
     "SEPM20763": {"lat": 39.916892, "lon": -75.251534},  # Main St & 3rd St
     "SEPM20700": {"lat": 39.917144, "lon": -75.253044},  # Main St & 4th St
     "SEPM20764": {"lat": 39.917171, "lon": -75.252737},  # Main St & 4th St
-    "SEPM20765": {"lat": 39.91753, "lon": -75.254295},  # Main St & 5th St
     "SEPM20699": {"lat": 39.917504, "lon": -75.254613},  # Main St & 5th St
+    "SEPM20765": {"lat": 39.91753, "lon": -75.254295},  # Main St & 5th St
     "SEPM20698": {"lat": 39.917791, "lon": -75.255852},  # Main St & 6th St
     "SEPM20766": {"lat": 39.917808, "lon": -75.255486},  # Main St & 6th St
-    "SEPM20761": {"lat": 39.916451, "lon": -75.248915},  # Main St & Front St
     "SEPM20703": {"lat": 39.916363, "lon": -75.24921},  # Main St & Front St
+    "SEPM20761": {"lat": 39.916451, "lon": -75.248915},  # Main St & Front St
     "SEPM24568": {"lat": 39.918091, "lon": -75.260053},  # Main St & Mill St
     "SEPM25241": {"lat": 39.918244, "lon": -75.260608},  # Main St & Powell Av
     "SEPM20697": {"lat": 39.918088, "lon": -75.257315},  # Main St & Summit St
@@ -2392,21 +2887,21 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM15340": {"lat": 39.94017, "lon": -75.296378},  # Marshall Rd
     "SEPM1932": {"lat": 40.058188, "lon": -75.339455},  # Matsonford
     "SEPM2446": {"lat": 39.964355, "lon": -75.252243},  # Millbourne
-    "SEPM15380": {"lat": 39.917592, "lon": -75.387766},  # Monroe St
     "SEPM15379": {"lat": 39.917726, "lon": -75.387518},  # Monroe St
-    "SEPM324": {"lat": 39.929069, "lon": -75.235413},  # Mt. Moriah
+    "SEPM15380": {"lat": 39.917592, "lon": -75.387766},  # Monroe St
     "SEPM319": {"lat": 39.92889, "lon": -75.235461},  # Mt. Moriah
+    "SEPM324": {"lat": 39.929069, "lon": -75.235413},  # Mt. Moriah
     "SEPM152": {"lat": 39.905428, "lon": -75.173857},  # NRG Station
     "SEPM30520": {"lat": 40.113468, "lon": -75.345161},  # Norristown Transit Center
     "SEPM2439": {"lat": 39.993939, "lon": -75.154588},  # North Philadelphia
-    "SEPM1964": {"lat": 39.917596, "lon": -75.285408},  # North St
     "SEPM1961": {"lat": 39.917498, "lon": -75.28555},  # North St
-    "SEPM18616": {"lat": 39.918066, "lon": -75.391165},  # Olive St
+    "SEPM1964": {"lat": 39.917596, "lon": -75.285408},  # North St
     "SEPM18612": {"lat": 39.9182, "lon": -75.390917},  # Olive St
+    "SEPM18616": {"lat": 39.918066, "lon": -75.391165},  # Olive St
     "SEPM33027": {"lat": 40.039057, "lon": -75.144732},  # Olney Transit Center - B1
     "SEPM82": {"lat": 40.039052, "lon": -75.144713},  # Olney Transit Center - B2 & B3
-    "SEPM1948": {"lat": 39.918478, "lon": -75.393998},  # Orange St/Media
     "SEPM1947": {"lat": 39.918629, "lon": -75.393939},  # Orange St/Media
+    "SEPM1948": {"lat": 39.918478, "lon": -75.393998},  # Orange St/Media
     "SEPM20967": {"lat": 39.916785, "lon": -75.171373},  # Oregon
     "SEPM20024": {"lat": 39.915428, "lon": -75.358036},  # Paper Mill Rd
     "SEPM20025": {"lat": 39.915276, "lon": -75.357953},  # Paper Mill Rd
@@ -2414,8 +2909,8 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM1919": {"lat": 39.981006, "lon": -75.283986},  # Penfield
     "SEPM15329": {"lat": 39.928938, "lon": -75.292008},  # Penn St
     "SEPM30375": {"lat": 39.928653, "lon": -75.29202},  # Penn St
-    "SEPM15366": {"lat": 39.914872, "lon": -75.369922},  # Pine Ridge
     "SEPM15358": {"lat": 39.915024, "lon": -75.370004},  # Pine Ridge
+    "SEPM15366": {"lat": 39.914872, "lon": -75.369922},  # Pine Ridge
     "SEPM21014": {"lat": 39.972492, "lon": -75.177403},  # Poplar St & 25th St
     "SEPM21073": {"lat": 39.97244, "lon": -75.178171},  # Poplar St & Stillman St
     "SEPM1946": {"lat": 39.916786, "lon": -75.380567},  # Providence Rd/Media
@@ -2428,17 +2923,17 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM21111": {"lat": 39.979758, "lon": -75.107536},  # Richmond St & Ann St
     "SEPM20982": {"lat": 39.979092, "lon": -75.108862},  # Richmond St & Cambria St
     "SEPM21110": {"lat": 39.978914, "lon": -75.109052},  # Richmond St & Cambria St
-    "SEPM21113": {"lat": 39.981605, "lon": -75.104019},  # Richmond St & Clearfield St
     "SEPM20979": {"lat": 39.981783, "lon": -75.103782},  # Richmond St & Clearfield St
+    "SEPM21113": {"lat": 39.981605, "lon": -75.104019},  # Richmond St & Clearfield St
     "SEPM649": {"lat": 39.974153, "lon": -75.118181},  # Richmond St & Cumberland St
     "SEPM650": {"lat": 39.974331, "lon": -75.118038},  # Richmond St & Cumberland St
     "SEPM25779": {"lat": 39.973068, "lon": -75.119591},  # Richmond St & Girard Av
-    "SEPM21107": {"lat": 39.975441, "lon": -75.11573},  # Richmond St & Huntingdon St
     "SEPM20984": {"lat": 39.975628, "lon": -75.115552},  # Richmond St & Huntingdon St
-    "SEPM21108": {"lat": 39.976729, "lon": -75.113302},  # Richmond St & Lehigh Av
+    "SEPM21107": {"lat": 39.975441, "lon": -75.11573},  # Richmond St & Huntingdon St
     "SEPM20983": {"lat": 39.976907, "lon": -75.113101},  # Richmond St & Lehigh Av
-    "SEPM21109": {"lat": 39.977981, "lon": -75.110887},  # Richmond St & Somerset St
+    "SEPM21108": {"lat": 39.976729, "lon": -75.113302},  # Richmond St & Lehigh Av
     "SEPM12218": {"lat": 39.978159, "lon": -75.110697},  # Richmond St & Somerset St
+    "SEPM21109": {"lat": 39.977981, "lon": -75.110887},  # Richmond St & Somerset St
     "SEPM341": {
         "lat": 39.984253,
         "lon": -75.099553,
@@ -2460,21 +2955,21 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM22129": {"lat": 39.951231, "lon": -75.19949},  # Spruce St & 38th St
     "SEPM22128": {"lat": 39.951385, "lon": -75.200871},  # Spruce St & 39th St
     "SEPM672": {"lat": 39.951647, "lon": -75.202795},  # Spruce St & 40th St - FS
-    "SEPM22147": {"lat": 39.952125, "lon": -75.205462},  # Spruce St & 41st St
     "SEPM22127": {"lat": 39.952027, "lon": -75.205687},  # Spruce St & 41st St
+    "SEPM22147": {"lat": 39.952125, "lon": -75.205462},  # Spruce St & 41st St
     "SEPM22151": {"lat": 39.952288, "lon": -75.206796},  # Spruce St & 42nd St
     "SEPM1900": {"lat": 40.032677, "lon": -75.340765},  # Stadium
     "SEPM1276": {"lat": 39.987026, "lon": -75.156068},  # Susquehanna-Dauphin
     "SEPM1285": {"lat": 39.929809, "lon": -75.168522},  # Tasker-Morris
-    "SEPM18621": {"lat": 39.921167, "lon": -75.345353},  # Thomson Av
     "SEPM18607": {"lat": 39.921159, "lon": -75.345542},  # Thomson Av
+    "SEPM18621": {"lat": 39.921167, "lon": -75.345353},  # Thomson Av
     "SEPM2463": {"lat": 40.000322, "lon": -75.106469},  # Tioga
     "SEPM1918": {"lat": 39.974795, "lon": -75.281577},  # Township Line Rd
     "SEPM18613": {"lat": 39.918343, "lon": -75.391897},  # Veterans Sq
     "SEPM18615": {"lat": 39.918209, "lon": -75.392145},  # Veterans Sq
     "SEPM1929": {"lat": 40.034045, "lon": -75.344008},  # Villanova South
-    "SEPM18632": {"lat": 39.958921, "lon": -75.266263},  # Walnut St
     "SEPM18597": {"lat": 39.958851, "lon": -75.2667},  # Walnut St
+    "SEPM18632": {"lat": 39.958921, "lon": -75.266263},  # Walnut St
     "SEPM1282": {"lat": 39.948734, "lon": -75.164415},  # Walnut-Locust
     "SEPM1943": {"lat": 39.924707, "lon": -75.339812},  # Woodland Av
     "SEPM1952": {"lat": 39.924617, "lon": -75.339659},  # Woodland Av
@@ -2482,8 +2977,8 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM20736": {"lat": 39.946987, "lon": -75.206907},  # Woodland Av & 42nd St
     "SEPM20737": {"lat": 39.945767, "lon": -75.20834},  # Woodland Av & 43rd St
     "SEPM20728": {"lat": 39.94541, "lon": -75.208565},  # Woodland Av & 45th St
-    "SEPM20739": {"lat": 39.944537, "lon": -75.209725},  # Woodland Av & 46th St
     "SEPM20727": {"lat": 39.944323, "lon": -75.209797},  # Woodland Av & 46th St
+    "SEPM20739": {"lat": 39.944537, "lon": -75.209725},  # Woodland Av & 46th St
     "SEPM20958": {"lat": 39.943245, "lon": -75.210839},  # Woodland Av & 47th St
     "SEPM20726": {"lat": 39.941953, "lon": -75.211728},  # Woodland Av & 48th St
     "SEPM20740": {"lat": 39.942176, "lon": -75.211716},  # Woodland Av & 48th St
@@ -2495,16 +2990,16 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM20741": {"lat": 39.939192, "lon": -75.215102},  # Woodland Av & 51st St
     "SEPM20723": {"lat": 39.938203, "lon": -75.216297},  # Woodland Av & 52nd St
     "SEPM20742": {"lat": 39.938408, "lon": -75.216214},  # Woodland Av & 52nd St
-    "SEPM21208": {"lat": 39.937242, "lon": -75.217681},  # Woodland Av & 53rd St
     "SEPM20743": {"lat": 39.937438, "lon": -75.217598},  # Woodland Av & 53rd St
-    "SEPM20744": {"lat": 39.936485, "lon": -75.218947},  # Woodland Av & 54th St
+    "SEPM21208": {"lat": 39.937242, "lon": -75.217681},  # Woodland Av & 53rd St
     "SEPM20722": {"lat": 39.936262, "lon": -75.219054},  # Woodland Av & 54th St
+    "SEPM20744": {"lat": 39.936485, "lon": -75.218947},  # Woodland Av & 54th St
     "SEPM20721": {"lat": 39.935292, "lon": -75.22045},  # Woodland Av & 55th St
     "SEPM20745": {"lat": 39.935524, "lon": -75.220308},  # Woodland Av & 55th St
     "SEPM20720": {"lat": 39.934339, "lon": -75.22181},  # Woodland Av & 56th St
     "SEPM20746": {"lat": 39.934553, "lon": -75.221703},  # Woodland Av & 56th St
-    "SEPM20747": {"lat": 39.933485, "lon": -75.223218},  # Woodland Av & 57th St
     "SEPM20719": {"lat": 39.933297, "lon": -75.223289},  # Woodland Av & 57th St
+    "SEPM20747": {"lat": 39.933485, "lon": -75.223218},  # Woodland Av & 57th St
     "SEPM20718": {"lat": 39.932309, "lon": -75.224673},  # Woodland Av & 58th St
     "SEPM20748": {"lat": 39.93263, "lon": -75.224448},  # Woodland Av & 58th St
     "SEPM20716": {"lat": 39.930217, "lon": -75.227642},  # Woodland Av & 60th St
@@ -2513,16 +3008,16 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM20750": {"lat": 39.929282, "lon": -75.229191},  # Woodland Av & 61st St
     "SEPM20715": {"lat": 39.928017, "lon": -75.230765},  # Woodland Av & 62nd St
     "SEPM303": {"lat": 39.928267, "lon": -75.230599},  # Woodland Av & 62nd St
-    "SEPM20751": {"lat": 39.927519, "lon": -75.231675},  # Woodland Av & 63rd St
     "SEPM20714": {"lat": 39.927314, "lon": -75.231782},  # Woodland Av & 63rd St
-    "SEPM20752": {"lat": 39.926557, "lon": -75.233047},  # Woodland Av & 64th St
+    "SEPM20751": {"lat": 39.927519, "lon": -75.231675},  # Woodland Av & 63rd St
     "SEPM20713": {"lat": 39.926352, "lon": -75.233142},  # Woodland Av & 64th St
+    "SEPM20752": {"lat": 39.926557, "lon": -75.233047},  # Woodland Av & 64th St
     "SEPM20712": {"lat": 39.925479, "lon": -75.234396},  # Woodland Av & 65th St
     "SEPM20753": {"lat": 39.925684, "lon": -75.234289},  # Woodland Av & 65th St
     "SEPM20711": {"lat": 39.924615, "lon": -75.235614},  # Woodland Av & 66th St
     "SEPM20754": {"lat": 39.924803, "lon": -75.235531},  # Woodland Av & 66th St
-    "SEPM20755": {"lat": 39.923886, "lon": -75.236856},  # Woodland Av & 67th St
     "SEPM20710": {"lat": 39.923689, "lon": -75.236927},  # Woodland Av & 67th St
+    "SEPM20755": {"lat": 39.923886, "lon": -75.236856},  # Woodland Av & 67th St
     "SEPM20709": {"lat": 39.922621, "lon": -75.238441},  # Woodland Av & 68th St
     "SEPM20756": {"lat": 39.922817, "lon": -75.23837},  # Woodland Av & 68th St
     "SEPM20708": {"lat": 39.921463, "lon": -75.240097},  # Woodland Av & 69th St
@@ -2533,14 +3028,14 @@ SEPTA_METRO_STATION_COORDINATES: dict[str, dict[str, float]] = {
     "SEPM20759": {"lat": 39.919584, "lon": -75.242958},  # Woodland Av & 71st St
     "SEPM20705": {"lat": 39.918432, "lon": -75.244412},  # Woodland Av & 72nd St
     "SEPM20760": {"lat": 39.918622, "lon": -75.244342},  # Woodland Av & 72nd St
-    "SEPM304": {"lat": 39.917304, "lon": -75.246245},  # Woodland Av & Island Av
     "SEPM20704": {"lat": 39.917099, "lon": -75.246376},  # Woodland Av & Island Av
-    "SEPM18844": {"lat": 39.921777, "lon": -75.288575},  # Woodlawn-Providence
+    "SEPM304": {"lat": 39.917304, "lon": -75.246245},  # Woodland Av & Island Av
     "SEPM12048": {"lat": 39.921643, "lon": -75.288705},  # Woodlawn-Providence
+    "SEPM18844": {"lat": 39.921777, "lon": -75.288575},  # Woodlawn-Providence
     "SEPM1921": {"lat": 39.993387, "lon": -75.298229},  # Wynnewood Rd
     "SEPM1273": {"lat": 40.02456, "lon": -75.147856},  # Wyoming
-    "SEPM325": {"lat": 39.924685, "lon": -75.252447},  # Yeadon
     "SEPM20774": {"lat": 39.924525, "lon": -75.252542},  # Yeadon
+    "SEPM325": {"lat": 39.924685, "lon": -75.252447},  # Yeadon
     "SEPM2461": {"lat": 39.985526, "lon": -75.132013},  # York-Dauphin
 }
 

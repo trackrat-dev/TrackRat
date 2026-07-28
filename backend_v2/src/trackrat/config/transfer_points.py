@@ -87,7 +87,7 @@ def _build_station_to_systems() -> dict[str, set[str]]:
     """Map each station code to the set of transit systems that serve it."""
     station_systems: dict[str, set[str]] = defaultdict(set)
     for route in ALL_ROUTES:
-        for station_code in route.stations:
+        for station_code in route.all_stations:
             station_systems[station_code].add(route.data_source)
     return dict(station_systems)
 
@@ -105,7 +105,7 @@ def _build_station_lines_for_system(system: str) -> dict[str, frozenset[str]]:
     station_lines: dict[str, set[str]] = defaultdict(set)
     for route in ALL_ROUTES:
         if route.data_source == system:
-            for station_code in route.stations:
+            for station_code in route.all_stations:
                 station_lines[station_code].update(route.line_codes)
     return {k: frozenset(v) for k, v in station_lines.items()}
 
@@ -254,7 +254,7 @@ def _generate_transfer_points() -> tuple[TransferPoint, ...]:
             # line with a legacy-alias code set counts once.
             route_groups: list[frozenset[str]] = []
             for route in ALL_ROUTES:
-                if route.data_source == system and station_code in route.stations:
+                if route.data_source == system and station_code in route.all_stations:
                     if route.line_codes not in route_groups:
                         route_groups.append(route.line_codes)
             # 2+ distinct lines meeting here => interchange.
