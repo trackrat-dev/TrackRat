@@ -228,7 +228,11 @@ NJT_CANCELLATION_REASON_ALL_STOPS = "All stops cancelled by NJT"
 NJT_CANCELLATION_REASON_TERMINATED = "Journey terminated before reaching destination"
 
 
-def njt_cancellation_reason(stop_statuses: list[str | None]) -> str | None:
+def njt_cancellation_reason(
+    stop_statuses: list[str | None],
+    *,
+    terminal_cancelled: bool | None = None,
+) -> str | None:
     """The reason a train's NJT stop statuses indicate cancellation, else None.
 
     This is the single source of NJT's cancellation rule: a train is cancelled
@@ -239,6 +243,14 @@ def njt_cancellation_reason(stop_statuses: list[str | None]) -> str | None:
     ``stop_statuses`` must be in stop order; the last element is treated as the
     terminal stop. An empty list is not a cancellation (absent evidence), so
     callers gating on this stay conservative.
+
+    ``terminal_cancelled`` overrides that last-element heuristic for callers
+    that can resolve the authoritative terminal themselves. The full
+    ``getTrainStopList`` collector must use it: NJT ships misordered stop lists,
+    so the collector matches the terminal against the DB row by station code —
+    trusting raw API order there could miss a cancelled real terminal, or
+    falsely cancel a journey because a cancelled non-terminal happened to sort
+    last.
 
     Every path that ingests NJT stop statuses must apply this rule, not just
     the full ``getTrainStopList`` collection: the station-board payload carries
@@ -255,7 +267,7 @@ def njt_cancellation_reason(stop_statuses: list[str | None]) -> str | None:
         return None
     if cancelled_count == len(stop_statuses):
         return NJT_CANCELLATION_REASON_ALL_STOPS
-    if cancelled[-1]:
+    if cancelled[-1] if terminal_cancelled is None else terminal_cancelled:
         return NJT_CANCELLATION_REASON_TERMINATED
     return None
 

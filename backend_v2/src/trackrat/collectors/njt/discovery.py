@@ -22,6 +22,7 @@ from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import now_et, parse_njt_time, validate_journey_date
 from trackrat.utils.train import (
     is_amtrak_train,
+    is_njt_stop_cancelled,
     njt_cancellation_reason,
     normalize_njt_destination,
 )
@@ -269,6 +270,39 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                         track=sanitized_track,
                     )
 
+    @staticmethod
+    def _board_reports_departed(stop_data: dict[str, Any], stop: JourneyStop) -> bool:
+        """True if the station board says this stop has been departed.
+
+        Discovery consumes the same embedded STOPS payload as
+        ``DepartureService._update_stops_from_embedded_data`` but historically
+        recorded only the time fields, leaving ``has_departed_station`` to the
+        15-minute ``getTrainStopList`` collection — while still bumping the
+        journey's ``last_updated_at``. A journey whose stops were populated by
+        discovery could therefore carry ``has_departed_station=False`` for a
+        train that had actually departed on time, with nothing to distinguish
+        it from a train that genuinely had not moved (issue #1670 review).
+
+        Mirrors the two guards the departure-board path applies:
+
+        - a cancelled stop never physically departed;
+        - a stop whose scheduled departure is still in the future is never
+          marked departed, so stale NJT rows cannot mark a future train as
+          already gone.
+
+        Only ever reports True — reverting a departed stop is not this path's
+        job, since NJT's DEPARTED flag is inconsistent between calls.
+        """
+        if stop.has_departed_station:
+            return False
+        if (stop_data.get("DEPARTED") or "").upper() != "YES":
+            return False
+        if is_njt_stop_cancelled(stop_data.get("STOP_STATUS")):
+            return False
+        if stop.scheduled_departure and stop.scheduled_departure > now_et():
+            return False
+        return True
+
     async def _populate_stop_times_from_discovery(
         self,
         session: AsyncSession,
@@ -323,6 +357,10 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                     changed = True
                 if stop.updated_departure is None and dep_time_field:
                     stop.updated_departure = dep_time_field
+                    changed = True
+                if self._board_reports_departed(stop_data, stop):
+                    stop.has_departed_station = True
+                    stop.raw_njt_departed_flag = "YES"
                     changed = True
                 if changed:
                     logger.debug(
