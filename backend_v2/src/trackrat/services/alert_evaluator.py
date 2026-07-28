@@ -25,6 +25,8 @@ from trackrat.config.route_topology import ALL_ROUTES, Route
 from trackrat.config.stations import expand_station_codes, get_station_name
 from trackrat.config.stations.lirr import LIRR_ROUTES
 from trackrat.config.stations.mnr import MNR_ROUTES
+from trackrat.config.stations.septa_metro import SEPTA_METRO_ROUTES
+from trackrat.config.stations.septa_rr import SEPTA_RR_ROUTES
 from trackrat.models.database import (
     DeviceToken,
     JourneyStop,
@@ -84,6 +86,16 @@ _LIRR_LINE_CODE_TO_GTFS: dict[str, str] = {
 _MNR_LINE_CODE_TO_GTFS: dict[str, str] = {
     info[0]: gtfs_id for gtfs_id, info in MNR_ROUTES.items()
 }
+# SEPTA needs no reverse map: the collector already rewrites raw feed route_ids
+# to our line_codes before storing them (collectors/service_alerts.py
+# ::_remap_septa_alert), so alerts and route topology share one vocabulary
+# ("SEPTA-TRE", "SEPTA-L1"). These sets are derived from the same tables the
+# collector maps into, so the two sides cannot drift, and a code that is not in
+# them resolves to nothing rather than being passed through blindly.
+_SEPTA_LINE_CODES: dict[str, frozenset[str]] = {
+    "SEPTA_RR": frozenset(info[0] for info in SEPTA_RR_ROUTES.values()),
+    "SEPTA_METRO": frozenset(info[0] for info in SEPTA_METRO_ROUTES.values()),
+}
 
 
 def _line_codes_to_gtfs_ids(data_source: str, line_codes: frozenset[str]) -> set[str]:
@@ -104,6 +116,13 @@ def _line_codes_to_gtfs_ids(data_source: str, line_codes: frozenset[str]) -> set
             # NJT alert affected_route_ids use the same 2-letter codes
             # as route topology line_codes (e.g., "NE", "NC", "ME")
             gtfs_ids.add(line_code)
+        elif data_source in _SEPTA_LINE_CODES:
+            # SEPTA alert affected_route_ids are our own line_codes, already
+            # remapped by the collector. Only codes the collector can emit for
+            # THIS source are accepted, so an obsolete or cross-system code
+            # narrows the subscription to nothing instead of widening it.
+            if line_code in _SEPTA_LINE_CODES[data_source]:
+                gtfs_ids.add(line_code)
     return gtfs_ids
 
 
@@ -135,7 +154,8 @@ def _get_gtfs_route_ids_for_subscription(
     """Get route IDs that an alert subscription covers.
 
     Maps our internal route topology to the route IDs used in
-    service alert feeds (MTA GTFS route_ids, NJT line codes).
+    service alert feeds (MTA GTFS route_ids, NJT line codes, SEPTA
+    line codes as normalized by the service-alerts collector).
 
     Supports line-based subs (direct route lookup), station-pair
     subs (finds all routes covering the segment), and system-wide

@@ -13,6 +13,8 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from trackrat.collectors.service_alerts import _SEPTA_ROUTE_TO_LINE_CODE
+from trackrat.config.route_topology import ALL_ROUTES
 from trackrat.models.database import (
     DeviceToken,
     RouteAlertSubscription,
@@ -42,7 +44,7 @@ def _make_subscription(
     device_id: str = "test-device-sa",
     apns_token: str = "fake-token-sa",
     data_source: str = "SUBWAY",
-    line_id: str = "subway-g",
+    line_id: str | None = "subway-g",
     direction: str | None = None,
     include_planned_work: bool = True,
     active_days: int = 127,
@@ -234,6 +236,63 @@ class TestGetGtfsRouteIdsForSubscription:
         result = _get_gtfs_route_ids_for_subscription(sub)
         assert result == set()
 
+    def test_septa_rr_line_maps_to_line_code(self):
+        """SEPTA Regional Rail line IDs resolve to their canonical line code."""
+        sub = RouteAlertSubscription(
+            device_id="dev1",
+            data_source="SEPTA_RR",
+            line_id="septa-rr-tre",
+        )
+        result = _get_gtfs_route_ids_for_subscription(sub)
+        # Exact: the collector stores this literal string on Trenton Line
+        # alerts, and a prefix slip would silently match nothing.
+        assert result == {"SEPTA-TRE"}
+
+    def test_septa_metro_line_maps_to_line_code(self):
+        """SEPTA Metro line IDs resolve to their canonical line code."""
+        sub = RouteAlertSubscription(
+            device_id="dev1",
+            data_source="SEPTA_METRO",
+            line_id="septa-metro-l1",
+        )
+        result = _get_gtfs_route_ids_for_subscription(sub)
+        assert result == {"SEPTA-L1"}
+
+    def test_septa_rr_station_pair_finds_matching_route(self):
+        """SEPTA RR station-pair subs derive the route covering the segment."""
+        # Trenton Transit Center -> Levittown is Trenton Line only; the
+        # West Trenton Line shares neither stop, so it must not appear.
+        sub = RouteAlertSubscription(
+            device_id="dev1",
+            data_source="SEPTA_RR",
+            from_station_code="SEPR90701",
+            to_station_code="SEPR90702",
+        )
+        result = _get_gtfs_route_ids_for_subscription(sub)
+        assert result == {"SEPTA-TRE"}
+
+    def test_septa_metro_station_pair_finds_matching_route(self):
+        """SEPTA Metro station-pair subs derive the route covering the segment."""
+        # Fern Rock Transit Center -> Olney Transit Center is Broad St local.
+        sub = RouteAlertSubscription(
+            device_id="dev1",
+            data_source="SEPTA_METRO",
+            from_station_code="SEPM20965",
+            to_station_code="SEPM33027",
+        )
+        result = _get_gtfs_route_ids_for_subscription(sub)
+        assert result == {"SEPTA-B1"}
+
+    def test_septa_unknown_line_id_returns_empty(self):
+        """An unknown SEPTA line_id resolves to nothing, not to everything."""
+        sub = RouteAlertSubscription(
+            device_id="dev1",
+            data_source="SEPTA_RR",
+            line_id="septa-rr-bogus",
+        )
+        result = _get_gtfs_route_ids_for_subscription(sub)
+        assert result == set()
+
 
 class TestFindMatchingAlerts:
     """Tests for _find_matching_alerts() filtering."""
@@ -346,6 +405,63 @@ class TestLineCodesToGtfsIds:
         """Empty line_codes input returns empty set."""
         result = _line_codes_to_gtfs_ids("SUBWAY", frozenset())
         assert result == set()
+
+    def test_septa_rr_line_codes_pass_through(self):
+        """SEPTA RR line codes are the alert route IDs (collector normalizes)."""
+        result = _line_codes_to_gtfs_ids(
+            "SEPTA_RR", frozenset({"SEPTA-TRE", "SEPTA-WTR"})
+        )
+        assert result == {"SEPTA-TRE", "SEPTA-WTR"}
+
+    def test_septa_metro_line_codes_pass_through(self):
+        """SEPTA Metro line codes are the alert route IDs."""
+        result = _line_codes_to_gtfs_ids(
+            "SEPTA_METRO", frozenset({"SEPTA-L1", "SEPTA-T1"})
+        )
+        assert result == {"SEPTA-L1", "SEPTA-T1"}
+
+    def test_septa_unknown_code_is_dropped(self):
+        """An obsolete SEPTA code narrows to nothing rather than passing through."""
+        result = _line_codes_to_gtfs_ids(
+            "SEPTA_RR", frozenset({"SEPTA-TRE", "SEPTA-RETIRED"})
+        )
+        assert result == {"SEPTA-TRE"}
+
+    def test_septa_cross_system_code_is_dropped(self):
+        """A Metro code offered under SEPTA_RR does not resolve, and vice versa."""
+        assert _line_codes_to_gtfs_ids("SEPTA_RR", frozenset({"SEPTA-L1"})) == set()
+        assert _line_codes_to_gtfs_ids("SEPTA_METRO", frozenset({"SEPTA-TRE"})) == set()
+
+    def test_septa_accepted_codes_match_what_the_collector_emits(self):
+        """The evaluator accepts exactly the codes the collector can store.
+
+        Both sides derive from SEPTA_{RR,METRO}_ROUTES, but through separate
+        module-level constants. This asserts the shared contract directly so
+        the two cannot drift apart the way they did before #1631 — a code the
+        collector can emit but the evaluator rejects means silent non-delivery.
+        """
+        for data_source, code_map in _SEPTA_ROUTE_TO_LINE_CODE.items():
+            emitted = set(code_map.values())
+            accepted = {
+                code
+                for code in emitted
+                if _line_codes_to_gtfs_ids(data_source, frozenset({code}))
+            }
+            assert accepted == emitted, f"{data_source} rejects {emitted - accepted}"
+
+    def test_septa_topology_line_codes_are_all_accepted(self):
+        """Every SEPTA route in the topology resolves to a non-empty route ID set.
+
+        A subscription can name any of these routes, so any route the evaluator
+        cannot resolve is a subscription that can never be notified.
+        """
+        septa_routes = [
+            r for r in ALL_ROUTES if r.data_source in ("SEPTA_RR", "SEPTA_METRO")
+        ]
+        assert len(septa_routes) == 26  # 13 Regional Rail + 13 Metro
+        for route in septa_routes:
+            resolved = _line_codes_to_gtfs_ids(route.data_source, route.line_codes)
+            assert resolved == set(route.line_codes), route.id
 
 
 class TestGetRouteNameForSubscription:
@@ -603,6 +719,200 @@ class TestEvaluateServiceAlerts:
         count = await evaluate_service_alerts(db_session, apns)
 
         assert count == 1
+
+    async def test_septa_rr_line_alert_sends_notification(
+        self, db_session: AsyncSession
+    ):
+        """A SEPTA Regional Rail line subscription receives its route's alert."""
+        _make_subscription(
+            db_session,
+            device_id="septa-rr-dev",
+            apns_token="septa-rr-token",
+            data_source="SEPTA_RR",
+            line_id="septa-rr-tre",
+            include_planned_work=True,
+        )
+        _make_service_alert(
+            db_session,
+            alert_id="septa-rr-1",
+            data_source="SEPTA_RR",
+            route_ids=["SEPTA-TRE"],
+            header="Trenton Line: Weekend track work",
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        count = await evaluate_service_alerts(db_session, apns)
+
+        assert count == 1
+        body = apns.send_alert_notification.call_args.args[2]
+        assert "Trenton Line: Weekend track work" in body
+
+    async def test_septa_metro_line_alert_sends_notification(
+        self, db_session: AsyncSession
+    ):
+        """A SEPTA Metro line subscription receives its route's alert."""
+        _make_subscription(
+            db_session,
+            device_id="septa-metro-dev",
+            apns_token="septa-metro-token",
+            data_source="SEPTA_METRO",
+            line_id="septa-metro-l1",
+            include_planned_work=True,
+        )
+        _make_service_alert(
+            db_session,
+            alert_id="septa-metro-1",
+            data_source="SEPTA_METRO",
+            alert_type="alert",
+            route_ids=["SEPTA-L1"],
+            header="Market-Frankford Line: Delays due to a disabled train",
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        count = await evaluate_service_alerts(db_session, apns)
+
+        assert count == 1
+        body = apns.send_alert_notification.call_args.args[2]
+        assert "Market-Frankford Line" in body
+
+    async def test_septa_sibling_route_alert_sends_nothing(
+        self, db_session: AsyncSession
+    ):
+        """An alert for a different SEPTA route does not reach the subscriber."""
+        _make_subscription(
+            db_session,
+            device_id="septa-sib-dev",
+            apns_token="septa-sib-token",
+            data_source="SEPTA_RR",
+            line_id="septa-rr-tre",
+            include_planned_work=True,
+        )
+        _make_service_alert(
+            db_session,
+            alert_id="septa-rr-2",
+            data_source="SEPTA_RR",
+            route_ids=["SEPTA-WTR"],
+            header="West Trenton Line: Weekend track work",
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        count = await evaluate_service_alerts(db_session, apns)
+        assert count == 0
+        apns.send_alert_notification.assert_not_called()
+
+    async def test_septa_cross_system_alert_sends_nothing(
+        self, db_session: AsyncSession
+    ):
+        """A Metro alert does not reach a Regional Rail subscriber."""
+        _make_subscription(
+            db_session,
+            device_id="septa-cross-dev",
+            apns_token="septa-cross-token",
+            data_source="SEPTA_RR",
+            line_id="septa-rr-tre",
+            include_planned_work=True,
+        )
+        _make_service_alert(
+            db_session,
+            alert_id="septa-metro-2",
+            data_source="SEPTA_METRO",
+            route_ids=["SEPTA-L1"],
+            header="Market-Frankford Line: Delays",
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        count = await evaluate_service_alerts(db_session, apns)
+        assert count == 0
+
+    async def test_septa_system_wide_subscription_still_matches(
+        self, db_session: AsyncSession
+    ):
+        """System-wide SEPTA subscriptions keep matching every route's alert."""
+        _make_subscription(
+            db_session,
+            device_id="septa-sw-dev",
+            apns_token="septa-sw-token",
+            data_source="SEPTA_RR",
+            line_id=None,
+            include_planned_work=True,
+        )
+        _make_service_alert(
+            db_session,
+            alert_id="septa-rr-3",
+            data_source="SEPTA_RR",
+            route_ids=["SEPTA-WTR"],
+            header="West Trenton Line: Weekend track work",
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        count = await evaluate_service_alerts(db_session, apns)
+        assert count == 1
+
+    async def test_septa_station_pair_subscription_sends_notification(
+        self, db_session: AsyncSession
+    ):
+        """A SEPTA station-pair commute subscription receives its route's alert."""
+        device = DeviceToken(device_id="septa-sp-dev", apns_token="septa-sp-token")
+        db_session.add(device)
+        # Trenton Transit Center -> Levittown, both on the Trenton Line only.
+        sub = RouteAlertSubscription(
+            device_id="septa-sp-dev",
+            data_source="SEPTA_RR",
+            from_station_code="SEPR90701",
+            to_station_code="SEPR90702",
+            include_planned_work=True,
+        )
+        db_session.add(sub)
+        _make_service_alert(
+            db_session,
+            alert_id="septa-rr-4",
+            data_source="SEPTA_RR",
+            route_ids=["SEPTA-TRE"],
+            header="Trenton Line: Weekend track work",
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        count = await evaluate_service_alerts(db_session, apns)
+
+        assert count == 1
+        call_args = apns.send_alert_notification.call_args
+        custom_data = call_args.kwargs.get("custom_data") or call_args.args[3]
+        sa_payload = custom_data["service_alert"]
+        assert sa_payload["from_station_code"] == "SEPR90701"
+        assert sa_payload["to_station_code"] == "SEPR90702"
+
+    async def test_septa_station_pair_ignores_sibling_route_alert(
+        self, db_session: AsyncSession
+    ):
+        """A station-pair sub does not receive alerts for routes it doesn't ride."""
+        device = DeviceToken(device_id="septa-sp2-dev", apns_token="septa-sp2-token")
+        db_session.add(device)
+        sub = RouteAlertSubscription(
+            device_id="septa-sp2-dev",
+            data_source="SEPTA_RR",
+            from_station_code="SEPR90701",
+            to_station_code="SEPR90702",
+            include_planned_work=True,
+        )
+        db_session.add(sub)
+        _make_service_alert(
+            db_session,
+            alert_id="septa-rr-5",
+            data_source="SEPTA_RR",
+            route_ids=["SEPTA-WTR"],
+            header="West Trenton Line: Weekend track work",
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        count = await evaluate_service_alerts(db_session, apns)
+        assert count == 0
 
     async def test_skips_unsupported_data_source(self, db_session: AsyncSession):
         """Subscriptions for unsupported systems are skipped even with planned work opt-in."""
