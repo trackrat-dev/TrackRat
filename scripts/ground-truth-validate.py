@@ -2064,6 +2064,32 @@ def run_septa_rr_validation(base_url: str, tolerance: float, verbose: bool = Fal
 COVERAGE_SKIP_SOURCES = frozenset({"AMTRAK"})
 
 
+# Rendered in place of a missing/blank ``line.code`` when reporting a scoped
+# response that violates the filter contract, so the diagnostic distinguishes
+# "came back with the wrong line" from "came back with no line at all".
+BLANK_LINE_CODE = "(blank)"
+
+
+def scoped_line_violations(
+    departures: list[TrackRatDeparture], line_codes: frozenset[str]
+) -> list[str]:
+    """Return the line codes in ``departures`` that a scoped request must not contain.
+
+    A response to a request carrying ``lines`` may only hold rows on those lines:
+    ``DepartureService`` keeps a departure when ``d.line.code in line_codes``, so
+    anything else is a server-side filter bug.
+
+    A blank code is a violation too, not a tolerable payload gap: ``LineInfo.code``
+    is declared ``min_length=1`` (``models/api.py``), so the endpoint cannot
+    validly serialize an empty one. A blank therefore means the response broke its
+    own schema or the parse lost the field — both worth failing on, and both
+    invisible if the row is silently dropped, since the sweep would then report
+    only an empty-line WARN, which exits 0 without ``--fail-empty``. It is
+    reported as ``BLANK_LINE_CODE`` so the diagnostic names the actual defect.
+    """
+    return sorted({(d.line_code or BLANK_LINE_CODE) for d in departures} - line_codes)
+
+
 def _probe_line_departures(
     client: httpx.Client,
     base_url: str,
@@ -2096,9 +2122,7 @@ def _probe_line_departures(
     line. Any row that does not is a server-side filter bug rather than a
     coverage gap, so it is reported as a contract FAIL (with the offending
     codes) and excluded from the departures used to judge coverage — a
-    mis-filtered sibling must never make a dark line look alive. Rows whose
-    ``line_code`` is blank are a payload/parse gap rather than a filter
-    violation, so they are excluded without being counted as contract errors.
+    mis-filtered sibling must never make a dark line look alive.
     """
     n = len(stations)
     mid = n // 2
@@ -2121,13 +2145,7 @@ def _probe_line_departures(
             )
             if line_codes:
                 served = len(deps)
-                wrong = sorted(
-                    {
-                        d.line_code
-                        for d in deps
-                        if d.line_code and d.line_code not in line_codes
-                    }
-                )
+                wrong = scoped_line_violations(deps, line_codes)
                 if wrong:
                     detail = (
                         f"requested={','.join(sorted(line_codes))} "
