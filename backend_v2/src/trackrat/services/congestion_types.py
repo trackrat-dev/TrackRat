@@ -119,7 +119,10 @@ def effective_congestion_factor(
 
 
 def congestion_level_and_cause(
-    congestion_factor: float, cancellation_rate: float, total_journeys: int
+    congestion_factor: float,
+    cancellation_rate: float,
+    total_journeys: int,
+    average_delay_minutes: float,
 ) -> tuple[str, str]:
     """Congestion tier including cancellations, and what actually produced it.
 
@@ -141,14 +144,26 @@ def congestion_level_and_cause(
     that cancellations pushed up one further tier, and clients reading such a
     flag as "no delays" would then contradict a real, non-zero delay.
 
-    The cause is derived from tiers rather than from ``average_delay_minutes``
-    so it inherits the sub-minute noise floor for free: ``congestion_factor``
-    has already been through ``reliable_congestion_factor``, so a segment whose
-    delay was suppressed as jitter correctly reports ``"cancellations"`` rather
-    than claiming a delay the map deliberately declines to show.
+    The tier alone cannot decide whether a delay exists. ``congestion_factor``
+    is a ratio against the segment's baseline, so on a long leg a real delay can
+    sit inside the normal tier: 42 minutes against a 40-minute baseline is a
+    factor of 1.05 — "normal" — while ``average_delay_minutes`` is 2.0, well
+    above ``MIN_CONGESTION_DELAY_MINUTES``. Reporting that as ``"cancellations"``
+    would reproduce the very contradiction this function exists to prevent: the
+    web drops the segment from its delayed count and iOS labels it
+    "Heavy cancellations", both directly beside a rendered "+2m".
 
-    The blended tier is still the right thing to *colour* by: cancellations are
-    a real service problem, they are just not delays.
+    So the delay is judged by the same floor the map itself uses.
+    ``average_delay_minutes`` below that floor is jitter the map declines to
+    show, and the segment truthfully reports ``"cancellations"``; at or above
+    it the delay is real and the cause is ``"both"`` however small the tier
+    movement was.
+
+    The comparison is signed, not absolute. A segment running *early* clears an
+    absolute floor but has no delay to name, and both clients render a delay
+    only when it is positive — so calling it ``"both"`` would put it in the web's
+    delayed count with no "+Nm" beside it, the same class of contradiction one
+    tier down.
     """
     delay_level = get_congestion_level(congestion_factor)
     blended_level = get_congestion_level(
@@ -158,7 +173,14 @@ def congestion_level_and_cause(
     )
     if blended_level == delay_level:
         return blended_level, CONGESTION_CAUSE_DELAYS
-    if delay_level == "normal":
+    # Either evidence of a real delay is enough. The tier check is not redundant
+    # for callers that pass a factor which has not been through
+    # reliable_congestion_factor: for those, an escalated tier is the only
+    # delay signal available.
+    delay_is_reportable = (
+        average_delay_minutes >= MIN_CONGESTION_DELAY_MINUTES or delay_level != "normal"
+    )
+    if not delay_is_reportable:
         return blended_level, CONGESTION_CAUSE_CANCELLATIONS
     return blended_level, CONGESTION_CAUSE_BOTH
 

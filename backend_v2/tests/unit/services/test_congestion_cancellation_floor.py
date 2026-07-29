@@ -96,7 +96,7 @@ class TestCongestionLevelAndCause:
         """10 journeys, half cancelled, running trains on time: escalated to
         severe and attributed to cancellations, because captioning this as
         "delays" would be false."""
-        level, cause = congestion_level_and_cause(1.0, 50.0, 10)
+        level, cause = congestion_level_and_cause(1.0, 50.0, 10, 0.0)
         assert level == "severe"
         assert cause == CONGESTION_CAUSE_CANCELLATIONS
 
@@ -104,7 +104,7 @@ class TestCongestionLevelAndCause:
         """The #1638 case end-to-end through the tier helper: below the floor
         the segment stays normal, and the cause stays "delays" because the
         cancellations moved nothing."""
-        level, cause = congestion_level_and_cause(1.0, 50.0, 2)
+        level, cause = congestion_level_and_cause(1.0, 50.0, 2, 0.0)
         assert level == "normal"
         assert cause == CONGESTION_CAUSE_DELAYS
 
@@ -112,15 +112,16 @@ class TestCongestionLevelAndCause:
         """A segment already severe on delays alone is a delay problem, and
         cancellations that cannot push it higher change nothing — this is the
         case the cause most easily over-reports if computed from the rate."""
-        level, cause = congestion_level_and_cause(2.0, 50.0, 10)
+        level, cause = congestion_level_and_cause(2.0, 50.0, 10, 12.0)
         assert level == "severe"
         assert cause == CONGESTION_CAUSE_DELAYS
 
     def test_cause_is_set_whenever_the_tier_moves_at_all(self):
         """Escalation by one tier counts, not just escalation to severe: 1.05
-        (normal) + 20% * 0.015 = 1.35 -> heavy. The delays alone were normal, so
-        this is a pure cancellation escalation."""
-        level, cause = congestion_level_and_cause(1.05, 20.0, 10)
+        (normal) + 20% * 0.015 = 1.35 -> heavy. The running trains lost only
+        half a minute — below the map's own reporting floor — so this is a pure
+        cancellation escalation."""
+        level, cause = congestion_level_and_cause(1.05, 20.0, 10, 0.5)
         assert level == "heavy"
         assert cause == CONGESTION_CAUSE_CANCELLATIONS
 
@@ -131,30 +132,62 @@ class TestCongestionLevelAndCause:
         "cancellations" would make clients drop a real +N min delay and caption
         the segment as if its trains ran on time; reporting it as "delays" would
         hide the cancellations. Both are true, so both must be said."""
-        level, cause = congestion_level_and_cause(1.2, 20.0, 10)
+        level, cause = congestion_level_and_cause(1.2, 20.0, 10, 4.0)
+        assert level == "heavy"
+        assert cause == CONGESTION_CAUSE_BOTH
+
+    def test_reportable_delay_inside_the_normal_tier_still_reports_both(self):
+        """The residual of the same defect, one tier lower: a long segment can
+        carry a real delay without leaving the normal tier, because the factor
+        is a ratio. 42 min against a 40 min baseline is 1.05 — normal — while
+        the delay is a reportable +2.0 min, and 20% cancellations take the tier
+        to heavy.
+
+        Judging "were there delays?" by the tier alone would call this
+        "cancellations", and the clients would then do exactly what the review
+        objected to: the web drops it from delayedCount and iOS captions it
+        "Heavy cancellations", both directly beside the "+2m" the very same row
+        renders. The delay is judged by the map's absolute floor instead."""
+        level, cause = congestion_level_and_cause(1.05, 20.0, 10, 2.0)
         assert level == "heavy"
         assert cause == CONGESTION_CAUSE_BOTH
 
     def test_mixed_cause_survives_the_sparse_floor(self):
         """Below the floor the cancellations are discarded, so a delayed segment
         is attributed to delays alone rather than to "both"."""
-        level, cause = congestion_level_and_cause(1.2, 20.0, 2)
+        level, cause = congestion_level_and_cause(1.2, 20.0, 2, 4.0)
         assert level == "moderate"
         assert cause == CONGESTION_CAUSE_DELAYS
 
     def test_noise_floored_delay_does_not_make_the_cause_mixed(self):
-        """Deriving the cause from tiers rather than from average_delay_minutes
-        means the sub-minute noise floor is inherited: a segment whose delay was
-        already suppressed to a nominal 1.0 factor reports "cancellations", not
-        "both", so no client claims a delay the map declines to show."""
-        level, cause = congestion_level_and_cause(1.0, 50.0, 10)
+        """A sub-minute delay is jitter the map deliberately declines to show
+        (MIN_CONGESTION_DELAY_MINUTES), so it must not make the cause "both" —
+        that would have a client claim a delay nothing else renders."""
+        level, cause = congestion_level_and_cause(1.0, 50.0, 10, 0.5)
         assert level == "severe"
+        assert cause == CONGESTION_CAUSE_CANCELLATIONS
+
+    def test_delay_exactly_at_the_reporting_floor_counts_as_a_delay(self):
+        """The boundary MIN_CONGESTION_DELAY_MINUTES is inclusive, matching
+        reliable_congestion_factor, which keeps the real factor at exactly the
+        floor rather than flattening it."""
+        level, cause = congestion_level_and_cause(1.05, 20.0, 10, 1.0)
+        assert level == "heavy"
+        assert cause == CONGESTION_CAUSE_BOTH
+
+    def test_early_running_segment_is_not_called_delayed(self):
+        """A segment running 2 min *early* clears an absolute floor but has no
+        delay to name. Both clients render a delay only when it is positive, so
+        "both" would put this in the web's delayed count with no "+Nm" beside
+        it — the same contradiction, mirrored. The comparison is signed."""
+        level, cause = congestion_level_and_cause(1.05, 20.0, 10, -2.0)
+        assert level == "heavy"
         assert cause == CONGESTION_CAUSE_CANCELLATIONS
 
     def test_cancellations_too_small_to_move_the_tier_report_delays(self):
         """A rate that clears the floor but does not cross a threshold leaves
         the tier alone, so there is nothing to relabel."""
-        level, cause = congestion_level_and_cause(1.0, 5.0, 10)
+        level, cause = congestion_level_and_cause(1.0, 5.0, 10, 0.0)
         assert level == "normal"
         assert cause == CONGESTION_CAUSE_DELAYS
 

@@ -729,7 +729,7 @@ class CongestionAnalyzer:
             # re-aggregated in normalize_aggregated_segments, which applies the
             # same weighting; this keeps each raw segment self-consistent.)
             level, congestion_cause = congestion_level_and_cause(
-                congestion_factor, cancellation_rate, total_journeys
+                congestion_factor, cancellation_rate, total_journeys, average_delay
             )
 
             # Calculate frequency metrics (only for real-time sources)

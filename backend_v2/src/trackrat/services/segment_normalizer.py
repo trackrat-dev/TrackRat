@@ -276,7 +276,7 @@ def normalize_aggregated_segments(
         # still running are on time. Mirrors the iOS client, which colors by
         # congestion_factor + cancellation_rate.
         congestion_level, congestion_cause = congestion_level_and_cause(
-            congestion_factor, cancellation_rate, total_journeys
+            congestion_factor, cancellation_rate, total_journeys, average_delay
         )
 
         # Aggregate frequency metrics (sum train_count and baseline_train_count)
