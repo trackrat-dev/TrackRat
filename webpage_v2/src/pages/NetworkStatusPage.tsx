@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, lazy, Suspense } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { SegmentCongestion, CongestionLevel, OperationsSummaryResponse, TransitSystem } from '../types';
+import { SegmentCongestion, CongestionCause, CongestionLevel, OperationsSummaryResponse, TransitSystem } from '../types';
 import { apiService } from '../services/api';
 import { DISABLED_SYSTEMS, SYSTEM_NAMES, SYSTEM_ORDER, AVAILABLE_SYSTEMS } from '../data/stations';
 import { LoadingSpinner } from '../components/LoadingSpinner';
@@ -13,7 +13,9 @@ import {
   getCongestionColor,
   getCongestionBg,
   getCongestionLabel,
+  hasCancellationCause,
   navStationCodes,
+  segmentCause,
 } from '../utils/congestion';
 
 const CongestionMap = lazy(() => import('../components/CongestionMap').then((m) => ({ default: m.CongestionMap })));
@@ -21,21 +23,23 @@ const CongestionMap = lazy(() => import('../components/CongestionMap').then((m) 
 /**
  * Determine overall system status from its segments.
  *
- * `cancellationDriven` is true when every segment sitting at the worst level got
- * there on cancellations rather than delays, so the badge can name the real
- * problem instead of reporting delays the system does not have (#1638).
+ * `cause` summarizes the segments sitting at the worst level so the badge names
+ * the real problem instead of reporting delays the system does not have
+ * (#1638). Segments that disagree collapse to 'both' — the badge must not drop
+ * either cause when the system has some of each.
  */
 function getSystemStatus(segments: SegmentCongestion[]): {
   level: CongestionLevel;
-  cancellationDriven: boolean;
+  cause: CongestionCause;
 } {
   for (const level of ['severe', 'heavy', 'moderate'] as const) {
     const atLevel = segments.filter(s => s.congestion_level === level);
     if (atLevel.length > 0) {
-      return { level, cancellationDriven: atLevel.every(s => s.cancellation_driven === true) };
+      const causes = new Set(atLevel.map(segmentCause));
+      return { level, cause: causes.size === 1 ? [...causes][0] : 'both' };
     }
   }
-  return { level: 'normal', cancellationDriven: false };
+  return { level: 'normal', cause: 'delays' };
 }
 
 export function NetworkStatusPage() {
@@ -130,12 +134,15 @@ export function NetworkStatusPage() {
       <div className="space-y-3">
         {orderedSystems.map(system => {
           const segs = systemGroups[system];
-          const { level: status, cancellationDriven } = getSystemStatus(segs);
-          // Count the two causes separately: a segment escalated by cancellations
-          // is not a delayed segment, and labelling it one is the #1638 complaint.
+          const { level: status, cause: statusCause } = getSystemStatus(segs);
+          // Count the two causes separately: a segment escalated purely by
+          // cancellations is not a delayed segment, and labelling it one is the
+          // #1638 complaint. The counts deliberately overlap rather than
+          // partition — a 'both' segment genuinely is delayed AND cancelled, so
+          // excluding it from either count would drop a true statement.
           const affected = segs.filter(s => s.congestion_level !== 'normal');
-          const delayedCount = affected.filter(s => s.cancellation_driven !== true).length;
-          const cancelledCount = affected.length - delayedCount;
+          const delayedCount = affected.filter(s => segmentCause(s) !== 'cancellations').length;
+          const cancelledCount = affected.filter(hasCancellationCause).length;
           const isExpanded = expandedSystem === system;
 
           return (
@@ -166,7 +173,7 @@ export function NetworkStatusPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${getCongestionBg(status)} ${getCongestionColor(status)} font-medium`}>
-                    {getCongestionLabel(status, cancellationDriven)}
+                    {getCongestionLabel(status, statusCause)}
                   </span>
                   <ChevronIcon direction={isExpanded ? 'up' : 'down'} size={16} className="text-text-muted shrink-0" />
                 </div>
@@ -213,8 +220,10 @@ export function NetworkStatusPage() {
                         )}
                         {/* Without this the row is a bare colored dot with no
                             caption when a cancellation escalated an on-time
-                            segment — "red but there are no delays" (#1638). */}
-                        {seg.cancellation_driven === true && (
+                            segment — "red but there are no delays" (#1638).
+                            Renders alongside the delay above, not instead of it,
+                            so a segment with both keeps both facts. */}
+                        {hasCancellationCause(seg) && (
                           <span className={`text-xs font-medium ${getCongestionColor(seg.congestion_level)}`}>
                             {seg.cancellation_count} cancelled
                           </span>

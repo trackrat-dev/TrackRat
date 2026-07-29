@@ -16,11 +16,13 @@ Two things are asserted here:
    painted red by a single cancellation. The delay component is never gated —
    a genuinely slow sparse segment must still escalate on its own merits.
 
-2. **The cause flag.** When cancellations *do* legitimately escalate a segment,
-   ``cancellation_driven`` is set so clients can caption it truthfully. Without
-   it the API reports ``congestion_level="severe"`` next to
+2. **The cause.** When cancellations *do* legitimately escalate a segment,
+   ``congestion_cause`` says so, distinguishing "cancellations" (the running
+   trains were fine) from "both" (already delayed, pushed further). Without it
+   the API reports ``congestion_level="severe"`` next to
    ``average_delay_minutes=0.0`` and every client renders "Severe delays" over
-   an "On time" caption.
+   an "On time" caption; with only a boolean, a genuinely delayed segment that
+   cancellations escalated one more tier would have its real delay contradicted.
 
 The pure-function and normalizer tests are deterministic; the real-DB tests
 drive the optimized SQL path that production actually serves, against real
@@ -36,8 +38,11 @@ from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.congestion import CongestionAnalyzer
 from trackrat.services.congestion_types import (
     CANCELLATION_MIN_JOURNEYS,
+    CONGESTION_CAUSE_BOTH,
+    CONGESTION_CAUSE_CANCELLATIONS,
+    CONGESTION_CAUSE_DELAYS,
     SegmentCongestion,
-    congestion_level_with_cancellations,
+    congestion_level_and_cause,
     effective_congestion_factor,
 )
 from trackrat.services.segment_normalizer import normalize_aggregated_segments
@@ -84,44 +89,74 @@ class TestEffectiveCongestionFactorFloor:
         assert effective_congestion_factor(1.2, -5.0, 20) == pytest.approx(1.2)
 
 
-class TestCongestionLevelWithCancellations:
+class TestCongestionLevelAndCause:
     """The tier, and whether cancellations rather than delays produced it."""
 
-    def test_on_time_segment_with_heavy_cancellations_is_flagged(self):
+    def test_on_time_segment_with_heavy_cancellations_reports_cancellations(self):
         """10 journeys, half cancelled, running trains on time: escalated to
-        severe and flagged, because captioning this "delays" would be false."""
-        level, driven = congestion_level_with_cancellations(1.0, 50.0, 10)
+        severe and attributed to cancellations, because captioning this as
+        "delays" would be false."""
+        level, cause = congestion_level_and_cause(1.0, 50.0, 10)
         assert level == "severe"
-        assert driven is True
+        assert cause == CONGESTION_CAUSE_CANCELLATIONS
 
-    def test_sparse_segment_is_neither_escalated_nor_flagged(self):
+    def test_sparse_segment_is_neither_escalated_nor_attributed(self):
         """The #1638 case end-to-end through the tier helper: below the floor
-        the segment stays normal, and nothing is flagged because nothing moved."""
-        level, driven = congestion_level_with_cancellations(1.0, 50.0, 2)
+        the segment stays normal, and the cause stays "delays" because the
+        cancellations moved nothing."""
+        level, cause = congestion_level_and_cause(1.0, 50.0, 2)
         assert level == "normal"
-        assert driven is False
+        assert cause == CONGESTION_CAUSE_DELAYS
 
-    def test_genuinely_delayed_segment_is_not_flagged(self):
-        """A segment already severe on delays alone is a delay problem. The flag
-        must stay False so clients keep saying "delays" — this is the case the
-        flag most easily over-reports if it were computed from the rate alone."""
-        level, driven = congestion_level_with_cancellations(2.0, 50.0, 10)
+    def test_genuinely_delayed_segment_reports_delays(self):
+        """A segment already severe on delays alone is a delay problem, and
+        cancellations that cannot push it higher change nothing — this is the
+        case the cause most easily over-reports if computed from the rate."""
+        level, cause = congestion_level_and_cause(2.0, 50.0, 10)
         assert level == "severe"
-        assert driven is False
+        assert cause == CONGESTION_CAUSE_DELAYS
 
-    def test_flag_is_set_whenever_the_tier_moves_at_all(self):
+    def test_cause_is_set_whenever_the_tier_moves_at_all(self):
         """Escalation by one tier counts, not just escalation to severe: 1.05
-        (normal) + 20% * 0.015 = 1.35 -> heavy."""
-        level, driven = congestion_level_with_cancellations(1.05, 20.0, 10)
+        (normal) + 20% * 0.015 = 1.35 -> heavy. The delays alone were normal, so
+        this is a pure cancellation escalation."""
+        level, cause = congestion_level_and_cause(1.05, 20.0, 10)
         assert level == "heavy"
-        assert driven is True
+        assert cause == CONGESTION_CAUSE_CANCELLATIONS
 
-    def test_cancellations_too_small_to_move_the_tier_are_not_flagged(self):
+    def test_delayed_segment_escalated_further_reports_both(self):
+        """The case a boolean flag cannot express (raised in review of #1681):
+        1.2 is already moderate on delays alone, and a 20% rate over 10 journeys
+        pushes it to heavy (1.2 + 20 * 0.015 = 1.5). Reporting this as
+        "cancellations" would make clients drop a real +N min delay and caption
+        the segment as if its trains ran on time; reporting it as "delays" would
+        hide the cancellations. Both are true, so both must be said."""
+        level, cause = congestion_level_and_cause(1.2, 20.0, 10)
+        assert level == "heavy"
+        assert cause == CONGESTION_CAUSE_BOTH
+
+    def test_mixed_cause_survives_the_sparse_floor(self):
+        """Below the floor the cancellations are discarded, so a delayed segment
+        is attributed to delays alone rather than to "both"."""
+        level, cause = congestion_level_and_cause(1.2, 20.0, 2)
+        assert level == "moderate"
+        assert cause == CONGESTION_CAUSE_DELAYS
+
+    def test_noise_floored_delay_does_not_make_the_cause_mixed(self):
+        """Deriving the cause from tiers rather than from average_delay_minutes
+        means the sub-minute noise floor is inherited: a segment whose delay was
+        already suppressed to a nominal 1.0 factor reports "cancellations", not
+        "both", so no client claims a delay the map declines to show."""
+        level, cause = congestion_level_and_cause(1.0, 50.0, 10)
+        assert level == "severe"
+        assert cause == CONGESTION_CAUSE_CANCELLATIONS
+
+    def test_cancellations_too_small_to_move_the_tier_report_delays(self):
         """A rate that clears the floor but does not cross a threshold leaves
         the tier alone, so there is nothing to relabel."""
-        level, driven = congestion_level_with_cancellations(1.0, 5.0, 10)
+        level, cause = congestion_level_and_cause(1.0, 5.0, 10)
         assert level == "normal"
-        assert driven is False
+        assert cause == CONGESTION_CAUSE_DELAYS
 
 
 def _seg(
@@ -160,9 +195,9 @@ class TestNormalizerCancellationFloor:
         assert seg.cancellation_rate == pytest.approx(50.0)
         assert seg.average_delay_minutes == pytest.approx(0.0)
         assert seg.congestion_level == "normal"
-        assert seg.cancellation_driven is False
+        assert seg.congestion_cause == CONGESTION_CAUSE_DELAYS
 
-    def test_sustained_cancellations_still_escalate_and_are_flagged(self):
+    def test_sustained_cancellations_still_escalate_and_are_attributed(self):
         """The #1246 behavior this floor must not break: a segment with enough
         journeys to trust still turns red on cancellations alone."""
         result = normalize_aggregated_segments(
@@ -173,7 +208,7 @@ class TestNormalizerCancellationFloor:
         assert seg.cancellation_rate == pytest.approx(50.0)
         assert seg.congestion_factor == pytest.approx(1.0)
         assert seg.congestion_level == "severe"
-        assert seg.cancellation_driven is True
+        assert seg.congestion_cause == CONGESTION_CAUSE_CANCELLATIONS
 
     def test_floor_counts_cancellations_toward_the_journey_total(self):
         """The denominator is running + cancelled, so an all-but-one-cancelled
@@ -184,7 +219,7 @@ class TestNormalizerCancellationFloor:
         )
         assert len(result) == 1
         assert result[0].congestion_level == "severe"
-        assert result[0].cancellation_driven is True
+        assert result[0].congestion_cause == CONGESTION_CAUSE_CANCELLATIONS
 
     def test_sparse_segments_aggregate_over_the_floor(self):
         """Skip-stop expansion feeds several raw sub-segments into one canonical
@@ -201,12 +236,12 @@ class TestNormalizerCancellationFloor:
         assert seg.sample_count == 2
         assert seg.cancellation_count == 4
         assert seg.congestion_level == "severe"
-        assert seg.cancellation_driven is True
+        assert seg.congestion_cause == CONGESTION_CAUSE_CANCELLATIONS
 
     def test_sparse_but_genuinely_delayed_segment_still_escalates(self):
         """The floor must not become a general "too few trains" mute. Two
         journeys, one cancelled, but the train that ran lost 5 minutes: that is
-        a real delay and stays severe — flagged as delays, not cancellations."""
+        a real delay and stays severe — attributed to delays, not cancellations."""
         result = normalize_aggregated_segments(
             [_seg(sample_count=1, cancellation_count=1, avg_transit=10.0, baseline=5.0)]
         )
@@ -214,7 +249,7 @@ class TestNormalizerCancellationFloor:
         seg = result[0]
         assert seg.average_delay_minutes == pytest.approx(5.0)
         assert seg.congestion_level == "severe"
-        assert seg.cancellation_driven is False
+        assert seg.congestion_cause == CONGESTION_CAUSE_DELAYS
 
 
 async def _add_njt_journey(
@@ -325,13 +360,13 @@ class TestCancellationFloorRealDB:
             "a single cancellation on a sparse segment must not render severe "
             "while every train that ran was on time (#1638)"
         )
-        assert seg.cancellation_driven is False
+        assert seg.congestion_cause == CONGESTION_CAUSE_DELAYS
 
     async def test_sustained_cancellations_still_render_severe(
         self, db_session: AsyncSession
     ):
         """The #1246 signal survives: enough journeys to trust, half of them
-        cancelled, running trains on time -> severe and flagged as cancellations
+        cancelled, running trains on time -> severe, attributed to cancellations
         so no client captions it as a delay."""
         dep = now_et() - timedelta(minutes=30)
         for i in range(4):
@@ -359,4 +394,4 @@ class TestCancellationFloorRealDB:
         assert seg.cancellation_rate == pytest.approx(50.0)
         assert seg.average_delay_minutes == pytest.approx(0.0, abs=0.05)
         assert seg.congestion_level == "severe"
-        assert seg.cancellation_driven is True
+        assert seg.congestion_cause == CONGESTION_CAUSE_CANCELLATIONS

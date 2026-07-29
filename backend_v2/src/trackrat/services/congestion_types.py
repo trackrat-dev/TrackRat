@@ -46,6 +46,14 @@ CANCELLATION_CONGESTION_WEIGHT = 0.015
 # escalates on its own merits.
 CANCELLATION_MIN_JOURNEYS = 5
 
+# What produced a segment's congestion level — see congestion_level_and_cause.
+# Clients pick the noun for the caption from this ("Heavy delays" vs "Heavy
+# cancellations" vs "Heavy delays and cancellations"), so it must distinguish a
+# purely-cancellation escalation from one layered on top of real delays.
+CONGESTION_CAUSE_DELAYS = "delays"
+CONGESTION_CAUSE_CANCELLATIONS = "cancellations"
+CONGESTION_CAUSE_BOTH = "both"
+
 # Frequency/health level thresholds (factor = train_count / baseline)
 # Higher is better - measures service reliability
 FREQ_THRESHOLD_HEALTHY = 0.9  # >= 90% of baseline trains
@@ -110,20 +118,37 @@ def effective_congestion_factor(
     )
 
 
-def congestion_level_with_cancellations(
+def congestion_level_and_cause(
     congestion_factor: float, cancellation_rate: float, total_journeys: int
-) -> tuple[str, bool]:
-    """Congestion tier including cancellations, and whether they drove it.
+) -> tuple[str, str]:
+    """Congestion tier including cancellations, and what actually produced it.
 
-    Returns ``(level, cancellation_driven)`` where ``level`` is the tier of the
-    cancellation-blended factor, and ``cancellation_driven`` is True when that
-    blend escalated the segment above the tier its delays alone would produce.
+    Returns ``(level, cause)`` where ``level`` is the tier of the
+    cancellation-blended factor and ``cause`` is one of:
 
-    Clients need the flag to label the segment truthfully. Without it a segment
+    - ``"delays"`` — cancellations did not move the tier. The segment's colour
+      is entirely the running trains' lost time (or it is normal).
+    - ``"cancellations"`` — cancellations moved the tier and the delays alone
+      were normal, so the trains that ran were fine.
+    - ``"both"`` — the segment was already escalated on delays *and*
+      cancellations pushed it further.
+
+    Clients need this to label the segment truthfully. Without it a segment
     escalated purely by cancellations renders as "Severe delays" next to an
     average delay of zero and an "On time" caption — the contradiction reported
-    in issue #1638. The blended tier is still the right thing to *color* by:
-    cancellations are a real service problem, they are just not delays.
+    in issue #1638. A plain "were cancellations involved?" boolean is not
+    enough: it cannot distinguish that case from a genuinely delayed segment
+    that cancellations pushed up one further tier, and clients reading such a
+    flag as "no delays" would then contradict a real, non-zero delay.
+
+    The cause is derived from tiers rather than from ``average_delay_minutes``
+    so it inherits the sub-minute noise floor for free: ``congestion_factor``
+    has already been through ``reliable_congestion_factor``, so a segment whose
+    delay was suppressed as jitter correctly reports ``"cancellations"`` rather
+    than claiming a delay the map deliberately declines to show.
+
+    The blended tier is still the right thing to *colour* by: cancellations are
+    a real service problem, they are just not delays.
     """
     delay_level = get_congestion_level(congestion_factor)
     blended_level = get_congestion_level(
@@ -131,7 +156,11 @@ def congestion_level_with_cancellations(
             congestion_factor, cancellation_rate, total_journeys
         )
     )
-    return blended_level, blended_level != delay_level
+    if blended_level == delay_level:
+        return blended_level, CONGESTION_CAUSE_DELAYS
+    if delay_level == "normal":
+        return blended_level, CONGESTION_CAUSE_CANCELLATIONS
+    return blended_level, CONGESTION_CAUSE_BOTH
 
 
 def reliable_congestion_factor(
@@ -204,7 +233,7 @@ class SegmentCongestion:
         average_delay_minutes: float,
         cancellation_count: int = 0,
         cancellation_rate: float = 0.0,
-        cancellation_driven: bool = False,
+        congestion_cause: str = CONGESTION_CAUSE_DELAYS,
         # Frequency/health metrics
         train_count: int | None = None,
         baseline_train_count: float | None = None,
@@ -224,9 +253,9 @@ class SegmentCongestion:
         self.average_delay_minutes = average_delay_minutes
         self.cancellation_count = cancellation_count
         self.cancellation_rate = cancellation_rate
-        # True when cancellations, not delays, pushed this segment above the
-        # tier its running trains earned — see congestion_level_with_cancellations.
-        self.cancellation_driven = cancellation_driven
+        # What produced congestion_level: "delays", "cancellations", or "both"
+        # — see congestion_level_and_cause.
+        self.congestion_cause = congestion_cause
         # Frequency/health metrics (None for schedule-only sources)
         self.train_count = train_count
         self.baseline_train_count = baseline_train_count

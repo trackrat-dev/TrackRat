@@ -1,5 +1,5 @@
 import type { FeatureCollection, LineString } from 'geojson';
-import { CongestionLevel, SegmentCongestion } from '../types';
+import { CongestionCause, CongestionLevel, SegmentCongestion } from '../types';
 import { getStationByCode } from '../data/stations';
 
 // ---------------------------------------------------------------------------
@@ -32,27 +32,35 @@ export function getCongestionBg(level: CongestionLevel): string {
 }
 
 /**
+ * What the backend says is wrong with this segment, defaulting to 'delays' for
+ * older responses that predate the field.
+ */
+export function segmentCause(segment: SegmentCongestion): CongestionCause {
+  return segment.congestion_cause ?? 'delays';
+}
+
+/** True when this segment's colour owes anything to cancellations. */
+export function hasCancellationCause(segment: SegmentCongestion): boolean {
+  return segmentCause(segment) !== 'delays';
+}
+
+/**
  * Full descriptive label (status-page badges).
  *
- * Pass `cancellationDriven` for a segment the backend escalated on
- * cancellations rather than delays; the tier adjective is kept (it is what the
- * color shows) but the noun becomes "cancellations", because calling a segment
- * whose trains ran on time "Severe delays" is simply false (#1638).
+ * The tier adjective is always kept — it is what the colour shows — while the
+ * noun names the actual cause. Calling a segment whose trains ran on time
+ * "Severe delays" is false (#1638), and so is calling a segment that is both
+ * delayed *and* cancelled "Severe cancellations", which would make the caption
+ * contradict the non-zero delay shown beside it.
  */
-export function getCongestionLabel(level: CongestionLevel, cancellationDriven = false): string {
-  if (cancellationDriven) {
-    switch (level) {
-      case 'normal': return 'Normal';
-      case 'moderate': return 'Moderate cancellations';
-      case 'heavy': return 'Heavy cancellations';
-      case 'severe': return 'Severe cancellations';
-    }
-  }
-  switch (level) {
-    case 'normal': return 'Normal';
-    case 'moderate': return 'Moderate delays';
-    case 'heavy': return 'Heavy delays';
-    case 'severe': return 'Severe delays';
+export function getCongestionLabel(level: CongestionLevel, cause: CongestionCause = 'delays'): string {
+  // A normal segment was not escalated by anything, so there is no cause to name.
+  if (level === 'normal') return 'Normal';
+  const tier = getCongestionShortLabel(level);
+  switch (cause) {
+    case 'delays': return `${tier} delays`;
+    case 'cancellations': return `${tier} cancellations`;
+    case 'both': return `${tier} delays and cancellations`;
   }
 }
 
@@ -180,7 +188,7 @@ export interface SegmentFeatureProperties {
   average_delay_minutes: number;
   // Carried so the popup can explain a colored line whose trains ran on time,
   // instead of showing only the segment name over a red stroke (#1638).
-  cancellation_driven: boolean;
+  congestion_cause: CongestionCause;
   cancellation_count: number;
   color: string;
 }
@@ -207,7 +215,7 @@ export function buildSegmentFeatureCollection(
           segment_name: `${segment.from_station_name} → ${segment.to_station_name}`,
           congestion_level: segment.congestion_level,
           average_delay_minutes: segment.average_delay_minutes,
-          cancellation_driven: segment.cancellation_driven === true,
+          congestion_cause: segmentCause(segment),
           cancellation_count: segment.cancellation_count,
           color: CONGESTION_HEX[segment.congestion_level],
         },

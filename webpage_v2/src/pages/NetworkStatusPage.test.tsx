@@ -147,7 +147,20 @@ describe('NetworkStatusPage cancellation-driven segments', () => {
       average_delay_minutes: 0,
       cancellation_count: 4,
       cancellation_rate: 50,
-      cancellation_driven: true,
+      congestion_cause: 'cancellations',
+    };
+  }
+
+  /** Delayed AND escalated further by cancellations — the review case on #1681. */
+  function mixedSegment(from: string, to: string): SegmentCongestion {
+    return {
+      ...segment('NJT', from, to),
+      congestion_level: 'heavy',
+      congestion_factor: 1.2,
+      average_delay_minutes: 2,
+      cancellation_count: 3,
+      cancellation_rate: 20,
+      congestion_cause: 'both',
     };
   }
 
@@ -192,6 +205,49 @@ describe('NetworkStatusPage cancellation-driven segments', () => {
     // The delay text is suppressed at 0 min, so without this caption the row is
     // a bare colored dot with nothing explaining it (#1638).
     expect(await screen.findByText('4 cancelled')).toBeInTheDocument();
+  });
+
+  it('names both causes on a segment that is delayed and cancelled', async () => {
+    getCongestion.mockResolvedValue({
+      aggregated_segments: [mixedSegment('CH', 'PE')],
+      generated_at: '2026-07-05T18:00:00Z',
+      time_window_hours: 3,
+    } as CongestionResponse);
+
+    renderPage();
+
+    // Reporting this as cancellations alone would contradict the +2m delay the
+    // row shows; reporting it as delays alone would hide the cancellations.
+    expect(await screen.findByText('Heavy delays and cancellations')).toBeInTheDocument();
+  });
+
+  it('counts a mixed segment as both delayed and cancelled', async () => {
+    getCongestion.mockResolvedValue({
+      aggregated_segments: [mixedSegment('CH', 'PE')],
+      generated_at: '2026-07-05T18:00:00Z',
+      time_window_hours: 3,
+    } as CongestionResponse);
+
+    renderPage();
+
+    // The counts overlap deliberately: both statements are true of this one
+    // segment, and dropping it from "delayed" was the review finding.
+    expect(await screen.findByText('1 delayed')).toBeInTheDocument();
+    expect(screen.getByText('1 with cancellations')).toBeInTheDocument();
+  });
+
+  it('keeps the delay visible alongside the cancellation count on a mixed row', async () => {
+    getCongestion.mockResolvedValue({
+      aggregated_segments: [mixedSegment('CH', 'PE')],
+      generated_at: '2026-07-05T18:00:00Z',
+      time_window_hours: 3,
+    } as CongestionResponse);
+
+    renderPage();
+    fireEvent.click(await screen.findByText('NJ Transit'));
+
+    expect(await screen.findByText('+2m')).toBeInTheDocument();
+    expect(screen.getByText('3 cancelled')).toBeInTheDocument();
   });
 
   it('still says delays when the segment is genuinely delayed', async () => {

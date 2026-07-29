@@ -605,11 +605,11 @@ struct CongestionSegment: Codable, Identifiable {
     let sampleCount: Int
     let cancellationCount: Int
     let cancellationRate: Double
-    // True when cancellations, not delays, pushed congestionLevel above the tier
-    // averageDelayMinutes alone would give. Such a segment must not be captioned
-    // as delayed — its trains ran on time, they just did not all run (issue
-    // #1638). nil for older backends.
-    let cancellationDriven: Bool?
+    // What produced congestionLevel: "delays", "cancellations", or "both"
+    // (issue #1638). A segment escalated purely by cancellations must not be
+    // captioned as delayed — its trains ran on time, they just did not all run —
+    // while a "both" segment must keep both facts. nil for older backends.
+    let congestionCause: String?
     // Frequency/health metrics (nil for schedule-only sources like PATCO)
     let trainCount: Int?
     let baselineTrainCount: Double?
@@ -636,7 +636,7 @@ struct CongestionSegment: Codable, Identifiable {
         case sampleCount = "sample_count"
         case cancellationCount = "cancellation_count"
         case cancellationRate = "cancellation_rate"
-        case cancellationDriven = "cancellation_driven"
+        case congestionCause = "congestion_cause"
         case trainCount = "train_count"
         case baselineTrainCount = "baseline_train_count"
         case frequencyFactor = "frequency_factor"
@@ -661,30 +661,41 @@ struct CongestionSegment: Codable, Identifiable {
     /// The rate is cancelled / (running + cancelled), so this is its denominator.
     var totalJourneys: Int { sampleCount + cancellationCount }
 
-    /// True when the backend escalated this segment on cancellations rather than
-    /// delays (issue #1638). Captions must say "cancellations", not "delays".
-    var isCancellationDriven: Bool { cancellationDriven == true }
+    /// What produced this segment's level. Defaults to `.delays` for backends
+    /// that predate the field (issue #1638).
+    enum Cause: String {
+        case delays
+        case cancellations
+        case both
+    }
+
+    var cause: Cause {
+        congestionCause.flatMap(Cause.init(rawValue:)) ?? .delays
+    }
+
+    /// True when this segment's level owes anything to cancellations — including
+    /// the mixed case, whose cancellation count must still be surfaced.
+    var involvesCancellations: Bool { cause != .delays }
 
     // Computed properties for display
     var displayCongestionLevel: String {
         // Keep the tier adjective — it is what the color shows — but name the
         // real cause. Reporting "Severe delays" on a segment whose trains all
-        // ran on time is what issue #1638 reported.
-        if isCancellationDriven {
-            switch congestionLevel {
-            case "normal": return "Normal conditions"
-            case "moderate": return "Moderate cancellations"
-            case "heavy": return "Heavy cancellations"
-            case "severe": return "Severe cancellations"
-            default: return congestionLevel.capitalized
-            }
-        }
+        // ran on time is what issue #1638 reported; reporting "Severe
+        // cancellations" on one that is also genuinely delayed would contradict
+        // the delay shown beside it.
+        let tier: String
         switch congestionLevel {
         case "normal": return "Normal conditions"
-        case "moderate": return "Moderate delays"
-        case "heavy": return "Heavy delays"
-        case "severe": return "Severe delays"
+        case "moderate": tier = "Moderate"
+        case "heavy": tier = "Heavy"
+        case "severe": tier = "Severe"
         default: return congestionLevel.capitalized
+        }
+        switch cause {
+        case .delays: return "\(tier) delays"
+        case .cancellations: return "\(tier) cancellations"
+        case .both: return "\(tier) delays and cancellations"
         }
     }
 

@@ -37,7 +37,7 @@ interface HoverInfo {
   lat: number;
   name: string;
   delay: number;
-  cancellationDriven: boolean;
+  hasCancellations: boolean;
   cancellationCount: number;
 }
 
@@ -92,7 +92,7 @@ export function CongestionMap({ segments }: CongestionMapProps) {
           lat: e.lngLat.lat,
           name: props.segment_name,
           delay: props.average_delay_minutes,
-          cancellationDriven: props.cancellation_driven,
+          hasCancellations: props.congestion_cause !== 'delays',
           cancellationCount: props.cancellation_count,
         });
         setCursor('pointer');
@@ -182,12 +182,13 @@ export function CongestionMap({ segments }: CongestionMapProps) {
               {hover.delay > 0 && (
                 <div className="text-text-muted">+{hover.delay.toFixed(0)}m avg delay</div>
               )}
-              {/* A cancellation-escalated segment has no delay to report, so
-                  without this the popup is a bare name over a red line (#1638). */}
-              {hover.cancellationDriven && (
-                <div className="text-text-muted">
-                  {hover.cancellationCount} cancelled, trains running on time
-                </div>
+              {/* Without this a cancellation-escalated segment, which has no
+                  delay to report, is a bare name over a red line (#1638). The
+                  count alone is stated: a segment can be delayed AND cancelled,
+                  so claiming its trains ran on time would contradict the delay
+                  line directly above. */}
+              {hover.hasCancellations && (
+                <div className="text-text-muted">{hover.cancellationCount} cancelled</div>
               )}
             </Popup>
           )}
