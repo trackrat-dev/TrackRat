@@ -15,7 +15,10 @@ from trackrat.services.gtfs import (
     GTFS_DOWNLOAD_INTERVAL_HOURS,
     GTFS_ERROR_MESSAGE_MAX_CHARS,
     GTFS_EXPIRY_EXEMPT_SOURCES,
+    GTFS_STALE_FEED_HOURS,
     NJT_LINE_CODE_MAPPING,
+    GTFSFeedStatus,
+    GTFSRefreshOutcome,
     GTFSService,
     _bounded,
     _extract_lirr_train_number,
@@ -164,8 +167,10 @@ class TestRateLimiting:
         ):
             result = await service.refresh_feed(mock_db, "NJT", force=False)
 
-        # Should return False (skipped due to rate limit)
-        assert result is False
+        # Skip must be reported as a skip, not conflated with a failure
+        assert result is GTFSRefreshOutcome.SKIPPED_RATE_LIMITED
+        assert result.refreshed is False
+        assert result.is_failure is False
 
     @pytest.mark.asyncio
     async def test_rate_limit_allows_old_download(self):
@@ -200,8 +205,9 @@ class TestRateLimiting:
 
             result = await service.refresh_feed(mock_db, "NJT", force=False)
 
-        # Should return True (download was performed)
-        assert result is True
+        # Should report a real refresh (download was performed)
+        assert result is GTFSRefreshOutcome.REFRESHED
+        assert result.refreshed is True
 
     @pytest.mark.asyncio
     async def test_force_bypasses_rate_limit(self):
@@ -235,8 +241,9 @@ class TestRateLimiting:
 
             result = await service.refresh_feed(mock_db, "NJT", force=True)
 
-        # Should return True despite recent download because force=True
-        assert result is True
+        # Should refresh despite recent download because force=True
+        assert result is GTFSRefreshOutcome.REFRESHED
+        assert result.refreshed is True
 
 
 class TestActiveServiceIds:
@@ -467,9 +474,101 @@ class TestStationMapping:
 class TestDownloadIntervalConstant:
     """Test the download interval constant is reasonable."""
 
-    def test_download_interval_is_24_hours(self):
-        """Verify download interval is 24 hours as specified."""
-        assert GTFS_DOWNLOAD_INTERVAL_HOURS == 24
+    def test_download_interval_leaves_headroom_under_the_daily_cron(self):
+        """The rate limit must not be able to skip the job that enforces it.
+
+        The refresh cron fires once a day at 03:00 ET. At a 24-hour limit a
+        source stamped at 03:00:0N one night measures 23.99h the next and skips
+        itself, refreshing only every other night — the alternating pattern
+        production ran for the whole of issue #1646's window, which is also the
+        noise that hid the real SUBWAY/MNR failures. Any value >= 24 reopens it.
+        """
+        assert GTFS_DOWNLOAD_INTERVAL_HOURS < 24
+
+        # Still has to bound a same-day repeat (startup force-check + cron).
+        assert GTFS_DOWNLOAD_INTERVAL_HOURS > 12
+
+    def test_stale_threshold_tolerates_one_missed_night(self):
+        """48h leaves room for a single failed night before alarming.
+
+        Below ~24h every ordinary daily cadence would alarm; the threshold has
+        to sit above one full cycle to mean "stuck" rather than "late".
+        """
+        assert GTFS_STALE_FEED_HOURS > 24
+
+
+class TestGTFSRefreshOutcome:
+    """The outcome enum is the fix for issue #1646's core defect: a bare bool
+    made a nightly parse failure indistinguishable from a nightly skip."""
+
+    def test_only_a_real_refresh_reports_refreshed(self):
+        refreshed = [o for o in GTFSRefreshOutcome if o.refreshed]
+        assert refreshed == [GTFSRefreshOutcome.REFRESHED]
+
+    def test_skips_are_not_failures(self):
+        """Being rate limited or having no WMATA key is normal operation.
+
+        If either counted as a failure the nightly ERROR would fire constantly
+        and be tuned out — the same way the old always-false payload was.
+        """
+        assert GTFSRefreshOutcome.SKIPPED_RATE_LIMITED.is_failure is False
+        assert GTFSRefreshOutcome.SKIPPED_NO_API_KEY.is_failure is False
+
+    def test_every_failure_path_reports_a_failure(self):
+        assert GTFSRefreshOutcome.FAILED_UNKNOWN_SOURCE.is_failure is True
+        assert GTFSRefreshOutcome.FAILED_DOWNLOAD.is_failure is True
+        assert GTFSRefreshOutcome.FAILED_PROCESS.is_failure is True
+
+    def test_no_outcome_is_both_refreshed_and_failed(self):
+        for outcome in GTFSRefreshOutcome:
+            assert not (outcome.refreshed and outcome.is_failure)
+
+    def test_every_member_is_truthy_so_callers_must_use_refreshed(self):
+        """Documents the trap the `.refreshed` property exists to prevent.
+
+        Enum members are always truthy, so `if await refresh_feed(...)` reads as
+        success even on FAILED_PROCESS. This pins that hazard so nobody
+        "simplifies" a call site back to a bare truthiness check.
+        """
+        assert all(bool(outcome) for outcome in GTFSRefreshOutcome)
+        assert bool(GTFSRefreshOutcome.FAILED_PROCESS) is True
+        assert GTFSRefreshOutcome.FAILED_PROCESS.refreshed is False
+
+
+class TestGTFSFeedStatusStaleness:
+    """`is_stale` is the durable signal — it cannot be satisfied by a
+    well-behaved failure the way a per-run outcome can."""
+
+    @staticmethod
+    def _status(age_hours: float | None) -> GTFSFeedStatus:
+        return GTFSFeedStatus(
+            data_source="SUBWAY",
+            last_successful_parse_at=(
+                datetime.now(ET) - timedelta(hours=age_hours) if age_hours else None
+            ),
+            age_hours=age_hours,
+            trip_count=83821,
+            error_message=None,
+        )
+
+    def test_never_parsed_is_stale(self):
+        """No feed at all is strictly worse than an old feed, not unknown."""
+        assert self._status(None).is_stale is True
+
+    def test_fresh_feed_is_not_stale(self):
+        assert self._status(1.0).is_stale is False
+
+    def test_every_other_night_cadence_is_not_stale(self):
+        """A source refreshed 47h ago is late, not stuck — must not alarm."""
+        assert self._status(47.0).is_stale is False
+
+    def test_boundary_is_inclusive_of_the_threshold(self):
+        assert self._status(float(GTFS_STALE_FEED_HOURS)).is_stale is False
+        assert self._status(GTFS_STALE_FEED_HOURS + 0.1).is_stale is True
+
+    def test_thirteen_day_freeze_is_stale(self):
+        """The exact issue #1646 shape: SUBWAY frozen for 13 nights."""
+        assert self._status(13 * 24).is_stale is True
 
 
 class TestGTFSTripIdentifiers:

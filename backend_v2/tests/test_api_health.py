@@ -93,3 +93,23 @@ def test_scheduler_status(client):
     assert "running" in data
     assert "jobs_count" in data
     assert data["running"] is True  # Mocked to be running
+
+
+def test_health_reports_gtfs_feed_freshness(client):
+    """The endpoint must expose a gtfs_feeds check for every active source.
+
+    Static-feed freshness had no representation in /health at all, so a source
+    could serve a frozen schedule indefinitely with no HTTP-reachable evidence
+    (issue #1646). This pins the wiring; the freshness logic itself is covered
+    against real Postgres in tests/integration/test_gtfs_feed_observability.py.
+    """
+    from trackrat.services.gtfs import GTFS_FEED_URLS, GTFS_STALE_FEED_HOURS
+
+    check = client.get("/health").json()["checks"]["gtfs_feeds"]
+
+    assert check["stale_after_hours"] == GTFS_STALE_FEED_HOURS
+    assert set(check["feeds"]) == set(GTFS_FEED_URLS)
+    # Nothing is disabled under default test settings, and this fixture's
+    # database has no feed rows, so every source reads as never-parsed.
+    assert set(check["stale_sources"]) == set(GTFS_FEED_URLS)
+    assert check["status"] == "warning"

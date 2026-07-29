@@ -32,7 +32,11 @@ from trackrat.models.database import (
     GTFSStopTime,
     GTFSTrip,
 )
-from trackrat.services.gtfs import GTFS_ERROR_MESSAGE_MAX_CHARS, GTFSService
+from trackrat.services.gtfs import (
+    GTFS_ERROR_MESSAGE_MAX_CHARS,
+    GTFSRefreshOutcome,
+    GTFSService,
+)
 
 # asyncpg's per-statement bind parameter cap; seed comfortably past it.
 ASYNCPG_MAX_PARAMS = 32_767
@@ -160,7 +164,11 @@ async def test_record_refresh_failure_bounds_persisted_error(db_session):
         db_session, "SUBWAY", "process", giant
     )
 
-    assert result is False
+    # Reports the specific failure rather than a bare False, so the nightly job
+    # can tell this apart from a rate-limited skip (issue #1646).
+    assert result is GTFSRefreshOutcome.FAILED_PROCESS
+    assert result.is_failure is True
+    assert result.refreshed is False
     feed_info = (
         await db_session.execute(
             select(GTFSFeedInfo).where(GTFSFeedInfo.data_source == "SUBWAY")

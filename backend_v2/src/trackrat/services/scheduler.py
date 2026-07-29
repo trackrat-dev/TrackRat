@@ -3190,26 +3190,58 @@ class SchedulerService:
                 if task:
                     self._running_tasks[task_id] = task
 
-                from trackrat.services.gtfs import GTFSService
+                from trackrat.services.gtfs import (
+                    GTFS_STALE_FEED_HOURS,
+                    GTFSRefreshOutcome,
+                    GTFSService,
+                )
 
                 gtfs_service = GTFSService()
 
-                results: dict[str, bool] = {}
+                results: dict[str, GTFSRefreshOutcome] = {}
                 async with get_session() as db:
-                    for source in self.GTFS_SOURCES:
-                        if self.settings.is_data_source_disabled(source):
-                            continue
-                        result = await gtfs_service.refresh_feed(db, source)
-                        results[source] = result
+                    active_sources = [
+                        s
+                        for s in self.GTFS_SOURCES
+                        if not self.settings.is_data_source_disabled(s)
+                    ]
+                    for source in active_sources:
+                        outcome = await gtfs_service.refresh_feed(db, source)
+                        results[source] = outcome
                         logger.info(
                             f"gtfs_{source.lower()}_refresh_complete",
-                            refreshed=result,
+                            refreshed=outcome.refreshed,
+                            outcome=outcome.value,
                         )
 
-                logger.info(
-                    "gtfs_feed_refresh_complete",
-                    **{f"{s.lower()}_refreshed": r for s, r in results.items()},
-                )
+                    # The durable check. A source can report a plausible-looking
+                    # outcome every night and still be serving a frozen schedule
+                    # — SUBWAY and MNR did exactly that for thirteen nights
+                    # (issue #1646). Age of the last successful parse is the
+                    # only signal that cannot be satisfied by a well-behaved
+                    # failure, so it is what alarms.
+                    stale = [
+                        s
+                        for s in await gtfs_service.get_feed_statuses(
+                            db, active_sources
+                        )
+                        if s.is_stale
+                    ]
+
+                failed = {s: o.value for s, o in results.items() if o.is_failure}
+                per_source = {
+                    f"{s.lower()}_refreshed": o.refreshed for s, o in results.items()
+                }
+                if failed or stale:
+                    logger.error(
+                        "gtfs_feed_refresh_complete",
+                        failed_sources=failed,
+                        stale_sources={s.data_source: s.age_hours for s in stale},
+                        stale_after_hours=GTFS_STALE_FEED_HOURS,
+                        **per_source,
+                    )
+                else:
+                    logger.info("gtfs_feed_refresh_complete", **per_source)
 
             except Exception as e:
                 logger.error(
@@ -3273,10 +3305,13 @@ class SchedulerService:
 
                 for source, available in availability.items():
                     if not available:
-                        result = await gtfs_service.refresh_feed(db, source, force=True)
+                        outcome = await gtfs_service.refresh_feed(
+                            db, source, force=True
+                        )
                         logger.info(
                             f"gtfs_{source.lower()}_initial_download_complete",
-                            success=result,
+                            success=outcome.refreshed,
+                            outcome=outcome.value,
                         )
 
         except Exception as e:

@@ -9,8 +9,10 @@ import csv
 import io
 import traceback
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
+from enum import Enum
 from typing import Any
 
 import httpx
@@ -90,8 +92,22 @@ GTFS_ROUTE_TYPE_FILTER: dict[str, frozenset[str]] = {
 # and long-term schedule drift are NOT corrected by this.
 GTFS_EXPIRY_EXEMPT_SOURCES: frozenset[str] = frozenset({"PATH"})
 
-# Minimum hours between feed downloads (rate limiting)
-GTFS_DOWNLOAD_INTERVAL_HOURS = 24
+# Minimum hours between feed downloads (rate limiting).
+#
+# Deliberately under 24 even though the refresh cron fires daily. At 24 the
+# limit raced its own scheduler: the job runs at 03:00 ET, so a source stamped
+# at 03:00:0N one night measured 23.99h the next and skipped itself, then
+# refreshed the night after — every source alternated refreshed/skipped, which
+# is exactly what production showed for the whole of issue #1646's window. The
+# daily cron is what actually bounds download frequency; this constant only
+# needs to stop a same-day repeat (e.g. a startup force-check plus the cron).
+GTFS_DOWNLOAD_INTERVAL_HOURS = 20
+
+# A feed whose last successful parse is older than this is reported as stale by
+# ``GTFSService.get_feed_statuses`` — logged at ERROR by the nightly refresh and
+# surfaced on /health. Set above the daily cadence so a single missed night is
+# tolerated and only a genuinely stuck source alarms (issue #1646).
+GTFS_STALE_FEED_HOURS = 48
 
 # Trip ids per DELETE when clearing a source's stop_times. One bind parameter
 # is sent per id and asyncpg hard-caps a statement at 32767 parameters —
@@ -272,6 +288,75 @@ def _extract_lirr_train_number(gtfs_trip_id: str) -> str | None:
     return None
 
 
+class GTFSRefreshOutcome(Enum):
+    """Why a :meth:`GTFSService.refresh_feed` call ended the way it did.
+
+    ``refresh_feed`` used to return a bare ``bool``, which collapsed six
+    distinct outcomes into ``False``: an unknown source, a rate-limited skip, a
+    missing WMATA key, a download failure and a parse failure all surfaced
+    downstream as nothing more than ``{source}_refreshed: false``. That is what
+    let the SUBWAY/MNR parse failures run unnoticed for thirteen nights — a
+    real failure was indistinguishable from the routine nightly skip that every
+    healthy source also reported (issue #1646).
+    """
+
+    REFRESHED = "refreshed"
+    SKIPPED_RATE_LIMITED = "skipped_rate_limited"
+    SKIPPED_NO_API_KEY = "skipped_no_api_key"
+    FAILED_UNKNOWN_SOURCE = "failed_unknown_source"
+    FAILED_DOWNLOAD = "failed_download"
+    FAILED_PROCESS = "failed_process"
+
+    @property
+    def refreshed(self) -> bool:
+        """True only when the feed was actually downloaded and parsed.
+
+        Call sites must use this rather than testing the outcome itself: every
+        enum member is truthy, so a bare ``if await refresh_feed(...)`` would
+        silently read as success on the failure paths.
+        """
+        return self is GTFSRefreshOutcome.REFRESHED
+
+    @property
+    def is_failure(self) -> bool:
+        """True when the refresh did not happen *because something broke*.
+
+        The deliberate skips are excluded: being rate limited, or having no
+        WMATA key configured, is expected operation and must not raise an alarm.
+        """
+        return self in (
+            GTFSRefreshOutcome.FAILED_UNKNOWN_SOURCE,
+            GTFSRefreshOutcome.FAILED_DOWNLOAD,
+            GTFSRefreshOutcome.FAILED_PROCESS,
+        )
+
+
+@dataclass(frozen=True)
+class GTFSFeedStatus:
+    """Freshness of one source's stored GTFS static feed.
+
+    Reads the durable record in ``gtfs_feed_info``, which survives even when a
+    failure's log entry does not. Nothing read that table before this — the one
+    diagnostic that outlived every night of issue #1646 was unreachable without
+    direct database access.
+    """
+
+    data_source: str
+    last_successful_parse_at: datetime | None
+    age_hours: float | None
+    trip_count: int | None
+    error_message: str | None
+
+    @property
+    def is_stale(self) -> bool:
+        """True if this source has no usable static schedule behind it.
+
+        A source that has never parsed successfully is stale regardless of age
+        — there is no feed at all, which is strictly worse than an old one.
+        """
+        return self.age_hours is None or self.age_hours > GTFS_STALE_FEED_HOURS
+
+
 def _bounded(text: str, limit: int) -> str:
     """Truncate text to ``limit`` chars, annotating how much was dropped."""
     if len(text) <= limit:
@@ -323,20 +408,23 @@ class GTFSService:
         db: AsyncSession,
         data_source: str,
         force: bool = False,
-    ) -> bool:
+    ) -> GTFSRefreshOutcome:
         """Download and parse GTFS feed for a data source.
 
         Args:
             db: Database session
             data_source: "NJT" or "AMTRAK"
-            force: If True, skip the 24hr rate limit check
+            force: If True, skip the rate limit check
 
         Returns:
-            True if feed was refreshed, False if skipped due to rate limit
+            The :class:`GTFSRefreshOutcome` naming what happened. Callers must
+            branch on ``.refreshed`` / ``.is_failure`` rather than on the
+            returned value's truthiness — see the enum's docstring for why a
+            plain bool here hid issue #1646.
         """
         if data_source not in GTFS_FEED_URLS:
             logger.error("Unknown GTFS data source", data_source=data_source)
-            return False
+            return GTFSRefreshOutcome.FAILED_UNKNOWN_SOURCE
 
         # Check rate limit
         feed_info = await self._get_or_create_feed_info(db, data_source)
@@ -354,7 +442,7 @@ class GTFSService:
                         GTFS_DOWNLOAD_INTERVAL_HOURS - hours_since_download, 1
                     ),
                 )
-                return False
+                return GTFSRefreshOutcome.SKIPPED_RATE_LIMITED
 
         url = GTFS_FEED_URLS[data_source]
         logger.info("Downloading GTFS feed", data_source=data_source, url=url)
@@ -371,7 +459,7 @@ class GTFSService:
                     headers["api_key"] = wmata_key
                 else:
                     logger.warning("WMATA GTFS download skipped: no API key configured")
-                    return False
+                    return GTFSRefreshOutcome.SKIPPED_NO_API_KEY
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(url, headers=headers, follow_redirects=True)
@@ -414,7 +502,7 @@ class GTFSService:
                 trips=stats.get("trips"),
                 stop_times=stats.get("stop_times"),
             )
-            return True
+            return GTFSRefreshOutcome.REFRESHED
 
         except httpx.HTTPError as e:
             return await self._record_refresh_failure(db, data_source, "download", e)
@@ -428,7 +516,7 @@ class GTFSService:
         data_source: str,
         stage: str,
         exc: Exception,
-    ) -> bool:
+    ) -> GTFSRefreshOutcome:
         """Log a refresh failure and persist it to feed_info, both bounded.
 
         Everything emitted or persisted here is truncated: a SQLAlchemy
@@ -439,8 +527,14 @@ class GTFSService:
         traceback is truncated from the head so the stack frames survive and
         the giant message (which comes last) is what gets cut.
 
-        Returns False so ``refresh_feed`` can return this call's result.
+        Returns the matching failure outcome so ``refresh_feed`` can return
+        this call's result directly.
         """
+        outcome = (
+            GTFSRefreshOutcome.FAILED_DOWNLOAD
+            if stage == "download"
+            else GTFSRefreshOutcome.FAILED_PROCESS
+        )
         error_msg = _bounded(str(exc), GTFS_ERROR_MESSAGE_MAX_CHARS)
         tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
         logger.error(
@@ -455,7 +549,7 @@ class GTFSService:
         feed_info = await self._get_or_create_feed_info(db, data_source)
         feed_info.error_message = f"{stage}: {error_msg}"
         await db.commit()
-        return False
+        return outcome
 
     async def _get_or_create_feed_info(
         self, db: AsyncSession, data_source: str
@@ -1840,6 +1934,50 @@ class GTFSService:
             departures.append(departure)
 
         return departures
+
+    async def get_feed_statuses(
+        self, db: AsyncSession, data_sources: Sequence[str]
+    ) -> list[GTFSFeedStatus]:
+        """Report stored-feed freshness for each requested source.
+
+        Sources with no ``gtfs_feed_info`` row at all, and sources whose row has
+        never recorded a successful parse, both come back with
+        ``age_hours=None`` — which :attr:`GTFSFeedStatus.is_stale` treats as
+        stale. Absence of a feed is a worse state than an old feed, not a
+        missing data point to be skipped over.
+        """
+        rows = (
+            (
+                await db.execute(
+                    select(GTFSFeedInfo).where(
+                        GTFSFeedInfo.data_source.in_(list(data_sources))
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_source = {row.data_source: row for row in rows}
+
+        now = now_et()
+        statuses = []
+        for source in data_sources:
+            feed_info = by_source.get(source)
+            parsed_at = feed_info.last_successful_parse_at if feed_info else None
+            statuses.append(
+                GTFSFeedStatus(
+                    data_source=source,
+                    last_successful_parse_at=parsed_at,
+                    age_hours=(
+                        round((now - parsed_at).total_seconds() / 3600, 1)
+                        if parsed_at
+                        else None
+                    ),
+                    trip_count=feed_info.trip_count if feed_info else None,
+                    error_message=feed_info.error_message if feed_info else None,
+                )
+            )
+        return statuses
 
     async def is_feed_available(self, db: AsyncSession, data_source: str) -> bool:
         """Check if GTFS data is available for a data source."""
