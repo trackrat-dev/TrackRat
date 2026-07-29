@@ -62,9 +62,10 @@ extension Stations {
         "Westwood", "Hillsdale", "Woodcliff Lake", "Park Ridge",
         "Montvale", "Pearl River", "Nanuet", "Spring Valley",
         
-        // Port Jervis Line
-        "Sloatsburg", "Tuxedo", "Harriman", "Middletown NY",
-        "Salisbury Mills-Cornwall", "Campbell Hall", "Otisville", "Port Jervis",
+        // Port Jervis Line (timetable order — Middletown sits between
+        // Campbell Hall and Otisville, not before Salisbury Mills; issue #1660)
+        "Sloatsburg", "Tuxedo", "Harriman", "Salisbury Mills-Cornwall",
+        "Campbell Hall", "Middletown NY", "Otisville", "Port Jervis",
         
         // Atlantic City Line
         "Pennsauken", "Cherry Hill", "Lindenwold NJT", "Atco",

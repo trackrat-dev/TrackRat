@@ -127,7 +127,9 @@ struct RouteTopology {
             id: "njt-port-jervis",
             name: "Port Jervis Line",
             dataSource: "NJT",
-            stationCodes: ["SF", "XG", "TC", "RM", "MD", "CW", "CB", "OS", "PO"]
+            // Timetable order west of Harriman is RM → CW → CB → MD → OS → PO
+            // (issue #1660). Keep in sync with route_topology.py.
+            stationCodes: ["SF", "XG", "TC", "RM", "CW", "CB", "MD", "OS", "PO"]
         ),
 
         // Pascack Valley Line
