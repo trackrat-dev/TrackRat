@@ -12,6 +12,10 @@ on:
       - 'infra_v2/**'
       - 'webpage_v2/**'
       - '.github/workflows/ci-cd-v2.yml'
+      # The route-topology parity test lives in backend_v2 but reads this Swift
+      # file. Without it here, an iOS-only topology edit runs ios-ci.yml alone
+      # (Xcode only) and the drift the test exists to catch merges unnoticed.
+      - 'ios/TrackRat/Shared/RouteTopology.swift'
   pull_request:
     branches: [main]
     paths:
@@ -19,6 +23,7 @@ on:
       - 'infra_v2/**'
       - 'webpage_v2/**'
       - '.github/workflows/ci-cd-v2.yml'
+      - 'ios/TrackRat/Shared/RouteTopology.swift'
 
 jobs:
   # ============================================

@@ -26,6 +26,7 @@ backend runs northbound, which is a direction convention, not a defect.
 """
 
 import re
+from fnmatch import fnmatch
 from pathlib import Path
 
 import pytest
@@ -35,6 +36,13 @@ from trackrat.config.route_topology import ALL_ROUTES
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _SWIFT_TOPOLOGY = _REPO_ROOT / "ios/TrackRat/Shared/RouteTopology.swift"
 _TS_TOPOLOGY = _REPO_ROOT / "webpage_v2/src/data/routeTopology.ts"
+
+# This module lives in backend_v2 but reads the two client files above, so it
+# only runs when CI decides a change touched the backend. See
+# TestTheParityCheckRunsWhenAClientTableChanges.
+_CI_WORKFLOW = _REPO_ROOT / ".github/workflows/ci-cd-v2.yml"
+_SWIFT_TOPOLOGY_REPO_PATH = "ios/TrackRat/Shared/RouteTopology.swift"
+_TS_TOPOLOGY_REPO_PATH = "webpage_v2/src/data/routeTopology.ts"
 
 # Both clients quote every station code, so one expression reads either file.
 _CODES = re.compile(r'"([^"]*)"')
@@ -72,6 +80,40 @@ def _parse_typescript(source: str) -> dict[str, tuple[str, ...]]:
     }
 
 
+def _trigger_path_blocks(source: str) -> list[tuple[str, ...]]:
+    """Every `paths:` filter in a workflow, in file order.
+
+    A small parser rather than PyYAML, which the backend does not depend on —
+    and which is not worth adding for one assertion. Comments and blank lines
+    inside a block are skipped; any other key ends it.
+    """
+    blocks: list[tuple[str, ...]] = []
+    globs: list[str] | None = None
+    for line in source.splitlines():
+        stripped = line.strip()
+        if stripped == "paths:":
+            if globs is not None:
+                blocks.append(tuple(globs))
+            globs = []
+            continue
+        if globs is None:
+            continue
+        item = re.match(r"^-\s*'(?P<glob>[^']+)'$", stripped)
+        if item:
+            globs.append(item.group("glob"))
+        elif stripped and not stripped.startswith("#"):
+            blocks.append(tuple(globs))
+            globs = None
+    if globs is not None:
+        blocks.append(tuple(globs))
+    return blocks
+
+
+def _is_covered(globs: tuple[str, ...], repo_path: str) -> bool:
+    """True if a change to `repo_path` matches any of a trigger's globs."""
+    return any(fnmatch(repo_path, glob) for glob in globs)
+
+
 def _is_ordered_subset(client: tuple[str, ...], backend: tuple[str, ...]) -> bool:
     """True if every client station appears, in order, within `backend`."""
     remaining = iter(backend)
@@ -98,6 +140,11 @@ def swift_routes() -> dict[str, tuple[str, ...]]:
 @pytest.fixture(scope="module")
 def typescript_routes() -> dict[str, tuple[str, ...]]:
     return _parse_typescript(_TS_TOPOLOGY.read_text())
+
+
+@pytest.fixture(scope="module")
+def ci_path_blocks() -> list[tuple[str, ...]]:
+    return _trigger_path_blocks(_CI_WORKFLOW.read_text())
 
 
 class TestParsersActuallyReadTheClientFiles:
@@ -147,6 +194,49 @@ class TestOrderedSubsetHelper:
     def test_reversal_is_only_accepted_by_the_bidirectional_check(self):
         assert not _is_ordered_subset(("C", "B", "A"), ("A", "B", "C"))
         assert _agrees_with_backend(("C", "B", "A"), ("A", "B", "C"))
+
+
+class TestTheParityCheckRunsWhenAClientTableChanges:
+    """A parity test CI never runs is worth nothing.
+
+    These tests live in `backend_v2`, so `ci-cd-v2.yml`'s path filter decides
+    whether they execute. The web table sits under `webpage_v2/**` and was
+    always covered, but the Swift table is under `ios/**`: before this was
+    pinned, an iOS-only topology edit ran `ios-ci.yml` alone — Xcode only —
+    and the one-client drift these tests exist to catch merged unnoticed.
+    """
+
+    def test_both_triggers_are_parsed(self, ci_path_blocks):
+        """Guards against the parser silently finding nothing."""
+        assert len(ci_path_blocks) == 2, ci_path_blocks
+        assert all("backend_v2/**" in globs for globs in ci_path_blocks)
+
+    def test_swift_topology_changes_trigger_this_suite(self, ci_path_blocks):
+        for globs in ci_path_blocks:
+            assert _is_covered(globs, _SWIFT_TOPOLOGY_REPO_PATH), (
+                "ci-cd-v2.yml no longer runs on the Swift topology file, so "
+                "iOS-only drift would merge unchecked: " + repr(globs)
+            )
+
+    def test_typescript_topology_changes_trigger_this_suite(self, ci_path_blocks):
+        for globs in ci_path_blocks:
+            assert _is_covered(globs, _TS_TOPOLOGY_REPO_PATH), repr(globs)
+
+    def test_the_ios_trigger_stays_narrow(self, ci_path_blocks):
+        """Only the topology file — not all of `ios/**`.
+
+        Backend/terraform/docker/web jobs have nothing to say about an Xcode
+        change, which is why `ios-ci.yml` exists as a separate workflow.
+        """
+        for globs in ci_path_blocks:
+            assert not _is_covered(globs, "ios/TrackRat/App/ContentView.swift")
+
+    def test_the_coverage_helpers_discriminate(self):
+        """Otherwise the assertions above could pass vacuously."""
+        assert _is_covered(("ios/**",), _SWIFT_TOPOLOGY_REPO_PATH)
+        assert not _is_covered(("backend_v2/**",), _SWIFT_TOPOLOGY_REPO_PATH)
+        assert not _is_covered((), _SWIFT_TOPOLOGY_REPO_PATH)
+        assert _trigger_path_blocks("on:\n  push:\n    branches: [main]\n") == []
 
 
 class TestClientTopologiesAgreeWithTheBackend:
