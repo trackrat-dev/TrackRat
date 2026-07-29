@@ -818,9 +818,7 @@ class TestSummaryService:
         assert stats.average_delay_minutes <= ON_TIME_THRESHOLD_MINUTES
         assert len(stats.trains_by_category[DELAY_CATEGORY_ON_TIME]) == 1
 
-    def test_generate_route_summary_reflects_live_estimate_delay(
-        self, summary_service
-    ):
+    def test_generate_route_summary_reflects_live_estimate_delay(self, summary_service):
         """End-to-end regression for #1282: when a recently-departed train was
         on time but the next (not-yet-departed) train's live estimate says it's
         delayed, the headline must NOT claim "100% on time".
@@ -1990,6 +1988,224 @@ class TestFormatFrequencyTrainHeadlineBody:
         print(f"body: {body!r}")
         expected_headway = SUMMARY_TIME_WINDOW_MINUTES / 6  # 20
         assert "every 20 minutes" in body
+
+
+class TestFormatTrainHeadlineBody:
+    """Train-scope headline/body formatting, with cancellations present.
+
+    Issue #1669: a rider on cancelled NJT train 3918 (PJ -> NY) saw
+    "1 cancellation" in the headline and "100% of similar NJ Transit trains
+    departing on time" directly beneath it. Both numbers are read off the same
+    OnTimeStats, but cancelled journeys never enter `total_count` — the
+    percentage's denominator — so they describe different populations and the
+    rendered text never said so.
+    """
+
+    @pytest.fixture
+    def summary_service(self):
+        return SummaryService()
+
+    @staticmethod
+    def _stats(pct, avg, total, cancelled):
+        return OnTimeStats(
+            on_time_percentage=pct,
+            average_delay_minutes=avg,
+            total_count=total,
+            cancellation_count=cancelled,
+        )
+
+    def test_reported_case_scopes_the_percentage_to_trains_that_ran(
+        self, summary_service
+    ):
+        """The exact #1669 report: 1 cancellation beside a 100% claim."""
+        dep_stats = self._stats(100.0, 0.0, 5, 1)
+        train_stats = self._stats(95.0, 1.0, 20, 0)
+        headline, body = summary_service._format_train_headline_body(
+            dep_stats,
+            None,
+            train_stats,
+            "3918",
+            "NJ Transit",
+            cancellations=1,
+            data_source="NJT",
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        assert headline == "1 cancellation"
+        assert "1 similar train cancelled." in body
+        # The bug: this bare sentence read as a claim over all similar trains,
+        # cancellation included.
+        assert "100% of similar NJ Transit trains departing on time" not in body
+        assert (
+            "Of the similar NJ Transit trains that ran, 100% departed on time" in body
+        )
+
+    def test_wording_is_unchanged_when_nothing_was_cancelled(self, summary_service):
+        """Regression guard: the common path must keep its original phrasing."""
+        dep_stats = self._stats(80.0, 2.0, 10, 0)
+        train_stats = self._stats(95.0, 1.0, 20, 0)
+        headline, body = summary_service._format_train_headline_body(
+            dep_stats,
+            None,
+            train_stats,
+            "3918",
+            "NJ Transit",
+            cancellations=0,
+            data_source="NJT",
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        assert headline == "Past two hours: 80% on time"
+        assert "80% of similar NJ Transit trains departing on time." in body
+        assert "that ran" not in body
+
+    def test_every_similar_train_cancelled_states_no_percentage(self, summary_service):
+        """`counted_trains == 0` makes on_time_percentage a 0.0 fallback.
+
+        Reporting it would fabricate "0% ... departing on time" from an empty
+        sample — the worse half of #1669.
+        """
+        dep_stats = self._stats(0.0, 0.0, 0, 3)
+        train_stats = self._stats(90.0, 1.0, 15, 0)
+        headline, body = summary_service._format_train_headline_body(
+            dep_stats,
+            None,
+            train_stats,
+            "3918",
+            "NJ Transit",
+            cancellations=3,
+            data_source="NJT",
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        assert headline == "3 cancellations"
+        assert "3 similar trains cancelled." in body
+        # No similar-trains punctuality sentence at all, in either wording.
+        assert "similar NJ Transit trains" not in body
+        assert "departed on time" not in body
+        # The train's own 30-day history is a separate sample and still stands.
+        assert "Train 3918 historically departs on time 90% of the time." in body
+
+    def test_arrival_tails_still_attach_to_the_scoped_wording(self, summary_service):
+        """The three arrival variants must survive the rewording."""
+        dep_stats = self._stats(75.0, 4.0, 4, 2)
+        train_stats = self._stats(90.0, 1.0, 15, 0)
+        late = summary_service._format_train_headline_body(
+            dep_stats,
+            self._stats(50.0, 6.0, 4, 0),
+            train_stats,
+            "3918",
+            "NJ Transit",
+            cancellations=2,
+            data_source="NJT",
+        )[1]
+        on_schedule = summary_service._format_train_headline_body(
+            dep_stats,
+            self._stats(95.0, 0.0, 4, 0),
+            train_stats,
+            "3918",
+            "NJ Transit",
+            cancellations=2,
+            data_source="NJT",
+        )[1]
+        no_arrivals = summary_service._format_train_headline_body(
+            dep_stats,
+            None,
+            train_stats,
+            "3918",
+            "NJ Transit",
+            cancellations=2,
+            data_source="NJT",
+        )[1]
+        print(f"late: {late!r}")
+        print(f"on_schedule: {on_schedule!r}")
+        print(f"no_arrivals: {no_arrivals!r}")
+        scoped = "Of the similar NJ Transit trains that ran, 75% departed on time"
+        assert f"{scoped}, averaging 6 minutes late on arrival." in late
+        assert f"{scoped}, arriving within schedule." in on_schedule
+        assert f"{scoped}." in no_arrivals
+
+    def test_percentage_is_omitted_without_a_carrier_name(self, summary_service):
+        """Pre-existing gate: no carrier name, no similar-trains sentence."""
+        dep_stats = self._stats(100.0, 0.0, 5, 1)
+        train_stats = self._stats(90.0, 1.0, 15, 0)
+        headline, body = summary_service._format_train_headline_body(
+            dep_stats, None, train_stats, "3918", None, cancellations=1
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        assert "departed on time" not in body
+        assert "1 similar train cancelled." in body
+
+    def test_train_with_only_cancellations_reports_no_historical_percentage(
+        self, summary_service
+    ):
+        """Same empty-sample problem on the train's own 30-day history."""
+        dep_stats = self._stats(90.0, 1.0, 10, 0)
+        train_stats = self._stats(0.0, 0.0, 0, 2)
+        headline, body = summary_service._format_train_headline_body(
+            dep_stats,
+            None,
+            train_stats,
+            "3918",
+            "NJ Transit",
+            cancellations=0,
+            data_source="NJT",
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        assert "historically departs on time" not in body
+        assert "Train 3918 has no completed runs on record." in body
+        assert "Cancelled 2 times in past 30 days." in body
+
+    def test_headline_falls_back_to_cancellations_with_no_punctuality_sample(
+        self, summary_service
+    ):
+        """Neither sample has a runnable train, so no percentage can be quoted."""
+        dep_stats = self._stats(0.0, 0.0, 0, 0)
+        train_stats = self._stats(0.0, 0.0, 0, 1)
+        headline, body = summary_service._format_train_headline_body(
+            dep_stats,
+            None,
+            train_stats,
+            "3918",
+            "NJ Transit",
+            cancellations=0,
+            data_source="NJT",
+        )
+        print(f"headline: {headline!r}")
+        print(f"body: {body!r}")
+        assert headline == "1 cancellation in past 30 days"
+        assert "0% on time" not in headline
+        assert "Cancelled 1 time in past 30 days." in body
+
+    def test_destination_display_used_for_synthetic_train_ids(self, summary_service):
+        """PATH/LIRR-style ids are synthetic, so the destination reads better."""
+        dep_stats = self._stats(100.0, 0.0, 5, 1)
+        train_stats = self._stats(0.0, 0.0, 0, 2)
+        _, body = summary_service._format_train_headline_body(
+            dep_stats,
+            None,
+            train_stats,
+            "PATH_PWC_newark_1784993280",
+            "PATH",
+            cancellations=1,
+            destination="World Trade Center",
+            data_source="PATH",
+        )
+        print(f"body: {body!r}")
+        assert "This World Trade Center train has no completed runs on record." in body
+        assert "PATH_PWC_newark_1784993280" not in body
+
+    def test_no_data_at_all_returns_empty(self, summary_service):
+        """Empty strings signal the caller to emit no summary."""
+        empty = self._stats(0.0, 0.0, 0, 0)
+        headline, body = summary_service._format_train_headline_body(
+            empty, None, empty, "3918", "NJ Transit", cancellations=0
+        )
+        print(f"headline: {headline!r}, body: {body!r}")
+        assert headline == ""
+        assert body == ""
 
 
 class TestComputeTrainsByHeadway:

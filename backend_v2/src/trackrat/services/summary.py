@@ -1632,6 +1632,14 @@ class SummaryService:
         - Cancellations lead the headline when present
         - Show departure % and arrival delay for similar trains
         - Show historical stats for this specific train
+
+        Cancelled journeys never reach `OnTimeStats.total_count`, which is the
+        on-time percentage's denominator, so any percentage stated here
+        describes only the trains that ran. Where cancellations exist the text
+        says so, and where nothing ran it is omitted rather than reporting the
+        `0.0` fallback as a real statistic (issue #1669). Route scope solves
+        the same problem with its ", the rest " connector, network scope by
+        dropping the figure; this is the train-scope equivalent.
         """
         body_parts = []
 
@@ -1639,10 +1647,19 @@ class SummaryService:
         if cancellations > 0:
             cancel_word = "cancellation" if cancellations == 1 else "cancellations"
             headline = f"{cancellations} {cancel_word}"
-        elif dep_stats.has_data:
+        elif dep_stats.total_count > 0:
             headline = f"Past two hours: {dep_stats.on_time_percentage:.0f}% on time"
-        elif train_stats.has_data:
+        elif train_stats.total_count > 0:
             headline = f"Past two hours: {train_stats.on_time_percentage:.0f}% on time"
+        elif train_stats.cancellation_count > 0:
+            # Only cancellations on record for this train, so there is no
+            # punctuality sample to quote a percentage from.
+            cancel_word = (
+                "cancellation"
+                if train_stats.cancellation_count == 1
+                else "cancellations"
+            )
+            headline = f"{train_stats.cancellation_count} {cancel_word} in past 30 days"
         else:
             return "", ""  # No data
 
@@ -1652,23 +1669,26 @@ class SummaryService:
             body_parts.append(f"{cancellations} similar {train_word} cancelled.")
 
         # Similar trains stats (past 90 min)
-        if dep_stats.has_data and carrier_name:
+        if dep_stats.total_count > 0 and carrier_name:
+            if cancellations > 0:
+                lead = (
+                    f"Of the similar {carrier_name} trains that ran, "
+                    f"{dep_stats.on_time_percentage:.0f}% departed on time"
+                )
+            else:
+                lead = (
+                    f"{dep_stats.on_time_percentage:.0f}% of similar {carrier_name} "
+                    f"trains departing on time"
+                )
             arr_avg = arr_stats.average_delay_minutes if arr_stats else None
             if arr_avg is not None and arr_avg >= 1:
                 body_parts.append(
-                    f"{dep_stats.on_time_percentage:.0f}% of similar {carrier_name} trains "
-                    f"departing on time, averaging {arr_avg:.0f} minutes late on arrival."
+                    f"{lead}, averaging {arr_avg:.0f} minutes late on arrival."
                 )
             elif arr_stats is not None:
-                body_parts.append(
-                    f"{dep_stats.on_time_percentage:.0f}% of similar {carrier_name} trains "
-                    f"departing on time, arriving within schedule."
-                )
+                body_parts.append(f"{lead}, arriving within schedule.")
             else:
-                body_parts.append(
-                    f"{dep_stats.on_time_percentage:.0f}% of similar {carrier_name} trains "
-                    f"departing on time."
-                )
+                body_parts.append(f"{lead}.")
 
         # Historical stats for this train
         # For PATH/PATCO/LIRR/MNR, use destination instead of synthetic train_id
@@ -1690,11 +1710,18 @@ class SummaryService:
                 train_display = f"This {destination} train"
             else:
                 train_display = f"Train {train_id}"
-            hist_text = f"{train_display} historically departs on time {train_stats.on_time_percentage:.0f}% of the time."
-            if train_stats.cancellation_count > 0:
-                hist_text += (
-                    f" Cancelled {train_stats.cancellation_count} "
-                    f"time{'s' if train_stats.cancellation_count != 1 else ''} in past 30 days."
+            cancelled_note = (
+                f" Cancelled {train_stats.cancellation_count} "
+                f"time{'s' if train_stats.cancellation_count != 1 else ''} in past 30 days."
+            )
+            if train_stats.total_count > 0:
+                hist_text = f"{train_display} historically departs on time {train_stats.on_time_percentage:.0f}% of the time."
+                if train_stats.cancellation_count > 0:
+                    hist_text += cancelled_note
+            else:
+                # Every recorded run was cancelled — no punctuality to report.
+                hist_text = (
+                    f"{train_display} has no completed runs on record.{cancelled_note}"
                 )
             body_parts.append(hist_text)
 
