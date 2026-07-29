@@ -13,17 +13,20 @@ a mocked session cannot disagree with itself.
 """
 
 import contextlib
+import io
+import zipfile
 from datetime import timedelta
 from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
 import pytest
 import structlog
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from trackrat.models.database import GTFSFeedInfo
+from trackrat.models.database import GTFSFeedInfo, GTFSStopTime, GTFSTrip
 from trackrat.services.gtfs import (
+    GTFS_FEED_URLS,
     GTFS_STALE_FEED_HOURS,
     GTFSRefreshOutcome,
     GTFSService,
@@ -87,37 +90,148 @@ async def _passthrough_freshness(
     return True
 
 
-async def _run_refresh_job(db_engine, outcomes: dict[str, GTFSRefreshOutcome]):
+def _gtfs_zip(*, trips: int = 2, service_id: str = "WKDY") -> bytes:
+    """Build a small but genuinely valid GTFS static feed.
+
+    Real enough that `_parse_and_store_gtfs` walks its whole pipeline —
+    routes → calendar → stops → trips → stop_times — and reports non-zero
+    counts, so a test can assert on what the parse actually persisted rather
+    than on a stubbed stats dict.
+    """
+    trip_rows = "\n".join(
+        f"T{n},{service_id},R1,Test Terminal,{n % 2}" for n in range(1, trips + 1)
+    )
+    stop_time_rows = "\n".join(
+        f"T{n},{(5 + n) % 24:02d}:00:00,{(5 + n) % 24:02d}:00:00,S1,1\n"
+        f"T{n},{(5 + n) % 24:02d}:30:00,{(5 + n) % 24:02d}:30:00,S2,2"
+        for n in range(1, trips + 1)
+    )
+    files = {
+        "routes.txt": (
+            "route_id,route_short_name,route_long_name,route_type,route_color\n"
+            "R1,TL,Test Line,2,ff0000\n"
+        ),
+        "calendar.txt": (
+            "service_id,monday,tuesday,wednesday,thursday,friday,"
+            "saturday,sunday,start_date,end_date\n"
+            f"{service_id},1,1,1,1,1,0,0,20260101,20261231\n"
+        ),
+        "stops.txt": (
+            "stop_id,stop_name,stop_lat,stop_lon\n"
+            "S1,Test Origin,40.7,-74.0\n"
+            "S2,Test Terminal,40.8,-74.1\n"
+        ),
+        "trips.txt": (
+            "trip_id,service_id,route_id,trip_headsign,direction_id\n"
+            + trip_rows
+            + "\n"
+        ),
+        "stop_times.txt": (
+            "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+            + stop_time_rows
+            + "\n"
+        ),
+    }
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, body in files.items():
+            zf.writestr(name, body)
+    return buffer.getvalue()
+
+
+@contextlib.contextmanager
+def _stub_download(bodies: bytes | dict[str, bytes]):
+    """Serve `bodies` in place of the real GTFS download, per source.
+
+    Only the HTTP transport is replaced: the rate-limit check, the parse, the
+    feed_info writes and the exception handling that classifies the outcome all
+    run for real. Tests must never reach a live transit feed, so this is the one
+    boundary that has to be stubbed to exercise the rest.
+
+    Passing a dict keys the response on the requested URL's data source, so a
+    single run can give one source a good feed and another a corrupt one.
+    """
+    by_url = (
+        {GTFS_FEED_URLS[source]: body for source, body in bodies.items()}
+        if isinstance(bodies, dict)
+        else None
+    )
+
+    async def fake_get(url, **kwargs):
+        response = Mock()
+        response.content = bodies if by_url is None else by_url[url]
+        response.raise_for_status = Mock(return_value=None)
+        return response
+
+    client = AsyncMock()
+    client.get = AsyncMock(side_effect=fake_get)
+    client.__aenter__ = AsyncMock(return_value=client)
+    client.__aexit__ = AsyncMock(return_value=None)
+
+    with patch("httpx.AsyncClient", return_value=client):
+        yield
+
+
+async def _run_refresh_job(
+    db_engine,
+    outcomes: dict[str, GTFSRefreshOutcome] | None = None,
+    *,
+    enabled: dict[str, bytes] | None = None,
+):
     """Drive `refresh_gtfs_feeds` end to end, returning the captured log events.
 
-    Only the network-facing `refresh_feed` is stubbed — the staleness sweep it
-    feeds runs against the real `gtfs_feed_info` rows, which is the whole point:
-    the job's alarm must come from persisted state, not from the outcome the
-    same run just reported.
+    Two modes, because the job has two independent halves to pin:
+
+    ``outcomes`` stubs `refresh_feed` per source, isolating the escalation
+    logic so every combination of outcomes can be enumerated cheaply. The
+    staleness sweep still runs against the real `gtfs_feed_info` rows, which is
+    the point: the job's alarm must come from persisted state, not from the
+    outcome the same run just reported.
+
+    ``enabled`` instead maps each active source to the zip bytes its download
+    should return, and the **real** `refresh_feed` runs — so the outcome the
+    job branches on is one the service genuinely produced, and the rows the
+    sweep reads are ones the service genuinely wrote. Only the network
+    transport is stubbed; a test must never fetch a live transit feed.
     """
+    if (outcomes is None) == (enabled is None):
+        raise ValueError("pass exactly one of `outcomes` or `enabled`")
+
+    active = outcomes if outcomes is not None else enabled
+    assert active is not None
     sessionmaker = async_sessionmaker(db_engine, expire_on_commit=False)
 
     settings = Mock()
-    settings.is_data_source_disabled = lambda source: source not in outcomes
+    settings.is_data_source_disabled = lambda source: source not in active
     service = SchedulerService.__new__(SchedulerService)
     service.settings = settings
     service._running_tasks = {}
 
     async def fake_refresh_feed(self, db, source, force=False):
+        assert outcomes is not None
         return outcomes[source]
 
-    with (
-        patch(
-            "trackrat.services.scheduler.get_session",
-            _patched_get_session(sessionmaker),
-        ),
-        patch(
-            "trackrat.services.scheduler.run_with_freshness_check",
-            side_effect=_passthrough_freshness,
-        ),
-        patch.object(GTFSService, "refresh_feed", fake_refresh_feed),
-        structlog.testing.capture_logs() as captured,
-    ):
+    with contextlib.ExitStack() as stack:
+        stack.enter_context(
+            patch(
+                "trackrat.services.scheduler.get_session",
+                _patched_get_session(sessionmaker),
+            )
+        )
+        stack.enter_context(
+            patch(
+                "trackrat.services.scheduler.run_with_freshness_check",
+                side_effect=_passthrough_freshness,
+            )
+        )
+        if outcomes is not None:
+            stack.enter_context(
+                patch.object(GTFSService, "refresh_feed", fake_refresh_feed)
+            )
+        else:
+            stack.enter_context(_stub_download(enabled or {}))
+        captured = stack.enter_context(structlog.testing.capture_logs())
         await service.refresh_gtfs_feeds()
 
     return captured
@@ -322,6 +436,167 @@ class TestRefreshOutcomesAgainstRealPostgres:
 
 
 @pytest.mark.asyncio
+class TestRealRefreshPathWritesWhatTheSweepReads:
+    """The outcome and the persisted row are two halves of one contract.
+
+    Everywhere else in this file one half is supplied by the test: the sweep
+    tests seed `gtfs_feed_info` by hand, and the nightly-job tests hand the job
+    a chosen `GTFSRefreshOutcome`. Neither notices if the real `refresh_feed`
+    stops writing `last_successful_parse_at` on success, or starts writing it on
+    failure — and either would silently disarm the #1646 alarm while every other
+    test stayed green. These drive the real service with a controlled feed so
+    the outcome and the row are both produced by production code.
+    """
+
+    async def test_successful_refresh_stamps_the_parse_the_sweep_reads(
+        self, db_session: AsyncSession
+    ):
+        """A real parse must leave the feed reporting healthy, with counts.
+
+        `last_successful_parse_at` is the single field the staleness sweep and
+        `/health` both read. If the success path stopped writing it, the sweep
+        would alarm nightly on a perfectly healthy source.
+        """
+        service = GTFSService()
+
+        with _stub_download(_gtfs_zip(trips=3)):
+            outcome = await service.refresh_feed(db_session, "PATCO")
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+        assert outcome.refreshed is True
+        assert outcome.is_failure is False
+
+        feed_info = (
+            await db_session.execute(
+                select(GTFSFeedInfo).where(GTFSFeedInfo.data_source == "PATCO")
+            )
+        ).scalar_one()
+        assert feed_info.last_successful_parse_at is not None
+        assert feed_info.error_message is None
+        assert feed_info.trip_count == 3
+        assert feed_info.route_count == 1
+        assert feed_info.stop_time_count == 6
+
+        # The rows really landed — the counts are not a stats dict talking to
+        # itself. Six stop_times across three trips is the fixture's shape.
+        stored_trips = await db_session.scalar(
+            select(func.count())
+            .select_from(GTFSTrip)
+            .where(GTFSTrip.data_source == "PATCO")
+        )
+        stored_stop_times = await db_session.scalar(
+            select(func.count())
+            .select_from(GTFSStopTime)
+            .join(GTFSTrip, GTFSStopTime.trip_id == GTFSTrip.id)
+            .where(GTFSTrip.data_source == "PATCO")
+        )
+        assert stored_trips == 3
+        assert stored_stop_times == 6
+
+        (status,) = await service.get_feed_statuses(db_session, ["PATCO"])
+        assert status.is_stale is False
+        assert status.trip_count == 3
+        assert status.error_message is None
+
+    async def test_a_real_refresh_clears_the_1646_state(self, db_session: AsyncSession):
+        """Recovery must be visible, not just failure.
+
+        This is the state SUBWAY sat in for thirteen days — a stale row
+        carrying the asyncpg bind-parameter error — followed by the fix landing.
+        The alarm has to switch off by itself when a real parse succeeds, or
+        operators learn to ignore it.
+        """
+        await _seed_feed(
+            db_session,
+            "SUBWAY",
+            parsed_hours_ago=13 * 24,
+            trip_count=83821,
+            error_message="process: the number of query arguments cannot exceed 32767",
+        )
+        service = GTFSService()
+        (before,) = await service.get_feed_statuses(db_session, ["SUBWAY"])
+        assert before.is_stale is True
+
+        with _stub_download(_gtfs_zip(trips=2)):
+            outcome = await service.refresh_feed(db_session, "SUBWAY", force=True)
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+        (after,) = await service.get_feed_statuses(db_session, ["SUBWAY"])
+        assert after.is_stale is False
+        assert after.age_hours == pytest.approx(0.0, abs=0.2)
+        # The stale error text must not outlive the failure it described.
+        assert after.error_message is None
+        assert after.trip_count == 2
+
+    async def test_a_real_parse_failure_leaves_the_feed_stale(
+        self, db_session: AsyncSession
+    ):
+        """A corrupt feed must fail *through the real handler* and stay stale.
+
+        `test_failure_outcome_and_persisted_error_agree` calls
+        `_record_refresh_failure` directly, so it cannot see whether
+        `refresh_feed` actually routes a parse crash there — nor whether the
+        parse's own partial writes get rolled back rather than stamping a
+        success. Here the exception comes from the real parse.
+        """
+        await _seed_feed(db_session, "MNR", parsed_hours_ago=None)
+        service = GTFSService()
+
+        with _stub_download(b"this is not a zip file"):
+            outcome = await service.refresh_feed(db_session, "MNR", force=True)
+
+        assert outcome is GTFSRefreshOutcome.FAILED_PROCESS
+        assert outcome.is_failure is True
+        assert outcome.refreshed is False
+
+        feed_info = (
+            await db_session.execute(
+                select(GTFSFeedInfo).where(GTFSFeedInfo.data_source == "MNR")
+            )
+        ).scalar_one()
+        # The failure must not be able to satisfy the staleness check.
+        assert feed_info.last_successful_parse_at is None
+        assert feed_info.error_message.startswith("process: ")
+
+        (status,) = await service.get_feed_statuses(db_session, ["MNR"])
+        assert status.is_stale is True
+
+    async def test_a_real_refresh_after_failure_does_not_inherit_stale_trips(
+        self, db_session: AsyncSession
+    ):
+        """The parse replaces the served schedule; it must not append to it.
+
+        #1646's damage was a *frozen* schedule still being served. A refresh
+        that left the previous feed's trips in place alongside the new ones
+        would report a healthy parse age while still serving stale trips.
+        """
+        service = GTFSService()
+
+        with _stub_download(_gtfs_zip(trips=4, service_id="OLD")):
+            assert await service.refresh_feed(db_session, "PATH", force=True) is (
+                GTFSRefreshOutcome.REFRESHED
+            )
+        with _stub_download(_gtfs_zip(trips=2, service_id="NEW")):
+            assert await service.refresh_feed(db_session, "PATH", force=True) is (
+                GTFSRefreshOutcome.REFRESHED
+            )
+
+        stored = (
+            (
+                await db_session.execute(
+                    select(GTFSTrip.service_id).where(GTFSTrip.data_source == "PATH")
+                )
+            )
+            .scalars()
+            .all()
+        )
+        assert sorted(stored) == ["NEW", "NEW"]
+
+        (status,) = await service.get_feed_statuses(db_session, ["PATH"])
+        assert status.trip_count == 2
+
+
+@pytest.mark.asyncio
 class TestNightlyRefreshJobSurfacesFailures:
     """The nightly job is the only thing that looks at every source. Before
     #1646 its summary said `{source}_refreshed: false` for a broken source and
@@ -489,6 +764,45 @@ class TestNightlyRefreshJobSurfacesFailures:
         (line,) = [e for e in captured if e["event"] == "gtfs_subway_refresh_complete"]
         assert line["refreshed"] is False
         assert line["outcome"] == "failed_process"
+
+    async def test_real_service_drives_the_escalation_end_to_end(
+        self, db_engine, db_session: AsyncSession
+    ):
+        """The whole chain, with nothing between the feed and the alarm.
+
+        Every other case in this class hands the job a chosen outcome, so all of
+        them would stay green if `refresh_feed` classified a parse crash as a
+        success. Here SUBWAY is served a corrupt feed and PATCO a good one, and
+        the ERROR has to be produced by what the real service returned and
+        wrote. Only the HTTP download is stubbed.
+        """
+        captured = await _run_refresh_job(
+            db_engine,
+            enabled={
+                "PATCO": _gtfs_zip(trips=2),
+                "SUBWAY": b"not a zip",
+            },
+        )
+
+        event = _completion_event(captured)
+        assert event["log_level"] == "error"
+        assert event["failed_sources"] == {"SUBWAY": "failed_process"}
+        assert event["patco_refreshed"] is True
+        assert event["subway_refreshed"] is False
+
+        # The healthy source parsed for real, so it is not swept up as stale;
+        # the failed one has no successful parse and is.
+        assert set(event["stale_sources"]) == {"SUBWAY"}
+        assert event["stale_sources"]["SUBWAY"] is None
+
+        feeds = {
+            f.data_source: f
+            for f in (await db_session.execute(select(GTFSFeedInfo))).scalars().all()
+        }
+        assert feeds["PATCO"].last_successful_parse_at is not None
+        assert feeds["PATCO"].trip_count == 2
+        assert feeds["SUBWAY"].last_successful_parse_at is None
+        assert feeds["SUBWAY"].error_message.startswith("process: ")
 
 
 @pytest.mark.asyncio
