@@ -772,9 +772,15 @@ struct CongestionComparisonBar: View {
     private var delayText: String {
         if delayMinutes > 0 {
             return "+\(delayMinutes) min delay"
-        } else {
-            return "On time"
         }
+        // This text is tinted with `segment.displayColor`. On a segment the
+        // backend escalated for cancellations the color is red while the trains
+        // that ran were on time, so "On time" in red was the exact contradiction
+        // reported in issue #1638 — name the cancellations instead.
+        if segment.isCancellationDriven {
+            return "\(segment.cancellationCount) cancelled"
+        }
+        return "On time"
     }
     
     var body: some View {

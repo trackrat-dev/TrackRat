@@ -72,6 +72,27 @@ describe('congestion level → visual mapping', () => {
     expect(getCongestionLabel('severe')).toBe('Severe delays');
   });
 
+  // #1638: a segment the backend escalated on cancellations has an average
+  // delay of zero, so "Severe delays" is simply untrue. Keep the tier adjective
+  // (it is what the color shows) and change the noun.
+  it('names cancellations, not delays, when cancellations drove the level', () => {
+    expect(getCongestionLabel('moderate', true)).toBe('Moderate cancellations');
+    expect(getCongestionLabel('heavy', true)).toBe('Heavy cancellations');
+    expect(getCongestionLabel('severe', true)).toBe('Severe cancellations');
+  });
+
+  it('keeps the normal label unchanged when nothing was escalated', () => {
+    // A normal segment was not escalated by definition, so the flag must not
+    // invent a cancellation story for it.
+    expect(getCongestionLabel('normal', true)).toBe('Normal');
+  });
+
+  it('defaults to delay wording when the flag is omitted', () => {
+    // Older backend responses omit cancellation_driven; the label must stay
+    // exactly as it was rather than becoming undefined.
+    expect(getCongestionLabel('severe')).toBe(getCongestionLabel('severe', false));
+  });
+
   it('gives one-word labels for the compact map legend', () => {
     expect(getCongestionShortLabel('normal')).toBe('Normal');
     expect(getCongestionShortLabel('moderate')).toBe('Moderate');
@@ -152,6 +173,31 @@ describe('buildSegmentFeatureCollection', () => {
     }
   });
 
+  // #1638: the hover popup only prints a delay line, so on a cancellation-
+  // escalated segment (delay 0) it rendered a bare name over a red stroke.
+  // These properties are what let it say why the line is colored.
+  it('carries the cancellation cause onto the map feature', () => {
+    const { renderable } = partitionRenderableSegments([
+      makeSegment({
+        congestion_level: 'severe',
+        average_delay_minutes: 0,
+        cancellation_count: 3,
+        cancellation_driven: true,
+      }),
+    ]);
+    const props = buildSegmentFeatureCollection(renderable).features[0].properties;
+    expect(props.cancellation_driven).toBe(true);
+    expect(props.cancellation_count).toBe(3);
+  });
+
+  it('reports cancellation_driven as false when the backend omits it', () => {
+    // MapLibre feature properties round-trip through the style spec, so an
+    // undefined here would read back as a missing property rather than false.
+    const { renderable } = partitionRenderableSegments([makeSegment()]);
+    const props = buildSegmentFeatureCollection(renderable).features[0].properties;
+    expect(props.cancellation_driven).toBe(false);
+  });
+
   it('carries the properties the map layer and popup read', () => {
     const { renderable } = partitionRenderableSegments([
       makeSegment({
@@ -170,6 +216,8 @@ describe('buildSegmentFeatureCollection', () => {
       segment_name: 'New York Penn Station → Newark Penn Station',
       congestion_level: 'severe',
       average_delay_minutes: 12,
+      cancellation_driven: false,
+      cancellation_count: 0,
       color: CONGESTION_HEX.severe,
     });
   });

@@ -605,6 +605,11 @@ struct CongestionSegment: Codable, Identifiable {
     let sampleCount: Int
     let cancellationCount: Int
     let cancellationRate: Double
+    // True when cancellations, not delays, pushed congestionLevel above the tier
+    // averageDelayMinutes alone would give. Such a segment must not be captioned
+    // as delayed — its trains ran on time, they just did not all run (issue
+    // #1638). nil for older backends.
+    let cancellationDriven: Bool?
     // Frequency/health metrics (nil for schedule-only sources like PATCO)
     let trainCount: Int?
     let baselineTrainCount: Double?
@@ -631,6 +636,7 @@ struct CongestionSegment: Codable, Identifiable {
         case sampleCount = "sample_count"
         case cancellationCount = "cancellation_count"
         case cancellationRate = "cancellation_rate"
+        case cancellationDriven = "cancellation_driven"
         case trainCount = "train_count"
         case baselineTrainCount = "baseline_train_count"
         case frequencyFactor = "frequency_factor"
@@ -651,8 +657,28 @@ struct CongestionSegment: Codable, Identifiable {
     var navFromStation: String { realFromStation ?? fromStation }
     var navToStation: String { realToStation ?? toStation }
     
+    /// Scheduled journeys this segment's cancellation rate was measured over.
+    /// The rate is cancelled / (running + cancelled), so this is its denominator.
+    var totalJourneys: Int { sampleCount + cancellationCount }
+
+    /// True when the backend escalated this segment on cancellations rather than
+    /// delays (issue #1638). Captions must say "cancellations", not "delays".
+    var isCancellationDriven: Bool { cancellationDriven == true }
+
     // Computed properties for display
     var displayCongestionLevel: String {
+        // Keep the tier adjective — it is what the color shows — but name the
+        // real cause. Reporting "Severe delays" on a segment whose trains all
+        // ran on time is what issue #1638 reported.
+        if isCancellationDriven {
+            switch congestionLevel {
+            case "normal": return "Normal conditions"
+            case "moderate": return "Moderate cancellations"
+            case "heavy": return "Heavy cancellations"
+            case "severe": return "Severe cancellations"
+            default: return congestionLevel.capitalized
+            }
+        }
         switch congestionLevel {
         case "normal": return "Normal conditions"
         case "moderate": return "Moderate delays"
@@ -661,9 +687,28 @@ struct CongestionSegment: Codable, Identifiable {
         default: return congestionLevel.capitalized
         }
     }
-    
+
+    /// Tier color as a `UIColor`. MapKit renderers use this directly rather than
+    /// unwrapping `displayColor`: round-tripping a dynamic system color through
+    /// SwiftUI's `Color` and back flattens its light/dark adaptation.
+    var displayUIColor: UIColor {
+        CongestionColors.color(
+            forCongestionFactor: congestionFactor,
+            cancellationRate: cancellationRate,
+            totalJourneys: totalJourneys)
+    }
+
     var displayColor: Color {
-        Color(CongestionColors.color(forCongestionFactor: congestionFactor, cancellationRate: cancellationRate))
+        Color(displayUIColor)
+    }
+
+    /// Stable key for the delay-tier color this segment renders as, used to merge
+    /// adjacent same-color segments into one map overlay.
+    var congestionTierKey: String {
+        CongestionColors.congestionTierKey(
+            forFactor: congestionFactor,
+            cancellationRate: cancellationRate,
+            totalJourneys: totalJourneys)
     }
 
     // MARK: - Frequency/Health Display Properties

@@ -37,6 +37,8 @@ interface HoverInfo {
   lat: number;
   name: string;
   delay: number;
+  cancellationDriven: boolean;
+  cancellationCount: number;
 }
 
 export function CongestionMap({ segments }: CongestionMapProps) {
@@ -90,6 +92,8 @@ export function CongestionMap({ segments }: CongestionMapProps) {
           lat: e.lngLat.lat,
           name: props.segment_name,
           delay: props.average_delay_minutes,
+          cancellationDriven: props.cancellation_driven,
+          cancellationCount: props.cancellation_count,
         });
         setCursor('pointer');
       } else {
@@ -177,6 +181,13 @@ export function CongestionMap({ segments }: CongestionMapProps) {
               <div className="font-medium text-text-primary">{hover.name}</div>
               {hover.delay > 0 && (
                 <div className="text-text-muted">+{hover.delay.toFixed(0)}m avg delay</div>
+              )}
+              {/* A cancellation-escalated segment has no delay to report, so
+                  without this the popup is a bare name over a red line (#1638). */}
+              {hover.cancellationDriven && (
+                <div className="text-text-muted">
+                  {hover.cancellationCount} cancelled, trains running on time
+                </div>
               )}
             </Popup>
           )}

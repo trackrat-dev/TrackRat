@@ -18,12 +18,24 @@ import {
 
 const CongestionMap = lazy(() => import('../components/CongestionMap').then((m) => ({ default: m.CongestionMap })));
 
-/** Determine overall system status from its segments */
-function getSystemStatus(segments: SegmentCongestion[]): CongestionLevel {
-  if (segments.some(s => s.congestion_level === 'severe')) return 'severe';
-  if (segments.some(s => s.congestion_level === 'heavy')) return 'heavy';
-  if (segments.some(s => s.congestion_level === 'moderate')) return 'moderate';
-  return 'normal';
+/**
+ * Determine overall system status from its segments.
+ *
+ * `cancellationDriven` is true when every segment sitting at the worst level got
+ * there on cancellations rather than delays, so the badge can name the real
+ * problem instead of reporting delays the system does not have (#1638).
+ */
+function getSystemStatus(segments: SegmentCongestion[]): {
+  level: CongestionLevel;
+  cancellationDriven: boolean;
+} {
+  for (const level of ['severe', 'heavy', 'moderate'] as const) {
+    const atLevel = segments.filter(s => s.congestion_level === level);
+    if (atLevel.length > 0) {
+      return { level, cancellationDriven: atLevel.every(s => s.cancellation_driven === true) };
+    }
+  }
+  return { level: 'normal', cancellationDriven: false };
 }
 
 export function NetworkStatusPage() {
@@ -118,8 +130,12 @@ export function NetworkStatusPage() {
       <div className="space-y-3">
         {orderedSystems.map(system => {
           const segs = systemGroups[system];
-          const status = getSystemStatus(segs);
-          const delayedCount = segs.filter(s => s.congestion_level !== 'normal').length;
+          const { level: status, cancellationDriven } = getSystemStatus(segs);
+          // Count the two causes separately: a segment escalated by cancellations
+          // is not a delayed segment, and labelling it one is the #1638 complaint.
+          const affected = segs.filter(s => s.congestion_level !== 'normal');
+          const delayedCount = affected.filter(s => s.cancellation_driven !== true).length;
+          const cancelledCount = affected.length - delayedCount;
           const isExpanded = expandedSystem === system;
 
           return (
@@ -140,12 +156,17 @@ export function NetworkStatusPage() {
                           {delayedCount} delayed
                         </span>
                       )}
+                      {cancelledCount > 0 && (
+                        <span className={`ml-2 ${getCongestionColor(status)}`}>
+                          {cancelledCount} with cancellations
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`text-xs px-2 py-0.5 rounded-full ${getCongestionBg(status)} ${getCongestionColor(status)} font-medium`}>
-                    {getCongestionLabel(status)}
+                    {getCongestionLabel(status, cancellationDriven)}
                   </span>
                   <ChevronIcon direction={isExpanded ? 'up' : 'down'} size={16} className="text-text-muted shrink-0" />
                 </div>
@@ -188,6 +209,14 @@ export function NetworkStatusPage() {
                         {seg.average_delay_minutes > 0 && (
                           <span className={`text-xs font-medium ${getCongestionColor(seg.congestion_level)}`}>
                             +{seg.average_delay_minutes.toFixed(0)}m
+                          </span>
+                        )}
+                        {/* Without this the row is a bare colored dot with no
+                            caption when a cancellation escalated an on-time
+                            segment — "red but there are no delays" (#1638). */}
+                        {seg.cancellation_driven === true && (
+                          <span className={`text-xs font-medium ${getCongestionColor(seg.congestion_level)}`}>
+                            {seg.cancellation_count} cancelled
                           </span>
                         )}
                         <span className={`w-2 h-2 rounded-full ${seg.congestion_level === 'normal' ? 'bg-success' : seg.congestion_level === 'moderate' ? 'bg-warning' : 'bg-error'}`} />

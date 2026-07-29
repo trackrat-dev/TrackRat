@@ -621,6 +621,11 @@ class SegmentCongestion(BaseModel):
     current_average_minutes: float = Field(..., ge=0.0)
     cancellation_count: int = Field(default=0, ge=0)
     cancellation_rate: float = Field(default=0.0, ge=0.0, le=100.0)
+    # True when cancellations - not delays - pushed congestion_level above the
+    # tier average_delay_minutes alone would give. Clients must not caption such
+    # a segment as delayed: its trains ran on time, they just did not all run
+    # (issue #1638).
+    cancellation_driven: bool = Field(default=False)
     # Frequency/health metrics (train count vs baseline)
     # None for schedule-only data sources (e.g., PATCO)
     train_count: int | None = Field(default=None, ge=0)

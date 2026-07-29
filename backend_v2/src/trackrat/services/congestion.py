@@ -24,6 +24,7 @@ from trackrat.services.congestion_types import (
     FREQ_THRESHOLD_MODERATE,
     FREQ_THRESHOLD_REDUCED,
     SegmentCongestion,
+    congestion_level_with_cancellations,
     effective_congestion_factor,
     frequency_is_reliable,
     get_congestion_level,
@@ -91,6 +92,7 @@ __all__ = [
     "get_congestion_level",
     "get_frequency_level",
     "effective_congestion_factor",
+    "congestion_level_with_cancellations",
     "CongestionAnalyzer",
     "CONGESTION_THRESHOLD_NORMAL",
     "CONGESTION_THRESHOLD_MODERATE",
@@ -726,8 +728,8 @@ class CongestionAnalyzer:
             # on the map even when the running trains are on time. (Segments are
             # re-aggregated in normalize_aggregated_segments, which applies the
             # same weighting; this keeps each raw segment self-consistent.)
-            level = get_congestion_level(
-                effective_congestion_factor(congestion_factor, cancellation_rate)
+            level, cancellation_driven = congestion_level_with_cancellations(
+                congestion_factor, cancellation_rate, total_journeys
             )
 
             # Calculate frequency metrics (only for real-time sources)
@@ -768,6 +770,7 @@ class CongestionAnalyzer:
                     average_delay_minutes=average_delay,
                     cancellation_count=row.cancelled_count,
                     cancellation_rate=cancellation_rate,
+                    cancellation_driven=cancellation_driven,
                     train_count=train_count,
                     baseline_train_count=baseline_train_count,
                     frequency_factor=frequency_factor,

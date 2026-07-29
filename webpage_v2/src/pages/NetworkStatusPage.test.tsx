@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { NetworkStatusPage } from './NetworkStatusPage';
 import { CongestionResponse, SegmentCongestion } from '../types';
@@ -126,5 +126,84 @@ describe('NetworkStatusPage disabled-system filtering', () => {
     await waitFor(() => expect(screen.getByText('NJ Transit')).toBeInTheDocument());
     // "1 segment" (singular) confirms the count derives from the filtered list.
     expect(screen.getByText(/1 segment$/)).toBeInTheDocument();
+  });
+});
+
+// #1638: a segment escalated by cancellations has an average delay of zero.
+// The page must not describe it as delayed — that combination ("red but there
+// are no delays") is exactly what the reporter saw.
+describe('NetworkStatusPage cancellation-driven segments', () => {
+  beforeEach(() => {
+    getCongestion.mockReset();
+    getNetworkSummary.mockReset();
+    getNetworkSummary.mockResolvedValue(null);
+  });
+
+  function cancelledSegment(from: string, to: string): SegmentCongestion {
+    return {
+      ...segment('NJT', from, to),
+      congestion_level: 'severe',
+      congestion_factor: 1.0,
+      average_delay_minutes: 0,
+      cancellation_count: 4,
+      cancellation_rate: 50,
+      cancellation_driven: true,
+    };
+  }
+
+  it('labels the system badge as cancellations rather than delays', async () => {
+    getCongestion.mockResolvedValue({
+      aggregated_segments: [cancelledSegment('CH', 'PE')],
+      generated_at: '2026-07-05T18:00:00Z',
+      time_window_hours: 3,
+    } as CongestionResponse);
+
+    renderPage();
+
+    expect(await screen.findByText('Severe cancellations')).toBeInTheDocument();
+    expect(screen.queryByText('Severe delays')).not.toBeInTheDocument();
+  });
+
+  it('counts cancellation-driven segments separately from delayed ones', async () => {
+    getCongestion.mockResolvedValue({
+      aggregated_segments: [cancelledSegment('CH', 'PE'), segment('NJT', 'NY', 'NP')],
+      generated_at: '2026-07-05T18:00:00Z',
+      time_window_hours: 3,
+    } as CongestionResponse);
+
+    renderPage();
+
+    // One genuinely delayed segment, one escalated by cancellations. Rolling
+    // both into "2 delayed" is the misreport this split exists to prevent.
+    expect(await screen.findByText('1 delayed')).toBeInTheDocument();
+    expect(screen.getByText('1 with cancellations')).toBeInTheDocument();
+  });
+
+  it('captions the segment row with its cancellation count', async () => {
+    getCongestion.mockResolvedValue({
+      aggregated_segments: [cancelledSegment('CH', 'PE')],
+      generated_at: '2026-07-05T18:00:00Z',
+      time_window_hours: 3,
+    } as CongestionResponse);
+
+    renderPage();
+    fireEvent.click(await screen.findByText('NJ Transit'));
+
+    // The delay text is suppressed at 0 min, so without this caption the row is
+    // a bare colored dot with nothing explaining it (#1638).
+    expect(await screen.findByText('4 cancelled')).toBeInTheDocument();
+  });
+
+  it('still says delays when the segment is genuinely delayed', async () => {
+    getCongestion.mockResolvedValue({
+      aggregated_segments: [segment('NJT', 'NY', 'NP')],
+      generated_at: '2026-07-05T18:00:00Z',
+      time_window_hours: 3,
+    } as CongestionResponse);
+
+    renderPage();
+
+    expect(await screen.findByText('Severe delays')).toBeInTheDocument();
+    expect(screen.queryByText('Severe cancellations')).not.toBeInTheDocument();
   });
 });

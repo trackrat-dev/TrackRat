@@ -231,6 +231,11 @@ export interface SegmentCongestion {
   current_average_minutes: number;
   cancellation_count: number;
   cancellation_rate: number;
+  // True when cancellations, not delays, pushed congestion_level above the tier
+  // average_delay_minutes alone would give. Such a segment must not be captioned
+  // as delayed — its trains ran on time, they just did not all run (#1638).
+  // Absent on older backend responses.
+  cancellation_driven?: boolean;
   train_count: number | null;
   baseline_train_count: number | null;
   frequency_factor: number | null;
