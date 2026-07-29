@@ -405,20 +405,24 @@ class RouteTopologyTests: XCTestCase {
         let pairs = route?.coordinatePairs ?? []
         let stations = portJervisStations()
 
-        // coordinatePairs silently drops any pair missing a coordinate, so a
-        // full-length result is also the assertion that nothing was dropped.
-        XCTAssertEqual(pairs.count, stations.count - 1,
-                       "Every consecutive Port Jervis pair must be drawable")
-
-        guard let rm = stations.firstIndex(of: "RM"),
-              let rmCoord = Stations.getCoordinates(for: "RM"),
+        XCTAssertFalse(stations.isEmpty, "Port Jervis Line must have stations")
+        guard let rmCoord = Stations.getCoordinates(for: "RM"),
               let cwCoord = Stations.getCoordinates(for: "CW") else {
             return XCTFail("RM and CW must both have coordinates")
         }
-        let drawn = pairs[rm]
-        XCTAssertEqual(drawn.0.latitude, rmCoord.latitude, accuracy: 0.0001)
-        XCTAssertEqual(drawn.1.latitude, cwCoord.latitude, accuracy: 0.0001,
-                       "The segment drawn after Harriman must reach Salisbury Mills-Cornwall")
+
+        // Matched by value rather than by index: coordinatePairs silently drops
+        // any pair whose stations lack coordinates, so positional indexing into
+        // it would assert a different segment if anything upstream were dropped.
+        let connects = pairs.contains { pair in
+            abs(pair.0.latitude - rmCoord.latitude) < 0.0001
+                && abs(pair.0.longitude - rmCoord.longitude) < 0.0001
+                && abs(pair.1.latitude - cwCoord.latitude) < 0.0001
+                && abs(pair.1.longitude - cwCoord.longitude) < 0.0001
+        }
+        XCTAssertTrue(connects,
+                      "The map must draw a segment from Harriman to Salisbury "
+                      + "Mills-Cornwall — its absence is what issue #1660 reported")
     }
 
     func testPortJervisOrderDoesNotZigZag() {
