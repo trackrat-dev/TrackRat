@@ -91,6 +91,7 @@ poetry run uvicorn trackrat.main:app --reload
 - **Every 4 minutes**: SEPTA Regional Rail collection (unified, delay-based GTFS-RT)
 - **Every 4 minutes**: SEPTA Metro collection (unified, route-filtered GTFS-RT, schedule-first serving)
 - **Every 5 minutes**: Update checks for active journeys
+- **Every 15 minutes**: NJT journey maintenance (silent-cancellation reconcile + old-journey expiry sweeps)
 - **Every 5 minutes**: Route alert evaluation and push notifications
 - **Hourly at :05**: Validation across key routes
 - **Daily 3:30 AM ET**: Data retention cleanup (deletes journeys, discovery runs, validation results, and inactive service alerts older than `TRACKRAT_RETENTION_DAYS`, default 60 days; active service alerts are kept regardless of age)
@@ -158,20 +159,23 @@ All configuration is done via environment variables. See `.env.example` for avai
 
 #### Train Departures
 ```
-GET /api/v2/trains/departures?from=NY&to=TR&limit=50&data_source=ALL&hide_departed=true
+GET /api/v2/trains/departures?from=NY&to=TR&limit=50&data_sources=NJT&hide_departed=true
 ```
 Get trains between stations with filtering:
 - `from`/`to`: Station codes (works for any segment)
 - `limit`: Max results (default: 50)
-- `data_source`: NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, BART, MBTA, METRA, WMATA, SEPTA_RR, SEPTA_METRO, or ALL
+- `data_sources`: Comma-separated list of NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, BART, MBTA, METRA, WMATA, SEPTA_RR, SEPTA_METRO (default: all)
+- `lines`: Comma-separated line codes (e.g. `MA,Ma`) to scope shared-terminal routes to one line. Mirrors the `/routes/history` and `/routes/summary?scope=route` filter. For today/past dates the real-time rows are filtered by line before the limit is applied, so a shared-terminal sibling can't consume the limit. For a **future** `date` the request is served from GTFS, which truncates to `limit` first and filters by line afterwards — a low-frequency line at a busy station can come back short or empty.
+- `date` / `time_from` / `time_to`: Journey date and time window. Defaults to today, and — for today/past dates — local (ET) midnight of the query date through midnight + 26h, not `now` → `+24h`. The 26h span covers after-midnight departures still belonging to the service day.
 - `hide_departed`: Skip trains that have already departed (default: false). When true, also skips expensive past-train refresh for better performance.
 - Returns both SCHEDULED and OBSERVED trains
 
 #### Recent Departures
 ```
-GET /api/v2/trains/recent-departures?from=NY&data_sources=NJT&limit=50
+GET /api/v2/trains/recent-departures?from=NY&data_sources=NJT&window_minutes=120&limit=50
 ```
-Recent departures from a station without a destination/route filter.
+Recent departures from a station without a destination/route filter. Accepts the same
+`lines` filter as `/trains/departures`.
 
 #### Train Details
 ```
@@ -210,9 +214,12 @@ Real-time congestion analysis:
 
 #### Operations Summary
 ```
-GET /api/v2/routes/summary
+GET /api/v2/routes/summary?scope=network|route|train
 ```
-Natural language summary of network operations status
+Natural language summary of network operations status. `scope=route` takes
+`from_station`/`to_station` (plus an optional `lines` filter for shared-terminal
+routes), `scope=train` takes `train_id`, and `scope=network` accepts an optional
+`data_source` to scope the summary to one system.
 
 #### Segment Trains
 ```

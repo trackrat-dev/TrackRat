@@ -85,10 +85,10 @@ async def get_departures(
         None, description="Journey date (YYYY-MM-DD, defaults to today)"
     ),
     time_from: datetime | None = Query(
-        None, description="Start time (defaults to now)"
+        None, description="Start time (defaults to local midnight of the query date)"
     ),
     time_to: datetime | None = Query(
-        None, description="End time (defaults to +24 hours)"
+        None, description="End time (defaults to time_from + 26 hours)"
     ),
     hide_departed: bool = Query(
         False,
@@ -111,7 +111,7 @@ async def get_departures(
     """Get upcoming train departures from a station, optionally filtered by destination.
 
     Returns cached results for default time parameters. For future dates, falls back
-    to GTFS static schedule data. Supports filtering by data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, BART, MBTA, METRA, WMATA).
+    to GTFS static schedule data. Supports filtering by data source (NJT, AMTRAK, PATH, PATCO, LIRR, MNR, SUBWAY, BART, MBTA, METRA, WMATA, SEPTA_RR, SEPTA_METRO).
     """
     # Parse line codes filter (same convention as /routes/history)
     line_codes = (

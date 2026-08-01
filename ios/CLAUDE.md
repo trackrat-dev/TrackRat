@@ -5,7 +5,7 @@
 SwiftUI app for tracking trains across 13 transit systems: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA (DC Metro), and SEPTA (Regional Rail + Metro). Features Live Activities, track predictions (Owl), route alerts with recurring train subscriptions, congestion maps, multi-leg trip search, and Pro subscription.
 
 - **iOS 18.0+** deployment target
-- **Xcode 16.0+** required
+- **Xcode 26+** required — the app calls iOS 26 Liquid Glass APIs (`sharedBackgroundVisibility`, `containerBackground(.navigation)`) behind `#available(iOS 26, *)` runtime gates, but the symbols must exist at compile time. Xcode 16.x (iOS 18.5 SDK) fails to build.
 
 ## Architecture
 

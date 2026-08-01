@@ -107,7 +107,7 @@ npm run build        # Production build
 
 ### iOS App (Swift / SwiftUI)
 
-**Prerequisites:** macOS 14+, Xcode 16+, iOS 18.0+ deployment target
+**Prerequisites:** Xcode 26+ (the app compiles against iOS 26 Liquid Glass APIs behind `#available` guards, so an older SDK fails to build), macOS version required by that Xcode, iOS 18.0+ deployment target
 
 ```bash
 cd ios
