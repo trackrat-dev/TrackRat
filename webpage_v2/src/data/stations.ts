@@ -175,9 +175,9 @@ const _STATIONS_RAW: any[] = [
   { code: 'XG', name: 'Sloatsburg', coordinates: { lat: 41.157138, lon: -74.191307 }, system: 'NJT' },
   { code: 'TC', name: 'Tuxedo', coordinates: { lat: 41.194208, lon: -74.18446 }, system: 'NJT' },
   { code: 'RM', name: 'Harriman', coordinates: { lat: 41.293354, lon: -74.13987 }, system: 'NJT' },
-  { code: 'MD', name: 'Middletown NY', coordinates: { lat: 41.4459, lon: -74.4222 }, system: 'NJT' },
   { code: 'CW', name: 'Salisbury Mills-Cornwall', coordinates: { lat: 41.437073, lon: -74.101871 }, system: 'NJT' },
   { code: 'CB', name: 'Campbell Hall', coordinates: { lat: 41.450917, lon: -74.266554 }, system: 'NJT' },
+  { code: 'MD', name: 'Middletown NY', coordinates: { lat: 41.4459, lon: -74.4222 }, system: 'NJT' },
   { code: 'OS', name: 'Otisville', coordinates: { lat: 41.471784, lon: -74.529212 }, system: 'NJT' },
   { code: 'PO', name: 'Port Jervis', coordinates: { lat: 41.374899, lon: -74.694622 }, system: 'NJT' },
 
@@ -2486,6 +2486,19 @@ export const ALERT_CAPABLE_SYSTEMS: TransitSystem[] = (
   ['SUBWAY', 'LIRR', 'MNR', 'NJT', 'SEPTA_RR', 'SEPTA_METRO'] as TransitSystem[]
 ).filter(s => !DISABLED_SYSTEMS.has(s));
 
+// Systems whose topology `lineCodes` use the same vocabulary as the
+// `affected_route_ids` on a service alert, so line codes can be used directly to
+// scope alerts to one line.
+//
+// NJT alerts are parsed from MSG_LINE_SCOPE into our own two-letter codes ("MA"),
+// and SUBWAY route_ids are the line letter/number ("1"), so both match topology.
+// LIRR and MNR do NOT: their alerts carry the raw MTA GTFS route_id ("1", "2",
+// ...) while topology uses "LIRR-BB" / "MNR-HUD", so filtering by line code
+// there would match nothing and silently hide every route-scoped alert, leaving
+// only system-wide ones. Those systems intentionally stay unscoped (showing all
+// of the system's alerts) until a code -> GTFS route_id map exists (issue #1625).
+export const LINE_SCOPED_ALERT_SYSTEMS: TransitSystem[] = ['NJT', 'SUBWAY'];
+
 // Aliases for codes that share a physical station with another system's code.
 // The duplicate entry is hidden from the picker, but route data and shareable
 // URLs may still reference the alias code — resolve those to the canonical entry.
@@ -2526,6 +2539,7 @@ export function searchStationsPartitioned(
   for (const entry of _searchIndex) {
     if (matched.length >= limit && other.length >= limit) break;
     if (!entry.haystack.includes(q)) continue;
+    if (entry.station.system && DISABLED_SYSTEMS.has(entry.station.system)) continue;
     if (entry.station.system && systems.includes(entry.station.system)) {
       if (matched.length < limit) {
         matched.push(entry.station);

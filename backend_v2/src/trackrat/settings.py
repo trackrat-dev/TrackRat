@@ -131,6 +131,18 @@ class Settings(BaseSettings):
     journey_update_interval_minutes: int = Field(
         default=15, description="Interval between journey updates (minutes)", ge=1
     )
+    journey_update_batch_size: int = Field(
+        default=100,
+        description=(
+            "Maximum NJT journeys refreshed per periodic-update tick. The "
+            "batch is ordered oldest-updated-first over the trains currently "
+            "in flight, so this bounds NJT API volume while keeping the "
+            "worst-case staleness of any one train at "
+            "ceil(in_flight / batch_size) ticks. Raise it if "
+            "`scheduler.periodic.scheduled` logs a persistent backlog."
+        ),
+        ge=1,
+    )
     data_staleness_seconds: int = Field(
         default=60, description="Maximum age of data before refresh (seconds)", ge=1
     )

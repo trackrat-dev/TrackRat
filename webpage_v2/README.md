@@ -29,6 +29,8 @@ A mobile-first web application for tracking trains across 13 transit systems (NJ
 - Zustand 5 (state management)
 - React Router v7 (routing)
 - date-fns 4 (date formatting)
+- MapLibre GL 5 + react-map-gl 8 (route and congestion maps)
+- Vitest 4 + React Testing Library (tests)
 
 ## Getting Started
 
@@ -50,6 +52,9 @@ npm run build
 
 # Preview production build
 npm run preview
+
+# Run tests (Vitest); npm run test:watch for watch mode
+npm test
 ```
 
 ## Project Structure
@@ -83,10 +88,10 @@ The app connects to the TrackRat backend API at `https://apiv2.trackrat.net/api/
 
 ### Code Style
 
-- TypeScript with strict mode
+- TypeScript with strict mode (`npm run build` type-checks via `tsc` before the Vite build)
 - Functional React components with hooks
 - Tailwind CSS for styling (no custom CSS classes)
-- ESLint for code quality
+- Tests colocated with source as `*.test.ts` / `*.test.tsx`
 
 ### Key Patterns
 
@@ -100,17 +105,18 @@ The app connects to the TrackRat backend API at `https://apiv2.trackrat.net/api/
 
 Deployed to Google Cloud Storage as a static site.
 
-**Live URL:** https://trackrat.net
+**Live URL:** https://trackrat.net (staging: https://staging.trackrat.net)
+
+Cloud Build triggers (defined in `infra_v2/terraform-webpage/`) deploy automatically on push
+when `webpage_v2/` changes: `main` → staging, `production` → production.
+
+To deploy manually from the repo root:
 
 ```bash
-# Deploy from repo root
-./scripts/deploy-webpage.sh
-
-# Dry run
-./scripts/deploy-webpage.sh --dry-run
+./scripts/deploy-webpage.sh [staging|production] [--bucket=<name>] [--dry-run]
 ```
 
-The deploy script syncs the `dist/` build output to GCS with appropriate cache headers (`no-cache` for `index.html` and service worker, `max-age=1yr` for hashed assets).
+Defaults to production. The deploy script syncs the `dist/` build output to GCS with appropriate cache headers (`no-cache` for `index.html` and service worker, `max-age=1yr` for hashed assets).
 
 ## License
 

@@ -1318,13 +1318,29 @@ class TestProbeLineDeparturesLineCodeFilter:
 
     STATIONS = ["A", "B", "C", "D"]
 
-    def _patch_fetch(self, monkeypatch, segment_deps):
-        """Patch fetch_trackrat_departures to return per-(origin,dest) deps."""
+    @pytest.fixture(autouse=True)
+    def reset_counters(self, monkeypatch):
+        # The probe now emits log_fail() on a line-filter contract violation,
+        # and these are module-level globals that would otherwise leak between
+        # tests and make FAIL_COUNT assertions order-dependent.
+        monkeypatch.setattr(gtv, "PASS_COUNT", 0)
+        monkeypatch.setattr(gtv, "FAIL_COUNT", 0)
+        monkeypatch.setattr(gtv, "WARN_COUNT", 0)
+        monkeypatch.setattr(gtv, "SKIP_COUNT", 0)
 
-        def fake_fetch(client, base_url, origin, dest, source):
+    def _patch_fetch(self, monkeypatch, segment_deps):
+        """Patch fetch_trackrat_departures to return per-(origin,dest) deps.
+
+        Returns the call log so tests can assert what line scope was requested.
+        """
+        calls: list[dict] = []
+
+        def fake_fetch(client, base_url, origin, dest, source, lines=None):
+            calls.append({"origin": origin, "dest": dest, "lines": lines})
             return list(segment_deps.get((origin, dest), []))
 
         monkeypatch.setattr(gtv, "fetch_trackrat_departures", fake_fetch)
+        return calls
 
     def test_sibling_line_alone_reports_empty(self, monkeypatch):
         # Every segment returns ONLY a sibling ("NE") train; the probed line is
@@ -1337,7 +1353,7 @@ class TestProbeLineDeparturesLineCodeFilter:
             if a != b
         }
         self._patch_fetch(monkeypatch, seg)
-        deps, _direction = gtv._probe_line_departures(
+        deps, _direction, _errors = gtv._probe_line_departures(
             None, "http://x", "NJT", self.STATIONS, frozenset({"NC"})
         )
         assert deps == [], "sibling-only segment must not mark the line as live"
@@ -1352,7 +1368,7 @@ class TestProbeLineDeparturesLineCodeFilter:
             ("A", "B"): [_tr(train_id="bergen", line_code="NC")],
         }
         self._patch_fetch(monkeypatch, seg)
-        deps, direction = gtv._probe_line_departures(
+        deps, direction, _errors = gtv._probe_line_departures(
             None, "http://x", "NJT", self.STATIONS, frozenset({"NC"})
         )
         assert [d.train_id for d in deps] == ["bergen"]
@@ -1369,7 +1385,7 @@ class TestProbeLineDeparturesLineCodeFilter:
             ],
         }
         self._patch_fetch(monkeypatch, seg)
-        deps, direction = gtv._probe_line_departures(
+        deps, direction, _errors = gtv._probe_line_departures(
             None, "http://x", "NJT", self.STATIONS, frozenset({"NC"})
         )
         assert [d.train_id for d in deps] == ["bergen"]
@@ -1380,9 +1396,165 @@ class TestProbeLineDeparturesLineCodeFilter:
         # filtering by an empty set would drop every train, so the probe must
         # keep the unfiltered any-train behavior.
         seg = {("C", "D"): [_tr(train_id="main", line_code="NE")]}
-        self._patch_fetch(monkeypatch, seg)
-        deps, direction = gtv._probe_line_departures(
+        calls = self._patch_fetch(monkeypatch, seg)
+        deps, direction, errors = gtv._probe_line_departures(
             None, "http://x", "LIRR", self.STATIONS, frozenset()
         )
         assert [d.train_id for d in deps] == ["main"]
         assert direction == "C->D"
+        # No line scope exists for these routes, so no `lines` param may be
+        # sent (an empty set would otherwise scope to nothing) and the
+        # contract check must not fire on the unrelated line it returns.
+        assert all(c["lines"] is None for c in calls)
+        assert errors == []
+
+
+class _RecordingClient:
+    """httpx.Client stand-in that records the params of each GET."""
+
+    def __init__(self, payload: dict | None = None):
+        self._payload = payload if payload is not None else {"departures": []}
+        self.calls: list[dict] = []
+
+    def get(self, url, params=None, timeout=None):
+        self.calls.append({"url": url, "params": dict(params or {})})
+        return _FakeResponse(self._payload)
+
+
+class TestFetchTrackratDeparturesLinesParam:
+    """`fetch_trackrat_departures` must be able to scope a request server-side.
+
+    Issue #1629: the coverage probe filtered by line only *after* receiving a
+    limited response, so sibling lines on a shared segment could consume the
+    whole payload. The fix requires the request itself to carry the API's
+    `lines` filter, which DepartureService applies before the result limit.
+    """
+
+    def test_lines_param_is_sent_comma_joined_and_sorted(self):
+        client = _RecordingClient()
+        gtv.fetch_trackrat_departures(
+            client, "http://x", "MZ", "SF", "NJT", lines=frozenset({"Ma", "MA"})
+        )
+        params = client.calls[0]["params"]
+        # Sorted so the emitted URL is deterministic across runs; both case
+        # variants must be sent because the server matches line codes raw.
+        assert params["lines"] == "MA,Ma"
+
+    def test_multi_code_path_style_line_sends_every_code(self):
+        # PATH routes pair a human code with a numeric GTFS id; sending only
+        # one would filter out trains stored under the other.
+        client = _RecordingClient()
+        gtv.fetch_trackrat_departures(
+            client, "http://x", "JSQ", "33S", "PATH", lines=frozenset({"HOB-33", "859"})
+        )
+        assert client.calls[0]["params"]["lines"] == "859,HOB-33"
+
+    def test_lines_param_omitted_when_not_requested(self):
+        client = _RecordingClient()
+        gtv.fetch_trackrat_departures(client, "http://x", "NY", "TR", "NJT")
+        params = client.calls[0]["params"]
+        assert "lines" not in params, "unscoped callers must not send an empty filter"
+        # The rest of the contract is unchanged.
+        assert params["from"] == "NY"
+        assert params["to"] == "TR"
+        assert params["data_sources"] == "NJT"
+
+    def test_empty_line_set_sends_no_filter(self):
+        # frozenset() means "this route has no line tags"; sending lines=""
+        # would be a filter that matches nothing.
+        client = _RecordingClient()
+        gtv.fetch_trackrat_departures(
+            client, "http://x", "NY", "TR", "LIRR", lines=frozenset()
+        )
+        assert "lines" not in client.calls[0]["params"]
+
+
+# --- Tests for scoped_line_violations (#1629 filter-contract check) ---
+
+
+def _departures_payload(*line_codes: str | None) -> dict:
+    """A /trains/departures response body carrying one row per line code.
+
+    Shaped exactly as the endpoint serializes it (``models/api.py``) so the rows
+    under test come out of the real ``_parse_trackrat_departures``, not a
+    hand-built list — the parse is where ``line.code`` becomes ``line_code``, and
+    that mapping is half of what the contract check depends on. ``None`` omits
+    the ``line`` object entirely, which is how a blank code actually arises.
+    """
+    departures = []
+    for i, code in enumerate(line_codes):
+        row = {
+            "train_id": f"T{i}",
+            "destination": "Suffern",
+            "observation_type": "OBSERVED",
+            "departure": {
+                "code": "HB",
+                "name": "Hoboken",
+                "scheduled_time": (NOW + timedelta(minutes=i)).isoformat(),
+                "track": None,
+            },
+            "arrival": {
+                "code": "SF",
+                "name": "Suffern",
+                "scheduled_time": (NOW + timedelta(minutes=50 + i)).isoformat(),
+            },
+        }
+        if code is not None:
+            row["line"] = {"code": code, "name": f"Line {code}", "color": "#00A94F"}
+        departures.append(row)
+    return {"departures": departures}
+
+
+class TestScopedLineViolations:
+    """A scoped response may only carry rows on the requested lines.
+
+    ``DepartureService`` keeps a departure when ``d.line.code in line_codes``, so
+    anything else in the body is a server-side filter bug. The sweep must FAIL on
+    it rather than filter it away in Python, because a leaked sibling would
+    otherwise make a dark line look alive.
+    """
+
+    def test_honored_filter_reports_nothing(self):
+        deps = gtv._parse_trackrat_departures(_departures_payload("NC", "NC"))
+        assert len(deps) == 2, "fixture must survive the real parse"
+        assert gtv.scoped_line_violations(deps, frozenset({"NC"})) == []
+
+    def test_sibling_line_is_a_violation(self):
+        deps = gtv._parse_trackrat_departures(_departures_payload("NC", "NE"))
+        assert gtv.scoped_line_violations(deps, frozenset({"NC"})) == ["NE"]
+
+    def test_every_offending_code_is_reported_once_and_sorted(self):
+        # Diagnostics go straight into the FAIL detail line, so the output must
+        # be deterministic and must not repeat a code per offending row.
+        deps = gtv._parse_trackrat_departures(
+            _departures_payload("NE", "ME", "NE", "NC")
+        )
+        assert gtv.scoped_line_violations(deps, frozenset({"NC"})) == ["ME", "NE"]
+
+    def test_multi_code_line_accepts_every_equivalent_code(self):
+        # NJT case variants ("MA"/"Ma") and PATH name/id pairs are one line;
+        # neither spelling may be reported as a foreign line.
+        deps = gtv._parse_trackrat_departures(_departures_payload("MA", "Ma"))
+        assert gtv.scoped_line_violations(deps, frozenset({"MA", "Ma"})) == []
+
+    def test_blank_line_code_is_a_contract_violation(self):
+        # LineInfo.code is declared min_length=1, so the endpoint cannot validly
+        # serialize a blank one. Dropping such a row silently would downgrade a
+        # schema breach to an empty-line WARN, which exits 0 without
+        # --fail-empty; #1671 review.
+        deps = gtv._parse_trackrat_departures(_departures_payload(None))
+        assert deps and deps[0].line_code == "", "the parse must yield a blank code"
+        assert gtv.scoped_line_violations(deps, frozenset({"NC"})) == [
+            gtv.BLANK_LINE_CODE
+        ]
+
+    def test_blank_is_reported_alongside_a_wrong_code(self):
+        deps = gtv._parse_trackrat_departures(_departures_payload("NE", None, "NC"))
+        assert gtv.scoped_line_violations(deps, frozenset({"NC"})) == [
+            gtv.BLANK_LINE_CODE,
+            "NE",
+        ]
+
+    def test_empty_response_has_no_violations(self):
+        # A genuinely dark line is a coverage question, never a contract failure.
+        assert gtv.scoped_line_violations([], frozenset({"NC"})) == []

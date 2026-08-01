@@ -89,6 +89,7 @@
 		A198994D2E8063F90079E596 /* CongestionMapViewModelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899462E8063F90079E596 /* CongestionMapViewModelTests.swift */; };
 		A19899552E8067020079E596 /* TrainV2Tests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899522E8067020079E596 /* TrainV2Tests.swift */; };
 		B86BBB016A200D12D03DB66E /* V2APIModelsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B660A48497E01536D4936ACD /* V2APIModelsTests.swift */; };
+		F1CGSEGLBL02000000000000A1 /* CongestionSegmentLabelTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1CGSEGLBL01000000000000A1 /* CongestionSegmentLabelTests.swift */; };
 		A19899572E8069AC0079E596 /* MockProtocols.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19899562E8069AC0079E596 /* MockProtocols.swift */; };
 		A19E912B2E3F8E2E0011F777 /* MapContainerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19E912A2E3F8E2E0011F777 /* MapContainerView.swift */; };
 		A19E912D2E3F8E4A0011F777 /* LegacyBottomSheetView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A19E912C2E3F8E4A0011F777 /* LegacyBottomSheetView.swift */; };
@@ -147,7 +148,6 @@
 		A1WIDGET172DFC73650002FB39 /* Extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = A10E97FA2DE39F0F002F3214 /* Extensions.swift */; };
 		A1WIDGET342DFC73650002FB39 /* LiveActivityWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1WIDGET322DFC73650002FB39 /* LiveActivityWidget.swift */; };
 		A1WIDGET352DFC73650002FB39 /* TrainLiveActivityBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1WIDGET332DFC73650002FB39 /* TrainLiveActivityBundle.swift */; };
-		B11DC1018BF600000002 /* RouteShapes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11DC1018BF600000001 /* RouteShapes.swift */; };
 		B11DC1018BF600000003 /* RouteShapes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11DC1018BF600000001 /* RouteShapes.swift */; };
 		B11DC1018BF600000004 /* RouteShapes.swift in Sources */ = {isa = PBXBuildFile; fileRef = B11DC1018BF600000001 /* RouteShapes.swift */; };
 		B1B1B1B12FA1B1B100000002 /* Prefetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1B1B1B12FA1B1B100000001 /* Prefetcher.swift */; };
@@ -163,6 +163,7 @@
 		B11618TST0100000000000A1 /* StationPickerSheetTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F11618TST0100000000000A1 /* StationPickerSheetTests.swift */; };
 		B1SVCALRT01000000000000A1 /* ServiceAlertsSectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SVCALRT01000000000000A1 /* ServiceAlertsSectionTests.swift */; };
 		B1CGMKTST01000000000000A1 /* CongestionMapKitViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1CGMKTST01000000000000A1 /* CongestionMapKitViewTests.swift */; };
+		B1RTSHPTST010000000000A1 /* RouteShapesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1RTSHPTST010000000000A1 /* RouteShapesTests.swift */; };
 		B1SHIMR001000000000000A1 /* ShimmerRect.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SHIMR001000000000000A1 /* ShimmerRect.swift */; };
 		B1SHIMR002000000000000A1 /* ShimmerRect.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SHIMR001000000000000A1 /* ShimmerRect.swift */; };
 		B1SUBCHP01000000000000A1 /* SubwayLineChips.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SUBCHP01000000000000A1 /* SubwayLineChips.swift */; };
@@ -321,6 +322,7 @@
 		A19899492E8063F90079E596 /* TrainListViewModelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainListViewModelTests.swift; path = TrackRatTests/ViewModels/TrainListViewModelTests.swift; sourceTree = "<group>"; };
 		A19899522E8067020079E596 /* TrainV2Tests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainV2Tests.swift; path = TrackRatTests/Models/TrainV2Tests.swift; sourceTree = "<group>"; };
 		B660A48497E01536D4936ACD /* V2APIModelsTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = V2APIModelsTests.swift; path = TrackRatTests/Models/V2APIModelsTests.swift; sourceTree = "<group>"; };
+		F1CGSEGLBL01000000000000A1 /* CongestionSegmentLabelTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CongestionSegmentLabelTests.swift; path = TrackRatTests/Models/CongestionSegmentLabelTests.swift; sourceTree = "<group>"; };
 		A19899562E8069AC0079E596 /* MockProtocols.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MockProtocols.swift; path = TrackRatTests/TestUtilities/MockProtocols.swift; sourceTree = "<group>"; };
 		A19E912A2E3F8E2E0011F777 /* MapContainerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = MapContainerView.swift; path = Views/Screens/MapContainerView.swift; sourceTree = "<group>"; };
 		A19E912C2E3F8E4A0011F777 /* LegacyBottomSheetView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LegacyBottomSheetView.swift; path = Views/Components/LegacyBottomSheetView.swift; sourceTree = "<group>"; };
@@ -385,6 +387,7 @@
 		F11618TST0100000000000A1 /* StationPickerSheetTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StationPickerSheetTests.swift; path = TrackRatTests/Views/StationPickerSheetTests.swift; sourceTree = "<group>"; };
 		F1SVCALRT01000000000000A1 /* ServiceAlertsSectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ServiceAlertsSectionTests.swift; path = TrackRatTests/Views/ServiceAlertsSectionTests.swift; sourceTree = "<group>"; };
 		F1CGMKTST01000000000000A1 /* CongestionMapKitViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CongestionMapKitViewTests.swift; path = TrackRatTests/Views/CongestionMapKitViewTests.swift; sourceTree = "<group>"; };
+		F1RTSHPTST010000000000A1 /* RouteShapesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RouteShapesTests.swift; path = TrackRatTests/Shared/RouteShapesTests.swift; sourceTree = "<group>"; };
 		F1SHIMR001000000000000A1 /* ShimmerRect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShimmerRect.swift; path = TrackRat/Views/Components/ShimmerRect.swift; sourceTree = "<group>"; };
 		F1SUBCHP01000000000000A1 /* SubwayLineChips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SubwayLineChips.swift; path = TrackRat/Views/Components/SubwayLineChips.swift; sourceTree = "<group>"; };
 		F1SUBLNS01000000000000A1 /* SubwayLines.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SubwayLines.swift; path = TrackRat/Shared/SubwayLines.swift; sourceTree = "<group>"; };
@@ -444,6 +447,7 @@
 				A16D6EE62E16A558008C6996 /* Recovered References */,
 				A19899522E8067020079E596 /* TrainV2Tests.swift */,
 				B660A48497E01536D4936ACD /* V2APIModelsTests.swift */,
+				F1CGSEGLBL01000000000000A1 /* CongestionSegmentLabelTests.swift */,
 				A1F0BAA92ECABB7300A52367 /* TrainCacheService.swift */,
 				B1B1B1B12FA1B1B100000001 /* Prefetcher.swift */,
 				A17A63DD2EE60474003BD685 /* OperationsSummaryView.swift */,
@@ -468,6 +472,7 @@
 				F11618TST0100000000000A1 /* StationPickerSheetTests.swift */,
 				F1SVCALRT01000000000000A1 /* ServiceAlertsSectionTests.swift */,
 				F1CGMKTST01000000000000A1 /* CongestionMapKitViewTests.swift */,
+				F1RTSHPTST010000000000A1 /* RouteShapesTests.swift */,
 				F1SHIMR001000000000000A1 /* ShimmerRect.swift */,
 				F1SUBLNS01000000000000A1 /* SubwayLines.swift */,
 				F1SUBCHP01000000000000A1 /* SubwayLineChips.swift */,
@@ -911,6 +916,7 @@
 				B11618TST0100000000000A1 /* StationPickerSheetTests.swift in Sources */,
 				B1SVCALRT01000000000000A1 /* ServiceAlertsSectionTests.swift in Sources */,
 				B1CGMKTST01000000000000A1 /* CongestionMapKitViewTests.swift in Sources */,
+				B1RTSHPTST010000000000A1 /* RouteShapesTests.swift in Sources */,
 				A16C81EF2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */,
 				A198994A2E8063F90079E596 /* HistoricalDataViewModelTests.swift in Sources */,
 				B1RSVMTST01000000000000A1 /* RouteStatusViewModelTests.swift in Sources */,
@@ -920,6 +926,7 @@
 				A198994C2E8063F90079E596 /* TrainListViewModelTests.swift in Sources */,
 				A19899552E8067020079E596 /* TrainV2Tests.swift in Sources */,
 				B86BBB016A200D12D03DB66E /* V2APIModelsTests.swift in Sources */,
+				F1CGSEGLBL02000000000000A1 /* CongestionSegmentLabelTests.swift in Sources */,
 				A1D92A6E2F0AEFE50098897F /* TripRecordingService.swift in Sources */,
 				A12C31472F1DA63A00CAF76D /* TrackTrainInlineButton.swift in Sources */,
 				A198994D2E8063F90079E596 /* CongestionMapViewModelTests.swift in Sources */,
@@ -1009,7 +1016,6 @@
 				A1AD0D172E106D1B003DA39F /* StationCoordinates.swift in Sources */,
 				A1AD0D182E106D1B003DA39F /* StationDepartures.swift in Sources */,
 				A1D88F612F27083000111466 /* RouteTopology.swift in Sources */,
-				B11DC1018BF600000002 /* RouteShapes.swift in Sources */,
 				A1WIDGET172DFC73650002FB39 /* Extensions.swift in Sources */,
 				A1WIDGET342DFC73650002FB39 /* LiveActivityWidget.swift in Sources */,
 				A1WIDGET352DFC73650002FB39 /* TrainLiveActivityBundle.swift in Sources */,

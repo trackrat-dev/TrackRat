@@ -355,6 +355,28 @@ enum CongestionColors {
     static let cancellationCongestionWeight: Double = 0.015  // ~1 tier per 10% cancellation
     static let cancellationFrequencyWeight: Double = 0.020   // ~1 tier per 10% cancellation
 
+    /// Minimum scheduled journeys (running + cancelled) before cancellations may
+    /// escalate a segment's delay color. Mirrors backend
+    /// `congestion_types.CANCELLATION_MIN_JOURNEYS`; keep the two in step, or iOS
+    /// paints a segment red that the backend reports as normal. Below the floor
+    /// one cancellation against one running train is a 50% rate — enough on its
+    /// own for severe, with every train that ran exactly on time (issue #1638).
+    static let cancellationMinJourneys: Int = 5
+
+    /// Whether a cancellation rate measured over `totalJourneys` journeys is
+    /// solid enough to move a segment's color.
+    static func cancellationsAreConclusive(totalJourneys: Int) -> Bool {
+        totalJourneys >= cancellationMinJourneys
+    }
+
+    /// Delay factor with the cancellation term applied only when it is conclusive.
+    private static func effectiveCongestionFactor(
+        _ factor: Double, cancellationRate: Double, totalJourneys: Int
+    ) -> Double {
+        guard cancellationsAreConclusive(totalJourneys: totalJourneys) else { return factor }
+        return factor + max(0, cancellationRate) * cancellationCongestionWeight
+    }
+
     /// Color for delay-based congestion factor (higher = more delayed).
     static func color(forCongestionFactor factor: Double) -> UIColor {
         if factor <= normalThreshold { return .systemGreen }
@@ -364,8 +386,16 @@ enum CongestionColors {
     }
 
     /// Color for delay-based congestion factor with cancellation rate folded in.
-    static func color(forCongestionFactor factor: Double, cancellationRate: Double) -> UIColor {
-        color(forCongestionFactor: factor + max(0, cancellationRate) * cancellationCongestionWeight)
+    ///
+    /// `totalJourneys` is how many scheduled journeys (running + cancelled) the
+    /// rate was measured over; below `cancellationMinJourneys` the cancellation
+    /// term is dropped, matching the backend's gate (issue #1638).
+    static func color(
+        forCongestionFactor factor: Double, cancellationRate: Double, totalJourneys: Int
+    ) -> UIColor {
+        color(
+            forCongestionFactor: effectiveCongestionFactor(
+                factor, cancellationRate: cancellationRate, totalJourneys: totalJourneys))
     }
 
     /// Color for frequency factor (higher = healthier service).
@@ -385,8 +415,18 @@ enum CongestionColors {
 
     /// Stable identifier for the delay-based color tier this segment would render as.
     /// Used to group adjacent segments with the same effective color into one overlay.
-    static func congestionTierKey(forFactor factor: Double, cancellationRate: Double) -> String {
-        let effective = factor + max(0, cancellationRate) * cancellationCongestionWeight
+    static func congestionTierKey(
+        forFactor factor: Double, cancellationRate: Double, totalJourneys: Int
+    ) -> String {
+        congestionTierKey(
+            forFactor: effectiveCongestionFactor(
+                factor, cancellationRate: cancellationRate, totalJourneys: totalJourneys))
+    }
+
+    /// Tier key for a delay factor with no cancellation component — the
+    /// per-train individual-journey segments, which carry no cancellation rate.
+    /// Mirrors the plain `color(forCongestionFactor:)` overload.
+    static func congestionTierKey(forFactor effective: Double) -> String {
         if effective <= normalThreshold { return "normal" }
         if effective <= moderateThreshold { return "moderate" }
         if effective <= heavyThreshold { return "heavy" }

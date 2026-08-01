@@ -33,7 +33,11 @@ from trackrat.utils.time import (
     now_et,
     parse_njt_time,
 )
-from trackrat.utils.train import is_njt_stop_cancelled, normalize_njt_destination
+from trackrat.utils.train import (
+    is_njt_stop_cancelled,
+    njt_cancellation_reason,
+    normalize_njt_destination,
+)
 
 logger = get_logger(__name__)
 
@@ -2069,27 +2073,32 @@ class JourneyCollector:
         # journey). The second rule catches mid-journey cancellations where
         # the train left its origin before being annulled — origin stop then
         # reads "ON TIME" while every stop afterwards is "CANCELLED".
-        # Observed on train #3930 on 2026-04-16.
-        cancelled_stops = sum(
-            1 for stop in stops_data if is_njt_stop_cancelled(stop.STOP_STATUS)
-        )
-        terminal_cancelled = last_stop_api is not None and is_njt_stop_cancelled(
-            last_stop_api.STOP_STATUS
+        # Observed on train #3930 on 2026-04-16. The rule itself lives in
+        # utils/train.njt_cancellation_reason so every path that sees NJT
+        # STOP_STATUS values applies the same one (issue #1670).
+        #
+        # The terminal is passed explicitly rather than left to the helper's
+        # last-element default: stops_data is in raw NJT order, which is not
+        # reliable, so the terminal status must come from last_stop_api —
+        # resolved above by matching the authoritative DB terminal by station
+        # code (same reason _terminal_arrival_due uses it).
+        cancellation_reason = njt_cancellation_reason(
+            [stop.STOP_STATUS for stop in stops_data],
+            terminal_cancelled=(
+                last_stop_api is not None
+                and is_njt_stop_cancelled(last_stop_api.STOP_STATUS)
+            ),
         )
 
-        if cancelled_stops and (
-            cancelled_stops == len(stops_data) or terminal_cancelled
-        ):
+        if cancellation_reason:
             journey.is_cancelled = True
-            journey.cancellation_reason = (
-                "All stops cancelled by NJT"
-                if cancelled_stops == len(stops_data)
-                else "Journey terminated before reaching destination"
-            )
+            journey.cancellation_reason = cancellation_reason
             logger.info(
                 "journey_cancelled",
                 train_id=journey.train_id,
-                cancelled_stops=cancelled_stops,
+                cancelled_stops=sum(
+                    1 for stop in stops_data if is_njt_stop_cancelled(stop.STOP_STATUS)
+                ),
                 total_stops=len(stops_data),
             )
 

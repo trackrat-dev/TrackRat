@@ -109,3 +109,17 @@ class TestDataSourcesDescriptionListsAllSources:
             f"get_recent_departures data_sources description omits served "
             f"sources {missing}; description={description!r}"
         )
+
+    def test_get_departures_docstring_lists_every_served_source(self):
+        """The endpoint docstring renders as the OpenAPI operation description.
+
+        Pinning only the `Query` descriptions above is what let this string
+        drift: it kept its own parenthesised source list, which stopped at
+        WMATA after SEPTA_RR/SEPTA_METRO were added (PR #1663 review).
+        """
+        docstring = get_departures.__doc__ or ""
+        missing = [s for s in ALL_DATA_SOURCES if s not in docstring]
+        assert not missing, (
+            f"get_departures docstring omits served sources {missing}; "
+            f"docstring={docstring!r}"
+        )

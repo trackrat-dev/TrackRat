@@ -585,9 +585,23 @@ def fetch_subway_ground_truth() -> list[GroundTruthArrival]:
 
 
 def fetch_trackrat_departures(
-    client: httpx.Client, base_url: str, origin: str, destination: str, data_source: str
+    client: httpx.Client,
+    base_url: str,
+    origin: str,
+    destination: str,
+    data_source: str,
+    lines: frozenset[str] | None = None,
 ) -> list[TrackRatDeparture]:
-    """Fetch departures from TrackRat API for a specific origin->destination."""
+    """Fetch departures from TrackRat API for a specific origin->destination.
+
+    ``lines`` sends the endpoint's server-side ``lines`` filter, which
+    ``DepartureService`` applies *before* the result limit. Without it a busy
+    shared segment can fill all ``limit`` rows with sibling lines, hiding the
+    requested line entirely. A route's ``line_codes`` frozenset can hold several
+    equivalent codes (NJT case variants like ``{"MA", "Ma"}``, PATH name/id
+    pairs like ``{"HOB-33", "859"}``), so send the whole set — sorted, for
+    deterministic URLs.
+    """
     url = f"{base_url.rstrip('/')}/api/v2/trains/departures"
     params = {
         "from": origin,
@@ -596,6 +610,8 @@ def fetch_trackrat_departures(
         "hide_departed": "false",
         "data_sources": data_source,
     }
+    if lines:
+        params["lines"] = ",".join(sorted(lines))
     try:
         resp = client.get(url, params=params, timeout=15)
         resp.raise_for_status()
@@ -2048,14 +2064,40 @@ def run_septa_rr_validation(base_url: str, tolerance: float, verbose: bool = Fal
 COVERAGE_SKIP_SOURCES = frozenset({"AMTRAK"})
 
 
+# Rendered in place of a missing/blank ``line.code`` when reporting a scoped
+# response that violates the filter contract, so the diagnostic distinguishes
+# "came back with the wrong line" from "came back with no line at all".
+BLANK_LINE_CODE = "(blank)"
+
+
+def scoped_line_violations(
+    departures: list[TrackRatDeparture], line_codes: frozenset[str]
+) -> list[str]:
+    """Return the line codes in ``departures`` that a scoped request must not contain.
+
+    A response to a request carrying ``lines`` may only hold rows on those lines:
+    ``DepartureService`` keeps a departure when ``d.line.code in line_codes``, so
+    anything else is a server-side filter bug.
+
+    A blank code is a violation too, not a tolerable payload gap: ``LineInfo.code``
+    is declared ``min_length=1`` (``models/api.py``), so the endpoint cannot
+    validly serialize an empty one. A blank therefore means the response broke its
+    own schema or the parse lost the field — both worth failing on, and both
+    invisible if the row is silently dropped, since the sweep would then report
+    only an empty-line WARN, which exits 0 without ``--fail-empty``. It is
+    reported as ``BLANK_LINE_CODE`` so the diagnostic names the actual defect.
+    """
+    return sorted({(d.line_code or BLANK_LINE_CODE) for d in departures} - line_codes)
+
+
 def _probe_line_departures(
     client: httpx.Client,
     base_url: str,
     source: str,
     stations: list[str],
     line_codes: frozenset[str],
-) -> tuple[list[TrackRatDeparture], str]:
-    """Return (departures, direction) for a line, trying its busiest segments.
+) -> tuple[list[TrackRatDeparture], str, list[str]]:
+    """Return (departures, direction, contract_errors) for a line.
 
     An end-to-end origin->terminal probe misses trains on through-routed or
     branch-to-hub lines (e.g. LIRR branches that transfer at Jamaica, SEPTA RR
@@ -2066,13 +2108,21 @@ def _probe_line_departures(
     result. Adjacent stations always share a direct route, so any train on the
     line traversing that segment is surfaced.
 
-    The ``/trains/departures`` endpoint filters only by ``data_sources``, so a
-    shared segment returns *sibling* lines too (e.g. NJT Bergen County's busiest
-    segment MZ->SF is also on the Main Line). Filtering the results to the
-    route's own ``line_codes`` keeps a dark line from being masked by a live
-    sibling on the same segment. Routes with no ``line_codes`` (LIRR terminal
-    variants resolved geometrically, not by tag) fall back to the unfiltered
-    any-train check, since filtering by an empty set would drop every train.
+    A shared segment carries *sibling* lines too (e.g. NJT Bergen County's
+    busiest segment MZ->SF is also on the Main Line), so the request is scoped
+    to the route's own ``line_codes`` via the endpoint's server-side ``lines``
+    filter. That filter runs before the result limit, so sibling departures can
+    no longer consume the response and make a running line look dark — the
+    false-failure mode this probe previously had (#1629). Routes with no
+    ``line_codes`` (LIRR terminal variants resolved geometrically, not by tag)
+    keep the unfiltered any-train check, since scoping to an empty set would
+    drop every train.
+
+    Because the request is scoped, every returned row *should* belong to the
+    line. Any row that does not is a server-side filter bug rather than a
+    coverage gap, so it is reported as a contract FAIL (with the offending
+    codes) and excluded from the departures used to judge coverage — a
+    mis-filtered sibling must never make a dark line look alive.
     """
     n = len(stations)
     mid = n // 2
@@ -2086,14 +2136,31 @@ def _probe_line_departures(
         if a != b and (a, b) not in candidates:
             candidates.append((a, b))
 
+    contract_errors: list[str] = []
     for a, b in candidates:
         for origin, dest in [(a, b), (b, a)]:
-            deps = fetch_trackrat_departures(client, base_url, origin, dest, source)
+            segment = f"{origin}->{dest}"
+            deps = fetch_trackrat_departures(
+                client, base_url, origin, dest, source, lines=line_codes or None
+            )
             if line_codes:
+                served = len(deps)
+                wrong = scoped_line_violations(deps, line_codes)
+                if wrong:
+                    detail = (
+                        f"requested={','.join(sorted(line_codes))} "
+                        f"returned={','.join(wrong)} "
+                        f"segment={segment} response_rows={served}"
+                    )
+                    log_fail(
+                        f"{source} {segment}: server ignored the `lines` filter",
+                        detail,
+                    )
+                    contract_errors.append(f"{source}: {segment} ({detail})")
                 deps = [d for d in deps if d.line_code in line_codes]
             if deps:
-                return deps, f"{origin}->{dest}"
-    return [], f"{stations[0]}<->{stations[-1]}"
+                return deps, segment, contract_errors
+    return [], f"{stations[0]}<->{stations[-1]}", contract_errors
 
 
 def _fetch_active_data_sources(client: httpx.Client, base_url: str) -> list[str] | None:
@@ -2131,6 +2198,7 @@ def run_line_coverage(base_url: str, verbose: bool, fail_empty: bool = False) ->
 
         lines_checked = 0
         empty_lines: list[str] = []
+        contract_failures: list[str] = []
 
         for source in sorted(active_set):
             if source in COVERAGE_SKIP_SOURCES:
@@ -2152,9 +2220,10 @@ def run_line_coverage(base_url: str, verbose: bool, fail_empty: bool = False) ->
                 if len(stations) < 2:
                     continue
                 lines_checked += 1
-                deps, direction = _probe_line_departures(
+                deps, direction, probe_errors = _probe_line_departures(
                     client, base_url, source, stations, route.line_codes
                 )
+                contract_failures.extend(probe_errors)
                 label = f"{route.name} [{route.id}] ({direction})"
                 if deps:
                     source_ok += 1
@@ -2185,6 +2254,13 @@ def run_line_coverage(base_url: str, verbose: bool, fail_empty: bool = False) ->
         for entry in empty_lines:
             color = RED if fail_empty else YELLOW
             print(f"    {color}EMPTY{NC} {entry}")
+        if contract_failures:
+            # Always FAIL, regardless of --fail-empty: that flag governs
+            # legitimately quiet lines, whereas a response carrying a line the
+            # request did not ask for is an unambiguous server-side bug.
+            print(f"  Line-filter contract failures: {len(contract_failures)}")
+            for entry in contract_failures:
+                print(f"    {RED}CONTRACT{NC} {entry}")
         print_summary(lines_checked)
     finally:
         client.close()

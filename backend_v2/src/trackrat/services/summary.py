@@ -21,7 +21,7 @@ from structlog import get_logger
 from trackrat.config.stations import expand_station_codes
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.congestion_types import FREQUENCY_FIRST_SOURCES
-from trackrat.services.departure import active_data_sources
+from trackrat.services.departure import REAL_TIME_DATA_SOURCES, active_data_sources
 from trackrat.utils.time import now_et
 from trackrat.utils.train import (
     effective_njt_updated_times,
@@ -36,6 +36,12 @@ SUMMARY_TIME_WINDOW_MINUTES = 120
 # Delay thresholds for categorization (in minutes)
 ON_TIME_THRESHOLD_MINUTES = 5
 SLIGHT_DELAY_THRESHOLD_MINUTES = 15
+
+# How far past its own live estimate a not-yet-departed stop must be before the
+# estimate is treated as stale and the wall clock takes over (in minutes).
+# Absorbs ordinary feed lag — providers routinely publish an estimate a few
+# seconds to a minute after the moment it describes.
+STALE_ESTIMATE_GRACE_MINUTES = 2
 
 # Data freshness threshold for delay calculation (in seconds)
 # When journey data is older than this, we don't trust the absence of
@@ -826,12 +832,17 @@ class SummaryService:
             train_word = "train" if cancellations == 1 else "trains"
             body_parts.append(f"{cancellations} {train_word} cancelled.")
 
-        # Main status message
+        # Main status message. Cancelled trains are excluded from the on-time
+        # denominator, so qualify the population when a cancellation is being
+        # reported in the same breath — otherwise "1 train cancelled. 100% of
+        # trains arriving on time." reads as self-contradictory (issue #1670).
+        subject = "of the trains that ran" if cancellations > 0 else "of trains"
         if avg_delay < 1:
-            body_parts.append(f"{on_time_pct:.0f}% of trains arriving on time.")
+            body_parts.append(f"{on_time_pct:.0f}% {subject} arriving on time.")
         else:
             body_parts.append(
-                f"{on_time_pct:.0f}% arriving on time with average delays of {avg_delay:.0f} minutes."
+                f"{on_time_pct:.0f}% {subject} arriving on time with "
+                f"average delays of {avg_delay:.0f} minutes."
             )
 
         return headline, " ".join(body_parts)
@@ -1010,6 +1021,38 @@ class SummaryService:
                             ).total_seconds()
                             / 60,
                         )
+                        # A live estimate that is already in the past cannot be
+                        # taken at face value for a train that has not departed:
+                        # the earliest it can now leave is *now*, so it is at
+                        # least that late. Without this floor a stalled train
+                        # whose provider keeps republishing an unchanged on-time
+                        # estimate counts as on time indefinitely — NJT 3918 sat
+                        # dead at Trenton for 65 minutes while every remaining
+                        # stop still read its original schedule, and the route
+                        # summary reported "100% on time" the whole way through
+                        # (issue #1670).
+                        #
+                        # Gated to real-time sources and OBSERVED journeys: for
+                        # schedule-first sources (PATCO, SEPTA Metro) and for
+                        # never-observed rows, updated_* is the timetable rather
+                        # than a live estimate, so it being in the past says
+                        # nothing about the train.
+                        if (
+                            journey.data_source in REAL_TIME_DATA_SOURCES
+                            and journey.observation_type == "OBSERVED"
+                            and not from_stop.has_departed_station
+                        ):
+                            minutes_past_estimate = (
+                                current_time - eff_estimate
+                            ).total_seconds() / 60
+                            if minutes_past_estimate > STALE_ESTIMATE_GRACE_MINUTES:
+                                delay = max(
+                                    delay,
+                                    (
+                                        current_time - from_stop.scheduled_departure
+                                    ).total_seconds()
+                                    / 60,
+                                )
                         total_delay += delay
                         if delay <= ON_TIME_THRESHOLD_MINUTES:
                             on_time_count += 1
@@ -1711,27 +1754,38 @@ class SummaryService:
             train_word = "train" if cancellations == 1 else "trains"
             body_parts.append(f"{cancellations} similar {train_word} cancelled.")
 
-        # Similar trains stats (past 90 min)
+        # Similar trains stats (past 90 min). Requires at least one train that
+        # actually ran — with an all-cancelled window the percentage is over an
+        # empty population and "0% ... departing on time" is meaningless noise
+        # next to the cancellation sentence already emitted above.
         if dep_stats.total_count > 0 and carrier_name:
+            arr_avg = arr_stats.average_delay_minutes if arr_stats else None
+            # Cancelled trains are excluded from the on-time denominator, so an
+            # unqualified "100% of similar trains departing on time" directly
+            # after "1 similar train cancelled" reads as a contradiction
+            # (issue #1670). Name the population the percentage is actually
+            # over whenever a cancellation is being reported alongside it.
             if cancellations > 0:
-                lead = (
-                    f"Of the similar {carrier_name} trains that ran, "
-                    f"{dep_stats.on_time_percentage:.0f}% departed on time"
+                subject = (
+                    f"{dep_stats.on_time_percentage:.0f}% of the "
+                    f"{dep_stats.total_count} similar {carrier_name} "
+                    f"{'train' if dep_stats.total_count == 1 else 'trains'} that ran "
+                    f"departed on time"
                 )
             else:
-                lead = (
-                    f"{dep_stats.on_time_percentage:.0f}% of similar {carrier_name} "
-                    f"trains departing on time"
+                subject = (
+                    f"{dep_stats.on_time_percentage:.0f}% of similar "
+                    f"{carrier_name} trains departing on time"
                 )
-            arr_avg = arr_stats.average_delay_minutes if arr_stats else None
+
             if arr_avg is not None and arr_avg >= 1:
                 body_parts.append(
-                    f"{lead}, averaging {arr_avg:.0f} minutes late on arrival."
+                    f"{subject}, averaging {arr_avg:.0f} minutes late on arrival."
                 )
             elif arr_stats is not None:
-                body_parts.append(f"{lead}, arriving within schedule.")
+                body_parts.append(f"{subject}, arriving within schedule.")
             else:
-                body_parts.append(f"{lead}.")
+                body_parts.append(f"{subject}.")
 
         # Historical stats for this train
         # For PATH/PATCO/LIRR/MNR, use destination instead of synthetic train_id

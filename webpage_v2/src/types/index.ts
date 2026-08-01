@@ -217,6 +217,9 @@ export interface SupportedStationsResponse {
 
 export type CongestionLevel = 'normal' | 'moderate' | 'heavy' | 'severe';
 
+/** What produced a segment's congestion level — see SegmentCongestion.congestion_cause. */
+export type CongestionCause = 'delays' | 'cancellations' | 'both';
+
 export interface SegmentCongestion {
   from_station: string;
   to_station: string;
@@ -231,6 +234,12 @@ export interface SegmentCongestion {
   current_average_minutes: number;
   cancellation_count: number;
   cancellation_rate: number;
+  // What produced congestion_level (#1638). 'delays' = cancellations did not
+  // move the tier; 'cancellations' = they did and the running trains were on
+  // time, so this must not be captioned as delayed; 'both' = already escalated
+  // on delays and pushed further, so neither cause may be dropped.
+  // Absent on older backend responses.
+  congestion_cause?: CongestionCause;
   train_count: number | null;
   baseline_train_count: number | null;
   frequency_factor: number | null;

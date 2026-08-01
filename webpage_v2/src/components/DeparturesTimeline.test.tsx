@@ -224,6 +224,17 @@ describe('DeparturesTimelineView', () => {
     const link = screen.getByText('View All Departures →').closest('a');
     expect(link).toHaveAttribute('href', '/trains/TR/NY');
   });
+
+  it('uses the scoped viewAllUrl when the container supplies one', () => {
+    // In line mode the container hands down a scoped URL so "View All" opens
+    // the same line's board rather than the combined station-pair list (#1625).
+    renderView(buildDeparturesTimeline([], [makeTrain('B')]), {
+      viewAllUrl: '/trains/HB/SF?data_source=NJT&lines=MA%2CMa',
+    });
+
+    const link = screen.getByText('View All Departures →').closest('a');
+    expect(link).toHaveAttribute('href', '/trains/HB/SF?data_source=NJT&lines=MA%2CMa');
+  });
 });
 
 describe('directUpcomingTrains', () => {

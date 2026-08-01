@@ -471,9 +471,9 @@ struct CongestionMapKitView: UIViewRepresentable {
                 if segment.frequencyFactor != nil {
                     return CongestionColors.color(forFrequencyFactor: segment.frequencyFactor, cancellationRate: segment.cancellationRate)
                 }
-                return CongestionColors.color(forCongestionFactor: segment.congestionFactor, cancellationRate: segment.cancellationRate)
+                return segment.displayUIColor
             case .delays, .off:
-                return CongestionColors.color(forCongestionFactor: segment.congestionFactor, cancellationRate: segment.cancellationRate)
+                return segment.displayUIColor
             }
         }
 

@@ -22,6 +22,7 @@ import httpx
 from google.transit import gtfs_realtime_pb2
 from pydantic import BaseModel
 
+from trackrat.collectors.septa_common import SeptaFeedFetchError
 from trackrat.config.stations import SEPTA_RR_GTFS_RT_FEED_URL, SEPTA_RR_ROUTES
 from trackrat.utils.logging import get_logger
 
@@ -168,9 +169,11 @@ class SeptaRailClient:
             )
         return trip_updates
 
-    async def get_trip_updates(self) -> list[SeptaRailTripUpdate]:
+    async def get_trip_updates(
+        self, *, use_cache: bool = True
+    ) -> list[SeptaRailTripUpdate]:
         """Fetch and parse all Regional Rail trip updates (cached within TTL)."""
-        if self._is_cache_valid():
+        if use_cache and self._is_cache_valid():
             return self._cache or []
 
         try:
@@ -187,17 +190,17 @@ class SeptaRailClient:
                 status_code=e.response.status_code,
                 error=str(e),
             )
-            return self._cache or []
+            raise SeptaFeedFetchError("SEPTA RR feed returned an HTTP error") from e
         except httpx.HTTPError as e:
             logger.error(
                 "septa_rr_feed_network_error", error=str(e), error_type=type(e).__name__
             )
-            return self._cache or []
+            raise SeptaFeedFetchError("SEPTA RR feed request failed") from e
         except Exception as e:
             logger.error(
                 "septa_rr_feed_parse_error", error=str(e), error_type=type(e).__name__
             )
-            return self._cache or []
+            raise SeptaFeedFetchError("SEPTA RR feed could not be parsed") from e
 
     def clear_cache(self) -> None:
         self._cache = None

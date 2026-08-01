@@ -769,12 +769,20 @@ struct CongestionComparisonBar: View {
         Int(segment.averageDelayMinutes.rounded())
     }
     
+    /// This text is tinted with `segment.displayColor`, so it has to account for
+    /// everything that colour represents. A segment escalated for cancellations
+    /// is red while the trains that ran were on time, and "On time" in red was
+    /// the exact contradiction reported in issue #1638. A segment can also be
+    /// both delayed and cancelled, in which case reporting only the delay drops
+    /// half of why the bar is coloured the way it is.
     private var delayText: String {
-        if delayMinutes > 0 {
-            return "+\(delayMinutes) min delay"
-        } else {
-            return "On time"
-        }
+        let cancelled = segment.involvesCancellations
+            ? "\(segment.cancellationCount) cancelled"
+            : nil
+        guard delayMinutes > 0 else { return cancelled ?? "On time" }
+        let delay = "+\(delayMinutes) min delay"
+        guard let cancelled else { return delay }
+        return "\(delay), \(cancelled)"
     }
     
     var body: some View {

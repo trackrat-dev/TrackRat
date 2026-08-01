@@ -4,6 +4,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { TripSelectionPage } from './TripSelectionPage';
 import { useAppStore } from '../store/appStore';
 import { getStationByCode } from '../data/stations';
+import { storageService } from '../services/storage';
 
 function resetStore() {
   useAppStore.setState({
@@ -43,12 +44,12 @@ function renderPage() {
   );
 }
 
-describe('TripSelectionPage favorite slot filling', () => {
-  beforeEach(() => {
-    localStorage.clear();
-    resetStore();
-  });
+beforeEach(() => {
+  localStorage.clear();
+  resetStore();
+});
 
+describe('TripSelectionPage favorite slot filling', () => {
   it('fills From when tapping a favorite and From is empty', () => {
     seedFavorite('NY');
     renderPage();
@@ -119,5 +120,21 @@ describe('TripSelectionPage favorite slot filling', () => {
       target: { value: 'Newark' },
     });
     expect(screen.queryByText(/Search fills/)).not.toBeInTheDocument();
+  });
+});
+
+describe('TripSelectionPage quick search system filtering', () => {
+  it('does not render disabled stations under Other systems', () => {
+    storageService.savePreferredSystems(['NJT']);
+    renderPage();
+
+    fireEvent.change(screen.getByPlaceholderText('Search stations or train number'), {
+      target: { value: 'union station' },
+    });
+
+    expect(screen.getByText('Other systems')).toBeInTheDocument();
+    expect(screen.getByText('Washington Union Station')).toBeInTheDocument();
+    expect(screen.queryByText('Chicago Union Station')).not.toBeInTheDocument();
+    expect(screen.queryByText(/^Union Station$/)).not.toBeInTheDocument();
   });
 });

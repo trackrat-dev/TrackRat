@@ -239,4 +239,42 @@ describe('ServiceAlertBanner', () => {
     expect(await screen.findByText('NEC alert')).toBeInTheDocument();
     expect(screen.queryByText('Coast Line alert')).not.toBeInTheDocument();
   });
+
+  it('shows matching and system-wide alerts while dropping a sibling line, in one pass', async () => {
+    // The three-way case the line-detail page actually hits: NJT Main and Bergen
+    // County share the HB->SF terminals, so a Bergen disruption must not appear
+    // on the Main line page, while a genuinely system-wide alert must (#1625).
+    mockAlerts([
+      makeAlert({ alert_id: 'm1', header_text: 'Main Line signal trouble', affected_route_ids: ['MA'] }),
+      makeAlert({ alert_id: 's1', header_text: 'Bergen County Line detour', affected_route_ids: ['BE'] }),
+      makeAlert({ alert_id: 'w1', header_text: 'NJT systemwide advisory', affected_route_ids: [] }),
+    ]);
+
+    render(<ServiceAlertBanner dataSource="NJT" routeIds={['MA', 'Ma']} />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /show service alerts \(2\)/i }));
+
+    expect(await screen.findByText('Main Line signal trouble')).toBeInTheDocument();
+    expect(screen.getByText('NJT systemwide advisory')).toBeInTheDocument();
+    expect(screen.queryByText('Bergen County Line detour')).not.toBeInTheDocument();
+  });
+
+  it('does not reorder the caller\'s routeIds array', async () => {
+    // routeIds is sorted only to build a stable polling key. Callers pass the
+    // shared module-level `lineCodes` of a RouteDefinition, which is also the
+    // source of the `lines=` query string — sorting it in place would corrupt
+    // the topology for every later reader.
+    mockAlerts([]);
+    // Deliberately not in sorted order: a sort in place would rewrite this to
+    // ['BE','MA','Ma'].
+    const lineCodes = ['MA', 'Ma', 'BE'];
+
+    // The sort runs in a useMemo during render, so one render is enough to
+    // trigger the bug; the act wrapper just flushes the alert poll cleanly.
+    await act(async () => {
+      render(<ServiceAlertBanner dataSource="NJT" routeIds={lineCodes} />);
+    });
+
+    expect(lineCodes).toEqual(['MA', 'Ma', 'BE']);
+  });
 });

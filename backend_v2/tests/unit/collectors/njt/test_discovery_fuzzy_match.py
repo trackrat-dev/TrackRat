@@ -362,6 +362,109 @@ class TestFuzzyMatchScheduledTrain:
         assert existing_journey.cancellation_reason == "All stops cancelled by NJT"
 
     @pytest.mark.asyncio
+    async def test_reobservation_marks_newly_cancelled_train(self, collector):
+        """The converse of the two tests above (issue #1670): a *running* row
+        whose board payload now shows the train annulled must be marked
+        cancelled here.
+
+        Discovery copies times and bumps last_updated_at, which can make the
+        next batch/JIT collection skip the row as fresh — so seeing the
+        cancellation and doing nothing leaves the row reading
+        fresh-and-running until it goes stale enough for a full
+        getTrainStopList collection. That delay is what let NJT train 3918
+        show as on time for 65 minutes after it was annulled.
+        """
+        mock_session = _make_session_mock()
+
+        dep_time = datetime(2025, 7, 5, 10, 15, 0)
+        existing_journey = Mock(spec=TrainJourney)
+        existing_journey.train_id = "3965"
+        existing_journey.observation_type = "OBSERVED"
+        existing_journey.is_expired = False
+        existing_journey.is_cancelled = False
+        existing_journey.cancellation_reason = None
+        existing_journey.last_updated_at = None
+
+        mock_session.scalar = AsyncMock(return_value=existing_journey)
+
+        # Origin ran, terminal annulled — the 3918 shape.
+        train_data = [
+            {
+                "TRAIN_ID": "3965",
+                "LINE": "NEC",
+                "DESTINATION": "Hamilton",
+                "SCHED_DEP_DATE": "05-Jul-2025 10:15:00 AM",
+                "STOPS": [
+                    {"STATION_2CHAR": "NY", "STOP_STATUS": "ON TIME"},
+                    {"STATION_2CHAR": "HN", "STOP_STATUS": "CANCELLED"},
+                ],
+            }
+        ]
+
+        with patch(
+            "trackrat.collectors.njt.discovery.parse_njt_time"
+        ) as mock_parse_time:
+            mock_parse_time.return_value = dep_time
+
+            with patch("trackrat.collectors.njt.discovery.now_et") as mock_now:
+                mock_now.return_value = datetime(2025, 7, 5, 9, 0, 0)
+
+                result = await collector.process_discovered_trains(
+                    mock_session, "NY", train_data
+                )
+
+        assert result == set()
+        assert existing_journey.is_cancelled is True
+        assert existing_journey.cancellation_reason == (
+            "Journey terminated before reaching destination"
+        )
+
+    @pytest.mark.asyncio
+    async def test_reobservation_leaves_running_train_alone(self, collector):
+        """No false positives: a normal board payload must not cancel a running
+        train."""
+        mock_session = _make_session_mock()
+
+        dep_time = datetime(2025, 7, 5, 10, 15, 0)
+        existing_journey = Mock(spec=TrainJourney)
+        existing_journey.train_id = "3965"
+        existing_journey.observation_type = "OBSERVED"
+        existing_journey.is_expired = False
+        existing_journey.is_cancelled = False
+        existing_journey.cancellation_reason = None
+        existing_journey.last_updated_at = None
+
+        mock_session.scalar = AsyncMock(return_value=existing_journey)
+
+        train_data = [
+            {
+                "TRAIN_ID": "3965",
+                "LINE": "NEC",
+                "DESTINATION": "Hamilton",
+                "SCHED_DEP_DATE": "05-Jul-2025 10:15:00 AM",
+                "STOPS": [
+                    {"STATION_2CHAR": "NY", "STOP_STATUS": "ON TIME"},
+                    {"STATION_2CHAR": "HN", "STOP_STATUS": "LATE"},
+                ],
+            }
+        ]
+
+        with patch(
+            "trackrat.collectors.njt.discovery.parse_njt_time"
+        ) as mock_parse_time:
+            mock_parse_time.return_value = dep_time
+
+            with patch("trackrat.collectors.njt.discovery.now_et") as mock_now:
+                mock_now.return_value = datetime(2025, 7, 5, 9, 0, 0)
+
+                await collector.process_discovered_trains(
+                    mock_session, "NY", train_data
+                )
+
+        assert existing_journey.is_cancelled is False
+        assert existing_journey.cancellation_reason is None
+
+    @pytest.mark.asyncio
     async def test_already_observed_not_matched(self, collector):
         """Fuzzy match should only match SCHEDULED trains, not OBSERVED.
 

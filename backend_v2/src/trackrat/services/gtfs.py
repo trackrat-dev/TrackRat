@@ -9,8 +9,10 @@ import csv
 import io
 import traceback
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
+from enum import Enum
 from typing import Any
 
 import httpx
@@ -21,9 +23,18 @@ from structlog import get_logger
 
 from trackrat.config.stations import (
     expand_station_codes,
+    get_bart_route_info,
+    get_lirr_route_info,
+    get_mbta_route_info,
+    get_metra_route_info,
+    get_mnr_route_info,
     get_patco_route_info,
     get_path_route_info,
+    get_septa_metro_route_info,
+    get_septa_rr_route_info,
     get_station_name,
+    get_subway_route_info,
+    get_wmata_route_info,
     map_gtfs_stop_to_station_code,
 )
 from trackrat.models.api import (
@@ -90,8 +101,22 @@ GTFS_ROUTE_TYPE_FILTER: dict[str, frozenset[str]] = {
 # and long-term schedule drift are NOT corrected by this.
 GTFS_EXPIRY_EXEMPT_SOURCES: frozenset[str] = frozenset({"PATH"})
 
-# Minimum hours between feed downloads (rate limiting)
-GTFS_DOWNLOAD_INTERVAL_HOURS = 24
+# Minimum hours between feed downloads (rate limiting).
+#
+# Deliberately under 24 even though the refresh cron fires daily. At 24 the
+# limit raced its own scheduler: the job runs at 03:00 ET, so a source stamped
+# at 03:00:0N one night measured 23.99h the next and skipped itself, then
+# refreshed the night after — every source alternated refreshed/skipped, which
+# is exactly what production showed for the whole of issue #1646's window. The
+# daily cron is what actually bounds download frequency; this constant only
+# needs to stop a same-day repeat (e.g. a startup force-check plus the cron).
+GTFS_DOWNLOAD_INTERVAL_HOURS = 20
+
+# A feed whose last successful parse is older than this is reported as stale by
+# ``GTFSService.get_feed_statuses`` — logged at ERROR by the nightly refresh and
+# surfaced on /health. Set above the daily cadence so a single missed night is
+# tolerated and only a genuinely stuck source alarms (issue #1646).
+GTFS_STALE_FEED_HOURS = 48
 
 # Trip ids per DELETE when clearing a source's stop_times. One bind parameter
 # is sent per id and asyncpg hard-caps a statement at 32767 parameters —
@@ -154,6 +179,36 @@ NJT_LINE_CODE_MAPPING = {
     "ATLC": "AC",
     # Princeton Shuttle (Dinky)
     "PRIN": "PR",
+}
+
+_ROUTE_INFO_RESOLVERS = {
+    "PATH": get_path_route_info,
+    "PATCO": get_patco_route_info,
+    "LIRR": get_lirr_route_info,
+    "MNR": get_mnr_route_info,
+    "SUBWAY": get_subway_route_info,
+    "METRA": get_metra_route_info,
+    "WMATA": get_wmata_route_info,
+    "BART": get_bart_route_info,
+    "MBTA": get_mbta_route_info,
+    "SEPTA_RR": get_septa_rr_route_info,
+    "SEPTA_METRO": get_septa_metro_route_info,
+}
+
+_FALLBACK_LINE_CODES = {
+    "PATH": "PATH",
+    "PATCO": "PATCO",
+    "LIRR": "LIRR",
+    "MNR": "MNR",
+    "WMATA": "WMATA",
+}
+
+_FALLBACK_LINE_NAMES = {
+    "PATCO": "PATCO Speedline",
+    "MNR": "Metro-North",
+    "WMATA": "DC Metro",
+    "SEPTA_RR": "SEPTA",
+    "SEPTA_METRO": "SEPTA",
 }
 
 # Sources whose discovery upgrades a SCHEDULED journey to OBSERVED *in place*,
@@ -272,6 +327,75 @@ def _extract_lirr_train_number(gtfs_trip_id: str) -> str | None:
     return None
 
 
+class GTFSRefreshOutcome(Enum):
+    """Why a :meth:`GTFSService.refresh_feed` call ended the way it did.
+
+    ``refresh_feed`` used to return a bare ``bool``, which collapsed six
+    distinct outcomes into ``False``: an unknown source, a rate-limited skip, a
+    missing WMATA key, a download failure and a parse failure all surfaced
+    downstream as nothing more than ``{source}_refreshed: false``. That is what
+    let the SUBWAY/MNR parse failures run unnoticed for thirteen nights — a
+    real failure was indistinguishable from the routine nightly skip that every
+    healthy source also reported (issue #1646).
+    """
+
+    REFRESHED = "refreshed"
+    SKIPPED_RATE_LIMITED = "skipped_rate_limited"
+    SKIPPED_NO_API_KEY = "skipped_no_api_key"
+    FAILED_UNKNOWN_SOURCE = "failed_unknown_source"
+    FAILED_DOWNLOAD = "failed_download"
+    FAILED_PROCESS = "failed_process"
+
+    @property
+    def refreshed(self) -> bool:
+        """True only when the feed was actually downloaded and parsed.
+
+        Call sites must use this rather than testing the outcome itself: every
+        enum member is truthy, so a bare ``if await refresh_feed(...)`` would
+        silently read as success on the failure paths.
+        """
+        return self is GTFSRefreshOutcome.REFRESHED
+
+    @property
+    def is_failure(self) -> bool:
+        """True when the refresh did not happen *because something broke*.
+
+        The deliberate skips are excluded: being rate limited, or having no
+        WMATA key configured, is expected operation and must not raise an alarm.
+        """
+        return self in (
+            GTFSRefreshOutcome.FAILED_UNKNOWN_SOURCE,
+            GTFSRefreshOutcome.FAILED_DOWNLOAD,
+            GTFSRefreshOutcome.FAILED_PROCESS,
+        )
+
+
+@dataclass(frozen=True)
+class GTFSFeedStatus:
+    """Freshness of one source's stored GTFS static feed.
+
+    Reads the durable record in ``gtfs_feed_info``, which survives even when a
+    failure's log entry does not. Nothing read that table before this — the one
+    diagnostic that outlived every night of issue #1646 was unreachable without
+    direct database access.
+    """
+
+    data_source: str
+    last_successful_parse_at: datetime | None
+    age_hours: float | None
+    trip_count: int | None
+    error_message: str | None
+
+    @property
+    def is_stale(self) -> bool:
+        """True if this source has no usable static schedule behind it.
+
+        A source that has never parsed successfully is stale regardless of age
+        — there is no feed at all, which is strictly worse than an old one.
+        """
+        return self.age_hours is None or self.age_hours > GTFS_STALE_FEED_HOURS
+
+
 def _bounded(text: str, limit: int) -> str:
     """Truncate text to ``limit`` chars, annotating how much was dropped."""
     if len(text) <= limit:
@@ -323,20 +447,23 @@ class GTFSService:
         db: AsyncSession,
         data_source: str,
         force: bool = False,
-    ) -> bool:
+    ) -> GTFSRefreshOutcome:
         """Download and parse GTFS feed for a data source.
 
         Args:
             db: Database session
             data_source: "NJT" or "AMTRAK"
-            force: If True, skip the 24hr rate limit check
+            force: If True, skip the rate limit check
 
         Returns:
-            True if feed was refreshed, False if skipped due to rate limit
+            The :class:`GTFSRefreshOutcome` naming what happened. Callers must
+            branch on ``.refreshed`` / ``.is_failure`` rather than on the
+            returned value's truthiness — see the enum's docstring for why a
+            plain bool here hid issue #1646.
         """
         if data_source not in GTFS_FEED_URLS:
             logger.error("Unknown GTFS data source", data_source=data_source)
-            return False
+            return GTFSRefreshOutcome.FAILED_UNKNOWN_SOURCE
 
         # Check rate limit
         feed_info = await self._get_or_create_feed_info(db, data_source)
@@ -354,7 +481,7 @@ class GTFSService:
                         GTFS_DOWNLOAD_INTERVAL_HOURS - hours_since_download, 1
                     ),
                 )
-                return False
+                return GTFSRefreshOutcome.SKIPPED_RATE_LIMITED
 
         url = GTFS_FEED_URLS[data_source]
         logger.info("Downloading GTFS feed", data_source=data_source, url=url)
@@ -371,7 +498,7 @@ class GTFSService:
                     headers["api_key"] = wmata_key
                 else:
                     logger.warning("WMATA GTFS download skipped: no API key configured")
-                    return False
+                    return GTFSRefreshOutcome.SKIPPED_NO_API_KEY
 
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.get(url, headers=headers, follow_redirects=True)
@@ -414,7 +541,7 @@ class GTFSService:
                 trips=stats.get("trips"),
                 stop_times=stats.get("stop_times"),
             )
-            return True
+            return GTFSRefreshOutcome.REFRESHED
 
         except httpx.HTTPError as e:
             return await self._record_refresh_failure(db, data_source, "download", e)
@@ -428,7 +555,7 @@ class GTFSService:
         data_source: str,
         stage: str,
         exc: Exception,
-    ) -> bool:
+    ) -> GTFSRefreshOutcome:
         """Log a refresh failure and persist it to feed_info, both bounded.
 
         Everything emitted or persisted here is truncated: a SQLAlchemy
@@ -439,8 +566,14 @@ class GTFSService:
         traceback is truncated from the head so the stack frames survive and
         the giant message (which comes last) is what gets cut.
 
-        Returns False so ``refresh_feed`` can return this call's result.
+        Returns the matching failure outcome so ``refresh_feed`` can return
+        this call's result directly.
         """
+        outcome = (
+            GTFSRefreshOutcome.FAILED_DOWNLOAD
+            if stage == "download"
+            else GTFSRefreshOutcome.FAILED_PROCESS
+        )
         error_msg = _bounded(str(exc), GTFS_ERROR_MESSAGE_MAX_CHARS)
         tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
         logger.error(
@@ -455,7 +588,7 @@ class GTFSService:
         feed_info = await self._get_or_create_feed_info(db, data_source)
         feed_info.error_message = f"{stage}: {error_msg}"
         await db.commit()
-        return False
+        return outcome
 
     async def _get_or_create_feed_info(
         self, db: AsyncSession, data_source: str
@@ -1418,6 +1551,8 @@ class GTFSService:
         limit: int = 50,
         data_sources: list[str] | None = None,
         time_from: datetime | None = None,
+        line_codes: list[str] | None = None,
+        label_matched_stop: bool = False,
     ) -> DeparturesResponse:
         """Get scheduled departures from GTFS data for a future date.
 
@@ -1432,6 +1567,10 @@ class GTFSService:
                 Applied after sort, before limit — critical for high-frequency
                 providers (e.g. SUBWAY) whose first `limit` trains would
                 otherwise all fall inside the overnight window.
+            line_codes: If provided, only return these canonical line codes.
+                Applied in SQL before the per-source result cap.
+            label_matched_stop: Label boarding and alighting with the concrete
+                equivalent stop matched in GTFS instead of the requested code.
 
         Returns:
             DeparturesResponse with scheduled trains
@@ -1471,15 +1610,25 @@ class GTFSService:
 
         for data_source, service_ids in all_services.items():
             source_departures = await self._query_departures_for_source(
-                db,
-                data_source,
-                service_ids,
-                from_station,
-                to_station,
-                target_date,
-                time_from,
+                db=db,
+                data_source=data_source,
+                service_ids=service_ids,
+                from_station=from_station,
+                to_station=to_station,
+                target_date=target_date,
+                time_from=time_from,
+                line_codes=line_codes,
+                label_matched_stop=label_matched_stop,
             )
             departures.extend(source_departures)
+
+        if line_codes:
+            requested_line_codes = set(line_codes)
+            departures = [
+                departure
+                for departure in departures
+                if departure.line.code in requested_line_codes
+            ]
 
         # Sort by departure time
         # Use timezone-aware constant for safe comparison with ET-localized times
@@ -1517,6 +1666,8 @@ class GTFSService:
         to_station: str | None,
         target_date: date,
         time_from: datetime | None = None,
+        line_codes: list[str] | None = None,
+        label_matched_stop: bool = False,
     ) -> list[TrainDeparture]:
         """Query GTFS tables for departures from a specific data source."""
         departures: list[TrainDeparture] = []
@@ -1537,6 +1688,33 @@ class GTFSService:
         if time_from_cutoff is not None:
             where_clauses.append(GTFSStopTime.departure_time >= time_from_cutoff)
 
+        if line_codes:
+            requested_line_codes = set(line_codes)
+            routes_result = await db.execute(
+                select(
+                    GTFSRoute.id,
+                    GTFSRoute.route_id,
+                    GTFSRoute.route_short_name,
+                    GTFSRoute.route_long_name,
+                    GTFSRoute.route_color,
+                ).where(GTFSRoute.data_source == data_source)
+            )
+            matching_route_ids = [
+                route.id
+                for route in routes_result
+                if self._route_info_for_gtfs_route(
+                    data_source=data_source,
+                    gtfs_route_id=route.route_id,
+                    route_short=route.route_short_name,
+                    route_long=route.route_long_name,
+                    route_color=route.route_color,
+                )[0]
+                in requested_line_codes
+            ]
+            if not matching_route_ids:
+                return []
+            where_clauses.append(GTFSTrip.route_id.in_(matching_route_ids))
+
         # Find trips that have the from_station
         # We need to join trips -> stop_times to find matching trips
         result = await db.execute(
@@ -1552,6 +1730,7 @@ class GTFSService:
                 GTFSRoute.route_color,
                 GTFSStopTime.departure_time,
                 GTFSStopTime.stop_sequence,
+                GTFSStopTime.station_code,
             )
             .join(GTFSRoute, GTFSTrip.route_id == GTFSRoute.id)
             .join(GTFSStopTime, GTFSTrip.id == GTFSStopTime.trip_id)
@@ -1566,16 +1745,16 @@ class GTFSService:
         trips_data = result.all()
 
         # Pre-fetch destination station data in one query to avoid N+1 problem
-        to_station_data: dict[int, tuple[str, int]] = (
-            {}
-        )  # trip_id -> (arrival_time, sequence)
+        to_station_data: dict[int, list[tuple[str | None, str | None, int, str]]] = {}
         if to_station and trips_data:
             trip_ids = [row[0] for row in trips_data]
             dest_result = await db.execute(
                 select(
                     GTFSStopTime.trip_id,
                     GTFSStopTime.arrival_time,
+                    GTFSStopTime.departure_time,
                     GTFSStopTime.stop_sequence,
+                    GTFSStopTime.station_code,
                 ).where(
                     and_(
                         GTFSStopTime.trip_id.in_(trip_ids),
@@ -1584,7 +1763,9 @@ class GTFSService:
                 )
             )
             for dest_row in dest_result.all():
-                to_station_data[dest_row[0]] = (dest_row[1], dest_row[2])
+                to_station_data.setdefault(dest_row[0], []).append(
+                    (dest_row[1], dest_row[2], dest_row[3], dest_row[4])
+                )
 
         for row in trips_data:
             (
@@ -1599,16 +1780,29 @@ class GTFSService:
                 route_color,
                 dep_time_str,
                 dep_sequence,
+                matched_from_station,
             ) = row
 
             # If to_station specified, verify this trip also stops there after from_station
             arrival_time_str = None
+            matched_to_station = None
             if to_station:
-                dest_info = to_station_data.get(db_trip_id)
-                if not dest_info or dest_info[1] <= dep_sequence:
+                dest_info = min(
+                    (
+                        candidate
+                        for candidate in to_station_data.get(db_trip_id, [])
+                        if candidate[2] > dep_sequence
+                    ),
+                    key=lambda candidate: candidate[2],
+                    default=None,
+                )
+                if not dest_info:
                     # Trip doesn't stop at destination, or stops before origin
                     continue
                 arrival_time_str = dest_info[0]
+                if label_matched_stop and not arrival_time_str:
+                    arrival_time_str = dest_info[1]
+                matched_to_station = dest_info[3]
 
             # Parse times
             departure_dt = self._parse_gtfs_time(dep_time_str, target_date, data_source)
@@ -1621,140 +1815,13 @@ class GTFSService:
             if not departure_dt:
                 continue
 
-            # Build the departure response
-            # PATH and PATCO routes need special handling for proper line codes/colors
-            if data_source == "PATH":
-                path_route_info = get_path_route_info(gtfs_route_id)
-                if path_route_info:
-                    line_code, line_name, line_color = path_route_info
-                    # Ensure color has # prefix
-                    if not line_color.startswith("#"):
-                        line_color = f"#{line_color}"
-                else:
-                    # Fallback for unknown PATH routes
-                    line_code = route_short or "PATH"
-                    line_name = route_long or route_short or "PATH"
-                    line_color = (
-                        f"#{route_color}"
-                        if route_color
-                        else DEFAULT_LINE_COLORS.get(data_source, "#666666")
-                    )
-            elif data_source == "PATCO":
-                patco_route_info = get_patco_route_info(gtfs_route_id)
-                if patco_route_info:
-                    line_code, line_name, line_color = patco_route_info
-                    # Ensure color has # prefix
-                    if not line_color.startswith("#"):
-                        line_color = f"#{line_color}"
-                else:
-                    # Fallback for unknown PATCO routes
-                    line_code = route_short or "PATCO"
-                    line_name = route_long or route_short or "PATCO Speedline"
-                    line_color = (
-                        f"#{route_color}"
-                        if route_color
-                        else DEFAULT_LINE_COLORS.get(data_source, "#BC0035")
-                    )
-            elif data_source == "LIRR":
-                from trackrat.config.stations import get_lirr_route_info
-
-                lirr_route_info = get_lirr_route_info(gtfs_route_id)
-                if lirr_route_info:
-                    line_code, line_name, line_color = lirr_route_info
-                    if not line_color.startswith("#"):
-                        line_color = f"#{line_color}"
-                else:
-                    line_code = route_short or "LIRR"
-                    line_name = route_long or route_short or "LIRR"
-                    line_color = (
-                        f"#{route_color}"
-                        if route_color
-                        else DEFAULT_LINE_COLORS.get(data_source, "#0039A6")
-                    )
-            elif data_source == "MNR":
-                from trackrat.config.stations import get_mnr_route_info
-
-                mnr_route_info = get_mnr_route_info(gtfs_route_id)
-                if mnr_route_info:
-                    line_code, line_name, line_color = mnr_route_info
-                    if not line_color.startswith("#"):
-                        line_color = f"#{line_color}"
-                else:
-                    line_code = route_short or "MNR"
-                    line_name = route_long or route_short or "Metro-North"
-                    line_color = (
-                        f"#{route_color}"
-                        if route_color
-                        else DEFAULT_LINE_COLORS.get(data_source, "#0039A6")
-                    )
-            elif data_source == "SUBWAY":
-                from trackrat.config.stations import get_subway_route_info
-
-                subway_route_info = get_subway_route_info(gtfs_route_id)
-                if subway_route_info:
-                    line_code, line_name, line_color = subway_route_info
-                    if not line_color.startswith("#"):
-                        line_color = f"#{line_color}"
-                else:
-                    line_code = route_short or f"SUBWAY-{gtfs_route_id}"
-                    line_name = route_long or route_short or f"Subway {gtfs_route_id}"
-                    line_color = (
-                        f"#{route_color}"
-                        if route_color
-                        else DEFAULT_LINE_COLORS.get(data_source, "#0039A6")
-                    )
-            elif data_source == "WMATA":
-                from trackrat.config.stations import get_wmata_route_info
-
-                wmata_route_info = get_wmata_route_info(gtfs_route_id)
-                if wmata_route_info:
-                    line_code, line_name, line_color = wmata_route_info
-                    if not line_color.startswith("#"):
-                        line_color = f"#{line_color}"
-                else:
-                    line_code = route_short or "WMATA"
-                    line_name = route_long or route_short or "DC Metro"
-                    line_color = (
-                        f"#{route_color}"
-                        if route_color
-                        else DEFAULT_LINE_COLORS.get(data_source, "#004E8C")
-                    )
-            elif data_source in ("SEPTA_RR", "SEPTA_METRO"):
-                from trackrat.config.stations import (
-                    get_septa_metro_route_info,
-                    get_septa_rr_route_info,
-                )
-
-                resolver = (
-                    get_septa_rr_route_info
-                    if data_source == "SEPTA_RR"
-                    else get_septa_metro_route_info
-                )
-                septa_route_info = resolver(gtfs_route_id)
-                if septa_route_info:
-                    line_code, line_name, line_color = septa_route_info
-                    if not line_color.startswith("#"):
-                        line_color = f"#{line_color}"
-                else:
-                    line_code = route_short or f"SEPTA-{gtfs_route_id}"
-                    line_name = route_long or route_short or "SEPTA"
-                    line_color = (
-                        f"#{route_color}"
-                        if route_color
-                        else DEFAULT_LINE_COLORS.get(data_source, "#4F758B")
-                    )
-            else:
-                # For NJT, map GTFS route_short_name to API line codes for deduplication
-                if data_source == "NJT" and route_short:
-                    line_code = NJT_LINE_CODE_MAPPING.get(route_short, route_short)
-                else:
-                    line_code = route_short or data_source[:2]
-                line_name = route_long or route_short or data_source
-                line_color = (
-                    f"#{route_color}"
-                    if route_color
-                    else DEFAULT_LINE_COLORS.get(data_source, "#666666")
-                )
+            line_code, line_name, line_color = self._route_info_for_gtfs_route(
+                data_source=data_source,
+                gtfs_route_id=gtfs_route_id,
+                route_short=route_short,
+                route_long=route_long,
+                route_color=route_color,
+            )
 
             # Determine effective train_id:
             # - If train_id is set (from trip_short_name, e.g., Amtrak/NJT), use it
@@ -1795,15 +1862,13 @@ class GTFSService:
             departure = TrainDeparture(
                 train_id=effective_train_id,
                 journey_date=target_date,
-                line=LineInfo(
-                    code=line_code[:10],
-                    name=line_name,
-                    color=line_color,
-                ),
+                line=LineInfo(code=line_code, name=line_name, color=line_color),
                 destination=headsign or "Unknown",
                 departure=StationInfo(
-                    code=from_station,
-                    name=get_station_name(from_station),
+                    code=(matched_from_station if label_matched_stop else from_station),
+                    name=get_station_name(
+                        matched_from_station if label_matched_stop else from_station
+                    ),
                     scheduled_time=departure_dt,
                     updated_time=None,
                     actual_time=None,
@@ -1811,14 +1876,26 @@ class GTFSService:
                 ),
                 arrival=(
                     StationInfo(
-                        code=to_station,
-                        name=get_station_name(to_station),
+                        code=(
+                            matched_to_station
+                            if label_matched_stop and matched_to_station
+                            else to_station
+                        ),
+                        name=get_station_name(
+                            matched_to_station
+                            if label_matched_stop and matched_to_station
+                            else to_station
+                        ),
                         scheduled_time=arrival_dt,
                         updated_time=None,
                         actual_time=None,
                         track=None,
                     )
-                    if to_station and arrival_dt
+                    if to_station
+                    and (
+                        arrival_dt
+                        or (label_matched_stop and matched_to_station is not None)
+                    )
                     else None
                 ),
                 train_position=TrainPosition(
@@ -1840,6 +1917,91 @@ class GTFSService:
             departures.append(departure)
 
         return departures
+
+    @staticmethod
+    def _route_info_for_gtfs_route(
+        *,
+        data_source: str,
+        gtfs_route_id: str,
+        route_short: str | None,
+        route_long: str | None,
+        route_color: str | None,
+    ) -> tuple[str, str, str]:
+        """Resolve a stored GTFS route to canonical code, name, and color."""
+        resolver = _ROUTE_INFO_RESOLVERS.get(data_source)
+        resolved = resolver(gtfs_route_id) if resolver else None
+
+        if resolved:
+            line_code, line_name, line_color = resolved
+        else:
+            if data_source == "NJT" and route_short:
+                line_code = NJT_LINE_CODE_MAPPING.get(route_short, route_short)
+            elif data_source == "SUBWAY":
+                line_code = route_short or f"SUBWAY-{gtfs_route_id}"
+            elif data_source in ("SEPTA_RR", "SEPTA_METRO"):
+                line_code = route_short or f"SEPTA-{gtfs_route_id}"
+            else:
+                line_code = route_short or _FALLBACK_LINE_CODES.get(
+                    data_source, data_source[:2]
+                )
+            line_name = (
+                route_long
+                or route_short
+                or (
+                    f"Subway {gtfs_route_id}"
+                    if data_source == "SUBWAY"
+                    else _FALLBACK_LINE_NAMES.get(data_source, data_source)
+                )
+            )
+            line_color = route_color or DEFAULT_LINE_COLORS.get(data_source, "#666666")
+
+        if not line_color.startswith("#"):
+            line_color = f"#{line_color}"
+        return line_code[:20], line_name, line_color
+
+    async def get_feed_statuses(
+        self, db: AsyncSession, data_sources: Sequence[str]
+    ) -> list[GTFSFeedStatus]:
+        """Report stored-feed freshness for each requested source.
+
+        Sources with no ``gtfs_feed_info`` row at all, and sources whose row has
+        never recorded a successful parse, both come back with
+        ``age_hours=None`` — which :attr:`GTFSFeedStatus.is_stale` treats as
+        stale. Absence of a feed is a worse state than an old feed, not a
+        missing data point to be skipped over.
+        """
+        rows = (
+            (
+                await db.execute(
+                    select(GTFSFeedInfo).where(
+                        GTFSFeedInfo.data_source.in_(list(data_sources))
+                    )
+                )
+            )
+            .scalars()
+            .all()
+        )
+        by_source = {row.data_source: row for row in rows}
+
+        now = now_et()
+        statuses = []
+        for source in data_sources:
+            feed_info = by_source.get(source)
+            parsed_at = feed_info.last_successful_parse_at if feed_info else None
+            statuses.append(
+                GTFSFeedStatus(
+                    data_source=source,
+                    last_successful_parse_at=parsed_at,
+                    age_hours=(
+                        round((now - parsed_at).total_seconds() / 3600, 1)
+                        if parsed_at
+                        else None
+                    ),
+                    trip_count=feed_info.trip_count if feed_info else None,
+                    error_message=feed_info.error_message if feed_info else None,
+                )
+            )
+        return statuses
 
     async def is_feed_available(self, db: AsyncSession, data_source: str) -> bool:
         """Check if GTFS data is available for a data source."""
@@ -2119,84 +2281,13 @@ class GTFSService:
         ):
             effective_train_id = f"S{route_short or 'X'}-{effective_train_id}"
 
-        # Build line info
-        # PATH and PATCO routes need special handling for proper line codes/colors
-        if matched_source == "PATH":
-            path_route_info = get_path_route_info(gtfs_route_id)
-            if path_route_info:
-                line_code, line_name, line_color = path_route_info
-                # Ensure color has # prefix
-                if not line_color.startswith("#"):
-                    line_color = f"#{line_color}"
-            else:
-                # Fallback for unknown PATH routes
-                line_code = route_short or "PATH"
-                line_name = route_long or route_short or "PATH"
-                line_color = f"#{route_color}" if route_color else "#666666"
-        elif matched_source == "PATCO":
-            patco_route_info = get_patco_route_info(gtfs_route_id)
-            if patco_route_info:
-                line_code, line_name, line_color = patco_route_info
-                # Ensure color has # prefix
-                if not line_color.startswith("#"):
-                    line_color = f"#{line_color}"
-            else:
-                # Fallback for unknown PATCO routes
-                line_code = route_short or "PATCO"
-                line_name = route_long or route_short or "PATCO Speedline"
-                line_color = f"#{route_color}" if route_color else "#BC0035"
-        elif matched_source == "LIRR":
-            from trackrat.config.stations import get_lirr_route_info
-
-            lirr_route_info = get_lirr_route_info(gtfs_route_id)
-            if lirr_route_info:
-                line_code, line_name, line_color = lirr_route_info
-                if not line_color.startswith("#"):
-                    line_color = f"#{line_color}"
-            else:
-                line_code = route_short or "LIRR"
-                line_name = route_long or route_short or "LIRR"
-                line_color = f"#{route_color}" if route_color else "#0039A6"
-        elif matched_source == "MNR":
-            from trackrat.config.stations import get_mnr_route_info
-
-            mnr_route_info = get_mnr_route_info(gtfs_route_id)
-            if mnr_route_info:
-                line_code, line_name, line_color = mnr_route_info
-                if not line_color.startswith("#"):
-                    line_color = f"#{line_color}"
-            else:
-                line_code = route_short or "MNR"
-                line_name = route_long or route_short or "Metro-North"
-                line_color = f"#{route_color}" if route_color else "#0039A6"
-        elif matched_source in ("SEPTA_RR", "SEPTA_METRO"):
-            from trackrat.config.stations import (
-                get_septa_metro_route_info,
-                get_septa_rr_route_info,
-            )
-
-            resolver = (
-                get_septa_rr_route_info
-                if matched_source == "SEPTA_RR"
-                else get_septa_metro_route_info
-            )
-            septa_route_info = resolver(gtfs_route_id)
-            if septa_route_info:
-                line_code, line_name, line_color = septa_route_info
-                if not line_color.startswith("#"):
-                    line_color = f"#{line_color}"
-            else:
-                line_code = route_short or f"SEPTA-{gtfs_route_id}"
-                line_name = route_long or route_short or "SEPTA"
-                line_color = f"#{route_color}" if route_color else "#4F758B"
-        else:
-            # For NJT, map GTFS route_short_name to API line codes for consistency
-            if matched_source == "NJT" and route_short:
-                line_code = NJT_LINE_CODE_MAPPING.get(route_short, route_short)
-            else:
-                line_code = route_short or matched_source[:2]
-            line_name = route_long or route_short or matched_source
-            line_color = f"#{route_color}" if route_color else "#666666"
+        line_code, line_name, line_color = self._route_info_for_gtfs_route(
+            data_source=matched_source,
+            gtfs_route_id=gtfs_route_id,
+            route_short=route_short,
+            route_long=route_long,
+            route_color=route_color,
+        )
 
         # Get origin and destination from stops
         origin_stop = stops[0]
@@ -2216,11 +2307,7 @@ class GTFSService:
         return TrainDetails(
             train_id=effective_train_id,
             journey_date=target_date,
-            line=LineInfo(
-                code=line_code[:10],
-                name=line_name,
-                color=line_color,
-            ),
+            line=LineInfo(code=line_code, name=line_name, color=line_color),
             route=RouteInfo(
                 origin=origin_stop.station.name,
                 destination=headsign or dest_stop.station.name,

@@ -875,9 +875,9 @@ struct SystemCongestionMapView: UIViewRepresentable {
                 if segment.frequencyFactor != nil {
                     return CongestionColors.color(forFrequencyFactor: segment.frequencyFactor, cancellationRate: segment.cancellationRate)
                 }
-                return CongestionColors.color(forCongestionFactor: segment.congestionFactor, cancellationRate: segment.cancellationRate)
+                return segment.displayUIColor
             case .delays, .off:
-                return CongestionColors.color(forCongestionFactor: segment.congestionFactor, cancellationRate: segment.cancellationRate)
+                return segment.displayUIColor
             }
         }
 
@@ -1173,10 +1173,7 @@ struct IndividualJourneyOverlayIdentity: Hashable {
         id = segment.id
         visualKey = segment.isCancelled
             ? "cancelled"
-            : "delay:" + CongestionColors.congestionTierKey(
-                forFactor: segment.congestionFactor,
-                cancellationRate: 0
-            )
+            : "delay:" + CongestionColors.congestionTierKey(forFactor: segment.congestionFactor)
     }
 }
 
@@ -1360,11 +1357,9 @@ func visualMergeKey(for segment: CongestionSegment) -> String {
             return "freq:" + CongestionColors.frequencyTierKey(
                 forFactor: segment.frequencyFactor, cancellationRate: segment.cancellationRate)
         }
-        return "delay:" + CongestionColors.congestionTierKey(
-            forFactor: segment.congestionFactor, cancellationRate: segment.cancellationRate)
+        return "delay:" + segment.congestionTierKey
     case .delays, .off:
-        return "delay:" + CongestionColors.congestionTierKey(
-            forFactor: segment.congestionFactor, cancellationRate: segment.cancellationRate)
+        return "delay:" + segment.congestionTierKey
     }
 }
 

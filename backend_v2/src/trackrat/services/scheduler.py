@@ -12,7 +12,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.date import DateTrigger
 from apscheduler.triggers.interval import IntervalTrigger
-from sqlalchemy import and_, select, text
+from sqlalchemy import and_, func, select, text
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
@@ -66,6 +66,15 @@ from trackrat.utils.train import (
 )
 
 logger = get_logger(__name__)
+
+# How far back an NJT journey's scheduled origin departure can be and still be
+# treated as possibly in flight by schedule_periodic_updates. NJT's longest
+# scheduled run (Atlantic City Line end to end) is well under two hours, so
+# three hours leaves generous margin for a heavily delayed train while still
+# excluding the day's already-run journeys — which linger with
+# is_completed=False until the next day's expiry sweep and would otherwise
+# dominate an oldest-updated-first batch (issue #1670).
+ACTIVE_JOURNEY_LOOKBACK_HOURS = 3
 
 
 class SchedulerService:
@@ -1331,41 +1340,85 @@ class SchedulerService:
             )
 
     async def schedule_periodic_updates(self, session: AsyncSession) -> None:
-        """Schedule periodic updates for active trains."""
+        """Schedule periodic updates for trains that are currently running.
+
+        Selection is deliberately narrow *and* fair (issue #1670). Both
+        properties are required — the previous implementation had neither and
+        a running train could go over an hour with no real-time collection:
+
+        - **Narrow.** The nightly schedule collector writes a
+          ``has_complete_journey=True`` row for *every* NJT train of the day,
+          and journeys that never reach a terminal stop keep
+          ``is_completed=False`` until the next day's expiry sweep. Selecting
+          on the lifecycle flags alone therefore matches hundreds of rows that
+          are not running — trains that departed hours ago and trains that do
+          not depart for hours. The ``scheduled_departure`` window restricts
+          the candidate set to journeys that can plausibly be in flight right
+          now, which is the only set worth spending NJT API calls on.
+        - **Fair.** Staleness is filtered in SQL and the batch is ordered
+          oldest-updated-first, so the per-tick limit skims the stalest
+          trains instead of an arbitrary slice of the heap. Previously the
+          ``LIMIT`` was applied *before* the staleness filter (which ran in
+          Python) with no ``ORDER BY``, so which trains got refreshed was up
+          to Postgres' physical row order and a given train could be passed
+          over indefinitely.
+
+        The eligible count is logged alongside the scheduled count so a
+        saturated batch is visible: the old log reported the post-limit list
+        length as ``total_active_trains``, which is clamped by the limit and
+        so could never reveal a backlog.
+        """
         # Find trains that need periodic updates
         current_time = now_et()
         cutoff_time = current_time - timedelta(
             minutes=self.settings.journey_update_interval_minutes
         )
 
-        # Get candidates without timezone-sensitive comparisons
         # Only consider today and yesterday (for midnight-crossing trains)
         min_journey_date = current_time.date() - timedelta(days=1)
+
+        # In-flight window on the origin departure: trains that have left but
+        # cannot yet have finished. The lower bound comfortably exceeds NJT's
+        # longest run, so nothing still moving is excluded. The upper bound is
+        # now — trains that have not departed belong to
+        # schedule_departure_collections, which covers the hot window before
+        # departure on a much faster cadence; ending the window here keeps the
+        # two from queueing a duplicate collection for the same train.
+        # scheduled_departure is NOT NULL, so no null handling is needed.
+        departure_window_start = current_time - timedelta(
+            hours=ACTIVE_JOURNEY_LOOKBACK_HOURS
+        )
+
+        stale_active_filter = and_(
+            TrainJourney.data_source == "NJT",
+            TrainJourney.has_complete_journey.is_(True),
+            TrainJourney.is_cancelled.is_not(True),
+            TrainJourney.is_completed.is_not(True),
+            TrainJourney.is_expired.is_not(True),  # Exclude expired trains
+            TrainJourney.journey_date >= min_journey_date,
+            TrainJourney.scheduled_departure >= departure_window_start,
+            TrainJourney.scheduled_departure <= current_time,
+            TrainJourney.last_updated_at < cutoff_time,
+        )
+
+        eligible_count = (
+            await session.scalar(
+                select(func.count())
+                .select_from(TrainJourney)
+                .where(stale_active_filter)
+            )
+        ) or 0
+
+        batch_size = self.settings.journey_update_batch_size
         stmt = (
             select(TrainJourney)
-            .where(
-                and_(
-                    TrainJourney.data_source == "NJT",
-                    TrainJourney.has_complete_journey.is_(True),
-                    TrainJourney.is_cancelled.is_not(True),
-                    TrainJourney.is_completed.is_not(True),
-                    TrainJourney.is_expired.is_not(True),  # Exclude expired trains
-                    TrainJourney.journey_date >= min_journey_date,
-                )
-            )
-            .limit(50)
-        )  # Get more candidates since we'll filter in Python
+            .where(stale_active_filter)
+            .order_by(TrainJourney.last_updated_at.asc())
+            .limit(batch_size)
+        )
 
         result = await session.execute(stmt)
-        all_trains = result.scalars().all()
-
-        # Filter with proper timezone handling
-        trains = []
-        for train in all_trains:
-            if train.last_updated_at:
-                last_updated = ensure_timezone_aware(train.last_updated_at)
-                if last_updated < cutoff_time:
-                    trains.append(train)
+        trains = list(result.scalars().all())
 
         scheduled_count = 0
         for train in trains:
@@ -1385,12 +1438,18 @@ class SchedulerService:
                 )
                 scheduled_count += 1
 
-        # Log batch summary instead of individual trains
-        if scheduled_count > 0:
+        # Log batch summary instead of individual trains. `backlog` is the
+        # number of stale in-flight trains this tick could not reach; a
+        # persistently non-zero value means journey_update_batch_size is too
+        # small for the fleet and trains are being refreshed slower than
+        # journey_update_interval_minutes.
+        if scheduled_count > 0 or eligible_count > 0:
             logger.info(
                 "scheduler.periodic.scheduled",
                 count=scheduled_count,
-                total_active_trains=len(trains),
+                eligible_count=eligible_count,
+                batch_size=batch_size,
+                backlog=max(0, eligible_count - len(trains)),
             )
 
     async def collect_journey(self, train_id: str, journey_date: datetime) -> None:
@@ -3190,26 +3249,58 @@ class SchedulerService:
                 if task:
                     self._running_tasks[task_id] = task
 
-                from trackrat.services.gtfs import GTFSService
+                from trackrat.services.gtfs import (
+                    GTFS_STALE_FEED_HOURS,
+                    GTFSRefreshOutcome,
+                    GTFSService,
+                )
 
                 gtfs_service = GTFSService()
 
-                results: dict[str, bool] = {}
+                results: dict[str, GTFSRefreshOutcome] = {}
                 async with get_session() as db:
-                    for source in self.GTFS_SOURCES:
-                        if self.settings.is_data_source_disabled(source):
-                            continue
-                        result = await gtfs_service.refresh_feed(db, source)
-                        results[source] = result
+                    active_sources = [
+                        s
+                        for s in self.GTFS_SOURCES
+                        if not self.settings.is_data_source_disabled(s)
+                    ]
+                    for source in active_sources:
+                        outcome = await gtfs_service.refresh_feed(db, source)
+                        results[source] = outcome
                         logger.info(
                             f"gtfs_{source.lower()}_refresh_complete",
-                            refreshed=result,
+                            refreshed=outcome.refreshed,
+                            outcome=outcome.value,
                         )
 
-                logger.info(
-                    "gtfs_feed_refresh_complete",
-                    **{f"{s.lower()}_refreshed": r for s, r in results.items()},
-                )
+                    # The durable check. A source can report a plausible-looking
+                    # outcome every night and still be serving a frozen schedule
+                    # — SUBWAY and MNR did exactly that for thirteen nights
+                    # (issue #1646). Age of the last successful parse is the
+                    # only signal that cannot be satisfied by a well-behaved
+                    # failure, so it is what alarms.
+                    stale = [
+                        s
+                        for s in await gtfs_service.get_feed_statuses(
+                            db, active_sources
+                        )
+                        if s.is_stale
+                    ]
+
+                failed = {s: o.value for s, o in results.items() if o.is_failure}
+                per_source = {
+                    f"{s.lower()}_refreshed": o.refreshed for s, o in results.items()
+                }
+                if failed or stale:
+                    logger.error(
+                        "gtfs_feed_refresh_complete",
+                        failed_sources=failed,
+                        stale_sources={s.data_source: s.age_hours for s in stale},
+                        stale_after_hours=GTFS_STALE_FEED_HOURS,
+                        **per_source,
+                    )
+                else:
+                    logger.info("gtfs_feed_refresh_complete", **per_source)
 
             except Exception as e:
                 logger.error(
@@ -3273,10 +3364,13 @@ class SchedulerService:
 
                 for source, available in availability.items():
                     if not available:
-                        result = await gtfs_service.refresh_feed(db, source, force=True)
+                        outcome = await gtfs_service.refresh_feed(
+                            db, source, force=True
+                        )
                         logger.info(
                             f"gtfs_{source.lower()}_initial_download_complete",
-                            success=result,
+                            success=outcome.refreshed,
+                            outcome=outcome.value,
                         )
 
         except Exception as e:

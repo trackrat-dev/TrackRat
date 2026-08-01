@@ -105,13 +105,16 @@ usePolling(async (signal) => {
 
 ### Endpoints Used
 1. `GET /trips/search?from={code}&to={code}&limit=50&hide_departed=true&date={YYYY-MM-DD}` (departure/trip list, optional date)
-   - `GET /trains/recent-departures?from={code}&to={code}&window_minutes=120&data_sources={src}&limit={n}` (recently-departed trains for the Route Status timeline; uncached, 30s polling)
+   - `GET /trains/departures?from={code}&to={code}&limit={n}&data_sources={src}&lines={a,b}&hide_departed=true` (station board + Route Status upcoming departures; uncached, 30s polling)
+   - `GET /trains/recent-departures?from={code}&to={code}&window_minutes=120&data_sources={src}&lines={a,b}&limit={n}` (recently-departed trains for the Route Status timeline; uncached, 30s polling)
+   - `lines` scopes a shared-terminal route to specific line codes on the line-detail view; filtered server-side before the limit
 2. `GET /trains/{trainId}?date={YYYY-MM-DD}` (train details, polled every 30s)
 3. `GET /trains/{trainId}/history?days=365&from_station={code}&to_station={code}` (historical performance)
 4. `GET /predictions/track?station_code={code}&train_id={id}&journey_date={date}` (optional, fail-silent)
 5. `GET /predictions/supported-stations` (cached, determines which stations show predictions)
 6. `GET /predictions/delay?train_id={id}&station_code={code}&journey_date={date}` (delay forecast, fail-silent)
-7. `GET /routes/summary?scope=route&from_station={code}&to_station={code}` (optional, fail-silent)
+7. `GET /routes/summary?scope=route&from_station={code}&to_station={code}[&lines={a,b}]` (optional, fail-silent; `lines` scopes the line-detail view)
+   - `GET /routes/summary?scope=train&train_id={id}&from_station={code}&to_station={code}` (train-scoped summary on the details page)
 8. `GET /routes/summary?scope=network[&data_source={src}]` (network-wide summary; optional `data_source` scopes it to one system for the system detail page)
 9. `GET /routes/history?from_station={code}&to_station={code}&data_source={src}&days={n}` (route performance)
 10. `GET /routes/congestion` (network congestion, 60s polling on status page)
@@ -194,7 +197,7 @@ webpage_v2/
 
 - `/` - Landing page (marketing, open-source info)
 - `/departures` - Trip selection (origin + destination pickers, last route restore)
-- `/trains/:from/:to` - Train list for route (filter, summary, date picker, alerts)
+- `/trains/:from/:to` - Train list for route (filter, summary, date picker, alerts). Optional `?data_source&lines` scopes the board to one line (built by `buildDeparturesUrl`): the scoped form fetches `/trains/departures` with a server-side `lines` filter instead of the combined `/trips/search`, and scopes the summary and service alerts to match. Without `lines` the behaviour is unchanged.
 - `/train/:trainId/:from?/:to?` - Train details (predictions, history, alerts)
 - `/station/:code` - Single-station details view
 - `/trip` - Multi-leg trip details view (transfer connections); compact URL `?date&legs&walk` with `legs` as `dataSource:trainId:boardingCode:alightingCode` (legacy `?trip=<JSON>` still parsed)
@@ -223,9 +226,8 @@ npm run preview    # Preview production build locally
 ```
 
 ### Deployment
-- **Manual**: Run `./scripts/deploy-webpage.sh` from repo root
-- **Dry run**: `./scripts/deploy-webpage.sh --dry-run` to preview changes
-- **Target**: `gs://trackrat-webpage-production/` → `https://trackrat.net`
+- **Automatic**: Cloud Build triggers (`infra_v2/terraform-webpage/`) fire on push when `webpage_v2/` changes — `main` → `gs://trackrat-webpage-staging` (`staging.trackrat.net`), `production` → `gs://trackrat-webpage-production` (`trackrat.net` / `www.trackrat.net`)
+- **Manual**: `./scripts/deploy-webpage.sh [staging|production] [--bucket=<name>] [--dry-run]` from repo root (defaults to production)
 - **Cache**: `index.html` and service worker get `no-cache`; hashed assets get `max-age=1yr`
 
 ## Common Patterns
