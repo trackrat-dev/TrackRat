@@ -34,9 +34,9 @@ variable "domain" {
 }
 
 variable "machine_type" {
-  description = "GCE machine type for production. t2d-standard-2 = 2 vCPU / 8 GB on the Tau/AMD Milan family: dedicated physical cores give consistent per-core latency for the FastAPI + colocated Postgres. Reverted from e2-custom-2-4096, whose oversubscribed, variable-platform vCPUs regressed API responsiveness. T2D is fixed-shape (no custom RAM), so RAM is 8 GB though only ~1.1 GB is used. Staging overrides this to t2d-standard-1 via local.machine_type (see main.tf)."
+  description = "GCE machine type for BOTH staging and production - the two environments are kept in sync on resources, and differ only in provisioning model (staging SPOT, production on-demand; see local.use_spot_vm in main.tf). t2d-standard-1 = 1 vCPU / 4 GB on the Tau/AMD Milan family: dedicated physical cores give consistent per-core latency for the FastAPI + colocated Postgres, unlike the oversubscribed e2-custom-2-4096 that regressed API responsiveness and was reverted. RAM is ample (~1.0 GB used of 4 GB). CPU is the tight dimension: on the previous t2d-standard-2, production measured a 24h mean of 35% and a peak of 54% of 2 vCPU - that peak is ~1.07 vCPU, i.e. above a single core, so bursts (scheduler collection ticks) can saturate this size. If p99 latency or scheduler task timeouts regress, move back to t2d-standard-2; that restores 2 vCPU for both environments."
   type        = string
-  default     = "t2d-standard-2"
+  default     = "t2d-standard-1"
 }
 
 variable "consolidate_api_lb" {

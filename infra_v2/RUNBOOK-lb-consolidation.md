@@ -227,6 +227,8 @@ clients rely on it until preload propagates.
   then point apiv2 DNS back. The **new IP will differ** from 34.102.163.196 —
   cutover again via DNS. Prefer fixing forward on the shared LB.
 - **VM**: set `machine_type` back to `t2d-standard-2` and deploy (another MIG roll).
+  Note this variable is now shared by staging and production, so a revert moves
+  both environments (that is intentional — see `infra_v2/README.md`).
 - **Phase 5 / preload**: effectively irreversible on browser timescales — serve
   `max-age=0` and request removal at hstspreload.org, expect months. This is why
   :80 stays until preload is certain.
