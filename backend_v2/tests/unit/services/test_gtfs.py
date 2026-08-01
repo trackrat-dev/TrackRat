@@ -618,6 +618,34 @@ class TestNJTLineCodeMapping:
             assert len(api_code) == 2, f"{gtfs_code} -> {api_code} should be 2 chars"
 
 
+class TestGtfsRouteInfoResolution:
+    """Tests for shared scheduled-departure and train-detail line metadata."""
+
+    def test_unmapped_route_code_respects_api_length(self):
+        line_code, line_name, line_color = GTFSService._route_info_for_gtfs_route(
+            data_source="AMTRAK",
+            gtfs_route_id="unknown",
+            route_short="X" * 25,
+            route_long="Unmapped route",
+            route_color="004B87",
+        )
+
+        assert line_code == "X" * 20
+        assert line_name == "Unmapped route"
+        assert line_color == "#004B87"
+
+    def test_metra_uses_canonical_code_without_legacy_truncation(self):
+        line_code, _, _ = GTFSService._route_info_for_gtfs_route(
+            data_source="METRA",
+            gtfs_route_id="UP-NW",
+            route_short="UP-NW",
+            route_long="Union Pacific Northwest",
+            route_color="00558A",
+        )
+
+        assert line_code == "METRA-UP-NW"
+
+
 class TestEffectiveTrainId:
     """Tests for effective_train_id logic in GTFS departures.
 
@@ -1446,8 +1474,8 @@ class TestGetStaticStopTimesLirrFallback:
         assert find_calls[1] == ("9999", "train_id")
 
 
-class TestGetScheduledDeparturesTimeFrom:
-    """Tests for `time_from` filtering in get_scheduled_departures().
+class TestGetScheduledDeparturesFilters:
+    """Tests for SQL-bound filtering in get_scheduled_departures().
 
     High-frequency providers like SUBWAY would otherwise return only the
     overnight sliver of the day because the per-source SQL caps at 250 rows
@@ -1483,8 +1511,33 @@ class TestGetScheduledDeparturesTimeFrom:
             )
 
         assert query_mock.await_count == 1
-        # time_from is the 7th positional arg
-        assert query_mock.await_args.args[6] == cutoff
+        assert query_mock.await_args.kwargs["time_from"] == cutoff
+
+    @pytest.mark.asyncio
+    async def test_line_codes_passed_to_query(self):
+        """Canonical line codes must reach the query that owns the SQL limit."""
+        target_date = date(2026, 4, 23)
+        mock_db = AsyncMock()
+        query_mock = AsyncMock(return_value=[])
+
+        with (
+            patch.object(
+                self.service, "get_active_service_ids", return_value={"WD_SUBWAY"}
+            ),
+            patch.object(self.service, "_query_departures_for_source", query_mock),
+        ):
+            await self.service.get_scheduled_departures(
+                db=mock_db,
+                from_station="S127",
+                to_station=None,
+                target_date=target_date,
+                limit=5,
+                data_sources=["SUBWAY"],
+                line_codes=["4", "5"],
+            )
+
+        assert query_mock.await_count == 1
+        assert query_mock.await_args.kwargs["line_codes"] == ["4", "5"]
 
     def test_gtfs_time_cutoff_returns_none_before_target_midnight(self):
         """Cutoff at or before target_date midnight means no SQL filter is needed."""

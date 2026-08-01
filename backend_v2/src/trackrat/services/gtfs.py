@@ -21,9 +21,18 @@ from structlog import get_logger
 
 from trackrat.config.stations import (
     expand_station_codes,
+    get_bart_route_info,
+    get_lirr_route_info,
+    get_mbta_route_info,
+    get_metra_route_info,
+    get_mnr_route_info,
     get_patco_route_info,
     get_path_route_info,
+    get_septa_metro_route_info,
+    get_septa_rr_route_info,
     get_station_name,
+    get_subway_route_info,
+    get_wmata_route_info,
     map_gtfs_stop_to_station_code,
 )
 from trackrat.models.api import (
@@ -154,6 +163,36 @@ NJT_LINE_CODE_MAPPING = {
     "ATLC": "AC",
     # Princeton Shuttle (Dinky)
     "PRIN": "PR",
+}
+
+_ROUTE_INFO_RESOLVERS = {
+    "PATH": get_path_route_info,
+    "PATCO": get_patco_route_info,
+    "LIRR": get_lirr_route_info,
+    "MNR": get_mnr_route_info,
+    "SUBWAY": get_subway_route_info,
+    "METRA": get_metra_route_info,
+    "WMATA": get_wmata_route_info,
+    "BART": get_bart_route_info,
+    "MBTA": get_mbta_route_info,
+    "SEPTA_RR": get_septa_rr_route_info,
+    "SEPTA_METRO": get_septa_metro_route_info,
+}
+
+_FALLBACK_LINE_CODES = {
+    "PATH": "PATH",
+    "PATCO": "PATCO",
+    "LIRR": "LIRR",
+    "MNR": "MNR",
+    "WMATA": "WMATA",
+}
+
+_FALLBACK_LINE_NAMES = {
+    "PATCO": "PATCO Speedline",
+    "MNR": "Metro-North",
+    "WMATA": "DC Metro",
+    "SEPTA_RR": "SEPTA",
+    "SEPTA_METRO": "SEPTA",
 }
 
 # Sources whose discovery upgrades a SCHEDULED journey to OBSERVED *in place*,
@@ -1418,6 +1457,7 @@ class GTFSService:
         limit: int = 50,
         data_sources: list[str] | None = None,
         time_from: datetime | None = None,
+        line_codes: list[str] | None = None,
     ) -> DeparturesResponse:
         """Get scheduled departures from GTFS data for a future date.
 
@@ -1432,6 +1472,8 @@ class GTFSService:
                 Applied after sort, before limit — critical for high-frequency
                 providers (e.g. SUBWAY) whose first `limit` trains would
                 otherwise all fall inside the overnight window.
+            line_codes: If provided, only return these canonical line codes.
+                Applied in SQL before the per-source result cap.
 
         Returns:
             DeparturesResponse with scheduled trains
@@ -1471,15 +1513,24 @@ class GTFSService:
 
         for data_source, service_ids in all_services.items():
             source_departures = await self._query_departures_for_source(
-                db,
-                data_source,
-                service_ids,
-                from_station,
-                to_station,
-                target_date,
-                time_from,
+                db=db,
+                data_source=data_source,
+                service_ids=service_ids,
+                from_station=from_station,
+                to_station=to_station,
+                target_date=target_date,
+                time_from=time_from,
+                line_codes=line_codes,
             )
             departures.extend(source_departures)
+
+        if line_codes:
+            requested_line_codes = set(line_codes)
+            departures = [
+                departure
+                for departure in departures
+                if departure.line.code in requested_line_codes
+            ]
 
         # Sort by departure time
         # Use timezone-aware constant for safe comparison with ET-localized times
@@ -1517,6 +1568,7 @@ class GTFSService:
         to_station: str | None,
         target_date: date,
         time_from: datetime | None = None,
+        line_codes: list[str] | None = None,
     ) -> list[TrainDeparture]:
         """Query GTFS tables for departures from a specific data source."""
         departures: list[TrainDeparture] = []
@@ -1536,6 +1588,33 @@ class GTFSService:
         ]
         if time_from_cutoff is not None:
             where_clauses.append(GTFSStopTime.departure_time >= time_from_cutoff)
+
+        if line_codes:
+            requested_line_codes = set(line_codes)
+            routes_result = await db.execute(
+                select(
+                    GTFSRoute.id,
+                    GTFSRoute.route_id,
+                    GTFSRoute.route_short_name,
+                    GTFSRoute.route_long_name,
+                    GTFSRoute.route_color,
+                ).where(GTFSRoute.data_source == data_source)
+            )
+            matching_route_ids = [
+                route.id
+                for route in routes_result
+                if self._route_info_for_gtfs_route(
+                    data_source=data_source,
+                    gtfs_route_id=route.route_id,
+                    route_short=route.route_short_name,
+                    route_long=route.route_long_name,
+                    route_color=route.route_color,
+                )[0]
+                in requested_line_codes
+            ]
+            if not matching_route_ids:
+                return []
+            where_clauses.append(GTFSTrip.route_id.in_(matching_route_ids))
 
         # Find trips that have the from_station
         # We need to join trips -> stop_times to find matching trips
@@ -1621,140 +1700,13 @@ class GTFSService:
             if not departure_dt:
                 continue
 
-            # Build the departure response
-            # PATH and PATCO routes need special handling for proper line codes/colors
-            if data_source == "PATH":
-                path_route_info = get_path_route_info(gtfs_route_id)
-                if path_route_info:
-                    line_code, line_name, line_color = path_route_info
-                    # Ensure color has # prefix
-                    if not line_color.startswith("#"):
-                        line_color = f"#{line_color}"
-                else:
-                    # Fallback for unknown PATH routes
-                    line_code = route_short or "PATH"
-                    line_name = route_long or route_short or "PATH"
-                    line_color = (
-                        f"#{route_color}"
-                        if route_color
-                        else DEFAULT_LINE_COLORS.get(data_source, "#666666")
-                    )
-            elif data_source == "PATCO":
-                patco_route_info = get_patco_route_info(gtfs_route_id)
-                if patco_route_info:
-                    line_code, line_name, line_color = patco_route_info
-                    # Ensure color has # prefix
-                    if not line_color.startswith("#"):
-                        line_color = f"#{line_color}"
-                else:
-                    # Fallback for unknown PATCO routes
-                    line_code = route_short or "PATCO"
-                    line_name = route_long or route_short or "PATCO Speedline"
-                    line_color = (
-                        f"#{route_color}"
-                        if route_color
-                        else DEFAULT_LINE_COLORS.get(data_source, "#BC0035")
-                    )
-            elif data_source == "LIRR":
-                from trackrat.config.stations import get_lirr_route_info
-
-                lirr_route_info = get_lirr_route_info(gtfs_route_id)
-                if lirr_route_info:
-                    line_code, line_name, line_color = lirr_route_info
-                    if not line_color.startswith("#"):
-                        line_color = f"#{line_color}"
-                else:
-                    line_code = route_short or "LIRR"
-                    line_name = route_long or route_short or "LIRR"
-                    line_color = (
-                        f"#{route_color}"
-                        if route_color
-                        else DEFAULT_LINE_COLORS.get(data_source, "#0039A6")
-                    )
-            elif data_source == "MNR":
-                from trackrat.config.stations import get_mnr_route_info
-
-                mnr_route_info = get_mnr_route_info(gtfs_route_id)
-                if mnr_route_info:
-                    line_code, line_name, line_color = mnr_route_info
-                    if not line_color.startswith("#"):
-                        line_color = f"#{line_color}"
-                else:
-                    line_code = route_short or "MNR"
-                    line_name = route_long or route_short or "Metro-North"
-                    line_color = (
-                        f"#{route_color}"
-                        if route_color
-                        else DEFAULT_LINE_COLORS.get(data_source, "#0039A6")
-                    )
-            elif data_source == "SUBWAY":
-                from trackrat.config.stations import get_subway_route_info
-
-                subway_route_info = get_subway_route_info(gtfs_route_id)
-                if subway_route_info:
-                    line_code, line_name, line_color = subway_route_info
-                    if not line_color.startswith("#"):
-                        line_color = f"#{line_color}"
-                else:
-                    line_code = route_short or f"SUBWAY-{gtfs_route_id}"
-                    line_name = route_long or route_short or f"Subway {gtfs_route_id}"
-                    line_color = (
-                        f"#{route_color}"
-                        if route_color
-                        else DEFAULT_LINE_COLORS.get(data_source, "#0039A6")
-                    )
-            elif data_source == "WMATA":
-                from trackrat.config.stations import get_wmata_route_info
-
-                wmata_route_info = get_wmata_route_info(gtfs_route_id)
-                if wmata_route_info:
-                    line_code, line_name, line_color = wmata_route_info
-                    if not line_color.startswith("#"):
-                        line_color = f"#{line_color}"
-                else:
-                    line_code = route_short or "WMATA"
-                    line_name = route_long or route_short or "DC Metro"
-                    line_color = (
-                        f"#{route_color}"
-                        if route_color
-                        else DEFAULT_LINE_COLORS.get(data_source, "#004E8C")
-                    )
-            elif data_source in ("SEPTA_RR", "SEPTA_METRO"):
-                from trackrat.config.stations import (
-                    get_septa_metro_route_info,
-                    get_septa_rr_route_info,
-                )
-
-                resolver = (
-                    get_septa_rr_route_info
-                    if data_source == "SEPTA_RR"
-                    else get_septa_metro_route_info
-                )
-                septa_route_info = resolver(gtfs_route_id)
-                if septa_route_info:
-                    line_code, line_name, line_color = septa_route_info
-                    if not line_color.startswith("#"):
-                        line_color = f"#{line_color}"
-                else:
-                    line_code = route_short or f"SEPTA-{gtfs_route_id}"
-                    line_name = route_long or route_short or "SEPTA"
-                    line_color = (
-                        f"#{route_color}"
-                        if route_color
-                        else DEFAULT_LINE_COLORS.get(data_source, "#4F758B")
-                    )
-            else:
-                # For NJT, map GTFS route_short_name to API line codes for deduplication
-                if data_source == "NJT" and route_short:
-                    line_code = NJT_LINE_CODE_MAPPING.get(route_short, route_short)
-                else:
-                    line_code = route_short or data_source[:2]
-                line_name = route_long or route_short or data_source
-                line_color = (
-                    f"#{route_color}"
-                    if route_color
-                    else DEFAULT_LINE_COLORS.get(data_source, "#666666")
-                )
+            line_code, line_name, line_color = self._route_info_for_gtfs_route(
+                data_source=data_source,
+                gtfs_route_id=gtfs_route_id,
+                route_short=route_short,
+                route_long=route_long,
+                route_color=route_color,
+            )
 
             # Determine effective train_id:
             # - If train_id is set (from trip_short_name, e.g., Amtrak/NJT), use it
@@ -1795,11 +1747,7 @@ class GTFSService:
             departure = TrainDeparture(
                 train_id=effective_train_id,
                 journey_date=target_date,
-                line=LineInfo(
-                    code=line_code[:10],
-                    name=line_name,
-                    color=line_color,
-                ),
+                line=LineInfo(code=line_code, name=line_name, color=line_color),
                 destination=headsign or "Unknown",
                 departure=StationInfo(
                     code=from_station,
@@ -1840,6 +1788,47 @@ class GTFSService:
             departures.append(departure)
 
         return departures
+
+    @staticmethod
+    def _route_info_for_gtfs_route(
+        *,
+        data_source: str,
+        gtfs_route_id: str,
+        route_short: str | None,
+        route_long: str | None,
+        route_color: str | None,
+    ) -> tuple[str, str, str]:
+        """Resolve a stored GTFS route to canonical code, name, and color."""
+        resolver = _ROUTE_INFO_RESOLVERS.get(data_source)
+        resolved = resolver(gtfs_route_id) if resolver else None
+
+        if resolved:
+            line_code, line_name, line_color = resolved
+        else:
+            if data_source == "NJT" and route_short:
+                line_code = NJT_LINE_CODE_MAPPING.get(route_short, route_short)
+            elif data_source == "SUBWAY":
+                line_code = route_short or f"SUBWAY-{gtfs_route_id}"
+            elif data_source in ("SEPTA_RR", "SEPTA_METRO"):
+                line_code = route_short or f"SEPTA-{gtfs_route_id}"
+            else:
+                line_code = route_short or _FALLBACK_LINE_CODES.get(
+                    data_source, data_source[:2]
+                )
+            line_name = (
+                route_long
+                or route_short
+                or (
+                    f"Subway {gtfs_route_id}"
+                    if data_source == "SUBWAY"
+                    else _FALLBACK_LINE_NAMES.get(data_source, data_source)
+                )
+            )
+            line_color = route_color or DEFAULT_LINE_COLORS.get(data_source, "#666666")
+
+        if not line_color.startswith("#"):
+            line_color = f"#{line_color}"
+        return line_code[:20], line_name, line_color
 
     async def is_feed_available(self, db: AsyncSession, data_source: str) -> bool:
         """Check if GTFS data is available for a data source."""
@@ -2119,84 +2108,13 @@ class GTFSService:
         ):
             effective_train_id = f"S{route_short or 'X'}-{effective_train_id}"
 
-        # Build line info
-        # PATH and PATCO routes need special handling for proper line codes/colors
-        if matched_source == "PATH":
-            path_route_info = get_path_route_info(gtfs_route_id)
-            if path_route_info:
-                line_code, line_name, line_color = path_route_info
-                # Ensure color has # prefix
-                if not line_color.startswith("#"):
-                    line_color = f"#{line_color}"
-            else:
-                # Fallback for unknown PATH routes
-                line_code = route_short or "PATH"
-                line_name = route_long or route_short or "PATH"
-                line_color = f"#{route_color}" if route_color else "#666666"
-        elif matched_source == "PATCO":
-            patco_route_info = get_patco_route_info(gtfs_route_id)
-            if patco_route_info:
-                line_code, line_name, line_color = patco_route_info
-                # Ensure color has # prefix
-                if not line_color.startswith("#"):
-                    line_color = f"#{line_color}"
-            else:
-                # Fallback for unknown PATCO routes
-                line_code = route_short or "PATCO"
-                line_name = route_long or route_short or "PATCO Speedline"
-                line_color = f"#{route_color}" if route_color else "#BC0035"
-        elif matched_source == "LIRR":
-            from trackrat.config.stations import get_lirr_route_info
-
-            lirr_route_info = get_lirr_route_info(gtfs_route_id)
-            if lirr_route_info:
-                line_code, line_name, line_color = lirr_route_info
-                if not line_color.startswith("#"):
-                    line_color = f"#{line_color}"
-            else:
-                line_code = route_short or "LIRR"
-                line_name = route_long or route_short or "LIRR"
-                line_color = f"#{route_color}" if route_color else "#0039A6"
-        elif matched_source == "MNR":
-            from trackrat.config.stations import get_mnr_route_info
-
-            mnr_route_info = get_mnr_route_info(gtfs_route_id)
-            if mnr_route_info:
-                line_code, line_name, line_color = mnr_route_info
-                if not line_color.startswith("#"):
-                    line_color = f"#{line_color}"
-            else:
-                line_code = route_short or "MNR"
-                line_name = route_long or route_short or "Metro-North"
-                line_color = f"#{route_color}" if route_color else "#0039A6"
-        elif matched_source in ("SEPTA_RR", "SEPTA_METRO"):
-            from trackrat.config.stations import (
-                get_septa_metro_route_info,
-                get_septa_rr_route_info,
-            )
-
-            resolver = (
-                get_septa_rr_route_info
-                if matched_source == "SEPTA_RR"
-                else get_septa_metro_route_info
-            )
-            septa_route_info = resolver(gtfs_route_id)
-            if septa_route_info:
-                line_code, line_name, line_color = septa_route_info
-                if not line_color.startswith("#"):
-                    line_color = f"#{line_color}"
-            else:
-                line_code = route_short or f"SEPTA-{gtfs_route_id}"
-                line_name = route_long or route_short or "SEPTA"
-                line_color = f"#{route_color}" if route_color else "#4F758B"
-        else:
-            # For NJT, map GTFS route_short_name to API line codes for consistency
-            if matched_source == "NJT" and route_short:
-                line_code = NJT_LINE_CODE_MAPPING.get(route_short, route_short)
-            else:
-                line_code = route_short or matched_source[:2]
-            line_name = route_long or route_short or matched_source
-            line_color = f"#{route_color}" if route_color else "#666666"
+        line_code, line_name, line_color = self._route_info_for_gtfs_route(
+            data_source=matched_source,
+            gtfs_route_id=gtfs_route_id,
+            route_short=route_short,
+            route_long=route_long,
+            route_color=route_color,
+        )
 
         # Get origin and destination from stops
         origin_stop = stops[0]
@@ -2216,11 +2134,7 @@ class GTFSService:
         return TrainDetails(
             train_id=effective_train_id,
             journey_date=target_date,
-            line=LineInfo(
-                code=line_code[:10],
-                name=line_name,
-                color=line_color,
-            ),
+            line=LineInfo(code=line_code, name=line_name, color=line_color),
             route=RouteInfo(
                 origin=origin_stop.station.name,
                 destination=headsign or dest_stop.station.name,
