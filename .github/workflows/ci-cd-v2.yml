@@ -121,7 +121,7 @@ jobs:
   # Webpage Build Test
   # ============================================
   build-webpage:
-    name: Webpage Build
+    name: Webpage Test & Build
     runs-on: ubuntu-latest
 
     steps:
@@ -138,6 +138,10 @@ jobs:
       - name: Install dependencies
         working-directory: webpage_v2
         run: npm ci
+
+      - name: Run tests
+        working-directory: webpage_v2
+        run: npm test
 
       - name: Build
         working-directory: webpage_v2
@@ -179,11 +183,11 @@ jobs:
     steps:
       - name: Check results
         run: |
-          if [[ "${{ needs.test-backend.result }}" == "failure" ]] || \
-             [[ "${{ needs.validate-terraform.result }}" == "failure" ]] || \
-             [[ "${{ needs.build-docker.result }}" == "failure" ]] || \
-             [[ "${{ needs.build-webpage.result }}" == "failure" ]]; then
-            echo "::error::One or more checks failed"
+          if [[ "${{ needs.test-backend.result }}" != "success" ]] || \
+             [[ "${{ needs.validate-terraform.result }}" != "success" ]] || \
+             [[ "${{ needs.build-docker.result }}" != "success" ]] || \
+             [[ "${{ needs.build-webpage.result }}" != "success" ]]; then
+            echo "::error::One or more checks did not succeed"
             exit 1
           fi
           echo "All checks passed!"
