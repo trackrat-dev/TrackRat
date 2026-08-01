@@ -14,7 +14,7 @@ backfills any passed stops when the trip is present in the schedule.
 
 import asyncio
 import logging
-from datetime import timedelta
+from datetime import date, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -30,6 +30,7 @@ from trackrat.collectors.mta_common import (
     update_stop_departure_status,
 )
 from trackrat.collectors.septa_common import (
+    SeptaFeedFetchError,
     mark_journey_present,
     reconcile_journey_omissions,
 )
@@ -52,6 +53,16 @@ _FEED_FETCH_TIMEOUT_SECONDS = 60.0
 def _generate_train_id(trip_id: str) -> str:
     """Metro GTFS trip_ids are unique numeric ids; use them directly."""
     return trip_id
+
+
+def _service_date(arrivals: list[SeptaMetroArrival]) -> date:
+    """Service day of a Metro trip: the ET date of its earliest fed arrival.
+
+    Single-sourced because presence reconciliation and journey lookup must agree
+    on the date, or a trip in the feed would be reconciled under a key no journey
+    row uses and then struck as omitted.
+    """
+    return min(a.arrival_time for a in arrivals).astimezone(ET).date()
 
 
 class SeptaMetroCollector:
@@ -86,12 +97,12 @@ class SeptaMetroCollector:
                     self.client.get_all_arrivals(use_cache=False),
                     timeout=_FEED_FETCH_TIMEOUT_SECONDS,
                 )
-            except TimeoutError:
+            except TimeoutError as e:
                 logger.warning(
                     "septa_metro_feed_fetch_timed_out | timeout_s=%.1f",
                     _FEED_FETCH_TIMEOUT_SECONDS,
                 )
-                return stats
+                raise SeptaFeedFetchError("SEPTA Metro feed fetch timed out") from e
 
             stats["total_arrivals"] = len(arrivals)
             if not arrivals:
@@ -102,12 +113,7 @@ class SeptaMetroCollector:
             for arrival in arrivals:
                 trips.setdefault(arrival.trip_id, []).append(arrival)
             present_journey_keys = {
-                (
-                    _generate_train_id(trip_id),
-                    min(trip_arrivals, key=lambda item: item.arrival_time)
-                    .arrival_time.astimezone(ET)
-                    .date(),
-                )
+                (_generate_train_id(trip_id), _service_date(trip_arrivals))
                 for trip_id, trip_arrivals in trips.items()
             }
             logger.info(f"Found {len(trips)} SEPTA Metro trips in GTFS-RT feed")
@@ -157,6 +163,14 @@ class SeptaMetroCollector:
                 f"{stats['updated']} updated, {stats['expired']} expired, "
                 f"{stats['errors']} errors"
             )
+        except SeptaFeedFetchError as e:
+            # No valid snapshot: nothing was reconciled, and the scheduler must not
+            # stamp this run successful or a dead feed reads as healthy (#1633).
+            logger.error(
+                f"SEPTA Metro collection aborted, no usable feed snapshot: {e}"
+            )
+            await session.rollback()
+            raise
         except Exception as e:
             logger.error(f"SEPTA Metro collection failed: {e}")
             await session.rollback()
@@ -186,7 +200,7 @@ class SeptaMetroCollector:
         origin_code = first_arrival.station_code
         terminal_code = last_arrival.station_code
         train_id = _generate_train_id(trip_id)
-        journey_date = first_arrival.arrival_time.astimezone(ET).date()
+        journey_date = _service_date(arrivals)
 
         existing = await session.execute(
             select(TrainJourney)

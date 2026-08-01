@@ -38,6 +38,16 @@ nonempty whole-system snapshot. HTTP, network, and protobuf failures and
 globally empty snapshots are not evidence that every active trip disappeared.
 Feed presence is recorded before per-trip enrichment so a local processing
 failure cannot turn a trip that was visibly present into an omission strike.
+Regional Rail trips carry no service date of their own, so presence is keyed on
+the date resolved from the GTFS static schedule; only when that resolution fails
+is the strike suppressed for the train number across every recent service day.
+
+A failed fetch (`SeptaFeedFetchError`, including the collector's own fetch
+timeout) propagates out of `collect()` after rollback rather than being folded
+into `stats["errors"]`. Swallowing it would let `run_with_freshness_check` stamp
+`last_successful_run` on a run that never saw the provider, so a dead SEPTA feed
+would read as healthy — the same observability hole closed for the other
+freshness-wrapped tasks in #1507.
 
 Known open gaps: the NJT `is_cancelled` clearer (#1498) and the NJT
 silent-cancellation *setter* — `JourneyCollector._reconcile_unobserved_trains`
