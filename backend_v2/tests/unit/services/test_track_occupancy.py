@@ -44,6 +44,7 @@ async def _seed_stop(
     actual_arrival: datetime | None = None,
     has_departed_station: bool = False,
     is_cancelled: bool = False,
+    origin_station_code: str = "WAS",
     terminal_station_code: str = "BOS",
     journey_date: datetime | None = None,
 ) -> None:
@@ -51,7 +52,9 @@ async def _seed_stop(
 
     Pass terminal_station_code=STATION to make the stop a terminal stop
     (the train terminates at NY Penn); the default "BOS" makes it a
-    through/origin stop.
+    through/origin stop. Pass origin_station_code=terminal_station_code=STATION
+    to model an NJT discovery/schedule placeholder journey (single stop at the
+    board station, terminal not yet rewritten by full collection).
     """
     now = now_et()
     journey = TrainJourney(
@@ -59,7 +62,7 @@ async def _seed_stop(
         journey_date=(journey_date or now).date(),
         line_code="AM" if data_source == "AMTRAK" else "NE",
         destination="Test Destination",
-        origin_station_code="WAS",
+        origin_station_code=origin_station_code,
         terminal_station_code=terminal_station_code,
         data_source=data_source,
         scheduled_departure=scheduled_departure or scheduled_arrival or now,
@@ -262,6 +265,76 @@ async def test_old_terminated_arrival_excluded(db_session: AsyncSession) -> None
         terminal_station_code=STATION,
     )
     assert await _occupied(db_session) == set()
+
+
+@pytest.mark.asyncio
+async def test_njt_placeholder_boarding_train_included(
+    db_session: AsyncSession,
+) -> None:
+    """Regression (#1677 review): NJT discovery/schedule journeys carry a
+    placeholder terminal_station_code equal to the board station (and origin)
+    until full collection rewrites it — and that single stop is exactly the
+    one carrying a track. It must take the departure branch (the train is
+    boarding), not the terminal-arrival branch, which would read the track
+    as free until the arrival time passed."""
+    now = now_et()
+    await _seed_stop(
+        db_session,
+        "3902",
+        "20",
+        data_source="NJT",
+        scheduled_departure=now + timedelta(minutes=5),
+        scheduled_arrival=now + timedelta(minutes=5),
+        origin_station_code=STATION,
+        terminal_station_code=STATION,
+    )
+    assert await _occupied(db_session) == {"20"}
+
+
+@pytest.mark.asyncio
+async def test_njt_placeholder_departed_train_excluded(
+    db_session: AsyncSession,
+) -> None:
+    """Regression (#1677 review): once a placeholder journey's train departs,
+    has_departed_station gates it out of the departure branch. The
+    terminal-arrival branch (which deliberately ignores that flag) must not
+    resurrect the track as occupied for a 20-minute phantom dwell."""
+    now = now_et()
+    await _seed_stop(
+        db_session,
+        "3903",
+        "21",
+        data_source="NJT",
+        scheduled_departure=now - timedelta(minutes=5),
+        scheduled_arrival=now - timedelta(minutes=5),
+        has_departed_station=True,
+        origin_station_code=STATION,
+        terminal_station_code=STATION,
+    )
+    assert await _occupied(db_session) == set()
+
+
+@pytest.mark.asyncio
+async def test_njt_terminal_turnaround_departure_included(
+    db_session: AsyncSession,
+) -> None:
+    """Regression (#1677 review): NJT journey collection can persist the
+    terminal's later turnaround DEP_TIME into scheduled_departure (the #1492
+    family). A train dwelling after arrival must stay occupied even when that
+    turnaround departure sits beyond the pre-filter's +1h
+    scheduled_departure bound."""
+    now = now_et()
+    await _seed_stop(
+        db_session,
+        "3904",
+        "22",
+        data_source="NJT",
+        scheduled_arrival=now - timedelta(minutes=5),
+        actual_arrival=now - timedelta(minutes=4),
+        scheduled_departure=now + timedelta(minutes=70),
+        terminal_station_code=STATION,
+    )
+    assert await _occupied(db_session) == {"22"}
 
 
 @pytest.mark.asyncio

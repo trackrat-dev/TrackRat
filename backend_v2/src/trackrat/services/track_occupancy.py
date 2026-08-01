@@ -135,8 +135,20 @@ class TrackOccupancyService:
         # train arrives at its terminal (mta_common.update_stop_departure_status
         # paths A/B), so that flag cannot gate terminal dwell, and a terminal
         # row's departure fields don't describe when its track frees.
-        is_terminal_stop = (
-            JourneyStop.station_code == TrainJourney.terminal_station_code
+        #
+        # Guarded against placeholder journeys for the same reason as
+        # utils/train.terminal_stop_index: NJT discovery/schedule create
+        # single-stop journeys whose terminal_station_code (and origin) is the
+        # board station until full collection rewrites it — and that stop is
+        # exactly the one carrying a track. Bare equality would route it to
+        # the arrival branch, reading the track as free while the train
+        # boards and as occupied for a dwell window after it departs. No real
+        # journey has origin == terminal, so the inequality confines the
+        # arrival branch to genuine terminals; placeholder rows take the
+        # (has_departed_station-gated) departure branch instead.
+        is_terminal_stop = and_(
+            JourneyStop.station_code == TrainJourney.terminal_station_code,
+            TrainJourney.origin_station_code != TrainJourney.terminal_station_code,
         )
 
         # Live departure estimate, correcting the NJT TIME/DEP_TIME inversion
@@ -196,13 +208,22 @@ class TrackOccupancyService:
                     # the station's full retention window and filter by hand —
                     # the #1354 class of multi-minute scan. journey_date prunes
                     # partitions (any train on a track now began its journey
-                    # within the last 2 days, including overnight runs), and
-                    # the scheduled_departure disjunction keeps the time-range
-                    # portion of idx_station_times usable: an occupying row's
-                    # scheduled departure is either near now (a delay beyond
-                    # 24h is stale data; +1h absorbs early terminal arrivals
-                    # whose GTFS scheduled departure equals their arrival) or
-                    # absent entirely (terminating trains without one).
+                    # within the last 2 days, including overnight runs). The
+                    # scheduled_departure disjunction: an occupying row's
+                    # scheduled departure is near now (a delay beyond 24h is
+                    # stale data; +1h absorbs early terminal arrivals whose
+                    # GTFS scheduled departure equals their arrival), absent
+                    # entirely (terminating trains without one), or — the
+                    # terminal-row exemption — an NJT turnaround DEP_TIME that
+                    # journey collection persisted into scheduled_departure
+                    # (the #1492 family), which can sit hours in the future
+                    # while the train dwells; without the exemption a >1h
+                    # layover would hide the occupied track. The two
+                    # time-based arms keep idx_station_times fully usable on
+                    # their own; the join-dependent terminal arm degrades the
+                    # worst case to a station_code-prefix scan over the
+                    # partition-pruned rows — still station-bounded, unlike
+                    # #1354.
                     JourneyStop.journey_date >= now.date() - timedelta(days=2),
                     or_(
                         and_(
@@ -211,6 +232,7 @@ class TrackOccupancyService:
                             JourneyStop.scheduled_departure <= now + timedelta(hours=1),
                         ),
                         JourneyStop.scheduled_departure.is_(None),
+                        is_terminal_stop,
                     ),
                     TrainJourney.is_cancelled.is_not(True),
                     or_(departure_branch, terminal_branch),
