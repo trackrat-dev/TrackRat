@@ -1657,6 +1657,49 @@ class SummaryService:
             metrics=metrics,
         )
 
+    def _format_historical_train_stats(
+        self,
+        train_stats: OnTimeStats,
+        train_display: str,
+    ) -> str:
+        """
+        Format the 30-day history sentence for one specific train.
+
+        `total_count` counts only runs that operated, so the on-time percentage
+        never describes the cancelled ones. Stating it bare alongside a
+        cancellation count reads as covering every run on record — the #1669
+        contradiction. So the wording is scoped when both are present, and the
+        percentage is dropped entirely when nothing ran, since
+        `on_time_percentage` is then a `0.0` fallback rather than a measurement.
+
+        Shared by the on-time and frequency-first bodies so the two cannot
+        drift apart.
+
+        Args:
+            train_stats: 30-day stats for this train
+            train_display: How to name the train, e.g. "Train 3918"
+
+        Returns:
+            The history sentence(s), ready to append to a summary body
+        """
+        cancelled_note = (
+            f" Cancelled {train_stats.cancellation_count} "
+            f"time{'s' if train_stats.cancellation_count != 1 else ''} in past 30 days."
+        )
+        if train_stats.total_count == 0:
+            # Every recorded run was cancelled — no punctuality to report.
+            return f"{train_display} has no completed runs on record.{cancelled_note}"
+        if train_stats.cancellation_count > 0:
+            return (
+                f"{train_display} departed on time on "
+                f"{train_stats.on_time_percentage:.0f}% of the runs that "
+                f"operated.{cancelled_note}"
+            )
+        return (
+            f"{train_display} historically departs on time "
+            f"{train_stats.on_time_percentage:.0f}% of the time."
+        )
+
     def _format_train_headline_body(
         self,
         dep_stats: OnTimeStats,
@@ -1675,6 +1718,14 @@ class SummaryService:
         - Cancellations lead the headline when present
         - Show departure % and arrival delay for similar trains
         - Show historical stats for this specific train
+
+        Cancelled journeys never reach `OnTimeStats.total_count`, which is the
+        on-time percentage's denominator, so any percentage stated here
+        describes only the trains that ran. Where cancellations exist the text
+        says so, and where nothing ran it is omitted rather than reporting the
+        `0.0` fallback as a real statistic (issue #1669). Route scope solves
+        the same problem with its ", the rest " connector, network scope by
+        dropping the figure; this is the train-scope equivalent.
         """
         body_parts = []
 
@@ -1682,10 +1733,19 @@ class SummaryService:
         if cancellations > 0:
             cancel_word = "cancellation" if cancellations == 1 else "cancellations"
             headline = f"{cancellations} {cancel_word}"
-        elif dep_stats.has_data:
+        elif dep_stats.total_count > 0:
             headline = f"Past two hours: {dep_stats.on_time_percentage:.0f}% on time"
-        elif train_stats.has_data:
+        elif train_stats.total_count > 0:
             headline = f"Past two hours: {train_stats.on_time_percentage:.0f}% on time"
+        elif train_stats.cancellation_count > 0:
+            # Only cancellations on record for this train, so there is no
+            # punctuality sample to quote a percentage from.
+            cancel_word = (
+                "cancellation"
+                if train_stats.cancellation_count == 1
+                else "cancellations"
+            )
+            headline = f"{train_stats.cancellation_count} {cancel_word} in past 30 days"
         else:
             return "", ""  # No data
 
@@ -1747,13 +1807,9 @@ class SummaryService:
                 train_display = f"This {destination} train"
             else:
                 train_display = f"Train {train_id}"
-            hist_text = f"{train_display} historically departs on time {train_stats.on_time_percentage:.0f}% of the time."
-            if train_stats.cancellation_count > 0:
-                hist_text += (
-                    f" Cancelled {train_stats.cancellation_count} "
-                    f"time{'s' if train_stats.cancellation_count != 1 else ''} in past 30 days."
-                )
-            body_parts.append(hist_text)
+            body_parts.append(
+                self._format_historical_train_stats(train_stats, train_display)
+            )
 
         return headline, " ".join(body_parts)
 
@@ -1802,13 +1858,9 @@ class SummaryService:
 
         if train_stats.has_data:
             train_display = f"This {destination} train" if destination else "This train"
-            hist_text = f"{train_display} historically departs on time {train_stats.on_time_percentage:.0f}% of the time."
-            if train_stats.cancellation_count > 0:
-                hist_text += (
-                    f" Cancelled {train_stats.cancellation_count} "
-                    f"time{'s' if train_stats.cancellation_count != 1 else ''} in past 30 days."
-                )
-            body_parts.append(hist_text)
+            body_parts.append(
+                self._format_historical_train_stats(train_stats, train_display)
+            )
 
         return headline, " ".join(body_parts)
 
