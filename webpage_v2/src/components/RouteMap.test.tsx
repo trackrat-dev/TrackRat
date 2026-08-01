@@ -4,13 +4,13 @@ import { RouteMap } from './RouteMap';
 import { storageService } from '../services/storage';
 import { Station } from '../types';
 
-// Mock maplibre-gl since jsdom has no WebGL
+// Mock maplibre-gl since jsdom has no WebGL. v6 is a namespace with no default
+// export, so the stub mirrors the named exports the map module touches.
 vi.mock('maplibre-gl', () => ({
-  default: {
-    Map: vi.fn(),
-    NavigationControl: vi.fn(),
-    Marker: vi.fn(),
-  },
+  Map: vi.fn(),
+  NavigationControl: vi.fn(),
+  Marker: vi.fn(),
+  setWorkerUrl: vi.fn(),
 }));
 
 // Mock react-map-gl/maplibre to render children without WebGL

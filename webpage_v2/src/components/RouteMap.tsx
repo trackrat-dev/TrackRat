@@ -1,7 +1,6 @@
 import { useState, useMemo, useCallback } from 'react';
 import Map, { Source, Layer, Marker, NavigationControl } from 'react-map-gl/maplibre';
-import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
+import { maplibregl } from '../utils/maplibre';
 import { Station } from '../types';
 import { getStationByCode } from '../data/stations';
 import { getIntermediateStations } from '../data/routeTopology';
