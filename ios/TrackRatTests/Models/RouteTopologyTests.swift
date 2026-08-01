@@ -330,7 +330,7 @@ class RouteTopologyTests: XCTestCase {
         let ids = Set(routes.map(\.id))
         XCTAssertEqual(ids, routeIDs(forDataSource: "SEPTA_METRO"),
                        "SEPTA Metro must draw its full topology, including NHSL/trolleys")
-        XCTAssertTrue(ids.isSuperset(of: ["SEPTA-B1", "SEPTA-M1"]),
+        XCTAssertTrue(ids.isSuperset(of: ["septa-metro-b1", "septa-metro-m1"]),
                       "Both schedule-only (B1) and real-time (M1) lines must draw, got \(ids.sorted())")
     }
 
@@ -360,5 +360,48 @@ class RouteTopologyTests: XCTestCase {
         expected.formUnion(routeIDs(forDataSource: "NJT"))
         XCTAssertEqual(ids, expected,
                        "Mixed selection draws the union of all selected systems' full topologies")
+    }
+
+    // MARK: - line_id wire contract
+
+    /// `RouteLine.id` is what `APIService.syncAlertSubscriptions` sends as `line_id`, and the
+    /// backend resolves it through `_ROUTES_BY_ID`, keyed on `Route.id` — which `route_topology.py`
+    /// always builds lowercase and hyphen-separated. An id outside that shape matches nothing,
+    /// and the failure is silent: `_get_gtfs_route_ids_for_subscription` returns an empty set and
+    /// `evaluate_service_alerts` skips the subscription without logging. No error reaches the
+    /// client; the alert simply never arrives. SEPTA shipped with `"SEPTA-TRE"`-style ids for
+    /// exactly that reason (#1631), so this guards the whole table rather than one system.
+    func testRouteIDsUseTheBackendLineIDConvention() {
+        let offenders = RouteTopology.allRoutes.map(\.id).filter { id in
+            id.isEmpty || !id.allSatisfy { $0.isLowercase || $0.isNumber || $0 == "-" }
+        }
+        XCTAssertTrue(
+            offenders.isEmpty,
+            "Route ids are sent verbatim as line_id and must match the backend's "
+                + "lowercase-hyphen Route.id: \(offenders.sorted())"
+        )
+    }
+
+    /// The SEPTA ids spelled out. The convention test above passes on any lowercase string;
+    /// these are the exact keys `_build_septa_routes` derives from `SEPTA_RR_ROUTES` /
+    /// `SEPTA_METRO_ROUTES`, so a rename on either side fails here rather than silently
+    /// dropping every SEPTA line subscription.
+    func testSeptaRouteIDsMatchBackendRouteTopology() {
+        XCTAssertEqual(
+            routeIDs(forDataSource: "SEPTA_RR"),
+            ["septa-rr-air", "septa-rr-che", "septa-rr-chw", "septa-rr-cyn",
+             "septa-rr-fox", "septa-rr-lan", "septa-rr-med", "septa-rr-nor",
+             "septa-rr-pao", "septa-rr-tre", "septa-rr-war", "septa-rr-wil",
+             "septa-rr-wtr"],
+            "SEPTA Regional Rail line_ids must be the backend's septa-rr-* keys"
+        )
+        XCTAssertEqual(
+            routeIDs(forDataSource: "SEPTA_METRO"),
+            ["septa-metro-b1", "septa-metro-b2", "septa-metro-b3", "septa-metro-d1",
+             "septa-metro-d2", "septa-metro-g1", "septa-metro-l1", "septa-metro-m1",
+             "septa-metro-t1", "septa-metro-t2", "septa-metro-t3", "septa-metro-t4",
+             "septa-metro-t5"],
+            "SEPTA Metro line_ids must be the backend's septa-metro-* keys"
+        )
     }
 }
