@@ -14,6 +14,7 @@ Upserts into the service_alerts table. Supports alert types:
 
 import hashlib
 import logging
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, cast
 
@@ -29,10 +30,16 @@ from trackrat.config.stations import (
     LIRR_ALERTS_FEED_URL,
     MNR_ALERTS_FEED_URL,
     SEPTA_METRO_ALERTS_FEED_URL,
+    SEPTA_METRO_ROUTE_STATIONS,
     SEPTA_METRO_ROUTES,
+    SEPTA_METRO_STATION_NAMES,
     SEPTA_RR_ALERTS_FEED_URL,
+    SEPTA_RR_ROUTE_STATIONS,
     SEPTA_RR_ROUTES,
+    SEPTA_RR_STATION_NAMES,
     SUBWAY_ALERTS_FEED_URL,
+    map_septa_metro_gtfs_stop,
+    map_septa_rr_gtfs_stop,
 )
 from trackrat.db.engine import get_session
 from trackrat.models.database import ServiceAlert
@@ -60,15 +67,123 @@ _SEPTA_ROUTE_TO_LINE_CODE: dict[str, dict[str, str]] = {
     "SEPTA_METRO": {rid: info[0] for rid, info in SEPTA_METRO_ROUTES.items()},
 }
 
+# Raw SEPTA GTFS stop_id -> our internal station code, per source. A stop_id
+# absent from the map is not a station we serve (the Metro feed's bus stops).
+_SEPTA_STOP_MAPPERS: dict[str, Callable[[str], str | None]] = {
+    "SEPTA_RR": map_septa_rr_gtfs_stop,
+    "SEPTA_METRO": map_septa_metro_gtfs_stop,
+}
+
+
+def _build_septa_station_lines(
+    data_source: str,
+    route_stations: dict[str, tuple[str, ...]],
+    station_names: dict[str, str],
+) -> dict[str, tuple[str, ...]]:
+    """Index internal station code -> the line codes serving it.
+
+    ``*_ROUTE_STATIONS`` lists only the ``direction_id=0`` sequence, and each
+    trolley curb stop is its own station, so the opposite-direction stop of a
+    pair is absent from every route list. Such a station borrows the lines of
+    the same-named station across the street — the two are one physical stop,
+    generated from the same GTFS name. Without that, 271 of the 633 SEPTA Metro
+    stations would resolve to no line at all.
+
+    A shared display name is only evidence of a directional twin when every
+    same-named station carrying direct membership agrees on the same lines. At a
+    multimodal complex it does not: "15th St/City Hall" and "Drexel Station at
+    30th St" each name a Market-Frankford platform *and* a subway-surface
+    trolley platform, so borrowing their union would assert that a trolley curb
+    stop is on L1 and push a trolley disruption to Market-Frankford riders.
+    Those stay unresolved and fall back to an unscoped alert, which over-shows
+    without claiming something false.
+
+    Line order follows the route table, so results are deterministic.
+    """
+    code_map = _SEPTA_ROUTE_TO_LINE_CODE[data_source]
+    order = {code: i for i, code in enumerate(code_map.values())}
+
+    direct: dict[str, list[str]] = {}
+    for route_id, stations in route_stations.items():
+        code = code_map.get(route_id)
+        if code is None:
+            continue
+        for station in stations:
+            codes = direct.setdefault(station, [])
+            if code not in codes:
+                codes.append(code)
+
+    by_name: dict[str, list[str]] = {}
+    for station, name in station_names.items():
+        by_name.setdefault(name, []).append(station)
+
+    resolved: dict[str, tuple[str, ...]] = {}
+    for station in station_names:
+        lines = set(direct.get(station, ()))
+        if not lines:
+            twin_lines = {
+                frozenset(direct[twin])
+                for twin in by_name.get(station_names[station], ())
+                if twin in direct
+            }
+            # One agreed line set = a directional twin. Several = a multimodal
+            # complex whose name says nothing about which mode this stop serves.
+            if len(twin_lines) == 1:
+                lines = set(next(iter(twin_lines)))
+        if lines:
+            resolved[station] = tuple(sorted(lines, key=lambda c: order[c]))
+    return resolved
+
+
+# Internal station code -> line codes serving it, per source. Used to scope a
+# stop-only alert to the lines it actually affects.
+_SEPTA_STATION_LINES: dict[str, dict[str, tuple[str, ...]]] = {
+    "SEPTA_RR": _build_septa_station_lines(
+        "SEPTA_RR", SEPTA_RR_ROUTE_STATIONS, SEPTA_RR_STATION_NAMES
+    ),
+    "SEPTA_METRO": _build_septa_station_lines(
+        "SEPTA_METRO", SEPTA_METRO_ROUTE_STATIONS, SEPTA_METRO_STATION_NAMES
+    ),
+}
+
+
+def _septa_lines_serving_stations(stations: set[str], data_source: str) -> list[str]:
+    """Return our line codes for every line serving one of ``stations``.
+
+    Empty when none of the stations resolves to a line — a one-way trolley curb
+    stop whose twin is also missing from the direction-0 sequences.
+    """
+    index = _SEPTA_STATION_LINES[data_source]
+    order = {
+        code: i
+        for i, code in enumerate(_SEPTA_ROUTE_TO_LINE_CODE[data_source].values())
+    }
+    codes: set[str] = set()
+    for station in stations:
+        codes.update(index.get(station, ()))
+    return sorted(codes, key=lambda c: order[c])
+
 
 def _remap_septa_alert(alert: "ParsedAlert", data_source: str) -> "ParsedAlert | None":
     """Adapt a generically-parsed SEPTA alert to our conventions.
 
     - Maps raw SEPTA route_ids to our line_codes (``"M1"`` -> ``"SEPTA-M1"``).
     - Drops alerts whose only affected routes are ones we don't track (the Metro
-      feed carries bus alerts); route-less system-wide alerts are kept.
+      feed carries bus alerts).
+    - Scopes stop-only alerts by the stations they name, and drops the ones whose
+      stops we do not serve (issue #1630). The ``septa-pa-us`` feed mixes bus and
+      Metro alerts, and a bus disruption scoped purely by ``stop_id`` names no
+      route at all — so before this it landed with an empty ``affected_route_ids``,
+      which every consumer reads as "applies to the whole system": the alerts API
+      returns it for any SEPTA_METRO query, the web banner shows it when
+      ``affected_route_ids.length === 0``, iOS shows it for want of a route
+      mapping, and system-wide subscribers are pushed it.
+    - Keeps genuinely unscoped alerts (no routes *and* no stops) system-wide.
     - SEPTA entity_ids are opaque numbers, so classify by header keyword instead
       of the MTA ``lmm:`` prefix convention.
+
+    Only SEPTA takes this path. MTA elevator alerts are legitimately stop-scoped
+    and route-less, so applying the stop rule to them would silently drop them.
     """
     code_map = _SEPTA_ROUTE_TO_LINE_CODE[data_source]
     mapped: list[str] = []
@@ -78,6 +193,28 @@ def _remap_septa_alert(alert: "ParsedAlert", data_source: str) -> "ParsedAlert |
             mapped.append(code)
     if alert.affected_route_ids and not mapped:
         return None  # only concerns untracked (e.g. bus) routes
+
+    # A named route already scopes the alert; stop entities on top of it must not
+    # widen that scope, so they are only consulted when no route survived.
+    if not mapped and alert.affected_stop_ids:
+        map_stop = _SEPTA_STOP_MAPPERS[data_source]
+        stations = {
+            code for s in alert.affected_stop_ids if (code := map_stop(s)) is not None
+        }
+        if not stations:
+            return None  # stops we don't serve (e.g. a bus-stop-only disruption)
+        mapped = _septa_lines_serving_stations(stations, data_source)
+        if not mapped:
+            # A station we serve whose lines we can't resolve (a one-way trolley
+            # curb stop with no same-named twin on any direction-0 sequence).
+            # Keep the alert unscoped rather than hide a real disruption — it is
+            # over-broad, but it is genuinely ours, which a bus alert is not.
+            logger.debug(
+                "%s alert %s: stations %s resolve to no line; left unscoped",
+                data_source,
+                alert.alert_id,
+                sorted(stations),
+            )
 
     header = (alert.header_text or "").lower()
     if "elevator" in header or "escalator" in header:
@@ -124,6 +261,10 @@ class ParsedAlert(BaseModel):
     header_text: str
     description_text: str | None
     active_periods: list[dict[str, int | None]]  # [{"start": epoch, "end": epoch}]
+    # Raw feed stop_ids from the alert's informed_entity list. Collection-time
+    # only — not persisted; `service_alerts` has no stop column. SEPTA uses these
+    # to tell a stop-only Metro alert from a stop-only bus alert (issue #1630).
+    affected_stop_ids: list[str] = []
 
 
 def classify_alert_type(entity_id: str) -> str:
@@ -168,11 +309,17 @@ def parse_alert_entity(entity: Any) -> ParsedAlert | None:
     entity_id = entity.id
     alert_type = classify_alert_type(entity_id)
 
-    # Extract affected route_ids from informed_entity list
+    # Extract affected route_ids and stop_ids from informed_entity list. An
+    # entity may carry either, both, or neither; a stop-only entity is the only
+    # scope a feed gives some alerts, so discarding it makes them look
+    # system-wide (issue #1630).
     route_ids: list[str] = []
+    stop_ids: list[str] = []
     for ie in alert.informed_entity:
         if ie.route_id and ie.route_id not in route_ids:
             route_ids.append(ie.route_id)
+        if ie.stop_id and ie.stop_id not in stop_ids:
+            stop_ids.append(ie.stop_id)
 
     # Extract text
     header = extract_english_text(alert.header_text)
@@ -192,6 +339,7 @@ def parse_alert_entity(entity: Any) -> ParsedAlert | None:
         alert_id=entity_id,
         alert_type=alert_type,
         affected_route_ids=route_ids,
+        affected_stop_ids=stop_ids,
         header_text=header,
         description_text=description,
         active_periods=active_periods,
