@@ -14,6 +14,7 @@ import httpx
 from google.transit import gtfs_realtime_pb2
 from pydantic import BaseModel
 
+from trackrat.collectors.septa_common import SeptaFeedFetchError
 from trackrat.config.stations import (
     SEPTA_METRO_GTFS_RT_FEED_URL,
     SEPTA_METRO_GTFS_STOP_TO_INTERNAL_MAP,
@@ -145,9 +146,11 @@ class SeptaMetroClient:
                 )
         return arrivals
 
-    async def get_all_arrivals(self) -> list[SeptaMetroArrival]:
+    async def get_all_arrivals(
+        self, *, use_cache: bool = True
+    ) -> list[SeptaMetroArrival]:
         """Fetch and parse all Metro arrivals (cached within TTL)."""
-        if self._is_cache_valid():
+        if use_cache and self._is_cache_valid():
             return self._cache or []
 
         try:
@@ -164,21 +167,21 @@ class SeptaMetroClient:
                 status_code=e.response.status_code,
                 error=str(e),
             )
-            return self._cache or []
+            raise SeptaFeedFetchError("SEPTA Metro feed returned an HTTP error") from e
         except httpx.HTTPError as e:
             logger.error(
                 "septa_metro_feed_network_error",
                 error=str(e),
                 error_type=type(e).__name__,
             )
-            return self._cache or []
+            raise SeptaFeedFetchError("SEPTA Metro feed request failed") from e
         except Exception as e:
             logger.error(
                 "septa_metro_feed_parse_error",
                 error=str(e),
                 error_type=type(e).__name__,
             )
-            return self._cache or []
+            raise SeptaFeedFetchError("SEPTA Metro feed could not be parsed") from e
 
     def clear_cache(self) -> None:
         self._cache = None

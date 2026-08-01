@@ -29,6 +29,10 @@ from trackrat.collectors.mta_common import (
     update_journey_metadata,
     update_stop_departure_status,
 )
+from trackrat.collectors.septa_common import (
+    mark_journey_present,
+    reconcile_journey_omissions,
+)
 from trackrat.collectors.septa_metro.client import SeptaMetroArrival, SeptaMetroClient
 from trackrat.config.stations import get_septa_metro_route_info, get_station_name
 from trackrat.db.engine import get_session
@@ -79,7 +83,7 @@ class SeptaMetroCollector:
             collection_start = now_et()
             try:
                 arrivals = await asyncio.wait_for(
-                    self.client.get_all_arrivals(),
+                    self.client.get_all_arrivals(use_cache=False),
                     timeout=_FEED_FETCH_TIMEOUT_SECONDS,
                 )
             except TimeoutError:
@@ -97,6 +101,15 @@ class SeptaMetroCollector:
             trips: dict[str, list[SeptaMetroArrival]] = {}
             for arrival in arrivals:
                 trips.setdefault(arrival.trip_id, []).append(arrival)
+            present_journey_keys = {
+                (
+                    _generate_train_id(trip_id),
+                    min(trip_arrivals, key=lambda item: item.arrival_time)
+                    .arrival_time.astimezone(ET)
+                    .date(),
+                )
+                for trip_id, trip_arrivals in trips.items()
+            }
             logger.info(f"Found {len(trips)} SEPTA Metro trips in GTFS-RT feed")
 
             batch_size = 50
@@ -131,23 +144,12 @@ class SeptaMetroCollector:
             transit_analyzer = TransitAnalyzer()
             await transit_analyzer.analyze_new_segments_bulk(session, analyzed_journeys)
 
-            today = collection_start.date()
-            stale_result = await session.execute(
-                select(TrainJourney).where(
-                    TrainJourney.data_source == DATA_SOURCE,
-                    TrainJourney.observation_type == "OBSERVED",
-                    TrainJourney.journey_date >= today - timedelta(days=1),
-                    TrainJourney.is_completed == False,  # noqa: E712
-                    TrainJourney.is_expired == False,  # noqa: E712
-                    TrainJourney.is_cancelled == False,  # noqa: E712
-                    TrainJourney.last_updated_at < collection_start,
-                )
+            stats["expired"] = await reconcile_journey_omissions(
+                session,
+                DATA_SOURCE,
+                collection_start.date(),
+                present_journey_keys,
             )
-            for journey in stale_result.scalars():
-                journey.api_error_count = (journey.api_error_count or 0) + 1
-                if journey.api_error_count >= 3:
-                    journey.is_expired = True
-                    stats["expired"] += 1
 
             await session.commit()
             logger.info(
@@ -196,6 +198,9 @@ class SeptaMetroCollector:
             .options(*JOURNEY_UPDATE_LOAD_OPTIONS)
         )
         journey = existing.scalar_one_or_none()
+
+        if journey is not None and (journey.is_completed or journey.is_cancelled):
+            return None, None
 
         if journey is None:
             static_stops = await self._gtfs_service.get_static_stop_times(
@@ -333,6 +338,7 @@ class SeptaMetroCollector:
         journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
         update_stop_departure_status(journey_stops, now)
         update_journey_metadata(journey, now, journey_stops)
+        mark_journey_present(journey)
         check_journey_completed(journey, journey_stops)
         logger.debug(f"Updated SEPTA Metro train {train_id}")
         return "updated", journey
@@ -394,6 +400,7 @@ class SeptaMetroCollector:
         journey_stops = list(stop_result.scalars().all())
         update_stop_departure_status(journey_stops, now)
         update_journey_metadata(journey, now, journey_stops)
+        mark_journey_present(journey)
         check_journey_completed(journey, journey_stops)
         logger.debug(f"JIT updated SEPTA Metro journey {journey.train_id}")
 
