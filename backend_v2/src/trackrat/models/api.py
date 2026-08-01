@@ -621,6 +621,12 @@ class SegmentCongestion(BaseModel):
     current_average_minutes: float = Field(..., ge=0.0)
     cancellation_count: int = Field(default=0, ge=0)
     cancellation_rate: float = Field(default=0.0, ge=0.0, le=100.0)
+    # What produced congestion_level, so clients pick the right noun for the
+    # caption (issue #1638). "delays" = cancellations did not move the tier;
+    # "cancellations" = they did and the running trains were on time, so the
+    # segment must NOT be captioned as delayed; "both" = already escalated on
+    # delays and pushed further by cancellations, so neither may be dropped.
+    congestion_cause: Literal["delays", "cancellations", "both"] = "delays"
     # Frequency/health metrics (train count vs baseline)
     # None for schedule-only data sources (e.g., PATCO)
     train_count: int | None = Field(default=None, ge=0)

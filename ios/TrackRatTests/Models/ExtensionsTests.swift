@@ -470,6 +470,61 @@ class ExtensionsTests: XCTestCase {
         XCTAssertEqual(CongestionColors.frequencyTierKey(forFactor: 0.95, cancellationRate: 20), "reduced")
     }
 
+    /// Cancellations may only move the delay tier once enough scheduled journeys
+    /// back the rate. Below `cancellationMinJourneys`, one cancelled train against
+    /// one running train is a 50% rate that alone clears severe — the arithmetic
+    /// behind issue #1638's "red but there are no delays" report.
+    func testCongestionTierKeyIgnoresCancellationsBelowTheJourneyFloor() {
+        // 1.0 + 50% * 0.015 = 1.75 (severe) if the rate were counted.
+        XCTAssertEqual(
+            CongestionColors.congestionTierKey(
+                forFactor: 1.0, cancellationRate: 50, totalJourneys: 2),
+            "normal"
+        )
+    }
+
+    /// The floor is inclusive, and above it the #1246 escalation is unchanged.
+    func testCongestionTierKeyFoldsCancellationsAtAndAboveTheFloor() {
+        XCTAssertEqual(
+            CongestionColors.congestionTierKey(
+                forFactor: 1.0, cancellationRate: 50,
+                totalJourneys: CongestionColors.cancellationMinJourneys),
+            "severe"
+        )
+        XCTAssertEqual(
+            CongestionColors.congestionTierKey(
+                forFactor: 1.0, cancellationRate: 50,
+                totalJourneys: CongestionColors.cancellationMinJourneys - 1),
+            "normal"
+        )
+    }
+
+    /// The floor gates cancellations only. A sparse segment whose trains really
+    /// lost time must still escalate, or the floor would mute real delays on the
+    /// low-frequency stretches riders most need warning about.
+    func testCongestionTierKeyKeepsDelaysBelowTheJourneyFloor() {
+        XCTAssertEqual(
+            CongestionColors.congestionTierKey(
+                forFactor: 1.8, cancellationRate: 50, totalJourneys: 1),
+            "severe"
+        )
+    }
+
+    /// The color and the merge key must agree, or a merged run is drawn in a
+    /// color none of its segments would render individually.
+    func testCongestionColorAgreesWithTierKeyAcrossTheFloor() {
+        XCTAssertEqual(
+            CongestionColors.color(
+                forCongestionFactor: 1.0, cancellationRate: 50, totalJourneys: 2),
+            .systemGreen
+        )
+        XCTAssertEqual(
+            CongestionColors.color(
+                forCongestionFactor: 1.0, cancellationRate: 50, totalJourneys: 10),
+            .systemRed
+        )
+    }
+
     /// The merge fix: in Health mode segments are colored by frequency, so the
     /// merge key must group by the frequency tier, not the delay tier.
     /// Same frequency color but different delay tiers -> one merge key (previously
@@ -482,8 +537,8 @@ class ExtensionsTests: XCTestCase {
             CongestionColors.frequencyTierKey(forFactor: 0.92, cancellationRate: 0)
         )
         XCTAssertNotEqual(
-            CongestionColors.congestionTierKey(forFactor: 1.0, cancellationRate: 0),
-            CongestionColors.congestionTierKey(forFactor: 2.0, cancellationRate: 0)
+            CongestionColors.congestionTierKey(forFactor: 1.0),
+            CongestionColors.congestionTierKey(forFactor: 2.0)
         )
         // Different frequency colors, identical delay tier -> do NOT merge.
         XCTAssertNotEqual(
@@ -491,8 +546,8 @@ class ExtensionsTests: XCTestCase {
             CongestionColors.frequencyTierKey(forFactor: 0.55, cancellationRate: 0)
         )
         XCTAssertEqual(
-            CongestionColors.congestionTierKey(forFactor: 1.0, cancellationRate: 0),
-            CongestionColors.congestionTierKey(forFactor: 1.05, cancellationRate: 0)
+            CongestionColors.congestionTierKey(forFactor: 1.0),
+            CongestionColors.congestionTierKey(forFactor: 1.05)
         )
     }
 }

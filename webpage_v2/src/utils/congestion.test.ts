@@ -11,6 +11,8 @@ import {
   partitionRenderableSegments,
   buildSegmentFeatureCollection,
   navStationCodes,
+  segmentCause,
+  hasCancellationCause,
   computeSegmentBounds,
   averageRouteDelay,
   RenderableSegment,
@@ -72,6 +74,38 @@ describe('congestion level → visual mapping', () => {
     expect(getCongestionLabel('severe')).toBe('Severe delays');
   });
 
+  // #1638: a segment the backend escalated on cancellations has an average
+  // delay of zero, so "Severe delays" is simply untrue. Keep the tier adjective
+  // (it is what the color shows) and change the noun.
+  it('names cancellations, not delays, when cancellations alone drove the level', () => {
+    expect(getCongestionLabel('moderate', 'cancellations')).toBe('Moderate cancellations');
+    expect(getCongestionLabel('heavy', 'cancellations')).toBe('Heavy cancellations');
+    expect(getCongestionLabel('severe', 'cancellations')).toBe('Severe cancellations');
+  });
+
+  // Raised in review of #1681: a segment can be genuinely delayed AND pushed a
+  // tier further by cancellations. Naming only one cause either contradicts the
+  // non-zero delay shown beside it or hides the cancellations.
+  it('names both causes when the segment is delayed and cancelled', () => {
+    expect(getCongestionLabel('moderate', 'both')).toBe('Moderate delays and cancellations');
+    expect(getCongestionLabel('heavy', 'both')).toBe('Heavy delays and cancellations');
+    expect(getCongestionLabel('severe', 'both')).toBe('Severe delays and cancellations');
+  });
+
+  it('keeps the normal label unchanged whatever the cause', () => {
+    // A normal segment was not escalated by definition, so no cause should
+    // invent a story for it.
+    for (const cause of ['delays', 'cancellations', 'both'] as const) {
+      expect(getCongestionLabel('normal', cause)).toBe('Normal');
+    }
+  });
+
+  it('defaults to delay wording when the cause is omitted', () => {
+    // Older backend responses omit congestion_cause; the label must stay
+    // exactly as it was rather than becoming undefined.
+    expect(getCongestionLabel('severe')).toBe(getCongestionLabel('severe', 'delays'));
+  });
+
   it('gives one-word labels for the compact map legend', () => {
     expect(getCongestionShortLabel('normal')).toBe('Normal');
     expect(getCongestionShortLabel('moderate')).toBe('Moderate');
@@ -96,6 +130,26 @@ describe('congestion level → visual mapping', () => {
 
   it('lists levels in ascending severity', () => {
     expect(CONGESTION_LEVELS).toEqual(['normal', 'moderate', 'heavy', 'severe']);
+  });
+});
+
+describe('segmentCause', () => {
+  it("defaults to 'delays' for backends that predate the field", () => {
+    expect(segmentCause(makeSegment())).toBe('delays');
+    expect(hasCancellationCause(makeSegment())).toBe(false);
+  });
+
+  it('reports whichever cause the backend supplied', () => {
+    expect(segmentCause(makeSegment({ congestion_cause: 'both' }))).toBe('both');
+    expect(segmentCause(makeSegment({ congestion_cause: 'cancellations' }))).toBe('cancellations');
+  });
+
+  it("treats 'both' as involving cancellations", () => {
+    // A mixed segment must still surface its cancellation count; counting only
+    // the pure-cancellation case would drop it from the caption entirely.
+    expect(hasCancellationCause(makeSegment({ congestion_cause: 'both' }))).toBe(true);
+    expect(hasCancellationCause(makeSegment({ congestion_cause: 'cancellations' }))).toBe(true);
+    expect(hasCancellationCause(makeSegment({ congestion_cause: 'delays' }))).toBe(false);
   });
 });
 
@@ -152,6 +206,45 @@ describe('buildSegmentFeatureCollection', () => {
     }
   });
 
+  // #1638: the hover popup only prints a delay line, so on a cancellation-
+  // escalated segment (delay 0) it rendered a bare name over a red stroke.
+  // These properties are what let it say why the line is colored.
+  it('carries the cancellation cause onto the map feature', () => {
+    const { renderable } = partitionRenderableSegments([
+      makeSegment({
+        congestion_level: 'severe',
+        average_delay_minutes: 0,
+        cancellation_count: 3,
+        congestion_cause: 'cancellations',
+      }),
+    ]);
+    const props = buildSegmentFeatureCollection(renderable).features[0].properties;
+    expect(props.congestion_cause).toBe('cancellations');
+    expect(props.cancellation_count).toBe(3);
+  });
+
+  it('carries the mixed cause through so the popup can show both facts', () => {
+    const { renderable } = partitionRenderableSegments([
+      makeSegment({
+        congestion_level: 'heavy',
+        average_delay_minutes: 2,
+        cancellation_count: 3,
+        congestion_cause: 'both',
+      }),
+    ]);
+    const props = buildSegmentFeatureCollection(renderable).features[0].properties;
+    expect(props.congestion_cause).toBe('both');
+    expect(props.average_delay_minutes).toBe(2);
+  });
+
+  it("defaults congestion_cause to 'delays' when the backend omits it", () => {
+    // MapLibre feature properties round-trip through the style spec, so an
+    // undefined here would read back as a missing property.
+    const { renderable } = partitionRenderableSegments([makeSegment()]);
+    const props = buildSegmentFeatureCollection(renderable).features[0].properties;
+    expect(props.congestion_cause).toBe('delays');
+  });
+
   it('carries the properties the map layer and popup read', () => {
     const { renderable } = partitionRenderableSegments([
       makeSegment({
@@ -170,6 +263,8 @@ describe('buildSegmentFeatureCollection', () => {
       segment_name: 'New York Penn Station → Newark Penn Station',
       congestion_level: 'severe',
       average_delay_minutes: 12,
+      congestion_cause: 'delays',
+      cancellation_count: 0,
       color: CONGESTION_HEX.severe,
     });
   });
