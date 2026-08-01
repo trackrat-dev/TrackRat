@@ -34,17 +34,17 @@ logger = get_logger(__name__)
 # AMTRAK included because sparse API responses can create segments spanning
 # hundreds of miles when intermediate stops lack actual times.
 #
-# SEPTA_METRO is deliberately EXCLUDED. Its route topology is built from
-# direction_id=0 only, and each trolley curb stop has its own per-direction
-# code (e.g. Baltimore Av & 42nd St is SEPM20876 outbound / SEPM20879
-# inbound, but only SEPM20876 is in a route tuple). The collector persists
-# the raw per-curb code, so every direction_id=1 trolley journey is keyed by
-# codes absent from the topology and its (genuinely adjacent) segments would
-# be flagged anomalous — ~174 false-positive warnings per collection cycle
-# (issue #1573). These segments are between consecutive stops of a single
-# journey, not phantom cross-branch jumps, so the route-match guard does more
-# harm than good here. Metro is served schedule-first / frequency-first, so
-# any residual segment noise carries no rider-facing cost.
+# SEPTA_METRO was excluded by #1573 and is included again as of #1632. The
+# exclusion existed because topology was generated from direction_id=0 only
+# while each trolley curb stop has its own per-direction code (Baltimore Av &
+# 42nd St is SEPM20876 outbound / SEPM20879 inbound), so every direction_id=1
+# journey was keyed by codes in no route tuple and its genuinely-adjacent
+# segments were flagged anomalous — ~174 false positives per collection cycle.
+# The generator now emits both directions and `Route._station_set` is the union
+# of them, so all 633 Metro station codes are on a route (up from 362) and an
+# inbound segment matches its own line. The guard is worth having back: it is
+# what drops phantom cross-branch jumps, and Metro's sparse frequency-first
+# feeds are exactly the shape that produces them.
 _REQUIRE_ROUTE_MATCH_SOURCES: set[str] = {
     "NJT",
     "AMTRAK",
@@ -55,24 +55,31 @@ _REQUIRE_ROUTE_MATCH_SOURCES: set[str] = {
     "MBTA",
     "METRA",
     "SEPTA_RR",
+    "SEPTA_METRO",
 }
 
 
 # Data sources whose route topology is NOT a physical single-direction path, so
 # expanding a skip-stop segment through it fabricates non-physical sub-segments.
 #
-# SEPTA_METRO's topology is built from route_stops.txt direction_id=0 — a per-route
-# UNION of every stop the route serves (subway-express + surface patterns) in a
-# synthetic sort order that doubles back on itself. For the subway-surface trolleys
-# (Routes 10/11/13/34/36) that order runs 40th St Portal -> surface Spruce St stops
-# -> 40th-Market -> 37th-Spruce, but a real trolley runs 40th St Portal -> 37th-Spruce
-# directly in the subway. Expanding that observed segment through the topology path
-# explodes one clean hop into a zig-zag of fabricated sub-segments (e.g. the
-# physically-impossible 40th-Market -> 37th-Spruce, an 837 m back-jump), which
-# render as jagged congestion lines around University City. Metro's observed
-# segments are already consecutive physical adjacencies, so we keep them as-is
-# instead of expanding. Same topology unreliability that excludes SEPTA_METRO from
-# route-match filtering above (issue #1573).
+# SEPTA_METRO's per-direction sequence in route_stops.txt is a UNION of every
+# stop the route serves in that direction (subway-express + surface patterns) in
+# a synthetic sort order that doubles back on itself. For the subway-surface
+# trolleys (Routes 10/11/13/34/36) that order runs 40th St Portal -> surface
+# Spruce St stops -> 40th-Market -> 37th-Spruce, but a real trolley runs
+# 40th St Portal -> 37th-Spruce directly in the subway. Expanding that observed
+# segment through the topology path explodes one clean hop into a zig-zag of
+# fabricated sub-segments (e.g. the physically-impossible 40th-Market ->
+# 37th-Spruce, an 837 m back-jump), which render as jagged congestion lines
+# around University City. Metro's observed segments are already consecutive
+# physical adjacencies, so we keep them as-is instead of expanding.
+#
+# #1632 did NOT make this removable, and it is worth being precise about why:
+# that issue fixed *which stops are present* (direction 1 was missing entirely),
+# not the *ordering within* a direction. Each direction's sequence still
+# interleaves express and surface patterns, so it is still not a physical path.
+# Un-excluding this needs per-pattern sequences, which is a separate change
+# (issue #1573 is where the zig-zag was first diagnosed).
 _SKIP_STOP_EXPANSION_EXCLUDED_SOURCES: set[str] = {"SEPTA_METRO"}
 
 

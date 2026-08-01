@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from trackrat.config.stations.metra import METRA_ROUTE_STATIONS, METRA_ROUTES
 from trackrat.config.stations.septa_metro import (
     SEPTA_METRO_ROUTE_STATIONS,
+    SEPTA_METRO_ROUTE_STATIONS_INBOUND,
     SEPTA_METRO_ROUTES,
 )
 from trackrat.config.stations.septa_rr import (
@@ -36,16 +37,61 @@ class Route:
     line_codes: frozenset[str]  # Valid line_code values for this route
     stations: tuple[str, ...]  # Ordered station codes
 
+    # Ordered station codes for the opposite direction, when that direction
+    # visits *different* station codes than `stations` does. Empty for every
+    # system whose two directions share one code per station — which is all of
+    # them except SEPTA Metro, where each trolley curb stop is its own code and
+    # a route's inbound path is a largely disjoint set of stops (issue #1632).
+    reverse_stations: tuple[str, ...] = ()
+
     def __post_init__(self) -> None:
         # Cache station set for O(1) membership tests
         # Use object.__setattr__ since dataclass is frozen
-        object.__setattr__(self, "_station_set", frozenset(self.stations))
+        object.__setattr__(
+            self,
+            "_station_set",
+            frozenset(self.stations) | frozenset(self.reverse_stations),
+        )
 
     _station_set: frozenset[str] = frozenset()  # Populated in __post_init__
+
+    @property
+    def all_stations(self) -> tuple[str, ...]:
+        """Every station code on this route, both directions, no duplicates.
+
+        Order is `stations` first, then any `reverse_stations` not already
+        present. Use this for "which stations does this route serve"; use
+        `stations` / `reverse_stations` when the order has to be a physical
+        path, since concatenating the two directions is not one.
+        """
+        if not self.reverse_stations:
+            return self.stations
+        seen = set(self.stations)
+        extra: list[str] = []
+        for code in self.reverse_stations:
+            if code not in seen:
+                seen.add(code)
+                extra.append(code)
+        return self.stations + tuple(extra)
 
     def contains_segment(self, from_station: str, to_station: str) -> bool:
         """Check if both stations exist on this route. O(1) lookup."""
         return from_station in self._station_set and to_station in self._station_set
+
+    def sequence_containing(self, *station_codes: str) -> tuple[str, ...] | None:
+        """The one ordered sequence holding every given code, or None.
+
+        `_station_set` is the union of both directions, so membership in it
+        does NOT imply membership in `stations`. Any caller about to compare
+        positions must resolve the sequence through this method first —
+        indices are only meaningful within a single direction's path, and
+        `stations.index()` on a code that only exists in `reverse_stations`
+        raises ValueError.
+        """
+        for sequence in (self.stations, self.reverse_stations):
+            if sequence and all(code in sequence for code in station_codes):
+                return sequence
+        return None
 
     def get_intermediate_stations(
         self, from_station: str, to_station: str
@@ -57,18 +103,19 @@ class Route:
         If from_station comes after to_station on the route, returns
         the reversed sequence.
 
-        Returns None if either station is not on this route.
+        Returns None if either station is not on this route, or if they sit
+        on opposite directions — each direction is a physical path on its
+        own, but concatenating the two is not.
         """
-        try:
-            from_idx = self.stations.index(from_station)
-            to_idx = self.stations.index(to_station)
-            if from_idx < to_idx:
-                return list(self.stations[from_idx : to_idx + 1])
-            else:
-                # Reverse direction
-                return list(reversed(self.stations[to_idx : from_idx + 1]))
-        except ValueError:
+        sequence = self.sequence_containing(from_station, to_station)
+        if sequence is None:
             return None
+        from_idx = sequence.index(from_station)
+        to_idx = sequence.index(to_station)
+        if from_idx < to_idx:
+            return list(sequence[from_idx : to_idx + 1])
+        # Reverse direction
+        return list(reversed(sequence[to_idx : from_idx + 1]))
 
     def expand_to_canonical_segments(
         self, from_station: str, to_station: str
@@ -4216,6 +4263,7 @@ def _build_septa_routes(
     routes: dict[str, tuple[str, str, str]],
     route_stations: dict[str, tuple[str, ...]],
     id_prefix: str,
+    inbound_stations: dict[str, tuple[str, ...]] | None = None,
 ) -> tuple[Route, ...]:
     return tuple(
         Route(
@@ -4224,17 +4272,24 @@ def _build_septa_routes(
             data_source=data_source,
             line_codes=frozenset({routes[route_id][0]}),
             stations=stations,
+            reverse_stations=(inbound_stations or {}).get(route_id, ()),
         )
         for route_id, stations in route_stations.items()
         if stations
     )
 
 
+# Regional Rail passes no inbound sequence: its stops are 1:1 with stations, so
+# direction 1 carries no stop_id direction 0 does not already have.
 SEPTA_RR_ROUTE_LIST = _build_septa_routes(
     "SEPTA_RR", SEPTA_RR_ROUTES, SEPTA_RR_ROUTE_STATIONS, "septa-rr"
 )
 SEPTA_METRO_ROUTE_LIST = _build_septa_routes(
-    "SEPTA_METRO", SEPTA_METRO_ROUTES, SEPTA_METRO_ROUTE_STATIONS, "septa-metro"
+    "SEPTA_METRO",
+    SEPTA_METRO_ROUTES,
+    SEPTA_METRO_ROUTE_STATIONS,
+    "septa-metro",
+    inbound_stations=SEPTA_METRO_ROUTE_STATIONS_INBOUND,
 )
 
 

@@ -88,6 +88,61 @@ def _fmt_coords(code: str, lat: float, lon: float, name: str) -> str:
     return f'    "{code}": {{"lat": {lat}, "lon": {lon}}},  # {name}'
 
 
+def build_route_sequences(
+    route_stops: list[dict[str, str]],
+    route_ids: set[str] | dict[str, dict[str, str]],
+    stop_to_code: dict[str, str],
+    direction_id: str,
+) -> dict[str, list[str]]:
+    """Ordered internal station codes per route for one ``direction_id``.
+
+    ``route_stops.txt`` is a SEPTA GTFS extension listing every stop a route
+    serves, per direction, in ``route_stop_sort_order``. Consecutive duplicates
+    are collapsed: grouping a subway station's two directional platforms into
+    one code can make the same code appear twice in a row.
+
+    Both directions must be generated. Trolley curb stops are 1:1 with GTFS
+    stops, so a route's inbound path is a *different set of station codes* from
+    its outbound path — not the same codes reversed (issue #1632).
+    """
+    seqs: dict[str, list[tuple[int, str]]] = defaultdict(list)
+    for rs in route_stops:
+        if rs["route_id"] in route_ids and rs["direction_id"] == direction_id:
+            sid = rs["stop_id"]
+            if sid in stop_to_code:
+                seqs[rs["route_id"]].append((int(rs["route_stop_sort_order"]), sid))
+    sequences: dict[str, list[str]] = {}
+    for rid, pairs in seqs.items():
+        ordered: list[str] = []
+        for _, sid in sorted(pairs):
+            c = stop_to_code[sid]
+            if not ordered or ordered[-1] != c:
+                ordered.append(c)
+        sequences[rid] = ordered
+    return sequences
+
+
+def sort_station_names(station_names: dict[str, str]) -> list[tuple[str, str]]:
+    """Station ``(code, name)`` pairs in a deterministic order.
+
+    Sorted by display name, then by code. The code tiebreak is load-bearing:
+    SEPTA Metro has many stations sharing a display name (three distinct
+    "15th St/City Hall" codes, two "Baltimore Av & 42nd St", ...), and sorting
+    on the name alone leaves ties in ``station_names`` insertion order, which
+    comes from set iteration and so varies between runs on identical input.
+    """
+    return sorted(station_names.items(), key=lambda kv: (kv[1], kv[0]))
+
+
+def _render_route_stations(sequences: dict[str, list[str]]) -> str:
+    """Render a ``{route_id: (code, ...)}`` block body, routes in sorted order."""
+    lines = []
+    for rid in sorted(sequences):
+        joined = "\n".join(f'        "{c}",' for c in sequences[rid])
+        lines.append(f'    "{rid}": (\n{joined}\n    ),')
+    return "\n".join(lines)
+
+
 # --------------------------------------------------------------------------- #
 # Regional Rail
 # --------------------------------------------------------------------------- #
@@ -119,6 +174,11 @@ def generate_regional_rail(gtfs_dir: str, output_dir: str) -> None:
         )
 
     # Ordered station sequences per line from route_stops.txt (direction 0).
+    # Direction 0 alone is complete for Regional Rail: stops are 1:1 with
+    # stations (156 stops, 156 codes), both platforms of a station share one
+    # GTFS stop_id, and direction 1 introduces no stop_id that direction 0 does
+    # not already carry. Metro is the opposite and needs both (issue #1632);
+    # see ``build_route_sequences``.
     seqs: dict[str, list[tuple[int, str]]] = defaultdict(list)
     for rs in route_stops:
         if rs["direction_id"] == "0":
@@ -237,8 +297,13 @@ def generate_metro(gtfs_dir: str, output_dir: str) -> None:
     trolley_stop_ids -= heavy_stop_ids
 
     # Heavy-rail: group directional platforms sharing a name into one station.
+    # Iterate the stop id sets in sorted order: they are sets, so their
+    # iteration order varies with PYTHONHASHSEED, and the platform coordinate
+    # average below is a float sum whose result depends on summation order.
+    # Unsorted, 69th St Transit Center alternated between lat 39.962577 and
+    # 39.962578 across runs on identical input.
     by_name: dict[str, list[str]] = defaultdict(list)
-    for sid in heavy_stop_ids:
+    for sid in sorted(heavy_stop_ids):
         by_name[stops[sid]["stop_name"]].append(sid)
     stop_to_code: dict[str, str] = {}
     station_names: dict[str, str] = {}
@@ -253,31 +318,20 @@ def generate_metro(gtfs_dir: str, output_dir: str) -> None:
         station_coords[code] = (round(lat, 6), round(lon, 6))
 
     # Trolley: each curb stop is its own station (1:1).
-    for sid in trolley_stop_ids:
+    for sid in sorted(trolley_stop_ids):
         code = "SEPM" + sid
         stop_to_code[sid] = code
         station_names[code] = stops[sid]["stop_name"]
         station_coords[code] = (float(stops[sid]["stop_lat"]), float(stops[sid]["stop_lon"]))
 
-    # Ordered station sequences per route from route_stops.txt (direction 0),
-    # collapsing consecutive duplicates produced by platform grouping.
-    seqs: dict[str, list[tuple[int, str]]] = defaultdict(list)
-    for rs in route_stops:
-        if rs["route_id"] in metro_routes and rs["direction_id"] == "0":
-            sid = rs["stop_id"]
-            if sid in stop_to_code:
-                seqs[rs["route_id"]].append((int(rs["route_stop_sort_order"]), sid))
-    route_stations: dict[str, list[str]] = {}
-    for rid, pairs in seqs.items():
-        ordered: list[str] = []
-        for _, sid in sorted(pairs):
-            c = stop_to_code[sid]
-            if not ordered or ordered[-1] != c:
-                ordered.append(c)
-        route_stations[rid] = ordered
+    # Ordered station sequences per route from route_stops.txt, both directions.
+    route_stations = build_route_sequences(route_stops, metro_routes, stop_to_code, "0")
+    route_stations_inbound = build_route_sequences(
+        route_stops, metro_routes, stop_to_code, "1"
+    )
 
     # Render sections.
-    names_sorted = sorted(station_names.items(), key=lambda kv: kv[1])
+    names_sorted = sort_station_names(station_names)
     names_block = _py_dict(names_sorted)
     gtfs_map_block = "\n".join(
         f'    "{sid}": "{stop_to_code[sid]}",' for sid in sorted(stop_to_code)
@@ -294,10 +348,8 @@ def generate_metro(gtfs_dir: str, output_dir: str) -> None:
         route_lines.append(
             f'    "{rid}": ("SEPTA-{rid}", "{r["route_long_name"]}", "#{color}"),  # {kind}'
         )
-    route_stations_lines = []
-    for rid in sorted(route_stations):
-        joined = "\n".join(f'        "{c}",' for c in route_stations[rid])
-        route_stations_lines.append(f'    "{rid}": (\n{joined}\n    ),')
+    route_stations_block = _render_route_stations(route_stations)
+    route_stations_inbound_block = _render_route_stations(route_stations_inbound)
 
     # Lines with no real-time trip updates from SEPTA today (schedule-only).
     schedule_only = sorted(r for r in metro_routes if r.startswith(("B", "L")))
@@ -310,7 +362,9 @@ re-run the generator to refresh.
 
 Internal station codes are prefixed ``SEPM`` to stay unique across every
 TrackRat provider. Subway stations group their directional platforms into one
-code; each trolley curb stop is its own station.
+code; each trolley curb stop is its own station, so route topology is generated
+for both directions (``SEPTA_METRO_ROUTE_STATIONS`` and
+``SEPTA_METRO_ROUTE_STATIONS_INBOUND``).
 """
 
 # GTFS-RT feeds (public, no authentication). One combined feed covers the whole
@@ -351,7 +405,22 @@ SEPTA_METRO_SCHEDULE_ONLY_ROUTES: frozenset[str] = frozenset({schedule_only!r})
 
 # Ordered station sequences per route (direction_id=0), from route_stops.txt.
 SEPTA_METRO_ROUTE_STATIONS: dict[str, tuple[str, ...]] = {{
-{chr(10).join(route_stations_lines)}
+{route_stations_block}
+}}
+
+
+# Ordered station sequences per route for the opposite direction
+# (direction_id=1), from route_stops.txt.
+#
+# This is NOT the outbound sequence reversed. Each trolley curb stop is its own
+# station code, so the inbound path visits a largely different set of codes:
+# the opposite curb of the same corner where the street carries both
+# directions, and genuinely different stops where the route runs on a one-way
+# pair (Route 10 runs outbound on 40th St and inbound on 41st St). Of the 633
+# Metro station codes, 271 appear only here — they were absent from route
+# topology entirely before issue #1632.
+SEPTA_METRO_ROUTE_STATIONS_INBOUND: dict[str, tuple[str, ...]] = {{
+{route_stations_inbound_block}
 }}
 
 

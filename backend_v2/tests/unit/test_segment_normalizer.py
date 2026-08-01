@@ -784,20 +784,44 @@ class TestIsSegmentAnomalous:
         assert not _is_segment_anomalous("UNKNOWN1", "UNKNOWN2", "PATH")
         assert not _is_segment_anomalous("UNKNOWN1", "UNKNOWN2", "WMATA")
 
-    def test_septa_metro_segments_not_route_matched(self):
-        """SEPTA_METRO is excluded from route-match filtering (issue #1573).
+    def test_septa_metro_inbound_curb_segment_is_not_anomalous(self):
+        """An inbound trolley segment matches its own line (issue #1632).
 
-        Its topology is built direction_id=0 only, with per-direction trolley
-        curb codes, so inbound (direction_id=1) journeys are keyed by codes
-        absent from the topology. Those are genuinely adjacent segments, not
-        phantom jumps, so they must pass through instead of being flagged
-        anomalous and generating ~174 false-positive warnings per cycle.
+        SEPM20879 is the inbound curb code for Baltimore Av & 42nd St and
+        SEPM20876 the outbound one. #1573 had to switch route-match filtering
+        off for SEPTA_METRO entirely because inbound codes were in no route
+        tuple, so ~174 genuinely-adjacent segments per cycle were flagged.
+        The topology now carries both directions, so the guard is back on and
+        this pair resolves without the blanket exclusion.
         """
-        # SEPM20879 is the inbound curb code, absent from the (outbound-only)
-        # route tuples — under the old behavior this pair was anomalous.
         assert not _is_segment_anomalous("SEPM20879", "SEPM20876", "SEPTA_METRO")
-        # Even a totally unknown Metro pair passes through now.
-        assert not _is_segment_anomalous("UNKNOWN1", "UNKNOWN2", "SEPTA_METRO")
+
+    def test_septa_metro_inbound_only_pair_is_not_anomalous(self):
+        """Two inbound-only codes on the same line also match.
+
+        Both of these appear *only* in the direction_id=1 sequence, so this
+        fails if `Route._station_set` is built from the outbound tuple alone
+        rather than the union of both directions.
+        """
+        assert not _is_segment_anomalous("SEPM20879", "SEPM20881", "SEPTA_METRO")
+
+    def test_septa_metro_unknown_stations_are_anomalous(self):
+        """SEPTA_METRO is route-match filtered again (issue #1632).
+
+        The blanket pass-through added by #1573 let every phantom
+        cross-branch jump through unchecked. With all 633 Metro station codes
+        now on a route (up from 362), unknown codes are anomalous again.
+        """
+        assert _is_segment_anomalous("UNKNOWN1", "UNKNOWN2", "SEPTA_METRO")
+
+    def test_septa_metro_cross_line_pair_is_anomalous(self):
+        """A pair split across two Metro lines is a phantom jump.
+
+        SEPM20879 is on the Route 34 trolley (T2); SEPM20965 is Fern Rock TC
+        on the Broad Street Line. No single route contains both, which is
+        exactly the shape the route-match guard exists to drop.
+        """
+        assert _is_segment_anomalous("SEPM20879", "SEPM20965", "SEPTA_METRO")
 
     def test_amtrak_unknown_stations_are_anomalous(self):
         """Test that AMTRAK segments with unknown stations are flagged as anomalous.
