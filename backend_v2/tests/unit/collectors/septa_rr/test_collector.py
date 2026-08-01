@@ -541,9 +541,8 @@ class TestCollect:
             [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=0, departure_delay=0)]
         )
         mock_client.get_trip_updates.return_value = [trip]
-        collector._process_trip = AsyncMock(
-            return_value=("skipped_no_static", None, None)
-        )
+        collector._resolve_static_schedule = AsyncMock(return_value=(None, None))
+        collector._process_trip = AsyncMock()
 
         with (
             patch(
@@ -561,6 +560,8 @@ class TestCollect:
 
         assert stats["skipped_no_static"] == 1
         assert stats["expired"] == 1
+        collector._process_trip.assert_not_awaited()
+        # No resolvable service day, so suppression has to span both recent days.
         assert reconcile.await_args.args[3] == set()
         assert reconcile.await_args.args[4] == {"CHW8312"}
 
@@ -577,9 +578,10 @@ class TestCollect:
             train_id="CHW8312",
             journey_date=date(2026, 7, 18),
         )
-        collector._process_trip = AsyncMock(
-            return_value=("updated", journey, date(2026, 7, 18))
+        collector._resolve_static_schedule = AsyncMock(
+            return_value=(date(2026, 7, 18), [_static_stop("SEPR90801", 1, _BASE)])
         )
+        collector._process_trip = AsyncMock(return_value=("updated", journey))
 
         with (
             patch(
@@ -609,9 +611,10 @@ class TestCollect:
             [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=0, departure_delay=0)]
         )
         mock_client.get_trip_updates.return_value = [trip]
-        collector._process_trip = AsyncMock(
-            return_value=(None, None, date(2026, 7, 18))
+        collector._resolve_static_schedule = AsyncMock(
+            return_value=(date(2026, 7, 18), [_static_stop("SEPR90801", 1, _BASE)])
         )
+        collector._process_trip = AsyncMock(return_value=(None, None))
 
         with (
             patch(
@@ -628,6 +631,59 @@ class TestCollect:
             await collector.collect(mock_session)
 
         assert reconcile.await_args.args[3] == {("CHW8312", date(2026, 7, 18))}
+        assert reconcile.await_args.args[4] == set()
+
+    @pytest.mark.asyncio
+    async def test_failure_after_resolution_protects_only_its_service_day(
+        self, collector, mock_client, mock_session
+    ):
+        """A trip that resolved its service day and *then* blew up is still present
+        on that day only.
+
+        Regression guard for the codex review on PR #1640: when the date was
+        resolved inside ``_process_trip``, the exception unwound it away and the
+        caller could only record the bare train number — so repeated enrichment or
+        database failures for today's trip indefinitely deferred expiry of a
+        genuinely absent same-numbered row from the previous service day.
+        """
+        trip = _trip(
+            [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=0, departure_delay=0)]
+        )
+        # Two trips so the "all trips failed" guard doesn't abort the run before
+        # reconciliation; the second one succeeds.
+        healthy = _trip(
+            [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=0, departure_delay=0)],
+            trip_id="AIR2453_20260718_SID189896",
+        )
+        mock_client.get_trip_updates.return_value = [trip, healthy]
+        collector._resolve_static_schedule = AsyncMock(
+            return_value=(date(2026, 7, 18), [_static_stop("SEPR90801", 1, _BASE)])
+        )
+        journey = MagicMock(id=7, train_id="AIR2453", journey_date=date(2026, 7, 18))
+        collector._process_trip = AsyncMock(
+            side_effect=[RuntimeError("database is down"), ("updated", journey)]
+        )
+
+        with (
+            patch(
+                "trackrat.collectors.septa_rr.collector."
+                "TransitAnalyzer.analyze_new_segments_bulk",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "trackrat.collectors.septa_rr.collector.reconcile_journey_omissions",
+                new_callable=AsyncMock,
+                return_value=0,
+            ) as reconcile,
+        ):
+            stats = await collector.collect(mock_session)
+
+        assert stats["errors"] == 1
+        assert reconcile.await_args.args[3] == {
+            ("CHW8312", date(2026, 7, 18)),
+            ("AIR2453", date(2026, 7, 18)),
+        }
+        # Critically empty: yesterday's CHW8312 must stay strikeable.
         assert reconcile.await_args.args[4] == set()
 
     @pytest.mark.asyncio
@@ -672,6 +728,9 @@ class TestCollect:
             [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=0, departure_delay=0)]
         )
         mock_client.get_trip_updates.return_value = [trip]
+        collector._resolve_static_schedule = AsyncMock(
+            return_value=(date(2026, 7, 18), [_static_stop("SEPR90801", 1, _BASE)])
+        )
         collector._process_trip = AsyncMock(side_effect=ValueError("bad trip"))
 
         with patch(
@@ -685,28 +744,11 @@ class TestCollect:
 
 
 class TestProcessTrip:
-    """_process_trip: the static schedule is mandatory for Regional Rail."""
+    """_process_trip: reconstruct a trip against an already-resolved schedule."""
 
     @pytest.fixture
     def collector(self):
         return SeptaRailCollector(client=AsyncMock(spec=SeptaRailClient))
-
-    @pytest.mark.asyncio
-    async def test_skips_when_no_static_schedule(self, collector):
-        """No GTFS static schedule on today or yesterday → counted skip signal."""
-        collector._gtfs_service = MagicMock()
-        collector._gtfs_service.get_static_stop_times = AsyncMock(return_value=[])
-        session = AsyncMock()
-
-        trip = _trip(
-            [SeptaRailStopUpdate(stop_sequence=1, arrival_delay=60, departure_delay=60)]
-        )
-        result, journey, service_date = await collector._process_trip(session, trip)
-        assert result == "skipped_no_static"
-        assert journey is None
-        # Nothing resolved the service day, so the caller must fall back to the
-        # date-unresolved suppression path.
-        assert service_date is None
 
     @pytest.mark.asyncio
     @patch("trackrat.collectors.septa_rr.collector.now_et")
@@ -721,11 +763,6 @@ class TestProcessTrip:
             _static_stop("SEPR90803", 3, _BASE + timedelta(minutes=10)),
             _static_stop("SEPR90804", 4, _BASE + timedelta(minutes=15)),
         ]
-        collector._gtfs_service = MagicMock()
-        collector._gtfs_service.get_static_stop_times = AsyncMock(
-            return_value=static_stops
-        )
-
         # No existing journey for this train/day.
         no_existing = MagicMock()
         no_existing.scalar_one_or_none.return_value = None
@@ -740,13 +777,15 @@ class TestProcessTrip:
             ]
         )
 
-        result, journey, service_date = await collector._process_trip(session, trip)
+        result, journey = await collector._process_trip(
+            session, trip, _BASE.date(), static_stops
+        )
 
         assert result == "discovered"
         assert journey is not None
         assert journey.data_source == "SEPTA_RR"
         assert journey.train_id == "CHW8312"
         assert journey.observation_type == "OBSERVED"
-        assert service_date == journey.journey_date == _BASE.date()
+        assert journey.journey_date == _BASE.date()
         # A journey + one stop per merged static stop were added to the session.
         assert session.add.call_count >= 1
