@@ -384,6 +384,7 @@ class DepartureService:
                 data_sources=allowed_sources,
                 time_from=aware_time_from,
                 line_codes=line_codes,
+                label_matched_stop=label_matched_stop,
             )
             response.departures = [
                 d
@@ -746,6 +747,7 @@ class DepartureService:
                     data_sources=allowed_sources,
                     time_from=gtfs_lower_bound,
                     line_codes=line_codes,
+                    label_matched_stop=label_matched_stop,
                 )
 
                 # Filter GTFS departures:
