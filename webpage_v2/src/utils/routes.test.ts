@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { TripOption } from '../types';
-import { buildRouteStatusUrl, buildTrainUrl, buildTripUrl, parseTripLegsParam, parseTripParam } from './routes';
+import { buildDeparturesUrl, buildRouteStatusUrl, buildTrainUrl, buildTripUrl, parseLineCodes, parseTripLegsParam, parseTripParam } from './routes';
 
 describe('buildTrainUrl', () => {
   it('builds a route-scoped train URL with query params', () => {
@@ -169,5 +169,77 @@ describe('buildRouteStatusUrl', () => {
       from: 'NY',
       to: 'NP',
     })).toBe('/route/NY/NP');
+  });
+});
+
+describe('buildDeparturesUrl', () => {
+  // Unscoped links must stay byte-identical to the path every other caller
+  // already produces, or ordinary station-pair boards would start taking the
+  // line-scoped code path (issue #1625).
+  it('builds the plain station-pair path when no scope is given', () => {
+    expect(buildDeparturesUrl({ from: 'TR', to: 'NY' })).toBe('/trains/TR/NY');
+  });
+
+  it('omits the query entirely for an empty lines array', () => {
+    expect(buildDeparturesUrl({ from: 'HB', to: 'SF', lines: [] })).toBe('/trains/HB/SF');
+  });
+
+  it('carries line codes and data source so the scope survives reload and sharing', () => {
+    expect(buildDeparturesUrl({
+      from: 'HB',
+      to: 'SF',
+      dataSource: 'NJT',
+      lines: ['MA', 'Ma'],
+    })).toBe('/trains/HB/SF?data_source=NJT&lines=MA%2CMa');
+  });
+
+  it('distinguishes two lines that share the same terminal stations', () => {
+    const main = buildDeparturesUrl({ from: 'HB', to: 'SF', dataSource: 'NJT', lines: ['MA', 'Ma'] });
+    const bergen = buildDeparturesUrl({ from: 'HB', to: 'SF', dataSource: 'NJT', lines: ['BE', 'Be'] });
+    expect(main).not.toBe(bergen);
+  });
+
+  it('emits a scope-only query when the data source is unknown', () => {
+    expect(buildDeparturesUrl({ from: 'HB', to: 'SF', lines: ['MA'] }))
+      .toBe('/trains/HB/SF?lines=MA');
+  });
+
+  it('percent-encodes station codes', () => {
+    expect(buildDeparturesUrl({ from: 'A/B', to: 'NY' })).toBe('/trains/A%2FB/NY');
+  });
+
+  it('round-trips through parseLineCodes', () => {
+    // The URL is only useful if the page can read back exactly what the link
+    // wrote — encoding the comma and re-splitting it must be lossless.
+    const url = buildDeparturesUrl({ from: 'HB', to: 'SF', dataSource: 'NJT', lines: ['MA', 'Ma'] });
+    const params = new URLSearchParams(url.split('?')[1]);
+    expect(parseLineCodes(params.get('lines'))).toEqual(['MA', 'Ma']);
+    expect(params.get('data_source')).toBe('NJT');
+  });
+});
+
+describe('parseLineCodes', () => {
+  it('splits a comma-separated value', () => {
+    expect(parseLineCodes('MA,Ma')).toEqual(['MA', 'Ma']);
+  });
+
+  it('trims surrounding whitespace on each code', () => {
+    expect(parseLineCodes(' MA , Ma ')).toEqual(['MA', 'Ma']);
+  });
+
+  // An empty or blank param must read as "no filter", not as a filter on the
+  // empty string — the latter would be sent to the API and match nothing.
+  it.each([
+    ['empty string', ''],
+    ['only commas', ',,'],
+    ['only whitespace', '  '],
+    ['null', null],
+    ['undefined', undefined],
+  ])('returns no codes for %s', (_label, raw) => {
+    expect(parseLineCodes(raw)).toEqual([]);
+  });
+
+  it('drops blank entries but keeps the real ones', () => {
+    expect(parseLineCodes('MA,,Ma,')).toEqual(['MA', 'Ma']);
   });
 });

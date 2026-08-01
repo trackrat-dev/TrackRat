@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, lazy, Suspense } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Train, TripOption, OperationsSummaryResponse } from '../types';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
+import { Train, TripOption, OperationsSummaryResponse, TransitSystem } from '../types';
 import { apiService } from '../services/api';
 import { useAppStore } from '../store/appStore';
 import { TrainCardSkeleton } from '../components/Skeleton';
@@ -11,9 +11,9 @@ import { TransferTripCard } from '../components/TransferTripCard';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { TrainDistributionChart } from '../components/TrainDistributionChart';
 import { ChevronIcon, RefreshIcon } from '../components/icons';
-import { getStationByCode } from '../data/stations';
+import { getStationByCode, LINE_SCOPED_ALERT_SYSTEMS } from '../data/stations';
 import { formatTime, getTodayDateString } from '../utils/date';
-import { buildRouteStatusUrl, buildTrainUrl, buildTripUrl } from '../utils/routes';
+import { buildRouteStatusUrl, buildTrainUrl, buildTripUrl, parseLineCodes } from '../utils/routes';
 import { tripLegToTrain } from '../utils/trips';
 import { usePolling } from '../utils/usePolling';
 import { useBackNavigation } from '../utils/useBackNavigation';
@@ -22,6 +22,7 @@ const RouteMap = lazy(() => import('../components/RouteMap').then((m) => ({ defa
 
 export function TrainListPage() {
   const { from, to } = useParams<{ from: string; to: string }>();
+  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const goBack = useBackNavigation('/departures');
   const { addRecentTrip } = useAppStore();
@@ -43,6 +44,16 @@ export function TrainListPage() {
   const fromStation = from ? getStationByCode(from) : null;
   const toStation = to ? getStationByCode(to) : null;
 
+  // Line scope carried in the query string by `buildDeparturesUrl` (issue #1625).
+  // Absent on ordinary station-pair URLs, which keep the combined trip search.
+  // `linesKey` is the stable dependency: `parseLineCodes` allocates a fresh
+  // array every render, and feeding that to usePolling's raw dep list would
+  // abort and refetch on every render.
+  const linesKey = searchParams.get('lines') ?? '';
+  const scopedLines = useMemo(() => parseLineCodes(linesKey), [linesKey]);
+  const isLineScoped = scopedLines.length > 0;
+  const scopedDataSource = searchParams.get('data_source') || undefined;
+
   // Check if train has already departed from the origin station
   const hasTrainDeparted = (train: Train): boolean => {
     const now = new Date();
@@ -58,6 +69,44 @@ export function TrainListPage() {
     if (!from || !to) return;
 
     try {
+      // Line-scoped boards go through /trains/departures, the only endpoint that
+      // can express a line filter (applied server-side before the limit, so a
+      // shared-terminal sibling can't crowd out this line's trains — issue
+      // #1567 / PR #1585). Transfers are meaningless for a single line, so the
+      // transfer list stays empty. Unscoped URLs keep the combined trip search.
+      if (isLineScoped) {
+        const response = await apiService.getDepartures(from, {
+          to,
+          limit: 50,
+          dataSources: scopedDataSource,
+          lines: scopedLines,
+          // The date picker drives both paths; without this the scoped board
+          // would silently show today's trains under a future date's heading.
+          date: selectedDate || undefined,
+          // `/trips/search` hardcodes hide_departed=true while `/trains/departures`
+          // defaults it to false, and both share DepartureService's filter. Passing
+          // it keeps the scoped board from listing trains that have already left
+          // the origin but are still running further down the line.
+          hideDeparted: true,
+          signal,
+        });
+
+        const sorted = [...response.departures].sort((a, b) => {
+          const aDeparted = hasTrainDeparted(a);
+          const bDeparted = hasTrainDeparted(b);
+          if (aDeparted !== bDeparted) return aDeparted ? 1 : -1;
+          return 0;
+        });
+
+        setTrains(sorted);
+        setTransferTrips([]);
+        setIsTransferSearch(false);
+        setLastUpdated(new Date());
+        setError(null);
+        setLoading(false);
+        return;
+      }
+
       const response = await apiService.searchTrips(from, to, 50, selectedDate || undefined, signal);
 
       // Split response into direct and transfer trips
@@ -84,11 +133,14 @@ export function TrainListPage() {
       setError(err instanceof Error ? err.message : 'Failed to load trains');
       setLoading(false);
     }
-  }, [from, to, selectedDate]);
+  }, [from, to, selectedDate, isLineScoped, scopedLines, scopedDataSource]);
 
   // Polling: visibility-aware, aborts in-flight on unmount/dep change.
   // Future-dated views show only scheduled data, so polling is meaningless.
-  usePolling(fetchTrains, [from, to, selectedDate], { enabled: !isViewingFutureDate });
+  // `linesKey` (not `scopedLines`) is the dep — see the memo above.
+  usePolling(fetchTrains, [from, to, selectedDate, linesKey, scopedDataSource], {
+    enabled: !isViewingFutureDate,
+  });
 
   // One-shot fetch for future dates (usePolling skips entirely when disabled).
   useEffect(() => {
@@ -103,7 +155,9 @@ export function TrainListPage() {
     if (!from || !to) return;
 
     const controller = new AbortController();
-    apiService.getRouteSummary(from, to, controller.signal)
+    // Line-scoped when the URL carries a scope, for the same shared-terminal
+    // reason as the departures fetch above.
+    apiService.getRouteSummary(from, to, controller.signal, isLineScoped ? scopedLines : undefined)
       .then((res) => {
         setSummary(res);
         setSummaryError(false);
@@ -113,9 +167,10 @@ export function TrainListPage() {
         setSummaryError(true);
       });
     return () => controller.abort();
-    // fromStation/toStation are derived from from/to and need not be deps
+    // fromStation/toStation are derived from from/to and need not be deps;
+    // linesKey stands in for scopedLines (see the memo above)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [from, to]);
+  }, [from, to, linesKey]);
 
   const filteredTrains = useMemo(() => {
     if (!trainFilter.trim()) return trains;
@@ -143,12 +198,21 @@ export function TrainListPage() {
     });
     return systems;
   }, [trains, transferTrips]);
-  const directRouteDataSource = directDataSources.size === 1
-    ? trains[0]?.data_source
-    : undefined;
-  const serviceAlertDataSource = allResultDataSources.size === 1
-    ? [...allResultDataSources][0]
-    : undefined;
+  // A scope in the URL is authoritative over the source derived from results:
+  // it still identifies the system when the board comes back empty.
+  const directRouteDataSource = scopedDataSource
+    ?? (directDataSources.size === 1 ? trains[0]?.data_source : undefined);
+  const serviceAlertDataSource = scopedDataSource
+    ?? (allResultDataSources.size === 1 ? [...allResultDataSources][0] : undefined);
+
+  // Only filter alerts by line code where the codes share a vocabulary with the
+  // alert feed's affected_route_ids — see LINE_SCOPED_ALERT_SYSTEMS.
+  const alertRouteIds =
+    isLineScoped
+    && serviceAlertDataSource
+    && LINE_SCOPED_ALERT_SYSTEMS.includes(serviceAlertDataSource as TransitSystem)
+      ? scopedLines
+      : undefined;
 
   const isEmpty = filteredTrains.length === 0 && filteredTransferTrips.length === 0;
   const hasResults = trains.length > 0 || transferTrips.length > 0;
@@ -194,9 +258,9 @@ export function TrainListPage() {
         )}
       </div>
 
-      {/* Service alerts for MTA systems */}
+      {/* Service alerts for MTA systems; line-scoped when the URL carries a scope */}
       {serviceAlertDataSource && (
-        <ServiceAlertBanner dataSource={serviceAlertDataSource} />
+        <ServiceAlertBanner dataSource={serviceAlertDataSource} routeIds={alertRouteIds} />
       )}
 
       {/* Route map (lazy-loaded) */}

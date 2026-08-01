@@ -600,6 +600,41 @@ describe('getDepartures', () => {
 
     expect(mockFetch).toHaveBeenCalledTimes(2);
   });
+
+  // These assert the backend's snake_case wire names. Page-level tests mock this
+  // module, so they'd pass even if an option never reached the query string or
+  // reached it under the wrong name.
+  it('sends the line scope, date and hide_departed under their backend names', async () => {
+    mockFetch.mockReturnValue(jsonResponse({ departures: [], metadata: {} }));
+
+    await api.getDepartures('HB', {
+      to: 'SF',
+      dataSources: 'NJT',
+      lines: ['MA', 'Ma'],
+      date: '2999-01-20',
+      hideDeparted: true,
+    });
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    const params = new URLSearchParams(url.split('?')[1]);
+    expect(params.get('data_sources')).toBe('NJT');
+    expect(params.get('lines')).toBe('MA,Ma');
+    expect(params.get('date')).toBe('2999-01-20');
+    expect(params.get('hide_departed')).toBe('true');
+  });
+
+  it('omits the optional scope params entirely when unset', async () => {
+    // An empty `lines=` or a stray `hide_departed=false` would change the
+    // backend's behaviour and defeat its response cache key.
+    mockFetch.mockReturnValue(jsonResponse({ departures: [], metadata: {} }));
+
+    await api.getDepartures('HB', { lines: [], hideDeparted: false });
+
+    const url = mockFetch.mock.calls[0][0] as string;
+    expect(url).not.toContain('lines=');
+    expect(url).not.toContain('date=');
+    expect(url).not.toContain('hide_departed=');
+  });
 });
 
 describe('getRecentDepartures', () => {
