@@ -7,7 +7,7 @@ Follows the same pattern as the PATH collector for simplicity.
 
 import asyncio
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 from typing import Any
 
 from sqlalchemy import select
@@ -23,6 +23,7 @@ from trackrat.collectors.mta_common import (
     infer_missing_origin,
     select_matching_trip,
     set_stop_track,
+    synthetic_origin_departure,
     update_journey_metadata,
     update_stop_departure_status,
 )
@@ -335,12 +336,22 @@ class LIRRCollector:
             # When GTFS backfill produced no usable stops, infer origin
             # for outbound trains whose origin terminal was dropped from RT
             inferred_origin: str | None = None
+            origin_actual: datetime | None = None
             if not merged_stops:
-                inferred_origin = infer_missing_origin(
+                candidate_origin = infer_missing_origin(
                     first_arrival.station_code, first_arrival.direction_id, "LIRR"
                 )
-                if inferred_origin:
-                    origin_code = inferred_origin
+                if candidate_origin:
+                    # Only accept the inference if the train could already have
+                    # left that terminal; a future departure contradicts the
+                    # already-passed premise — e.g. a not-yet-departed trip
+                    # whose origin is simply absent from RT (#1689).
+                    origin_actual = synthetic_origin_departure(
+                        first_arrival.arrival_time, now_et()
+                    )
+                    if origin_actual:
+                        inferred_origin = candidate_origin
+                        origin_code = candidate_origin
 
             # Skip trips with fewer than 2 usable stops when no static
             # backfill is available.  LIRR GTFS-RT includes future trains
@@ -432,8 +443,7 @@ class LIRRCollector:
             else:
                 # Synthesize a departed origin stop when the origin terminal
                 # was dropped from GTFS-RT and static backfill is unavailable
-                if inferred_origin:
-                    origin_actual = first_arrival.arrival_time - ORIGIN_TRAVEL_BUFFER
+                if inferred_origin and origin_actual:
                     stop = JourneyStop(
                         journey_id=journey.id,
                         journey_date=journey.journey_date,

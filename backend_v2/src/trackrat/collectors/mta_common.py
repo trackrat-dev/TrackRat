@@ -136,14 +136,24 @@ def synthetic_origin_departure(
 
     An origin is only inferred because GTFS-RT drops stops the train has
     *already passed*, so the synthesized departure must lie in the past. The
-    feed's first visible entry is the train's next stop, which on the subway is
-    minutes away, so a legitimate inference lands well before ``now``.
+    feed's first visible entry is the train's next stop — minutes away on the
+    subway — so a legitimate inference lands well before ``now``.
 
     When it does not, the premise is contradicted: the train has not reached
     its first visible stop yet, so nothing was dropped and the trip genuinely
-    begins there — a line truncated by a service change (issue #1689). Callers
-    must skip the inference rather than fabricate a stop, otherwise the far
-    terminal is served as a boardable departure the train never calls at.
+    begins there — a line truncated by a service change (issue #1689), or a
+    not-yet-departed commuter-rail trip whose origin terminal is absent from
+    RT. Callers must skip the inference rather than fabricate a stop,
+    otherwise the terminal is served as a boardable departure at a fabricated
+    time — for a train that never calls there, or at a time the real train
+    may have long since left.
+
+    On commuter rail this also declines a mid-journey express whose next stop
+    is further out than ``ORIGIN_TRAVEL_BUFFER``, losing a legitimate origin
+    backfill. Accepted trade-off: those callers only reach this path when
+    GTFS static backfill already failed, and a declined origin is a departed
+    stop that default departure boards hide anyway, while the fabricated
+    future time it prevents is rider-visible.
 
     Args:
         first_arrival_time: Arrival time of the first visible RT stop.
