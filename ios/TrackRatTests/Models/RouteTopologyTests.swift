@@ -404,4 +404,103 @@ class RouteTopologyTests: XCTestCase {
             "SEPTA Metro line_ids must be the backend's septa-metro-* keys"
         )
     }
+
+    // MARK: - Port Jervis Line ordering (issue #1660)
+
+    /// A rider reported no line drawn between Harriman and Salisbury Mills-Cornwall.
+    /// `RouteLine.coordinatePairs` walks *consecutive* station codes, so while
+    /// Middletown sat between them the real RM→CW leg was never drawn — the map
+    /// instead ran two long straight lines out to Middletown and back.
+    private func portJervisStations() -> [String] {
+        let route = RouteTopology.allRoutes.first { $0.id == "njt-port-jervis" }
+        XCTAssertNotNil(route, "njt-port-jervis must exist in the topology")
+        return route?.stationCodes ?? []
+    }
+
+    func testPortJervisUsesTimetableStationOrder() {
+        XCTAssertEqual(portJervisStations(),
+                       ["SF", "XG", "TC", "RM", "CW", "CB", "MD", "OS", "PO"],
+                       "Port Jervis Line must follow the published timetable order")
+    }
+
+    func testPortJervisHarrimanAndCornwallAreAdjacent() {
+        let stations = portJervisStations()
+        guard let rm = stations.firstIndex(of: "RM"), let cw = stations.firstIndex(of: "CW") else {
+            return XCTFail("RM and CW must both be on the Port Jervis Line")
+        }
+        XCTAssertEqual(cw - rm, 1,
+                       "RM→CW is a real adjacency; a gap here is what left the map disconnected")
+    }
+
+    func testPortJervisMiddletownLiesBetweenCampbellHallAndOtisville() {
+        let stations = portJervisStations()
+        guard let md = stations.firstIndex(of: "MD") else {
+            return XCTFail("MD must be on the Port Jervis Line")
+        }
+        XCTAssertEqual(stations[md - 1], "CB")
+        XCTAssertEqual(stations[md + 1], "OS")
+    }
+
+    func testPortJervisDrawsAConnectedHarrimanToCornwallSegment() {
+        // The rendering-level assertion: the pair the rider said was missing must
+        // actually be emitted by the same accessor the map draws from.
+        let route = RouteTopology.allRoutes.first { $0.id == "njt-port-jervis" }
+        let pairs = route?.coordinatePairs ?? []
+        let stations = portJervisStations()
+
+        XCTAssertFalse(stations.isEmpty, "Port Jervis Line must have stations")
+        guard let rmCoord = Stations.getCoordinates(for: "RM"),
+              let cwCoord = Stations.getCoordinates(for: "CW") else {
+            return XCTFail("RM and CW must both have coordinates")
+        }
+
+        // Matched by value rather than by index: coordinatePairs silently drops
+        // any pair whose stations lack coordinates, so positional indexing into
+        // it would assert a different segment if anything upstream were dropped.
+        let connects = pairs.contains { pair in
+            abs(pair.0.latitude - rmCoord.latitude) < 0.0001
+                && abs(pair.0.longitude - rmCoord.longitude) < 0.0001
+                && abs(pair.1.latitude - cwCoord.latitude) < 0.0001
+                && abs(pair.1.longitude - cwCoord.longitude) < 0.0001
+        }
+        XCTAssertTrue(connects,
+                      "The map must draw a segment from Harriman to Salisbury "
+                      + "Mills-Cornwall — its absence is what issue #1660 reported")
+    }
+
+    func testPortJervisOrderDoesNotZigZag() {
+        // The general form of the bug. Swapping any two adjacent stations must not
+        // shorten the line; under the old order, swapping MD and CW shortened it by
+        // 8.4 miles. Scoped to this route deliberately — real lines elsewhere
+        // (Amtrak detours, LIRR branches) legitimately backtrack.
+        let coords: [String: (Double, Double)] = [
+            "SF": (41.11354, -74.153442), "XG": (41.157138, -74.191307),
+            "TC": (41.194208, -74.18446), "RM": (41.293354, -74.13987),
+            "CW": (41.437073, -74.101871), "CB": (41.450917, -74.266554),
+            "MD": (41.4459, -74.4222), "OS": (41.471784, -74.529212),
+            "PO": (41.374899, -74.694622)
+        ]
+        func miles(_ a: String, _ b: String) -> Double {
+            guard let p = coords[a], let q = coords[b] else { return 0 }
+            let toRad = { $0 * Double.pi / 180 }
+            let (la1, lo1) = (toRad(p.0), toRad(p.1))
+            let (la2, lo2) = (toRad(q.0), toRad(q.1))
+            let h = pow(sin((la2 - la1) / 2), 2)
+                + cos(la1) * cos(la2) * pow(sin((lo2 - lo1) / 2), 2)
+            return 3958.8 * 2 * asin(min(1, sqrt(h)))
+        }
+        func length(_ seq: [String]) -> Double {
+            stride(from: 0, to: seq.count - 1, by: 1).reduce(0) { $0 + miles(seq[$1], seq[$1 + 1]) }
+        }
+
+        let stations = portJervisStations()
+        let baseline = length(stations)
+        for i in 0..<(stations.count - 1) {
+            var swapped = stations
+            swapped.swapAt(i, i + 1)
+            XCTAssertGreaterThanOrEqual(
+                length(swapped), baseline - 0.5,
+                "Swapping \(stations[i]) and \(stations[i + 1]) shortens the Port Jervis Line")
+        }
+    }
 }

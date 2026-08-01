@@ -411,9 +411,14 @@ NJT_PORT_JERVIS = Route(
         "XG",
         "TC",
         "RM",
-        "MD",
+        # Timetable order west of Harriman is RM → CW → CB → MD → OS → PO.
+        # MD sat between RM and CW until #1660, which made the real RM→CW
+        # leg a non-adjacent pair: the base map never drew it (clients only
+        # draw consecutive pairs) and expand_to_canonical_segments turned
+        # observed RM→CW runs into the fabricated pairs (RM,MD) and (MD,CW).
         "CW",
         "CB",
+        "MD",
         "OS",
         "PO",
     ),

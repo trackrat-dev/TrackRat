@@ -2,8 +2,11 @@
 Unit tests for the route topology module.
 """
 
+import math
+
 import pytest
 
+from trackrat.config.stations import STATION_COORDINATES
 from trackrat.config.route_topology import (
     ALL_ROUTES,
     AMTRAK_CAPITOL_CORRIDOR,
@@ -44,6 +47,26 @@ from trackrat.config.route_topology import (
     get_route_by_line_code,
     get_routes_for_data_source,
 )
+
+
+def _great_circle_miles(a: str, b: str) -> float:
+    """Distance between two station codes, from the repo's own coordinates."""
+    lat1, lon1 = map(
+        math.radians, (STATION_COORDINATES[a]["lat"], STATION_COORDINATES[a]["lon"])
+    )
+    lat2, lon2 = map(
+        math.radians, (STATION_COORDINATES[b]["lat"], STATION_COORDINATES[b]["lon"])
+    )
+    return (
+        3958.8
+        * 2
+        * math.asin(
+            math.sqrt(
+                math.sin((lat2 - lat1) / 2) ** 2
+                + math.cos(lat1) * math.cos(lat2) * math.sin((lon2 - lon1) / 2) ** 2
+            )
+        )
+    )
 
 
 class TestRouteBasics:
@@ -1830,3 +1853,79 @@ class TestNJTTrunkInclusion:
                 station not in seen
             ), f"Duplicate station {station} in NJT_PORT_JERVIS"
             seen.add(station)
+
+    def test_port_jervis_timetable_order_west_of_harriman(self):
+        """Pin the published Metro-North Port Jervis Line sequence (#1660).
+
+        Harriman → Salisbury Mills-Cornwall → Campbell Hall → Middletown →
+        Otisville → Port Jervis. MD sat between RM and CW, which is the whole
+        bug: the clients draw the base network only between *consecutive*
+        pairs, so the real RM→CW leg was never drawn and the map read as
+        "totally disconnected" there.
+        """
+        assert NJT_PORT_JERVIS.stations[-9:] == (
+            "SF",
+            "XG",
+            "TC",
+            "RM",
+            "CW",
+            "CB",
+            "MD",
+            "OS",
+            "PO",
+        )
+
+    def test_port_jervis_harriman_to_cornwall_is_a_single_canonical_segment(self):
+        """The real leg must not be expanded into fabricated pairs.
+
+        `expand_to_canonical_segments` walks the station tuple, so while MD sat
+        between RM and CW an observed RM→CW run was rewritten into (RM,MD) and
+        (MD,CW) — two non-physical segments coloured with real transit times,
+        while the genuine segment never reached /routes/congestion.
+        """
+        assert NJT_PORT_JERVIS.expand_to_canonical_segments("RM", "CW") == [
+            ("RM", "CW")
+        ]
+        assert NJT_PORT_JERVIS.expand_to_canonical_segments("CW", "RM") == [
+            ("CW", "RM")
+        ]
+
+    def test_port_jervis_middletown_lies_between_campbell_hall_and_otisville(self):
+        """MD's real neighbours, asserted positionally rather than by name."""
+        stations = NJT_PORT_JERVIS.stations
+        assert stations[stations.index("MD") - 1] == "CB"
+        assert stations[stations.index("MD") + 1] == "OS"
+
+    def test_port_jervis_order_is_not_improved_by_swapping_neighbours(self):
+        """The general form of #1660: a zig-zag in the station order.
+
+        Swapping any two adjacent stations must not shorten the route's total
+        great-circle path. Under the old order, swapping MD and CW shortened
+        the line by 8.4 miles (81.2 → 56.9 total, against a real line length of
+        about 57), which is what a station inserted in the wrong place looks
+        like geometrically.
+
+        Deliberately scoped to this route rather than applied to ALL_ROUTES:
+        seventeen other routes legitimately fail it, because real rail lines do
+        backtrack — Amtrak's Empire Service detours via Albany, BART's red and
+        yellow lines run an out-and-back spur to SFO, and the LIRR branches
+        rejoin. A global gate would have to except those, and an excepted route
+        silently stops being checked.
+        """
+        stations = [s for s in NJT_PORT_JERVIS.stations if s in STATION_COORDINATES]
+        assert len(stations) == len(NJT_PORT_JERVIS.stations), "coordinates missing"
+
+        def path_length(seq: list[str]) -> float:
+            return sum(
+                _great_circle_miles(seq[i], seq[i + 1]) for i in range(len(seq) - 1)
+            )
+
+        baseline = path_length(stations)
+        for i in range(len(stations) - 1):
+            swapped = stations[:]
+            swapped[i], swapped[i + 1] = swapped[i + 1], swapped[i]
+            assert path_length(swapped) >= baseline - 0.5, (
+                f"swapping {stations[i]} and {stations[i + 1]} shortens the Port "
+                f"Jervis Line by {baseline - path_length(swapped):.1f} mi — the "
+                "station order zig-zags, as in issue #1660"
+            )

@@ -8,7 +8,11 @@ export interface RouteDefinition {
   stations: string[];
 }
 
-// Auto-generated from backend route_topology.py
+// Mirrors backend route_topology.py, but is maintained BY HAND — there is no
+// generator for this file (issue #1660, where one wrong station order had to be
+// corrected separately in all three copies). Any change here must be made in
+// route_topology.py and ios/TrackRat/Shared/RouteTopology.swift too; the backend
+// test `test_route_topology_client_parity.py` fails if the orderings diverge.
 export const ROUTES: RouteDefinition[] = [
   { id: 'njt-nec', name: 'Northeast Corridor', dataSource: 'NJT', lineCodes: ["NE"], stations: ["NY", "SE", "NP", "NA", "NZ", "EZ", "LI", "RH", "MP", "MU", "ED", "NB", "JA", "PJ", "HL", "TR"] },
   { id: 'njt-njcl', name: 'North Jersey Coast Line', dataSource: 'NJT', lineCodes: ["NC"], stations: ["NY", "SE", "NP", "NA", "NZ", "EZ", "LI", "RH", "AV", "WB", "PE", "CH", "AM", "HZ", "MI", "RB", "LS", "MK", "LB", "EL", "AH", "AP", "BB", "BS", "LA", "SQ", "PP", "BH"] },
@@ -18,7 +22,8 @@ export const ROUTES: RouteDefinition[] = [
   { id: 'njt-mobo', name: 'Montclair-Boonton Line', dataSource: 'NJT', lineCodes: ["MO", "Mo"], stations: ["HB", "SE", "ND", "WT", "BM", "GG", "MC", "WA", "WG", "UM", "MS", "HS", "UV", "FA", "23", "MV", "LP", "TO", "BN", "ML", "DV"] },
   { id: 'njt-main', name: 'Main Line', dataSource: 'NJT', lineCodes: ["MA", "Ma"], stations: ["HB", "SE", "KG", "LN", "DL", "PS", "IF", "RN", "HW", "RS", "RW", "UF", "WK", "AZ", "RY", "17", "MZ", "SF"] },
   { id: 'njt-bergen', name: 'Bergen County Line', dataSource: 'NJT', lineCodes: ["BE", "Be"], stations: ["HB", "SE", "RF", "WM", "GD", "PL", "BF", "FZ", "GK", "RW", "UF", "WK", "AZ", "RY", "17", "MZ", "SF"] },
-  { id: 'njt-port-jervis', name: 'Port Jervis Line', dataSource: 'NJT', lineCodes: ["PJ"], stations: ["SF", "XG", "TC", "RM", "MD", "CW", "CB", "OS", "PO"] },
+  // Timetable order west of Harriman is RM → CW → CB → MD → OS → PO (issue #1660).
+  { id: 'njt-port-jervis', name: 'Port Jervis Line', dataSource: 'NJT', lineCodes: ["PJ"], stations: ["SF", "XG", "TC", "RM", "CW", "CB", "MD", "OS", "PO"] },
   { id: 'njt-pascack', name: 'Pascack Valley Line', dataSource: 'NJT', lineCodes: ["PV", "Pa"], stations: ["HB", "SE", "WR", "TE", "EX", "AS", "NH", "RG", "OD", "EN", "WW", "HD", "WL", "PV", "ZM", "PQ", "NN", "SV"] },
   { id: 'njt-atlc', name: 'Atlantic City Line', dataSource: 'NJT', lineCodes: ["AC", "At"], stations: ["PH", "PN", "CY", "LW", "AO", "HN", "EH", "AB", "AC"] },
   { id: 'njt-princeton', name: 'Princeton Branch', dataSource: 'NJT', lineCodes: ["PR", "Pr"], stations: ["PJ", "PR"] },

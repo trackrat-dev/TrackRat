@@ -216,9 +216,9 @@ object Stations {
         Station("XG", "Sloatsburg"),
         Station("TC", "Tuxedo"),
         Station("RM", "Harriman"),
-        Station("MD", "Middletown NY"),
         Station("CW", "Salisbury Mills-Cornwall"),
         Station("CB", "Campbell Hall"),
+        Station("MD", "Middletown NY"),
         Station("OS", "Otisville"),
         Station("PO", "Port Jervis"),
 
