@@ -14,6 +14,11 @@ from structlog import get_logger
 from trackrat.db.engine import get_db
 from trackrat.models.database import DiscoveryRun, TrainJourney
 from trackrat.services.departure import ALL_DATA_SOURCES
+from trackrat.services.gtfs import (
+    GTFS_FEED_URLS,
+    GTFS_STALE_FEED_HOURS,
+    GTFSService,
+)
 from trackrat.services.scheduler import get_scheduler
 from trackrat.settings import Settings, get_settings
 from trackrat.utils.system_stats import get_disk_usage, get_memory_usage
@@ -134,6 +139,42 @@ async def health_check(
         }
     except Exception as e:
         health_status["checks"]["discovery"] = {"status": "unhealthy", "error": str(e)}
+
+    # GTFS static feed freshness.
+    #
+    # `gtfs_feed_info` records every refresh outcome durably, including the
+    # persisted error text — but until now nothing read it, so a source could
+    # serve a frozen static schedule indefinitely with the only evidence sitting
+    # in a table no endpoint exposed (issue #1646). Reported as `warning` rather
+    # than `unhealthy` on purpose: a stale schedule degrades trip search and
+    # origin/passed-stop backfill, it does not make the deployment unservable,
+    # and the container probes must not start failing over it.
+    try:
+        gtfs_sources = [
+            s for s in GTFS_FEED_URLS if not settings.is_data_source_disabled(s)
+        ]
+        statuses = await GTFSService().get_feed_statuses(db, gtfs_sources)
+        stale = [s for s in statuses if s.is_stale]
+        health_status["checks"]["gtfs_feeds"] = {
+            "status": "warning" if stale else "healthy",
+            "stale_after_hours": GTFS_STALE_FEED_HOURS,
+            "stale_sources": [s.data_source for s in stale],
+            "feeds": {
+                s.data_source: {
+                    "last_successful_parse_at": (
+                        s.last_successful_parse_at.isoformat()
+                        if s.last_successful_parse_at
+                        else None
+                    ),
+                    "age_hours": s.age_hours,
+                    "trip_count": s.trip_count,
+                    "error_message": s.error_message,
+                }
+                for s in statuses
+            },
+        }
+    except Exception as e:
+        health_status["checks"]["gtfs_feeds"] = {"status": "unhealthy", "error": str(e)}
 
     # Disk space check (persistent data disk, not the container's boot filesystem)
     disk = get_disk_usage(settings.data_disk_path)
