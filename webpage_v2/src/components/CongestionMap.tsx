@@ -1,8 +1,8 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
 import Map, { Source, Layer, Popup, NavigationControl } from 'react-map-gl/maplibre';
 import type { MapLayerMouseEvent } from 'react-map-gl/maplibre';
-import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
+import type { MapLibreMap } from 'maplibre-gl';
+import { maplibregl } from '../utils/maplibre';
 import { useNavigate } from 'react-router-dom';
 import { SegmentCongestion } from '../types';
 import {
@@ -69,7 +69,7 @@ export function CongestionMap({ segments }: CongestionMapProps) {
     ? { bounds, fitBoundsOptions: { padding: 40 } }
     : NYC_FALLBACK;
 
-  const clearHover = useCallback((map: maplibregl.Map) => {
+  const clearHover = useCallback((map: MapLibreMap) => {
     if (hoveredIdRef.current !== null) {
       map.setFeatureState({ source: SOURCE_ID, id: hoveredIdRef.current }, { hover: false });
       hoveredIdRef.current = null;

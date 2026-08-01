@@ -15,6 +15,14 @@ vi.mock('../services/api', () => ({
   },
 }));
 
+// The real CongestionMap needs WebGL/MapLibre; stub it so tests stay in jsdom.
+// Without this the lazy map mounts mid-test and maplibre-gl v6 — which fires a
+// GPUInitializationError and leaves `painter` undefined instead of throwing —
+// crashes on unmount inside `Map.remove()`.
+vi.mock('../components/CongestionMap', () => ({
+  CongestionMap: () => <div data-testid="congestion-map" />,
+}));
+
 function segment(dataSource: string, from: string, to: string): SegmentCongestion {
   return {
     from_station: from,
