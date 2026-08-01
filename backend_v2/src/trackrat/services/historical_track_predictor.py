@@ -51,7 +51,9 @@ class HistoricalTrackPredictor:
     4. Fallback to service provider (if >= 250 records)
     5. Fallback to static distribution (configurable values)
 
-    Then remove occupied tracks and renormalize probabilities.
+    Then remove occupied tracks (at every level, including the static
+    fallback) and renormalize probabilities. If every candidate track is
+    occupied, the distribution is served unfiltered instead.
     """
 
     def __init__(self) -> None:
@@ -168,7 +170,13 @@ class HistoricalTrackPredictor:
                 )
 
         if selected_dist is None:
-            # Use static distribution as final fallback
+            # Final fallback: static distribution (configured stations only).
+            # It flows through the same occupancy filtering below — previously
+            # this path skipped filtering entirely (issue #1676).
+            selected_dist = self._get_static_distribution(station_code, data_source)
+            if selected_dist is None:
+                return None
+            prediction_level = "static_fallback"
             logger.info(
                 "using_static_fallback",
                 station_code=station_code,
@@ -176,16 +184,6 @@ class HistoricalTrackPredictor:
                 service_records=service_dist["total_records"] if service_dist else 0,
                 reason="insufficient_historical_data",
             )
-            return self._create_static_distribution(station_code, data_source)
-
-        # This shouldn't happen since we always have a fallback, but keep for safety
-        if not selected_dist or not selected_dist["track_probabilities"]:
-            logger.warning(
-                "unexpected_no_distribution",
-                station_code=station_code,
-                train_id=train_id,
-            )
-            return self._create_static_distribution(station_code, data_source)
 
         # Step 3: Get occupied tracks
         occupied_response = await self.occupancy_service.get_occupied_tracks(
@@ -201,10 +199,14 @@ class HistoricalTrackPredictor:
         )
 
         # Step 4: Remove occupied tracks and renormalize
-        available_probs = {}
-        for track, prob in selected_dist["track_probabilities"].items():
-            if track not in occupied_tracks:
-                available_probs[track] = prob
+        available_probs = {
+            track: prob
+            for track, prob in selected_dist["track_probabilities"].items()
+            if track not in occupied_tracks
+        }
+        occupied_removed = len(selected_dist["track_probabilities"]) - len(
+            available_probs
+        )
 
         # Renormalize so probabilities sum to 1.0
         total_available_prob = sum(available_probs.values())
@@ -214,14 +216,18 @@ class HistoricalTrackPredictor:
                 for track, prob in available_probs.items()
             }
         else:
-            # All historical tracks are occupied - return static fallback
+            # Every candidate track is occupied. One of them will free up for
+            # this train, and this distribution is still the best signal for
+            # which — serve it unfiltered rather than swapping to the
+            # provider-wide static table, which knows nothing about this train.
             logger.warning(
-                "all_historical_tracks_occupied",
+                "all_candidate_tracks_occupied",
                 station_code=station_code,
-                historical_tracks=list(selected_dist["track_probabilities"].keys()),
+                candidate_tracks=list(selected_dist["track_probabilities"].keys()),
                 occupied_tracks=list(occupied_tracks),
             )
-            return self._create_static_distribution(station_code, data_source)
+            normalized_probs = dict(selected_dist["track_probabilities"])
+            occupied_removed = 0
 
         # Step 5: Convert tracks to platforms for NY Penn
         platform_probs = self._convert_tracks_to_platforms(
@@ -248,7 +254,8 @@ class HistoricalTrackPredictor:
                 "prediction_level": prediction_level,
                 "historical_records": selected_dist["total_records"],
                 "unique_tracks_in_history": len(selected_dist["track_probabilities"]),
-                "occupied_tracks_removed": len(occupied_tracks),
+                "occupied_tracks_removed": occupied_removed,
+                "occupied_tracks": sorted(occupied_tracks),
                 "train_id": train_id,
                 "line_code": line_code,
                 "data_source": data_source,
@@ -442,14 +449,16 @@ class HistoricalTrackPredictor:
 
         return {"track_probabilities": probabilities, "total_records": total}
 
-    def _create_static_distribution(
+    def _get_static_distribution(
         self, station_code: str, data_source: str
     ) -> dict[str, Any] | None:
         """
-        Create static distribution based on configured values.
+        Static track distribution based on configured values.
 
         This is the final fallback when we don't have enough historical data
-        even at the service provider level (< 250 records).
+        even at the service provider level (< 250 records). Returns the same
+        ``{"track_probabilities", "total_records"}`` shape as the historical
+        levels so occupancy filtering and platform conversion apply uniformly.
 
         Returns None if no static distribution is configured for this station,
         indicating that predictions should not be shown.
@@ -543,32 +552,9 @@ class HistoricalTrackPredictor:
             )
             return None
 
-        probabilities = static_distributions[station_code][data_source]
-
-        # Convert tracks to platforms for NY Penn
-        platform_probs = self._convert_tracks_to_platforms(probabilities, station_code)
-
-        # Sort by probability to get top predictions
-        sorted_platforms = sorted(
-            platform_probs.items(), key=lambda x: x[1], reverse=True
-        )
-
-        primary_platform = sorted_platforms[0][0] if sorted_platforms else "Unknown"
-        confidence = sorted_platforms[0][1] if sorted_platforms else 0.0
-        top_3_platforms = [platform for platform, _ in sorted_platforms[:3]]
-
         return {
-            "platform_probabilities": platform_probs,  # Now contains platforms
-            "primary_prediction": primary_platform,
-            "confidence": confidence,
-            "top_3": top_3_platforms,
-            "model_version": "historical_v1_static",
-            "features_used": {
-                "prediction_level": "static_fallback",
-                "historical_records": 0,
-                "station_code": station_code,
-                "data_source": data_source,
-            },
+            "track_probabilities": static_distributions[station_code][data_source],
+            "total_records": 0,
         }
 
     def _convert_tracks_to_platforms(
