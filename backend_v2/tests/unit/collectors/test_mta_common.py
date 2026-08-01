@@ -17,6 +17,7 @@ from trackrat.collectors.mta_common import (
     infer_subway_origin,
     select_matching_trip,
     set_stop_track,
+    synthetic_origin_departure,
     update_journey_metadata,
     update_stop_departure_status,
 )
@@ -1058,6 +1059,79 @@ class TestInferSubwayOrigin:
         assert (
             result_a == "SH11"
         ), f"A line: expected SH11 (Far Rockaway), got {result_a}"
+
+
+class TestSyntheticOriginDeparture:
+    """Tests for synthetic_origin_departure().
+
+    Guards issue #1689. An origin is only inferred because GTFS-RT drops stops
+    the train has already passed, so the synthesized departure must lie in the
+    past. When the first visible arrival is further away than the travel
+    buffer, the train has not reached it yet — nothing was dropped, and the
+    trip genuinely begins there because a service change truncated the line.
+    Returning a time in that case makes the collector fabricate a boardable
+    departure at a terminal the train never calls at.
+    """
+
+    NOW = datetime(2026, 8, 1, 12, 0, 0, tzinfo=timezone.utc)
+
+    def test_imminent_arrival_yields_a_past_departure(self):
+        """The normal case: next stop is 2 minutes out, so the train left the
+        terminal 8 minutes ago."""
+        result = synthetic_origin_departure(
+            self.NOW + timedelta(minutes=2), now=self.NOW
+        )
+        assert result == self.NOW - timedelta(minutes=8), (
+            "A train two minutes from its next stop has already left the "
+            f"terminal; got {result}"
+        )
+        assert result is not None and result < self.NOW
+
+    def test_arrival_beyond_the_buffer_is_rejected(self):
+        """Issue #1689: the 1 train's first visible stop was 14 St, 18 minutes
+        out, while the topology terminal is South Ferry. The train had not
+        reached 14 St, so South Ferry was never dropped — it was not served."""
+        result = synthetic_origin_departure(
+            self.NOW + timedelta(minutes=18), now=self.NOW
+        )
+        assert result is None, (
+            "An origin departure 8 minutes in the future contradicts the "
+            f"already-passed premise and must be rejected; got {result}"
+        )
+
+    def test_departure_exactly_at_now_is_rejected(self):
+        """Boundary: the comparison is strict, so a departure landing exactly on
+        `now` is not in the past and is rejected."""
+        result = synthetic_origin_departure(
+            self.NOW + ORIGIN_TRAVEL_BUFFER, now=self.NOW
+        )
+        assert result is None, f"Expected None at the boundary, got {result}"
+
+    def test_one_second_before_now_is_accepted(self):
+        """The other side of the same boundary, so the test above pins a strict
+        comparison rather than passing for any nearby value."""
+        arrival = self.NOW + ORIGIN_TRAVEL_BUFFER - timedelta(seconds=1)
+        result = synthetic_origin_departure(arrival, now=self.NOW)
+        assert result == self.NOW - timedelta(
+            seconds=1
+        ), f"A departure one second in the past is a valid inference; got {result}"
+
+    def test_already_passed_arrival_yields_a_past_departure(self):
+        """A first visible arrival already in the past (feed lag) is firmly
+        within the premise."""
+        result = synthetic_origin_departure(
+            self.NOW - timedelta(minutes=3), now=self.NOW
+        )
+        assert result == self.NOW - timedelta(minutes=13)
+
+    def test_result_is_always_the_arrival_minus_the_buffer(self):
+        """The accepted value is not clamped or otherwise reshaped — it is the
+        arrival minus ORIGIN_TRAVEL_BUFFER, which is what the collector stamps
+        onto the synthetic stop."""
+        arrival = self.NOW - timedelta(minutes=1)
+        assert synthetic_origin_departure(arrival, now=self.NOW) == (
+            arrival - ORIGIN_TRAVEL_BUFFER
+        )
 
 
 class TestInferDirectionFromTerminals:

@@ -128,6 +128,34 @@ def infer_subway_origin(
     return None
 
 
+def synthetic_origin_departure(
+    first_arrival_time: datetime,
+    now: datetime,
+) -> datetime | None:
+    """Time the train left an inferred origin, or None if the premise fails.
+
+    An origin is only inferred because GTFS-RT drops stops the train has
+    *already passed*, so the synthesized departure must lie in the past. The
+    feed's first visible entry is the train's next stop, which on the subway is
+    minutes away, so a legitimate inference lands well before ``now``.
+
+    When it does not, the premise is contradicted: the train has not reached
+    its first visible stop yet, so nothing was dropped and the trip genuinely
+    begins there — a line truncated by a service change (issue #1689). Callers
+    must skip the inference rather than fabricate a stop, otherwise the far
+    terminal is served as a boardable departure the train never calls at.
+
+    Args:
+        first_arrival_time: Arrival time of the first visible RT stop.
+        now: Current time, in the same timezone frame as the arrival.
+
+    Returns:
+        The synthesized origin departure time, or None if it is not in the past.
+    """
+    departure = first_arrival_time - ORIGIN_TRAVEL_BUFFER
+    return departure if departure < now else None
+
+
 def infer_direction_from_terminals(
     last_stop_code: str,
     data_source: str,
