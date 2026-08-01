@@ -18,6 +18,7 @@ from trackrat.collectors.metra.collector import (
     _generate_train_id,
 )
 import trackrat.collectors.metra.collector as collector_module
+from trackrat.models.database import JourneyStop
 
 # =============================================================================
 # HELPER FUNCTION TESTS
@@ -675,3 +676,148 @@ class TestConsecutiveEmptyCycles:
             pass
 
         assert collector_module._consecutive_empty_cycles == 0
+
+
+class TestMetraSyntheticOriginNotServed:
+    """Issue #1689 — the Metra twin of the subway synthetic-origin guard.
+
+    When GTFS static backfill fails, the collector infers Union Station as the
+    origin of an outbound train whose terminal was dropped from RT. That
+    inference assumes the train has *already passed* CUS. For a trip whose
+    first visible stop is further out than ORIGIN_TRAVEL_BUFFER — e.g. a
+    not-yet-departed train published ahead of time — the old code wrote CUS as
+    a departed stop with a *future* actual_departure, which the
+    `hide_departed` filter serves as a boardable departure at a fabricated
+    time.
+    """
+
+    @pytest.fixture
+    def mock_session(self):
+        session = AsyncMock()
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None  # no existing journey
+        session.execute = AsyncMock(return_value=mock_result)
+        session.add = MagicMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        return session
+
+    @pytest.fixture
+    def collector(self):
+        client = AsyncMock(spec=MetraClient)
+        client.close = AsyncMock()
+        collector = MetraCollector(client=client)
+        # No static backfill — the degraded path where origin inference runs.
+        collector._gtfs_service = MagicMock()
+        collector._gtfs_service.get_static_stop_times = AsyncMock(return_value=None)
+        return collector
+
+    @staticmethod
+    def _outbound_from_union_station(first_stop_minutes_out: int):
+        """An outbound (direction_id=0) BNSF train whose first visible stop is
+        Naperville; infer_missing_origin resolves the dropped origin to CUS
+        (Chicago Union Station)."""
+        now = datetime.now(UTC)
+        first = now + timedelta(minutes=first_stop_minutes_out)
+        return [
+            MetraArrival(
+                station_code="NAPERVILLE",
+                gtfs_stop_id="NAPERVILLE",
+                trip_id="BNSF_BNSF1268_V1_A",
+                route_id="BNSF",
+                direction_id=0,
+                headsign="Aurora",
+                arrival_time=first,
+                departure_time=first + timedelta(minutes=1),
+                delay_seconds=0,
+                track=None,
+            ),
+            MetraArrival(
+                station_code="AURORA",
+                gtfs_stop_id="AURORA",
+                trip_id="BNSF_BNSF1268_V1_A",
+                route_id="BNSF",
+                direction_id=0,
+                headsign="Aurora",
+                arrival_time=first + timedelta(minutes=15),
+                departure_time=None,
+                delay_seconds=0,
+                track=None,
+            ),
+        ]
+
+    @staticmethod
+    def _added_stops(mock_session):
+        return [
+            call.args[0]
+            for call in mock_session.add.call_args_list
+            if isinstance(call.args[0], JourneyStop)
+        ]
+
+    @pytest.mark.asyncio
+    async def test_far_future_first_stop_does_not_invent_union_station(
+        self, collector, mock_session
+    ):
+        """A trip 18 minutes from Naperville cannot already have left Union
+        Station, so no synthetic CUS stop may be written."""
+        arrivals = self._outbound_from_union_station(first_stop_minutes_out=18)
+
+        result, journey = await collector._process_trip(
+            mock_session, "BNSF_BNSF1268_V1_A", arrivals
+        )
+
+        assert result == "discovered"
+        codes = [s.station_code for s in self._added_stops(mock_session)]
+        assert "CUS" not in codes, (
+            "Union Station must not be fabricated for a train whose first "
+            f"visible stop is 18 minutes away at Naperville; got {codes}"
+        )
+        assert codes == [
+            "NAPERVILLE",
+            "AURORA",
+        ], f"Expected only the feed's stops, got {codes}"
+        assert journey.origin_station_code == "NAPERVILLE", (
+            "Origin should fall back to the first stop actually in the feed, "
+            f"got {journey.origin_station_code}"
+        )
+        assert journey.stops_count == 2, (
+            "stops_count must not count the rejected synthetic origin, got "
+            f"{journey.stops_count}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_imminent_first_stop_still_backfills_union_station(
+        self, collector, mock_session
+    ):
+        """A train two minutes from Naperville did already leave Union Station
+        — the inference this fallback exists for still works, and the stop it
+        writes is never an upcoming departure (the invariant behind #1689)."""
+        arrivals = self._outbound_from_union_station(first_stop_minutes_out=2)
+
+        result, journey = await collector._process_trip(
+            mock_session, "BNSF_BNSF1268_V1_A", arrivals
+        )
+
+        assert result == "discovered"
+        stops = self._added_stops(mock_session)
+        codes = [s.station_code for s in stops]
+        assert codes == [
+            "CUS",
+            "NAPERVILLE",
+            "AURORA",
+        ], f"Union Station should still be backfilled as the origin; got {codes}"
+        origin_stop = stops[0]
+        now = datetime.now(UTC)
+        assert origin_stop.stop_sequence == 1
+        assert origin_stop.departure_source == "synthetic_origin"
+        assert origin_stop.has_departed_station is True
+        assert origin_stop.actual_departure < now, (
+            "A stop flagged as departed must have a past departure time, "
+            f"got {origin_stop.actual_departure} vs now={now}"
+        )
+        assert origin_stop.updated_departure < now, (
+            "updated_departure feeds the departure board directly; "
+            f"got {origin_stop.updated_departure} vs now={now}"
+        )
+        assert journey.origin_station_code == "CUS"
+        assert journey.stops_count == 3

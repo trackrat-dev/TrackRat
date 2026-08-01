@@ -9,6 +9,7 @@ from datetime import UTC, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.collectors.subway.client import (
@@ -1200,3 +1201,355 @@ class TestSubwayCollectorFailFast:
         assert result["discovered"] == 0
         assert result["updated"] == 0
         mock_session.commit.assert_not_called()
+
+
+def _northbound_1_train(first_stop_minutes_out: int) -> list[SubwayArrival]:
+    """A northbound 1 train whose first visible stop is 14 St.
+
+    Terminal is S101 (Van Cortlandt Park, last in topology), so
+    infer_subway_origin resolves the origin to S142 (South Ferry, first in
+    topology). `first_stop_minutes_out` controls whether the train has
+    plausibly already left South Ferry.
+    """
+    now = datetime.now(UTC)
+    first = now + timedelta(minutes=first_stop_minutes_out)
+    return [
+        SubwayArrival(
+            station_code="S132",  # 14 St
+            gtfs_stop_id="132N",
+            trip_id="091150_1..N03R",
+            route_id="1",
+            direction_id=0,
+            headsign=None,
+            arrival_time=first,
+            departure_time=first + timedelta(seconds=30),
+            delay_seconds=0,
+            track="1",
+            nyct_train_id="01 1200+ SFR/VCP",
+            is_assigned=True,
+        ),
+        SubwayArrival(
+            station_code="S101",  # Van Cortlandt Park-242 St
+            gtfs_stop_id="101N",
+            trip_id="091150_1..N03R",
+            route_id="1",
+            direction_id=0,
+            headsign=None,
+            arrival_time=first + timedelta(minutes=45),
+            departure_time=None,
+            delay_seconds=0,
+            track="1",
+            nyct_train_id="01 1200+ SFR/VCP",
+            is_assigned=True,
+        ),
+    ]
+
+
+class TestSubwaySyntheticOriginNotServed:
+    """Issue #1689 — a truncated feed must not fabricate a boardable terminal.
+
+    When GTFS static backfill is unavailable (the normal case for SUBWAY, since
+    NYCT real-time trip_ids don't match the static ones), the collector infers
+    the origin as the opposite topology terminal. That inference assumes the
+    feed dropped stops the train already passed. During a service change the
+    feed is truncated instead — the train genuinely starts mid-route — and the
+    old code wrote the far terminal as a real JourneyStop with a departure time
+    10 minutes before the first visible arrival.
+
+    Because that time could be in the *future*, the stop survived the
+    `hide_departed` filter's "departure still upcoming" branch and was served
+    as a boardable departure at a station the train never calls at. Production
+    on 2026-08-01: the 1 was not running below 14 St, yet South Ferry → Van
+    Cortlandt Park returned trains whose real first stop was 14 St.
+    """
+
+    @pytest.fixture
+    def mock_session(self):
+        session = AsyncMock(spec=AsyncSession)
+        session.execute = AsyncMock()
+        session.scalar = AsyncMock()
+        session.add = MagicMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        return session
+
+    @pytest.fixture
+    def collector(self):
+        client = AsyncMock(spec=SubwayClient)
+        client.close = AsyncMock()
+        with patch("trackrat.collectors.subway.collector.GTFSService"):
+            collector = SubwayCollector(client=client)
+        collector._gtfs_service = MagicMock()
+        # No static backfill — this is what makes origin inference the normal
+        # path for SUBWAY rather than an exception.
+        collector._gtfs_service.get_static_stop_times = AsyncMock(return_value=None)
+        return collector
+
+    @staticmethod
+    def _added_stops(mock_session):
+        return [
+            call.args[0]
+            for call in mock_session.add.call_args_list
+            if isinstance(call.args[0], JourneyStop)
+        ]
+
+    @pytest.mark.asyncio
+    async def test_truncated_feed_does_not_invent_south_ferry(
+        self, collector, mock_session
+    ):
+        """The #1689 case: first visible stop is 18 minutes out, so the train
+        cannot already have left South Ferry."""
+        arrivals = _northbound_1_train(first_stop_minutes_out=18)
+
+        result, journey = await collector._process_trip(
+            mock_session, "091150_1..N03R", arrivals, None
+        )
+
+        assert result == "discovered"
+        stops = self._added_stops(mock_session)
+        codes = [s.station_code for s in stops]
+        assert "S142" not in codes, (
+            "South Ferry must not be written as a stop for a train whose first "
+            f"visible stop is 18 minutes away at 14 St; got {codes}"
+        )
+        assert codes == ["S132", "S101"], f"Expected only the feed's stops, got {codes}"
+        assert journey.origin_station_code == "S132", (
+            "Origin should fall back to the first stop actually in the feed, "
+            f"got {journey.origin_station_code}"
+        )
+        assert journey.stops_count == 2, (
+            "stops_count must not count the rejected synthetic origin, got "
+            f"{journey.stops_count}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_legitimate_inference_still_creates_the_origin(
+        self, collector, mock_session
+    ):
+        """The inference this feature exists for is unchanged: a train two
+        minutes from 14 St did already leave South Ferry."""
+        arrivals = _northbound_1_train(first_stop_minutes_out=2)
+
+        result, journey = await collector._process_trip(
+            mock_session, "091150_1..N03R", arrivals, None
+        )
+
+        assert result == "discovered"
+        stops = self._added_stops(mock_session)
+        codes = [s.station_code for s in stops]
+        assert codes == ["S142", "S132", "S101"], (
+            "South Ferry should still be backfilled as the origin when the "
+            f"train has plausibly already left it; got {codes}"
+        )
+        origin_stop = stops[0]
+        assert origin_stop.stop_sequence == 1
+        assert origin_stop.departure_source == "synthetic_origin"
+        assert journey.origin_station_code == "S142"
+        assert journey.stops_count == 3
+
+    @pytest.mark.asyncio
+    async def test_synthesized_origin_is_never_an_upcoming_departure(
+        self, collector, mock_session
+    ):
+        """The regression that made #1689 rider-visible.
+
+        `hide_departed` keeps any stop whose coalesce(actual, scheduled)
+        departure is still in the future, so a synthetic origin stamped with a
+        future time is served as boardable despite has_departed_station=True.
+        Every synthetic origin the collector writes must be in the past.
+        """
+        arrivals = _northbound_1_train(first_stop_minutes_out=2)
+
+        await collector._process_trip(mock_session, "091150_1..N03R", arrivals, None)
+
+        origin_stop = self._added_stops(mock_session)[0]
+        now = datetime.now(UTC)
+        assert origin_stop.station_code == "S142"
+        assert origin_stop.has_departed_station is True
+        assert origin_stop.actual_departure < now, (
+            "A stop flagged as departed must have a past departure time, "
+            f"got {origin_stop.actual_departure} vs now={now}"
+        )
+        assert origin_stop.updated_departure < now, (
+            "updated_departure feeds the departure board directly; "
+            f"got {origin_stop.updated_departure} vs now={now}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_rejection_applies_to_the_opposite_terminal_too(
+        self, collector, mock_session
+    ):
+        """The mirror of #1689, so the guard isn't accidentally one-sided.
+
+        A southbound 1 terminating at South Ferry (S142, first in topology)
+        infers Van Cortlandt Park (S101, last in topology) as its origin. With
+        the first visible stop 18 minutes out that inference is equally
+        unfounded and must be rejected the same way.
+        """
+        now = datetime.now(UTC)
+        first = now + timedelta(minutes=18)
+        arrivals = [
+            SubwayArrival(
+                station_code="S132",  # 14 St — mid-route, so inference applies
+                gtfs_stop_id="132S",
+                trip_id="091151_1..S03R",
+                route_id="1",
+                direction_id=1,
+                headsign=None,
+                arrival_time=first,
+                departure_time=first + timedelta(seconds=30),
+                delay_seconds=0,
+                track="1",
+                nyct_train_id="01 1200+ VCP/SFR",
+                is_assigned=True,
+            ),
+            SubwayArrival(
+                station_code="S142",  # South Ferry — the southbound terminal
+                gtfs_stop_id="142S",
+                trip_id="091151_1..S03R",
+                route_id="1",
+                direction_id=1,
+                headsign=None,
+                arrival_time=first + timedelta(minutes=12),
+                departure_time=None,
+                delay_seconds=0,
+                track="1",
+                nyct_train_id="01 1200+ VCP/SFR",
+                is_assigned=True,
+            ),
+        ]
+
+        _, journey = await collector._process_trip(
+            mock_session, "091151_1..S03R", arrivals, None
+        )
+
+        codes = [s.station_code for s in self._added_stops(mock_session)]
+        assert "S101" not in codes, (
+            "Van Cortlandt Park must not be invented as the origin of a "
+            f"southbound train 18 minutes from 14 St; got {codes}"
+        )
+        assert codes == ["S132", "S142"], f"Expected only feed stops, got {codes}"
+        assert journey.origin_station_code == "S132"
+
+
+class TestSubwaySyntheticOriginRealDatabase:
+    """Issue #1689 end-to-end against real PostgreSQL — nothing stubbed.
+
+    The cases above pin branch selection cheaply, but they program the
+    "no static backfill" condition into a fixture and read the stops back
+    out of `session.add` calls. These two use a real `AsyncSession`, the
+    real `GTFSService`, and a real `SubwayCollector`, then read the rows
+    back out of the database:
+
+    - the static-backfill lookup is the production query, and it finds
+      nothing for its own reason (NYCT real-time trip_ids have no static
+      counterpart), so origin inference is reached the way it is in
+      production rather than because a mock said so;
+    - the assertions are on persisted rows, so a break in the write path
+      (or in the guard) cannot leave them green.
+    """
+
+    @pytest.fixture
+    def collector(self):
+        # Real client and real GTFSService. _process_trip takes its arrivals
+        # as an argument and never calls the client, and SubwayClient opens
+        # its HTTP session lazily, so nothing here reaches the network.
+        return SubwayCollector()
+
+    @staticmethod
+    async def _persisted(db_session, train_id):
+        """Re-read the journey and its stops from the database."""
+        db_session.expunge_all()
+        journey = (
+            await db_session.execute(
+                select(TrainJourney).where(TrainJourney.train_id == train_id)
+            )
+        ).scalar_one()
+        stops = list(
+            (
+                await db_session.execute(
+                    select(JourneyStop)
+                    .where(JourneyStop.journey_id == journey.id)
+                    .order_by(JourneyStop.stop_sequence)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return journey, stops
+
+    @pytest.mark.asyncio
+    async def test_truncated_feed_persists_no_south_ferry_stop(
+        self, collector, db_session
+    ):
+        """The #1689 case, all the way to the table: a first visible stop 18
+        minutes out means the train cannot already have left South Ferry, so
+        no South Ferry row may exist."""
+        arrivals = _northbound_1_train(first_stop_minutes_out=18)
+
+        result, journey = await collector._process_trip(
+            db_session, "091150_1..N03R", arrivals, None
+        )
+        await db_session.commit()
+        train_id = journey.train_id
+
+        assert result == "discovered"
+
+        journey, stops = await self._persisted(db_session, train_id)
+        codes = [s.station_code for s in stops]
+        assert "S142" not in codes, (
+            "South Ferry must not be persisted for a train whose first visible "
+            f"stop is 18 minutes away at 14 St; database holds {codes}"
+        )
+        assert codes == ["S132", "S101"], f"Expected only the feed's stops, got {codes}"
+        assert journey.origin_station_code == "S132", (
+            "Persisted origin should be the first stop actually in the feed, "
+            f"got {journey.origin_station_code}"
+        )
+        assert (
+            journey.stops_count == 2
+        ), f"stops_count must match the persisted rows, got {journey.stops_count}"
+
+    @pytest.mark.asyncio
+    async def test_legitimate_inference_persists_a_departed_origin(
+        self, collector, db_session
+    ):
+        """The inference the feature exists for still reaches the database: a
+        train two minutes from 14 St did already leave South Ferry, and the
+        row it writes is departed and in the past — never boardable."""
+        arrivals = _northbound_1_train(first_stop_minutes_out=2)
+
+        result, journey = await collector._process_trip(
+            db_session, "091150_1..N03R", arrivals, None
+        )
+        await db_session.commit()
+        train_id = journey.train_id
+
+        assert result == "discovered"
+
+        journey, stops = await self._persisted(db_session, train_id)
+        codes = [s.station_code for s in stops]
+        assert codes == [
+            "S142",
+            "S132",
+            "S101",
+        ], f"Expected the inferred origin ahead of the feed's stops, got {codes}"
+
+        origin = stops[0]
+        assert journey.origin_station_code == "S142"
+        assert journey.stops_count == 3
+        assert origin.departure_source == "synthetic_origin", (
+            "The inferred origin must stay labelled as synthetic, got "
+            f"{origin.departure_source}"
+        )
+        assert origin.has_departed_station is True
+        # The guard's whole premise: a synthesized origin describes a stop the
+        # train has already made, so its times cannot be in the future — that
+        # is what kept it out of the hide_departed "still upcoming" branch.
+        now = datetime.now(UTC)
+        assert origin.actual_departure < now, (
+            f"Synthetic origin departure {origin.actual_departure} is not in "
+            f"the past relative to {now}"
+        )
+        assert origin.updated_departure < now
+        assert origin.actual_departure == origin.actual_arrival

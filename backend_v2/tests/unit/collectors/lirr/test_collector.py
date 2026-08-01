@@ -819,3 +819,146 @@ class TestLIRRCollectorFailFast:
         assert result["updated"] == 0
         # No DB commit should be attempted when the fetch timed out
         mock_session.commit.assert_not_called()
+
+
+class TestLIRRSyntheticOriginNotServed:
+    """Issue #1689 — the LIRR twin of the subway synthetic-origin guard.
+
+    When GTFS static backfill fails (feed unavailable or unmapped codes), the
+    collector infers Penn Station as the origin of an outbound train whose
+    terminal was dropped from RT. That inference assumes the train has
+    *already passed* the terminal. For a trip whose first visible stop is
+    further out than ORIGIN_TRAVEL_BUFFER — e.g. a not-yet-departed train
+    published ahead of time — the old code wrote NY as a departed stop with a
+    *future* actual_departure, which the `hide_departed` filter serves as a
+    boardable departure at a fabricated time.
+    """
+
+    @pytest.fixture
+    def mock_session(self):
+        session = AsyncMock(spec=AsyncSession)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None  # no existing journey
+        session.execute = AsyncMock(return_value=mock_result)
+        session.add = MagicMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        return session
+
+    @pytest.fixture
+    def collector(self):
+        client = AsyncMock(spec=LIRRClient)
+        client.close = AsyncMock()
+        collector = LIRRCollector(client=client)
+        # No static backfill — the degraded path where origin inference runs.
+        collector._gtfs_service = MagicMock()
+        collector._gtfs_service.get_static_stop_times = AsyncMock(return_value=None)
+        return collector
+
+    @staticmethod
+    def _outbound_from_penn(first_stop_minutes_out: int):
+        """An outbound (direction_id=0) train whose first visible stop is
+        Jamaica; infer_missing_origin resolves the dropped origin to NY.
+        `first_stop_minutes_out` controls whether the train could plausibly
+        already have left Penn."""
+        now = datetime.now(timezone.utc)
+        first = now + timedelta(minutes=first_stop_minutes_out)
+        return [
+            LirrArrival(
+                station_code="JAM",
+                gtfs_stop_id="102",
+                trip_id="GO506_2405_9001",
+                route_id="1",
+                direction_id=0,
+                headsign="Ronkonkoma",
+                arrival_time=first,
+                departure_time=first + timedelta(minutes=1),
+                delay_seconds=0,
+                track="8",
+            ),
+            LirrArrival(
+                station_code="RON",
+                gtfs_stop_id="179",
+                trip_id="GO506_2405_9001",
+                route_id="1",
+                direction_id=0,
+                headsign="Ronkonkoma",
+                arrival_time=first + timedelta(minutes=50),
+                departure_time=None,
+                delay_seconds=0,
+                track=None,
+            ),
+        ]
+
+    @staticmethod
+    def _added_stops(mock_session):
+        return [
+            call.args[0]
+            for call in mock_session.add.call_args_list
+            if isinstance(call.args[0], JourneyStop)
+        ]
+
+    @pytest.mark.asyncio
+    async def test_far_future_first_stop_does_not_invent_penn(
+        self, collector, mock_session
+    ):
+        """A trip 18 minutes from Jamaica cannot already have left Penn, so
+        no synthetic NY stop may be written."""
+        arrivals = self._outbound_from_penn(first_stop_minutes_out=18)
+
+        result, journey = await collector._process_trip(
+            mock_session, "GO506_2405_9001", arrivals
+        )
+
+        assert result == "discovered"
+        codes = [s.station_code for s in self._added_stops(mock_session)]
+        assert "NY" not in codes, (
+            "Penn Station must not be fabricated for a train whose first "
+            f"visible stop is 18 minutes away at Jamaica; got {codes}"
+        )
+        assert codes == ["JAM", "RON"], f"Expected only the feed's stops, got {codes}"
+        assert journey.origin_station_code == "JAM", (
+            "Origin should fall back to the first stop actually in the feed, "
+            f"got {journey.origin_station_code}"
+        )
+        assert journey.stops_count == 2, (
+            "stops_count must not count the rejected synthetic origin, got "
+            f"{journey.stops_count}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_imminent_first_stop_still_backfills_penn(
+        self, collector, mock_session
+    ):
+        """A train two minutes from Jamaica did already leave Penn — the
+        inference this fallback exists for still works, and the stop it writes
+        is never an upcoming departure (the invariant behind #1689)."""
+        arrivals = self._outbound_from_penn(first_stop_minutes_out=2)
+
+        result, journey = await collector._process_trip(
+            mock_session, "GO506_2405_9001", arrivals
+        )
+
+        assert result == "discovered"
+        stops = self._added_stops(mock_session)
+        codes = [s.station_code for s in stops]
+        assert codes == [
+            "NY",
+            "JAM",
+            "RON",
+        ], f"Penn Station should still be backfilled as the origin; got {codes}"
+        origin_stop = stops[0]
+        now = datetime.now(timezone.utc)
+        assert origin_stop.stop_sequence == 1
+        assert origin_stop.departure_source == "synthetic_origin"
+        assert origin_stop.has_departed_station is True
+        assert origin_stop.actual_departure < now, (
+            "A stop flagged as departed must have a past departure time, "
+            f"got {origin_stop.actual_departure} vs now={now}"
+        )
+        assert origin_stop.updated_departure < now, (
+            "updated_departure feeds the departure board directly; "
+            f"got {origin_stop.updated_departure} vs now={now}"
+        )
+        assert journey.origin_station_code == "NY"
+        assert journey.stops_count == 3

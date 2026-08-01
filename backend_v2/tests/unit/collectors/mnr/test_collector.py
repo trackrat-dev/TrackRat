@@ -795,3 +795,150 @@ class TestMNRCollectorFailFast:
         assert result["discovered"] == 0
         assert result["updated"] == 0
         mock_session.commit.assert_not_called()
+
+
+class TestMNRSyntheticOriginNotServed:
+    """Issue #1689 — the Metro-North twin of the subway synthetic-origin guard.
+
+    When GTFS static backfill fails, the collector infers Grand Central as the
+    origin of an outbound train whose terminal was dropped from RT. That
+    inference assumes the train has *already passed* GCT. For a trip whose
+    first visible stop is further out than ORIGIN_TRAVEL_BUFFER — e.g. a
+    not-yet-departed train published ahead of time — the old code wrote GCT as
+    a departed stop with a *future* actual_departure, which the
+    `hide_departed` filter serves as a boardable departure at a fabricated
+    time.
+    """
+
+    @pytest.fixture
+    def mock_session(self):
+        session = AsyncMock(spec=AsyncSession)
+        mock_result = MagicMock()
+        mock_result.scalar_one_or_none.return_value = None  # no existing journey
+        session.execute = AsyncMock(return_value=mock_result)
+        session.add = MagicMock()
+        session.flush = AsyncMock()
+        session.commit = AsyncMock()
+        return session
+
+    @pytest.fixture
+    def collector(self):
+        client = AsyncMock(spec=MNRClient)
+        client.close = AsyncMock()
+        collector = MNRCollector(client=client)
+        # No static backfill — the degraded path where origin inference runs.
+        collector._gtfs_service = MagicMock()
+        collector._gtfs_service.get_static_stop_times = AsyncMock(return_value=None)
+        return collector
+
+    @staticmethod
+    def _outbound_from_gct(first_stop_minutes_out: int):
+        """A Hudson line train whose first visible stop is Harlem-125th and
+        whose last stop (Croton-Harmon) is not a terminal, so
+        infer_direction_from_terminals reads it as outbound and
+        infer_missing_origin resolves the dropped origin to GCT."""
+        now = datetime.now(timezone.utc)
+        first = now + timedelta(minutes=first_stop_minutes_out)
+        return [
+            MnrArrival(
+                station_code="M125",
+                gtfs_stop_id="4",
+                trip_id="trip_745210",
+                route_id="1",
+                direction_id=0,
+                headsign="Croton-Harmon",
+                arrival_time=first,
+                departure_time=first + timedelta(minutes=1),
+                delay_seconds=0,
+                track="25",
+            ),
+            MnrArrival(
+                station_code="MCRH",
+                gtfs_stop_id="33",
+                trip_id="trip_745210",
+                route_id="1",
+                direction_id=0,
+                headsign="Croton-Harmon",
+                arrival_time=first + timedelta(minutes=40),
+                departure_time=None,
+                delay_seconds=0,
+                track=None,
+            ),
+        ]
+
+    @staticmethod
+    def _added_stops(mock_session):
+        return [
+            call.args[0]
+            for call in mock_session.add.call_args_list
+            if isinstance(call.args[0], JourneyStop)
+        ]
+
+    @pytest.mark.asyncio
+    async def test_far_future_first_stop_does_not_invent_gct(
+        self, collector, mock_session
+    ):
+        """A trip 18 minutes from Harlem-125th cannot already have left Grand
+        Central, so no synthetic GCT stop may be written."""
+        arrivals = self._outbound_from_gct(first_stop_minutes_out=18)
+
+        result, journey = await collector._process_trip(
+            mock_session, "trip_745210", arrivals
+        )
+
+        assert result == "discovered"
+        codes = [s.station_code for s in self._added_stops(mock_session)]
+        assert "GCT" not in codes, (
+            "Grand Central must not be fabricated for a train whose first "
+            f"visible stop is 18 minutes away at Harlem-125th; got {codes}"
+        )
+        assert codes == [
+            "M125",
+            "MCRH",
+        ], f"Expected only the feed's stops, got {codes}"
+        assert journey.origin_station_code == "M125", (
+            "Origin should fall back to the first stop actually in the feed, "
+            f"got {journey.origin_station_code}"
+        )
+        assert journey.stops_count == 2, (
+            "stops_count must not count the rejected synthetic origin, got "
+            f"{journey.stops_count}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_imminent_first_stop_still_backfills_gct(
+        self, collector, mock_session
+    ):
+        """A train two minutes from Harlem-125th did already leave Grand
+        Central — the inference this fallback exists for still works, and the
+        stop it writes is never an upcoming departure (the invariant behind
+        #1689)."""
+        arrivals = self._outbound_from_gct(first_stop_minutes_out=2)
+
+        result, journey = await collector._process_trip(
+            mock_session, "trip_745210", arrivals
+        )
+
+        assert result == "discovered"
+        stops = self._added_stops(mock_session)
+        codes = [s.station_code for s in stops]
+        assert codes == [
+            "GCT",
+            "M125",
+            "MCRH",
+        ], f"Grand Central should still be backfilled as the origin; got {codes}"
+        origin_stop = stops[0]
+        now = datetime.now(timezone.utc)
+        assert origin_stop.stop_sequence == 1
+        assert origin_stop.departure_source == "synthetic_origin"
+        assert origin_stop.has_departed_station is True
+        assert origin_stop.actual_departure < now, (
+            "A stop flagged as departed must have a past departure time, "
+            f"got {origin_stop.actual_departure} vs now={now}"
+        )
+        assert origin_stop.updated_departure < now, (
+            "updated_departure feeds the departure board directly; "
+            f"got {origin_stop.updated_departure} vs now={now}"
+        )
+        assert journey.origin_station_code == "GCT"
+        assert journey.stops_count == 3
