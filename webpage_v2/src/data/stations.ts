@@ -2526,6 +2526,7 @@ export function searchStationsPartitioned(
   for (const entry of _searchIndex) {
     if (matched.length >= limit && other.length >= limit) break;
     if (!entry.haystack.includes(q)) continue;
+    if (entry.station.system && DISABLED_SYSTEMS.has(entry.station.system)) continue;
     if (entry.station.system && systems.includes(entry.station.system)) {
       if (matched.length < limit) {
         matched.push(entry.station);
