@@ -33,8 +33,10 @@ from trackrat.models.api import NJTransitStopData
 from trackrat.models.database import Base, JourneyStop, TrainJourney
 from trackrat.utils.time import now_et
 from trackrat.utils.train import (
+    NJT_CANCELLATION_REASON_ALL_STOPS,
+    NJT_CANCELLATION_REASON_TERMINATED,
     is_njt_stop_cancelled,
-    njt_stops_indicate_cancellation,
+    njt_cancellation_reason,
 )
 
 # ---------------------------------------------------------------------------
@@ -76,8 +78,8 @@ class TestIsNjtStopCancelled:
 
 
 class TestNjtStopsIndicateCancellation:
-    """Unit tests for the train-level cancellation rule shared by the collector
-    and discovery (PR #1519)."""
+    """Unit tests for the train-level cancellation rule shared by the collector,
+    the departure-board refresh and discovery (PR #1519, issue #1670)."""
 
     @pytest.mark.parametrize(
         "statuses,expected",
@@ -98,7 +100,36 @@ class TestNjtStopsIndicateCancellation:
         ],
     )
     def test_train_level_cancellation_rule(self, statuses, expected):
-        assert njt_stops_indicate_cancellation(statuses) is expected
+        assert (njt_cancellation_reason(statuses) is not None) is expected
+
+
+class TestNjtCancellationReason:
+    """The recorded reason, not just the yes/no outcome. Every call site — the
+    collector, the departure-board refresh and discovery — takes both the
+    decision and the stored `cancellation_reason` from this one function, so a
+    train shows the same explanation whichever path notices it (issue #1670)."""
+
+    @pytest.mark.parametrize(
+        "statuses,expected",
+        [
+            (
+                ["CANCELLED", "CANCELLED", "CANCELLED"],
+                NJT_CANCELLATION_REASON_ALL_STOPS,
+            ),
+            (["CANCELED", "CANCELLED"], NJT_CANCELLATION_REASON_ALL_STOPS),
+            # Train 3918 (2026-07-28): left Trenton, then annulled — origin
+            # reads departed/on-time while the terminal is CANCELLED.
+            (
+                ["ON TIME", "CANCELLED", "CANCELLED", "CANCELLED"],
+                NJT_CANCELLATION_REASON_TERMINATED,
+            ),
+            (["ON TIME", "CANCELLED", "ON TIME"], None),
+            (["ON TIME", "LATE"], None),
+            ([], None),
+        ],
+    )
+    def test_reason_matches_the_rule(self, statuses, expected):
+        assert njt_cancellation_reason(statuses) == expected
 
 
 # ---------------------------------------------------------------------------
@@ -245,6 +276,60 @@ async def _make_journey_with_stops(
 # ---------------------------------------------------------------------------
 # Journey-level cancellation rule — check_journey_completion()
 # ---------------------------------------------------------------------------
+
+
+class TestMisorderedStopListCancellation:
+    """NJT ships misordered stop lists, so the raw payload's last entry is not
+    necessarily the terminal.
+
+    check_journey_completion already resolves the terminal by matching the
+    authoritative DB row by station code — the comment there names "terminal
+    cancellation status" as one of the things that resolution protects. The
+    cancellation rule must use that resolved terminal, not the raw list order,
+    or a cancelled non-terminal sorting last falsely cancels a running train
+    and a cancelled real terminal sorting mid-list is missed (issue #1670
+    review).
+    """
+
+    @pytest.mark.asyncio
+    async def test_cancelled_nonterminal_sorted_last_does_not_cancel(
+        self, sqlite_session, journey_collector
+    ):
+        """S1 is cancelled and happens to sort last in the API payload; the real
+        terminal S3 is fine, so the train is still running."""
+        journey, stops = await _make_journey_with_stops(
+            sqlite_session, ["ON TIME", "CANCELLED", "ON TIME", "ON TIME"]
+        )
+        # Raw NJT order puts the cancelled intermediate stop last.
+        misordered = [stops[0], stops[2], stops[3], stops[1]]
+
+        await journey_collector.check_journey_completion(
+            sqlite_session, journey, misordered
+        )
+
+        assert journey.is_cancelled is False
+        assert journey.cancellation_reason is None
+
+    @pytest.mark.asyncio
+    async def test_cancelled_real_terminal_sorted_midlist_still_cancels(
+        self, sqlite_session, journey_collector
+    ):
+        """The real terminal S3 is cancelled but does not sort last; the
+        cancellation must still be detected."""
+        journey, stops = await _make_journey_with_stops(
+            sqlite_session, ["ON TIME", "ON TIME", "ON TIME", "CANCELLED"]
+        )
+        # Raw NJT order buries the cancelled terminal in the middle.
+        misordered = [stops[0], stops[3], stops[1], stops[2]]
+
+        await journey_collector.check_journey_completion(
+            sqlite_session, journey, misordered
+        )
+
+        assert journey.is_cancelled is True
+        assert journey.cancellation_reason == (
+            "Journey terminated before reaching destination"
+        )
 
 
 class TestCheckJourneyCompletionCancellation:

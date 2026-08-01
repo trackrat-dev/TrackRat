@@ -43,6 +43,7 @@ from trackrat.utils.train import (
     get_effective_observation_type,
     is_amtrak_train,
     is_njt_stop_cancelled,
+    njt_cancellation_reason,
     normalize_njt_destination,
     stop_sequence_sort_key,
     terminal_stop_index,
@@ -1660,11 +1661,41 @@ class DepartureService:
 
         Uses PostgreSQL ON CONFLICT to safely handle concurrent updates from
         multiple sessions (e.g., cache precomputation vs user request).
+
+        Also applies NJT's train-level cancellation rule to the payload's
+        STOP_STATUS values — see the comment on that block below.
         """
         # Serialize this journey's writers across replicas (issue #1369):
         # this bulk station-board refresh mutates the same journey_stops
         # rows as collect_journey_details and _update_journey_with_stops.
         await acquire_njt_journey_lock(session, journey.train_id, journey.journey_date)
+
+        # The station board carries the same STOP_STATUS values that
+        # collect_journey_details acts on, and the caller stamps
+        # last_updated_at once this returns. Skipping the cancellation rule
+        # here therefore leaves the row looking fresh *and* not-cancelled to
+        # every other path (periodic sweep, JIT staleness check) while NJT is
+        # annulling the train, delaying detection until the row goes stale
+        # enough to earn a full getTrainStopList collection — 65 minutes for
+        # train 3918 on 2026-07-28 (issue #1670). The caller treats stops_data
+        # as the complete stop list (it takes origin, terminal and stops_count
+        # from it), which is what the rule's terminal check needs.
+        #
+        # Only ever *sets* the flag: clearing a stale cancellation is
+        # discovery's job, which has the extra context to do it safely
+        # (issue #1498).
+        if not journey.is_cancelled:
+            board_cancellation = njt_cancellation_reason(
+                [s.get("STOP_STATUS") for s in stops_data]
+            )
+            if board_cancellation:
+                journey.is_cancelled = True
+                journey.cancellation_reason = board_cancellation
+                logger.info(
+                    "journey_cancelled_from_station_board",
+                    train_id=journey.train_id,
+                    reason=board_cancellation,
+                )
 
         # Build lookup from eagerly-loaded stops to avoid N+1 queries and
         # prevent greenlet_spawn errors from fetching stops outside the ORM

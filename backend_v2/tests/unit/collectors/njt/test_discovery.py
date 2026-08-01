@@ -7,7 +7,7 @@ Tests the TrainDiscoveryCollector class with focus on the new batch collection f
 import pytest
 from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, Mock, patch
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 
 from sqlalchemy.exc import IntegrityError
 
@@ -1010,3 +1010,105 @@ class TestDiscoveryInsertRaceCondition:
                     # Should NOT log at error level for this train
                     for call in mock_logger.error.call_args_list:
                         assert "3737" not in str(call)
+
+
+class TestBoardReportsDeparted:
+    """Discovery must record the station board's DEPARTED flag (issue #1670
+    review).
+
+    Discovery consumes the same embedded STOPS payload as the departure-board
+    refresh but historically wrote only the time fields, leaving
+    has_departed_station to the 15-minute getTrainStopList collection — while
+    still bumping the journey's last_updated_at. A journey populated by
+    discovery could therefore report has_departed_station=False for a train
+    that had departed on time, which is indistinguishable from a train that
+    genuinely had not moved. The summary's stalled-train wall-clock floor
+    reads exactly that flag, so a stale False there would invent a growing
+    delay for a punctual train.
+    """
+
+    @staticmethod
+    def _stop(*, has_departed=False, scheduled_departure=None):
+        stop = Mock(spec=JourneyStop)
+        stop.has_departed_station = has_departed
+        stop.scheduled_departure = scheduled_departure
+        return stop
+
+    def test_departed_flag_is_recorded(self):
+        stop = self._stop(scheduled_departure=now_et() - timedelta(minutes=5))
+        stop_data = {"DEPARTED": "YES", "STOP_STATUS": "ON TIME"}
+
+        assert TrainDiscoveryCollector._board_reports_departed(stop_data, stop) is True
+
+    def test_not_departed_is_left_alone(self):
+        stop = self._stop(scheduled_departure=now_et() - timedelta(minutes=5))
+        stop_data = {"DEPARTED": "NO", "STOP_STATUS": "ON TIME"}
+
+        assert TrainDiscoveryCollector._board_reports_departed(stop_data, stop) is False
+
+    def test_missing_departed_field_is_left_alone(self):
+        stop = self._stop(scheduled_departure=now_et() - timedelta(minutes=5))
+
+        assert TrainDiscoveryCollector._board_reports_departed({}, stop) is False
+
+    def test_cancelled_stop_never_departed(self):
+        """A cancelled stop was never physically served, whatever DEPARTED says."""
+        stop = self._stop(scheduled_departure=now_et() - timedelta(minutes=5))
+        stop_data = {"DEPARTED": "YES", "STOP_STATUS": "CANCELLED"}
+
+        assert TrainDiscoveryCollector._board_reports_departed(stop_data, stop) is False
+
+    def test_future_departure_is_never_marked_departed(self):
+        """Guards the same stale-data case the departure-board path does: a
+        train that has not reached its scheduled time cannot have left."""
+        stop = self._stop(scheduled_departure=now_et() + timedelta(minutes=20))
+        stop_data = {"DEPARTED": "YES", "STOP_STATUS": "ON TIME"}
+
+        assert TrainDiscoveryCollector._board_reports_departed(stop_data, stop) is False
+
+    def test_already_departed_stop_is_not_rewritten(self):
+        """Only ever reports True for a transition — NJT's DEPARTED flag is
+        inconsistent between calls, so reverting is not this path's job."""
+        stop = self._stop(
+            has_departed=True, scheduled_departure=now_et() - timedelta(minutes=5)
+        )
+        stop_data = {"DEPARTED": "NO", "STOP_STATUS": "ON TIME"}
+
+        assert TrainDiscoveryCollector._board_reports_departed(stop_data, stop) is False
+
+    @pytest.mark.asyncio
+    async def test_populate_stop_times_records_the_departure(self):
+        """End to end through the discovery stop-population path."""
+        collector = TrainDiscoveryCollector(AsyncMock())
+        journey = Mock(spec=TrainJourney)
+        journey.id = 42
+        journey.train_id = "3918"
+
+        mock_session = _make_session_mock()
+        existing_stop = Mock(spec=JourneyStop)
+        existing_stop.updated_arrival = None
+        existing_stop.updated_departure = None
+        existing_stop.has_departed_station = False
+        existing_stop.scheduled_departure = now_et() - timedelta(minutes=5)
+        mock_session.scalar = AsyncMock(return_value=existing_stop)
+
+        stops_data = [
+            {
+                "STATION_2CHAR": "TR",
+                "TIME": "01-Jan-2025 10:00:00 AM",
+                "DEP_TIME": "01-Jan-2025 10:01:00 AM",
+                "DEPARTED": "YES",
+                "STOP_STATUS": "ON TIME",
+            }
+        ]
+
+        with patch(
+            "trackrat.collectors.njt.discovery.parse_njt_time",
+            side_effect=[datetime(2025, 1, 1, 10, 0), datetime(2025, 1, 1, 10, 1)],
+        ):
+            await collector._populate_stop_times_from_discovery(
+                mock_session, journey, stops_data
+            )
+
+        assert existing_stop.has_departed_station is True
+        assert existing_stop.raw_njt_departed_flag == "YES"
