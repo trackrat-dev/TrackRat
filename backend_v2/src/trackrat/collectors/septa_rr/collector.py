@@ -22,6 +22,7 @@ from trackrat.collectors.mta_common import (
     update_stop_departure_status,
 )
 from trackrat.collectors.septa_common import (
+    SeptaFeedFetchError,
     mark_journey_present,
     reconcile_journey_omissions,
 )
@@ -154,12 +155,12 @@ class SeptaRailCollector:
                     self.client.get_trip_updates(use_cache=False),
                     timeout=_FEED_FETCH_TIMEOUT_SECONDS,
                 )
-            except TimeoutError:
+            except TimeoutError as e:
                 logger.warning(
                     "septa_rr_feed_fetch_timed_out | timeout_s=%.1f",
                     _FEED_FETCH_TIMEOUT_SECONDS,
                 )
-                return stats
+                raise SeptaFeedFetchError("SEPTA RR feed fetch timed out") from e
 
             stats["trips"] = len(trip_updates)
             if not trip_updates:
@@ -173,9 +174,12 @@ class SeptaRailCollector:
             trips_in_batch = 0
             analyzed_journeys: list[TrainJourney] = []
             for trip in trip_updates:
+                train_id = _generate_train_id(trip.trip_id)
                 try:
                     async with session.begin_nested():
-                        result, journey = await self._process_trip(session, trip)
+                        result, journey, service_date = await self._process_trip(
+                            session, trip
+                        )
                         if result == "discovered":
                             stats["discovered"] += 1
                         elif result == "updated":
@@ -192,14 +196,16 @@ class SeptaRailCollector:
                             present_journey_keys.add(
                                 (journey.train_id, journey.journey_date)
                             )
+                        elif service_date is not None:
+                            # Skipped locally, but the service day is known — protect
+                            # only that day's row, not every same-number journey.
+                            present_journey_keys.add((train_id, service_date))
                         else:
-                            unresolved_present_train_ids.add(
-                                _generate_train_id(trip.trip_id)
-                            )
+                            unresolved_present_train_ids.add(train_id)
                 except Exception as e:
                     logger.error(f"Error processing SEPTA RR trip {trip.trip_id}: {e}")
                     stats["errors"] += 1
-                    unresolved_present_train_ids.add(_generate_train_id(trip.trip_id))
+                    unresolved_present_train_ids.add(train_id)
 
                 trips_in_batch += 1
                 if trips_in_batch >= batch_size:
@@ -229,6 +235,12 @@ class SeptaRailCollector:
                 f"{stats['skipped_no_static']} skipped (no static match), "
                 f"{stats['errors']} errors"
             )
+        except SeptaFeedFetchError as e:
+            # No valid snapshot: nothing was reconciled, and the scheduler must not
+            # stamp this run successful or a dead feed reads as healthy (#1633).
+            logger.error(f"SEPTA RR collection aborted, no usable feed snapshot: {e}")
+            await session.rollback()
+            raise
         except Exception as e:
             logger.error(f"SEPTA RR collection failed: {e}")
             await session.rollback()
@@ -277,7 +289,15 @@ class SeptaRailCollector:
 
     async def _process_trip(
         self, session: AsyncSession, trip: SeptaRailTripUpdate
-    ) -> tuple[str | None, TrainJourney | None]:
+    ) -> tuple[str | None, TrainJourney | None, date | None]:
+        """Reconstruct one delay-only trip into its journey row.
+
+        Returns ``(result, journey, service_date)``. Unlike the sibling GTFS-RT
+        collectors, a Regional Rail trip carries no service date of its own, so the
+        resolved date is returned even when no journey comes back — otherwise the
+        caller cannot tell which service day the trip was present on and has to
+        suppress omission strikes for the train number on every recent day.
+        """
         train_id = _generate_train_id(trip.trip_id)
 
         route_info = get_septa_rr_route_info(trip.route_id)
@@ -296,11 +316,11 @@ class SeptaRailCollector:
                 "SEPTA RR static schedule unavailable for trip %s; skipping",
                 trip.trip_id,
             )
-            return "skipped_no_static", None
+            return "skipped_no_static", None, None
 
         arrivals = resolve_arrivals(trip, static_stops)
         if not arrivals:
-            return None, None
+            return None, None, journey_date
 
         merged_stops, origin_code, terminal_code = build_complete_stops(
             arrivals, static_stops
@@ -311,7 +331,7 @@ class SeptaRailCollector:
                 trip.trip_id,
                 len(merged_stops),
             )
-            return None, None
+            return None, None, journey_date
 
         existing = await session.execute(
             select(TrainJourney)
@@ -326,7 +346,7 @@ class SeptaRailCollector:
         first_arrival = min(arrivals, key=lambda a: a.arrival_time)
 
         if journey is not None and (journey.is_completed or journey.is_cancelled):
-            return None, None
+            return None, None, journey_date
 
         if journey is None:
             journey = TrainJourney(
@@ -383,7 +403,7 @@ class SeptaRailCollector:
             update_journey_metadata(journey, now, created_stops)
             check_journey_completed(journey, created_stops)
             logger.debug(f"Discovered SEPTA RR train {train_id}")
-            return "discovered", journey
+            return "discovered", journey, journey_date
 
         # Update existing journey with fresh predictions.
         journey.actual_departure = first_arrival.arrival_time
@@ -408,7 +428,7 @@ class SeptaRailCollector:
         mark_journey_present(journey)
         check_journey_completed(journey, journey_stops)
         logger.debug(f"Updated SEPTA RR train {train_id}")
-        return "updated", journey
+        return "updated", journey, journey_date
 
     async def collect_journey_details(
         self, session: AsyncSession, journey: TrainJourney
