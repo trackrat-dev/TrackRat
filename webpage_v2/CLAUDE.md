@@ -11,7 +11,7 @@
 - **Routing**: React Router DOM 7.18
 - **Date Handling**: date-fns 4.4
 - **HTTP Client**: Native `fetch` (no axios)
-- **Maps**: MapLibre GL 5.22 + react-map-gl 8.1
+- **Maps**: MapLibre GL 6.0 + react-map-gl 8.1 (shared setup in `src/utils/maplibre.ts`)
 - **Deployment**: GCS static hosting (`scripts/deploy-webpage.sh`)
 
 ## Architecture Patterns
@@ -179,6 +179,7 @@ webpage_v2/
 │       ├── congestion.ts   # Congestion map data helpers
 │       ├── date.ts         # date-fns wrappers
 │       ├── formatting.ts   # Status badge classes
+│       ├── maplibre.ts     # MapLibre GL namespace + worker URL setup (shared by both maps)
 │       ├── ratsense.ts     # AI journey predictions (RatSense)
 │       ├── routes.ts       # Route path helpers + compact /trip URL builders
 │       ├── share.ts        # Web Share API helper + train URL builder

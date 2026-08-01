@@ -13,7 +13,7 @@ vi.mock('react-router-dom', async (importOriginal) => {
 
 // jsdom has no WebGL, so stub MapLibre. The Map stub forwards its onClick with a
 // synthetic feature event so the click→navigate wiring is exercised for real.
-vi.mock('maplibre-gl', () => ({ default: { Map: vi.fn() } }));
+vi.mock('maplibre-gl', () => ({ Map: vi.fn(), setWorkerUrl: vi.fn() }));
 
 vi.mock('react-map-gl/maplibre', () => ({
   default: ({
