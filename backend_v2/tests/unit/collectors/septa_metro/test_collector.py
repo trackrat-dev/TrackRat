@@ -6,18 +6,21 @@ flow: group arrivals by trip, back-fill from GTFS static when available, else
 build the journey directly from the real-time arrivals.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from trackrat.collectors.septa_common import SeptaFeedFetchError
 from trackrat.collectors.septa_metro.client import SeptaMetroArrival, SeptaMetroClient
 from trackrat.collectors.septa_metro.collector import (
     SeptaMetroCollector,
     _generate_train_id,
+    _service_date,
 )
+from trackrat.utils.time import ET
 
-_T = datetime(2026, 7, 18, 15, 0, 0, tzinfo=timezone.utc)
+_T = datetime(2026, 7, 18, 15, 0, 0, tzinfo=UTC)
 
 
 def _arrival(
@@ -54,6 +57,38 @@ class TestGenerateTrainId:
 
     def test_empty_string(self):
         assert _generate_train_id("") == ""
+
+
+class TestServiceDate:
+    """Presence reconciliation and journey lookup must derive the same day.
+
+    The presence key is built from the raw feed while ``_process_trip`` builds the
+    journey lookup key; if the two ever disagreed, a trip sitting in the feed would
+    be reconciled under a key no row uses and then struck as omitted.
+    """
+
+    def test_uses_earliest_arrival_regardless_of_input_order(self):
+        late = _T + timedelta(hours=2)
+        arrivals = [
+            _arrival("SEPM1273", "trip_A", "M1", late),
+            _arrival("SEPM1272", "trip_A", "M1", _T),
+        ]
+        assert _service_date(arrivals) == _T.astimezone(ET).date()
+
+    def test_uses_eastern_calendar_day_not_utc(self):
+        """03:30 UTC is still the previous day in ET — the day the trip belongs to."""
+        after_utc_midnight = datetime(2026, 7, 19, 3, 30, 0, tzinfo=UTC)
+        arrivals = [_arrival("SEPM1272", "trip_A", "M1", after_utc_midnight)]
+        assert _service_date(arrivals) == date(2026, 7, 18)
+
+    def test_matches_the_journey_date_process_trip_would_look_up(self):
+        arrivals = [
+            _arrival("SEPM1272", "trip_A", "M1", _T + timedelta(minutes=30)),
+            _arrival("SEPM1273", "trip_A", "M1", _T),
+        ]
+        # _process_trip sorts in place before deriving its journey_date.
+        by_time = sorted(arrivals, key=lambda a: a.arrival_time)
+        assert _service_date(arrivals) == by_time[0].arrival_time.astimezone(ET).date()
 
 
 class TestCollectorInit:
@@ -110,6 +145,7 @@ class TestCollect:
         assert stats["total_arrivals"] == 0
         assert stats["discovered"] == 0
         assert stats["updated"] == 0
+        mock_client.get_all_arrivals.assert_awaited_once_with(use_cache=False)
 
     @pytest.mark.asyncio
     async def test_groups_arrivals_by_trip(self, collector, mock_client, mock_session):
@@ -130,6 +166,85 @@ class TestCollect:
 
         assert stats["total_arrivals"] == 3
         assert collector._process_trip.call_count == 2  # two unique trips
+
+    @pytest.mark.asyncio
+    async def test_present_trip_is_reconciled_when_local_processing_skips_it(
+        self, collector, mock_client, mock_session
+    ):
+        mock_client.get_all_arrivals.return_value = [
+            _arrival("SEPM1272", "present_trip", "M1", _T)
+        ]
+        collector._process_trip = AsyncMock(return_value=(None, None))
+
+        with (
+            patch(
+                "trackrat.collectors.septa_metro.collector."
+                "TransitAnalyzer.analyze_new_segments_bulk",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "trackrat.collectors.septa_metro.collector."
+                "reconcile_journey_omissions",
+                new_callable=AsyncMock,
+                return_value=2,
+            ) as reconcile,
+        ):
+            stats = await collector.collect(mock_session)
+
+        assert stats["expired"] == 2
+        assert reconcile.await_args.args[3] == {("present_trip", _T.date())}
+
+    @pytest.mark.asyncio
+    async def test_fetch_error_propagates_and_never_reconciles_omissions(
+        self, collector, mock_client, mock_session
+    ):
+        """A failed fetch must reach the scheduler so the run is not stamped
+        successful, and must never touch omission state (PR #1640 follow-up 2)."""
+        mock_client.get_all_arrivals.side_effect = SeptaFeedFetchError("unavailable")
+
+        with patch(
+            "trackrat.collectors.septa_metro.collector.reconcile_journey_omissions",
+            new_callable=AsyncMock,
+        ) as reconcile:
+            with pytest.raises(SeptaFeedFetchError):
+                await collector.collect(mock_session)
+
+        reconcile.assert_not_awaited()
+        mock_session.rollback.assert_awaited()
+
+    @pytest.mark.asyncio
+    async def test_fetch_timeout_propagates_as_feed_fetch_error(
+        self, collector, mock_client, mock_session
+    ):
+        """A hung feed is as much a missing snapshot as an HTTP failure."""
+        mock_client.get_all_arrivals.side_effect = TimeoutError()
+
+        with patch(
+            "trackrat.collectors.septa_metro.collector.reconcile_journey_omissions",
+            new_callable=AsyncMock,
+        ) as reconcile:
+            with pytest.raises(SeptaFeedFetchError):
+                await collector.collect(mock_session)
+
+        reconcile.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_all_trip_failures_never_reconcile_omissions(
+        self, collector, mock_client, mock_session
+    ):
+        mock_client.get_all_arrivals.return_value = [
+            _arrival("SEPM1272", "broken_trip", "M1", _T)
+        ]
+        collector._process_trip = AsyncMock(side_effect=ValueError("bad trip"))
+
+        with patch(
+            "trackrat.collectors.septa_metro.collector.reconcile_journey_omissions",
+            new_callable=AsyncMock,
+        ) as reconcile:
+            stats = await collector.collect(mock_session)
+
+        assert stats["errors"] == 2
+        reconcile.assert_not_awaited()
 
 
 class TestProcessTrip:
@@ -186,6 +301,10 @@ class TestProcessTrip:
         existing_journey.train_id = "trip_1"
         existing_journey.data_source = "SEPTA_METRO"
         existing_journey.stops = []
+        existing_journey.is_completed = False
+        existing_journey.is_cancelled = False
+        existing_journey.is_expired = True
+        existing_journey.api_error_count = 3
 
         found = MagicMock()
         found.scalar_one_or_none.return_value = existing_journey
@@ -201,6 +320,8 @@ class TestProcessTrip:
 
         assert result == "updated"
         assert journey is existing_journey
+        assert journey.api_error_count == 0
+        assert journey.is_expired is False
 
 
 class TestJourneyDetails:

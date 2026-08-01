@@ -20,10 +20,10 @@ least one automatic writer that can clear it (see the invariant below):
 
 | Flag | Meaning | Set by | Cleared by | Blocks |
 |---|---|---|---|---|
-| `is_expired` | Row abandoned (feed lost the train / sustained mismatch) | 3-strike not-found / sustained-mismatch backstops in both collectors | NJT: discovery reactivation (`reactivated_expired_train`). Amtrak: reobservation via JIT refresh, or the batch requeue of expired rows (#1500) | JIT (`needs_refresh`), background collection candidacy |
+| `is_expired` | Row abandoned (feed lost the train / sustained mismatch) | 3-strike not-found / sustained-mismatch backstops in collectors | NJT: discovery reactivation (`reactivated_expired_train`). Amtrak: reobservation via JIT refresh, or the batch requeue of expired rows (#1500). SEPTA: a valid nonempty feed snapshot or successful JIT refresh reobserves omission-expired journeys. | JIT (`needs_refresh`), background collection candidacy |
 | `is_completed` | Run finished | Terminal-arrival detection; completion-on-expiry backstops; Amtrak `trainState == "Terminated"` | Nothing (final state) | JIT, batch collection, Live Activity updates end |
 | `is_cancelled` | Run annulled | NJT: API `STOP_STATUS` (all stops or terminal cancelled). Amtrak: `trainState == "Cancelled"` | Amtrak: reobservation. **NJT: nothing — known one-way door, issue #1498** | JIT, all scheduler NJT update queries, discovery fuzzy re-match |
-| `api_error_count` | Strike counter toward expiry | Incremented on not-found / mismatch | Reset on any successful fetch/reobservation (both collectors, both paths) | ≥3 triggers the expiry backstops |
+| `api_error_count` | Strike counter toward expiry | Incremented on not-found / mismatch | Reset on any successful fetch/reobservation (all collectors and paths that use it) | ≥3 triggers the expiry backstops |
 
 **Invariant (the #1489 rule): any flag that blocks refresh must have an
 automatic writer that can clear it.** A flag with no clearer is a one-way
@@ -32,6 +32,22 @@ door: one transient feed gap or data glitch strands the row for its lifetime
 shape shipped four times (#1115, #1489, #1498, #1500) before it was named.
 When adding a new gate to `JustInTimeUpdateService.needs_refresh` or a new
 scheduler candidate filter, identify the clearer first.
+
+SEPTA omission strikes are reconciled only from a successfully fetched,
+nonempty whole-system snapshot. HTTP, network, and protobuf failures and
+globally empty snapshots are not evidence that every active trip disappeared.
+Feed presence is recorded before per-trip enrichment so a local processing
+failure cannot turn a trip that was visibly present into an omission strike.
+Regional Rail trips carry no service date of their own, so presence is keyed on
+the date resolved from the GTFS static schedule; only when that resolution fails
+is the strike suppressed for the train number across every recent service day.
+
+A failed fetch (`SeptaFeedFetchError`, including the collector's own fetch
+timeout) propagates out of `collect()` after rollback rather than being folded
+into `stats["errors"]`. Swallowing it would let `run_with_freshness_check` stamp
+`last_successful_run` on a run that never saw the provider, so a dead SEPTA feed
+would read as healthy — the same observability hole closed for the other
+freshness-wrapped tasks in #1507.
 
 Known open gaps: the NJT `is_cancelled` clearer (#1498) and the NJT
 silent-cancellation *setter* — `JourneyCollector._reconcile_unobserved_trains`

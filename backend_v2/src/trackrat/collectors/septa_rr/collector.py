@@ -21,6 +21,11 @@ from trackrat.collectors.mta_common import (
     update_journey_metadata,
     update_stop_departure_status,
 )
+from trackrat.collectors.septa_common import (
+    SeptaFeedFetchError,
+    mark_journey_present,
+    reconcile_journey_omissions,
+)
 from trackrat.collectors.septa_rr.client import (
     SeptaRailArrival,
     SeptaRailClient,
@@ -147,39 +152,68 @@ class SeptaRailCollector:
             collection_start = now_et()
             try:
                 trip_updates = await asyncio.wait_for(
-                    self.client.get_trip_updates(),
+                    self.client.get_trip_updates(use_cache=False),
                     timeout=_FEED_FETCH_TIMEOUT_SECONDS,
                 )
-            except TimeoutError:
+            except TimeoutError as e:
                 logger.warning(
                     "septa_rr_feed_fetch_timed_out | timeout_s=%.1f",
                     _FEED_FETCH_TIMEOUT_SECONDS,
                 )
-                return stats
+                raise SeptaFeedFetchError("SEPTA RR feed fetch timed out") from e
 
             stats["trips"] = len(trip_updates)
             if not trip_updates:
                 logger.warning("No SEPTA RR trips found in GTFS-RT feed")
                 return stats
 
+            present_journey_keys: set[tuple[str, date]] = set()
+            unresolved_present_train_ids: set[str] = set()
+
             batch_size = 50
             trips_in_batch = 0
             analyzed_journeys: list[TrainJourney] = []
             for trip in trip_updates:
+                train_id = _generate_train_id(trip.trip_id)
+                # Resolved here rather than inside _process_trip, and held outside the
+                # per-trip guard, so a failure anywhere downstream still knows which
+                # service day the trip was present on. Losing it would suppress
+                # omission strikes for this train number on every recent day.
+                service_date: date | None = None
                 try:
                     async with session.begin_nested():
-                        result, journey = await self._process_trip(session, trip)
-                        if result == "discovered":
-                            stats["discovered"] += 1
-                        elif result == "updated":
-                            stats["updated"] += 1
-                        elif result == "skipped_no_static":
+                        service_date, static_stops = (
+                            await self._resolve_static_schedule(session, trip)
+                        )
+                        if service_date is None or static_stops is None:
+                            # Regional Rail's feed carries no absolute times, so the
+                            # static schedule is mandatory — nothing to reconstruct.
+                            logger.debug(
+                                "SEPTA RR static schedule unavailable for trip %s; "
+                                "skipping",
+                                trip.trip_id,
+                            )
                             stats["skipped_no_static"] += 1
-                        if journey is not None and journey.id is not None:
-                            analyzed_journeys.append(journey)
+                        else:
+                            result, journey = await self._process_trip(
+                                session, trip, service_date, static_stops
+                            )
+                            if result == "discovered":
+                                stats["discovered"] += 1
+                            elif result == "updated":
+                                stats["updated"] += 1
+                            if journey is not None and journey.id is not None:
+                                analyzed_journeys.append(journey)
                 except Exception as e:
                     logger.error(f"Error processing SEPTA RR trip {trip.trip_id}: {e}")
                     stats["errors"] += 1
+
+                # The trip is in the feed either way; only a trip whose service day
+                # could not be resolved at all falls back to cross-day suppression.
+                if service_date is not None:
+                    present_journey_keys.add((train_id, service_date))
+                else:
+                    unresolved_present_train_ids.add(train_id)
 
                 trips_in_batch += 1
                 if trips_in_batch >= batch_size:
@@ -194,23 +228,13 @@ class SeptaRailCollector:
             transit_analyzer = TransitAnalyzer()
             await transit_analyzer.analyze_new_segments_bulk(session, analyzed_journeys)
 
-            today = collection_start.date()
-            stale_result = await session.execute(
-                select(TrainJourney).where(
-                    TrainJourney.data_source == DATA_SOURCE,
-                    TrainJourney.observation_type == "OBSERVED",
-                    TrainJourney.journey_date >= today - timedelta(days=1),
-                    TrainJourney.is_completed == False,  # noqa: E712
-                    TrainJourney.is_expired == False,  # noqa: E712
-                    TrainJourney.is_cancelled == False,  # noqa: E712
-                    TrainJourney.last_updated_at < collection_start,
-                )
+            stats["expired"] = await reconcile_journey_omissions(
+                session,
+                DATA_SOURCE,
+                collection_start.date(),
+                present_journey_keys,
+                unresolved_present_train_ids,
             )
-            for journey in stale_result.scalars():
-                journey.api_error_count = (journey.api_error_count or 0) + 1
-                if journey.api_error_count >= 3:
-                    journey.is_expired = True
-                    stats["expired"] += 1
 
             await session.commit()
             logger.info(
@@ -219,6 +243,12 @@ class SeptaRailCollector:
                 f"{stats['skipped_no_static']} skipped (no static match), "
                 f"{stats['errors']} errors"
             )
+        except SeptaFeedFetchError as e:
+            # No valid snapshot: nothing was reconciled, and the scheduler must not
+            # stamp this run successful or a dead feed reads as healthy (#1633).
+            logger.error(f"SEPTA RR collection aborted, no usable feed snapshot: {e}")
+            await session.rollback()
+            raise
         except Exception as e:
             logger.error(f"SEPTA RR collection failed: {e}")
             await session.rollback()
@@ -266,8 +296,19 @@ class SeptaRailCollector:
         return None, None
 
     async def _process_trip(
-        self, session: AsyncSession, trip: SeptaRailTripUpdate
+        self,
+        session: AsyncSession,
+        trip: SeptaRailTripUpdate,
+        journey_date: date,
+        static_stops: list[dict[str, Any]],
     ) -> tuple[str | None, TrainJourney | None]:
+        """Reconstruct one delay-only trip into its journey row.
+
+        A Regional Rail trip carries no service date of its own, so the caller
+        resolves it against the GTFS static schedule and passes both in — that way
+        the date survives a failure in here and presence stays scoped to the right
+        service day (see ``collect``).
+        """
         train_id = _generate_train_id(trip.trip_id)
 
         route_info = get_septa_rr_route_info(trip.route_id)
@@ -277,16 +318,6 @@ class SeptaRailCollector:
             line_code = f"SEPTA-{trip.route_id}"
             line_name = f"SEPTA {trip.route_id}"
             line_color = _DEFAULT_LINE_COLOR
-
-        # Regional Rail's feed carries no absolute times — the static schedule is
-        # mandatory. Without it there is nothing to reconstruct, so skip.
-        journey_date, static_stops = await self._resolve_static_schedule(session, trip)
-        if journey_date is None or static_stops is None:
-            logger.debug(
-                "SEPTA RR static schedule unavailable for trip %s; skipping",
-                trip.trip_id,
-            )
-            return "skipped_no_static", None
 
         arrivals = resolve_arrivals(trip, static_stops)
         if not arrivals:
@@ -314,6 +345,9 @@ class SeptaRailCollector:
         )
         journey = existing.scalar_one_or_none()
         first_arrival = min(arrivals, key=lambda a: a.arrival_time)
+
+        if journey is not None and (journey.is_completed or journey.is_cancelled):
+            return None, None
 
         if journey is None:
             journey = TrainJourney(
@@ -392,6 +426,7 @@ class SeptaRailCollector:
         journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
         update_stop_departure_status(journey_stops, now)
         update_journey_metadata(journey, now, journey_stops)
+        mark_journey_present(journey)
         check_journey_completed(journey, journey_stops)
         logger.debug(f"Updated SEPTA RR train {train_id}")
         return "updated", journey
@@ -452,6 +487,7 @@ class SeptaRailCollector:
         now = now_et()
         update_stop_departure_status(journey_stops, now)
         update_journey_metadata(journey, now, journey_stops)
+        mark_journey_present(journey)
         check_journey_completed(journey, journey_stops)
         logger.debug(f"JIT updated SEPTA RR journey {journey.train_id}")
 
