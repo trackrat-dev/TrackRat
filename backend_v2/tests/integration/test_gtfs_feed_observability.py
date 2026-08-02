@@ -26,6 +26,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trackrat.models.database import GTFSFeedInfo, GTFSStopTime, GTFSTrip
 from trackrat.services.gtfs import (
+    GTFS_EXPIRY_EXEMPT_SOURCES,
     GTFS_FEED_URLS,
     GTFS_STALE_FEED_HOURS,
     GTFSRefreshOutcome,
@@ -968,9 +969,10 @@ class TestHealthExposesFeedFreshness:
         assert check["status"] == "warning"
         assert check["lapsed_sources"] == ["SEPTA_METRO"]
         assert check["feeds"]["SEPTA_METRO"]["days_until_feed_end"] == -5
-        assert check["feeds"]["SEPTA_METRO"]["feed_end_date"] == (
-            now_et().date() - timedelta(days=5)
-        ).isoformat()
+        assert (
+            check["feeds"]["SEPTA_METRO"]["feed_end_date"]
+            == (now_et().date() - timedelta(days=5)).isoformat()
+        )
         assert health["status"] == "degraded"
 
     async def test_current_feeds_report_their_end_date_without_alarming(
@@ -1014,6 +1016,61 @@ class TestHealthExposesFeedFreshness:
         assert check["lapsed_sources"] == []
         assert check["status"] == "healthy"
         assert check["feeds"]["PATCO"]["days_until_feed_end"] == 0
+
+    async def test_paths_deliberately_expired_bundle_does_not_degrade_health(
+        self, db_session: AsyncSession
+    ):
+        """The production state this check must not alarm on.
+
+        PATH's upstream Trillium feed expired 2026-06-01 and is knowingly still
+        served — `GTFS_EXPIRY_EXEMPT_SOURCES` drops the `end_date` bound for it
+        so the frozen weekly pattern keeps producing departures (issue #1419).
+        Without the exemption every deployment reports `degraded` forever and
+        `verify-deployment.sh` exits non-zero on every staging and production
+        deploy, which would retire the check before it ever caught a real
+        SEPTA/PATCO lapse (issue #1634).
+
+        The expiry is still *reported* — withholding the verdict is not the
+        same as hiding the date.
+        """
+        for source in GTFS_FEED_URLS:
+            await _seed_feed(
+                db_session,
+                source,
+                parsed_hours_ago=1,
+                feed_ends_in_days=-62 if source == "PATH" else 45,
+            )
+
+        check = (await self._gtfs_check(db_session))["checks"]["gtfs_feeds"]
+
+        assert "PATH" in GTFS_EXPIRY_EXEMPT_SOURCES, "precondition"
+        assert check["lapsed_sources"] == []
+        assert check["status"] == "healthy"
+        assert check["feeds"]["PATH"]["days_until_feed_end"] == -62
+
+    async def test_a_non_exempt_source_expiring_alongside_path_still_alarms(
+        self, db_session: AsyncSession
+    ):
+        """The exemption must not swallow the case the check exists for.
+
+        PATH sits two months past its calendar and stays quiet; SEPTA Metro
+        with the identical offset is reported, so a real lapse is still caught
+        on a deployment that permanently carries PATH's expired bundle.
+        """
+        for source in GTFS_FEED_URLS:
+            await _seed_feed(
+                db_session,
+                source,
+                parsed_hours_ago=1,
+                feed_ends_in_days=-62 if source in ("PATH", "SEPTA_METRO") else 45,
+            )
+
+        health = await self._gtfs_check(db_session)
+        check = health["checks"]["gtfs_feeds"]
+
+        assert check["lapsed_sources"] == ["SEPTA_METRO"]
+        assert check["status"] == "warning"
+        assert health["status"] == "degraded"
 
     async def test_disabled_sources_are_excluded(self, db_session: AsyncSession):
         """BART and friends are off by design and have no feed to be stale."""

@@ -99,6 +99,12 @@ GTFS_ROUTE_TYPE_FILTER: dict[str, frozenset[str]] = {
 # transfer results on low-frequency nights (issue #1419). PATH's Trillium feed
 # expired 2026-06-01. Scoped deliberately: holiday exceptions (calendar_dates)
 # and long-term schedule drift are NOT corrected by this.
+#
+# Also read by :attr:`GTFSFeedStatus.is_lapsed`, which must not report these
+# sources as lapsed: an expired calendar is their accepted steady state, not a
+# fault, and a permanent finding on every deployment would train operators to
+# ignore the check (issue #1634). Adding a source here therefore also opts it
+# out of the lapse alert — confirm that is intended.
 GTFS_EXPIRY_EXEMPT_SOURCES: frozenset[str] = frozenset({"PATH"})
 
 # Minimum hours between feed downloads (rate limiting).
@@ -417,7 +423,20 @@ class GTFSFeedStatus:
         defines as inclusive, so a bundle ending today is still valid. Feeds
         that publish only ``calendar_dates.txt`` have no end date at all and
         report ``None`` — unknown, deliberately not treated as lapsed.
+
+        ``GTFS_EXPIRY_EXEMPT_SOURCES`` are excluded. For those an expired
+        calendar is not a failure but the documented steady state:
+        :meth:`GTFSService.get_active_service_ids` already drops the
+        ``end_date`` bound for them so the frozen weekly pattern keeps
+        applying (PATH's Trillium feed expired 2026-06-01, issue #1419).
+        Reporting them lapsed would put a permanent, un-clearable finding on
+        every deployment — the exact way a real signal gets tuned out. The
+        underlying ``feed_end_date`` / ``days_until_feed_end`` are still
+        reported for them, so the expiry stays visible; only the verdict is
+        withheld.
         """
+        if self.data_source in GTFS_EXPIRY_EXEMPT_SOURCES:
+            return False
         return self.days_until_feed_end is not None and self.days_until_feed_end < 0
 
 
@@ -2032,9 +2051,7 @@ class GTFSService:
                     trip_count=feed_info.trip_count if feed_info else None,
                     error_message=feed_info.error_message if feed_info else None,
                     feed_end_date=end_date,
-                    days_until_feed_end=(
-                        (end_date - today).days if end_date else None
-                    ),
+                    days_until_feed_end=((end_date - today).days if end_date else None),
                 )
             )
         return statuses

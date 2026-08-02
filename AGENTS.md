@@ -194,6 +194,10 @@ plus per-feed `feed_end_date` / `days_until_feed_end` for that, separately from
 still returns 200 for a lapsed bundle, `verify-deployment.sh` asserts on
 `lapsed_sources` explicitly and exits non-zero — a lapse fails step 1 of
 `validate-staging.sh`, rather than sitting in the JSON for someone to notice.
+`GTFS_EXPIRY_EXEMPT_SOURCES` (currently PATH, whose Trillium feed expired 2026-06-01
+and is served anyway per #1419) is excluded from `lapsed_sources`: for those an
+expired calendar is the accepted steady state, and reporting it would fail every
+deploy forever. Their `feed_end_date` / `days_until_feed_end` are still reported.
 
 **Server Usage Report:**
 

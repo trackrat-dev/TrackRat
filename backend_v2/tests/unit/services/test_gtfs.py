@@ -584,13 +584,19 @@ class TestGTFSFeedStatusLapse:
 
     @staticmethod
     def _status(
-        days_until_feed_end: int | None, age_hours: float | None = 6.0
+        days_until_feed_end: int | None,
+        age_hours: float | None = 6.0,
+        data_source: str = "SEPTA_METRO",
     ) -> GTFSFeedStatus:
         """Build a status with an explicit lapse offset and, by default, a
         thoroughly fresh download — the combination that isolates lapse from
-        staleness."""
+        staleness.
+
+        ``data_source`` defaults to a source with no expiry exemption, so the
+        cases below measure the lapse rule itself rather than an exemption.
+        """
         return GTFSFeedStatus(
-            data_source="SEPTA_METRO",
+            data_source=data_source,
             last_successful_parse_at=(
                 datetime.now(ET) - timedelta(hours=age_hours) if age_hours else None
             ),
@@ -661,6 +667,70 @@ class TestGTFSFeedStatusLapse:
         status = self._status(None, age_hours=None)
         assert status.is_stale is True
         assert status.is_lapsed is False
+
+
+class TestGTFSFeedStatusLapseExemptions:
+    """`GTFS_EXPIRY_EXEMPT_SOURCES` are excluded from the lapse verdict.
+
+    PATH's upstream Trillium bundle expired 2026-06-01 and is *deliberately*
+    still served: `get_active_service_ids` drops the `end_date` bound for these
+    sources so the frozen weekly pattern keeps applying, because without it
+    PATH contributes zero scheduled departures (issue #1419). Reporting that as
+    lapsed would put a permanent warning on `/health` and fail
+    `verify-deployment.sh` on every single deploy, staging and production —
+    which is how a check that only ever cries wolf gets ignored, taking the
+    real SEPTA/PATCO signal down with it (issue #1634).
+    """
+
+    @staticmethod
+    def _status(data_source: str, days_until_feed_end: int) -> GTFSFeedStatus:
+        """A healthy download whose calendar ended `days_until_feed_end` ago."""
+        return GTFSFeedStatus(
+            data_source=data_source,
+            last_successful_parse_at=datetime.now(ET) - timedelta(hours=6),
+            age_hours=6.0,
+            trip_count=22369,
+            error_message=None,
+            feed_end_date=date.today() + timedelta(days=days_until_feed_end),
+            days_until_feed_end=days_until_feed_end,
+        )
+
+    def test_path_is_exempt(self):
+        """The real production state as of this change: PATH's bundle ended 62
+        days ago and every other signal is green."""
+        assert "PATH" in GTFS_EXPIRY_EXEMPT_SOURCES, "precondition"
+        status = self._status("PATH", -62)
+        assert status.is_stale is False
+        assert status.is_lapsed is False
+
+    def test_exempt_source_still_reports_its_expiry(self):
+        """Exempt from the verdict, not from the facts.
+
+        The raw dates stay in `/health` so an operator can see PATH's bundle is
+        two months past its calendar; what is withheld is the finding that
+        would gate a deploy.
+        """
+        status = self._status("PATH", -62)
+        assert status.days_until_feed_end == -62
+        assert status.feed_end_date == date.today() - timedelta(days=62)
+
+    def test_exemption_is_scoped_to_the_listed_sources(self):
+        """The same expiry on a non-exempt source must still be a finding.
+
+        Guards against the exemption being widened into "expired calendars are
+        fine", which would silently retire the check.
+        """
+        for source in ("SEPTA_METRO", "SEPTA_RR", "PATCO"):
+            assert source not in GTFS_EXPIRY_EXEMPT_SOURCES, "precondition"
+            assert self._status(source, -62).is_lapsed is True, (
+                f"{source} has no expiry exemption and must report a "
+                "62-day-expired bundle as lapsed"
+            )
+
+    def test_exempt_source_with_a_valid_calendar_is_also_not_lapsed(self):
+        """No inversion: the exemption suppresses the verdict, it does not flip
+        it. A PATH feed republished with a live calendar stays quiet too."""
+        assert self._status("PATH", 30).is_lapsed is False
 
 
 class TestGTFSTripIdentifiers:
