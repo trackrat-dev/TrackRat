@@ -13,6 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.collectors.path.collector import (
     PathCollector,
+    _assign_arrivals_to_journeys,
+    _build_train_candidate,
+    _claim_one_to_one,
+    _cluster_sightings,
     _generate_path_train_id,
     _get_destination_station_from_headsign,
     _get_line_info_from_headsign,
@@ -738,7 +742,7 @@ class TestPathCollectorDiscovery:
 
     @pytest.mark.asyncio
     async def test_process_arrival_creates_journey(self, collector, mock_session):
-        """Test _process_arrival_for_discovery creates new journey."""
+        """Test _discover_trains creates new journey."""
         arrival = PathArrival(
             station_code="PHO",
             headsign="33rd Street",
@@ -749,18 +753,16 @@ class TestPathCollectorDiscovery:
             last_updated=None,
         )
 
-        created = await collector._process_arrival_for_discovery(
-            mock_session, arrival, {}
-        )
+        result = await collector._discover_trains(mock_session, [arrival], {})
 
-        assert created is True
+        assert result["new_journeys"] == 1
         mock_session.add.assert_called()
 
     @pytest.mark.asyncio
     async def test_process_arrival_skips_existing_journey(
         self, collector, mock_session
     ):
-        """Test _process_arrival_for_discovery does not create duplicate journeys."""
+        """Test _discover_trains does not create duplicate journeys."""
         existing_journey = MagicMock()
         existing_journey.last_updated_at = datetime.now()
         mock_session.scalar = AsyncMock(return_value=existing_journey)
@@ -775,17 +777,15 @@ class TestPathCollectorDiscovery:
             last_updated=None,
         )
 
-        created = await collector._process_arrival_for_discovery(
-            mock_session, arrival, {}
-        )
+        result = await collector._discover_trains(mock_session, [arrival], {})
 
-        assert created is False
+        assert result["new_journeys"] == 0
 
     @pytest.mark.asyncio
     async def test_process_arrival_uses_line_color_from_api(
         self, collector, mock_session
     ):
-        """Test _process_arrival_for_discovery uses line color from API."""
+        """Test _discover_trains uses line color from API."""
         arrival = PathArrival(
             station_code="PHO",
             headsign="33rd Street",
@@ -796,7 +796,7 @@ class TestPathCollectorDiscovery:
             last_updated=None,
         )
 
-        await collector._process_arrival_for_discovery(mock_session, arrival, {})
+        await collector._discover_trains(mock_session, [arrival], {})
 
         add_call = mock_session.add.call_args_list[0]
         journey = add_call[0][0]
@@ -819,7 +819,7 @@ class TestPathCollectorDiscovery:
             last_updated=None,
         )
 
-        await collector._process_arrival_for_discovery(mock_session, arrival, {})
+        await collector._discover_trains(mock_session, [arrival], {})
 
         # Get the journey that was added
         journey_add_call = mock_session.add.call_args_list[0]
@@ -850,7 +850,7 @@ class TestPathCollectorDiscovery:
             last_updated=None,
         )
 
-        await collector._process_arrival_for_discovery(mock_session, arrival, {})
+        await collector._discover_trains(mock_session, [arrival], {})
 
         journey_add_call = mock_session.add.call_args_list[0]
         journey = journey_add_call[0][0]
@@ -884,7 +884,7 @@ class TestPathCollectorDiscovery:
             last_updated=None,
         )
 
-        await collector._process_arrival_for_discovery(mock_session, arrival, {})
+        await collector._discover_trains(mock_session, [arrival], {})
 
         # Collect all JourneyStop objects that were added
         stops = [
@@ -941,7 +941,7 @@ class TestPathCollectorDiscovery:
             last_updated=None,
         )
 
-        await collector._process_arrival_for_discovery(mock_session, arrival, {})
+        await collector._discover_trains(mock_session, [arrival], {})
 
         stops = {
             call[0][0].station_code: call[0][0]
@@ -988,7 +988,7 @@ class TestPathCollectorDiscovery:
             last_updated=None,
         )
 
-        await collector._process_arrival_for_discovery(mock_session, arrival, {})
+        await collector._discover_trains(mock_session, [arrival], {})
 
         stops = [
             call[0][0]
@@ -1033,9 +1033,7 @@ class TestPathCollectorDiscovery:
         )
 
         # Process terminus discovery
-        await collector._process_arrival_for_discovery(
-            mock_session, terminus_arrival, {}
-        )
+        await collector._discover_trains(mock_session, [terminus_arrival], {})
         terminus_journey = mock_session.add.call_args_list[0][0][0]
         terminus_train_id = terminus_journey.train_id
 
@@ -1043,9 +1041,7 @@ class TestPathCollectorDiscovery:
         mock_session.reset_mock()
 
         # Process mid-route discovery
-        await collector._process_arrival_for_discovery(
-            mock_session, midroute_arrival, {}
-        )
+        await collector._discover_trains(mock_session, [midroute_arrival], {})
         midroute_journey = mock_session.add.call_args_list[0][0][0]
         midroute_train_id = midroute_journey.train_id
 
@@ -1107,7 +1103,7 @@ class TestNwkWtcHeadsignOverride:
             last_updated=None,
         )
 
-        await collector._process_arrival_for_discovery(mock_session, arrival, {})
+        await collector._discover_trains(mock_session, [arrival], {})
 
         assert mock_session.add.called, "Journey should have been created"
         journey = mock_session.add.call_args_list[0][0][0]
@@ -1143,7 +1139,7 @@ class TestNwkWtcHeadsignOverride:
             last_updated=None,
         )
 
-        await collector._process_arrival_for_discovery(mock_session, arrival, {})
+        await collector._discover_trains(mock_session, [arrival], {})
 
         assert mock_session.add.called, "Journey should have been created"
         journey = mock_session.add.call_args_list[0][0][0]
@@ -1174,7 +1170,7 @@ class TestNwkWtcHeadsignOverride:
             last_updated=None,
         )
 
-        await collector._process_arrival_for_discovery(mock_session, arrival, {})
+        await collector._discover_trains(mock_session, [arrival], {})
 
         assert mock_session.add.called, "Journey should have been created"
         journey = mock_session.add.call_args_list[0][0][0]
@@ -1199,7 +1195,7 @@ class TestNwkWtcHeadsignOverride:
             last_updated=None,
         )
 
-        await collector._process_arrival_for_discovery(mock_session, arrival, {})
+        await collector._discover_trains(mock_session, [arrival], {})
 
         assert mock_session.add.called, "Journey should have been created"
         journey = mock_session.add.call_args_list[0][0][0]
@@ -1229,7 +1225,7 @@ class TestNwkWtcHeadsignOverride:
             last_updated=None,
         )
 
-        await collector._process_arrival_for_discovery(mock_session, nwk_arrival, {})
+        await collector._discover_trains(mock_session, [nwk_arrival], {})
         assert mock_session.add.called
         nwk_journey = mock_session.add.call_args_list[0][0][0]
         nwk_train_id = nwk_journey.train_id
@@ -1248,7 +1244,7 @@ class TestNwkWtcHeadsignOverride:
             last_updated=None,
         )
 
-        await collector._process_arrival_for_discovery(mock_session, jsq_arrival, {})
+        await collector._discover_trains(mock_session, [jsq_arrival], {})
         assert mock_session.add.called
         jsq_journey = mock_session.add.call_args_list[0][0][0]
         jsq_train_id = jsq_journey.train_id
@@ -2735,11 +2731,18 @@ class TestLineColorFiltering:
             ),
         ]
 
+        # The journey stops at PGR; both arrivals land inside the match window,
+        # so only the line color separates them.
+        stop = MagicMock(spec=JourneyStop)
+        stop.station_code = "PGR"
+        stop.stop_sequence = 2
+        stop.scheduled_arrival = now + timedelta(minutes=5)
+
         # Call _update_journeys
         with patch.object(
             collector, "_get_journey_stops", new_callable=AsyncMock
         ) as mock_get_stops:
-            mock_get_stops.return_value = []
+            mock_get_stops.return_value = [stop]
             with patch.object(
                 collector, "_update_stops_from_arrivals", new_callable=AsyncMock
             ) as mock_update:
@@ -2748,16 +2751,12 @@ class TestLineColorFiltering:
                 ):
                     await collector._update_journeys(mock_session, arrivals, {})
 
-                # Check that _update_stops_from_arrivals was called
-                if mock_update.called:
-                    # The matching arrivals should only include blue line arrivals
-                    call_args = mock_update.call_args
-                    matching_arrivals = call_args[0][3]  # 4th argument is arrivals
+        mock_update.assert_called_once()
+        matching_arrivals = mock_update.call_args[0][3]  # 4th argument is arrivals
 
-                    # Both arrivals should be in the list because we also add to headsign-only key as fallback
-                    # The primary filter is by headsign+color, but we also keep headsign-only
-                    # The key is that the COLOR-MATCHED arrivals are preferred
-                    assert any(a.line_color == "4D92FB" for a in matching_arrivals)
+        # The blue-line journey claims the blue arrival, and the orange arrival
+        # of a different line is left for its own journey.
+        assert [a.line_color for a in matching_arrivals] == ["4D92FB"]
 
 
 class TestTighterTolerance:
@@ -3315,3 +3314,262 @@ class TestDepartedStopsNeverCarryFutureTimes:
         assert (
             current.actual_arrival <= following.actual_arrival
         ), "ordering must be restored, which is the point of the repair"
+
+
+# =============================================================================
+# ONE-TO-ONE MATCHING (issue #1723)
+# =============================================================================
+
+
+def _jsq_arrival(
+    station_code: str,
+    minutes_away: int,
+    base: datetime,
+    headsign: str = "33rd Street",
+    line_color: str = "FF9900",
+) -> PathArrival:
+    """A RidePATH prediction on the JSQ-33 line (orange, 2-4 min headways)."""
+    return PathArrival(
+        station_code=station_code,
+        headsign=headsign,
+        direction="ToNY",
+        minutes_away=minutes_away,
+        arrival_time=base + timedelta(minutes=minutes_away),
+        line_color=line_color,
+        last_updated=None,
+    )
+
+
+class TestClaimOneToOne:
+    """Tests for _claim_one_to_one, the shared assignment primitive."""
+
+    def test_best_pair_wins_and_blocks_the_losers(self):
+        """Both sides of a claimed pair are consumed."""
+        assignment = _claim_one_to_one([("a", 1), ("b", 1), ("a", 2)])
+
+        assert assignment == {"a": 1}, "b lost 1 to a, and a was already spent"
+
+    def test_each_side_pairs_with_its_own_best_remaining_option(self):
+        assignment = _claim_one_to_one([("a", 1), ("b", 2), ("b", 1), ("a", 2)])
+
+        assert assignment == {"a": 1, "b": 2}
+
+    def test_order_is_the_only_ranking(self):
+        """Pairs are consumed as given — callers own the ranking."""
+        assignment = _claim_one_to_one([("b", 1), ("a", 1)])
+
+        assert assignment == {"b": 1}
+
+    def test_no_pairs_assigns_nothing(self):
+        assert _claim_one_to_one([]) == {}
+
+
+class TestClusterSightings:
+    """Tests for _cluster_sightings, which collapses repeat sightings."""
+
+    def _candidates(self, arrivals):
+        candidates = [_build_train_candidate(arrival, {}) for arrival in arrivals]
+        assert all(candidates), "every arrival in these tests resolves to a route"
+        return candidates
+
+    def test_two_stations_seeing_one_train_collapse(self):
+        """PJS -> PGR is 3 minutes and PJS -> PNP is 6, so both imply the same origin."""
+        base = now_et()
+        clusters = _cluster_sightings(
+            self._candidates(
+                [_jsq_arrival("PGR", 3, base), _jsq_arrival("PNP", 6, base)]
+            )
+        )
+
+        assert len(clusters) == 1
+        assert clusters[0].origin_station == "PJS"
+        # The sighting nearest the origin carries the least back-calculation.
+        assert clusters[0].arrival.station_code == "PGR"
+
+    def test_two_arrivals_at_one_station_are_never_one_train(self):
+        """RidePATH never lists the same train twice at a station.
+
+        Two trains 1 minute apart at PJS are inside SAME_TRAIN_TOLERANCE_MINUTES
+        of each other; only the same-station rule keeps them separate.
+        """
+        base = now_et()
+        clusters = _cluster_sightings(
+            self._candidates(
+                [_jsq_arrival("PJS", 1, base), _jsq_arrival("PJS", 2, base)]
+            )
+        )
+
+        assert len(clusters) == 2
+
+    def test_sightings_further_apart_than_the_tolerance_are_separate_trains(self):
+        """PGR at +3 implies origin base; PNP at +12 implies origin base+6."""
+        base = now_et()
+        clusters = _cluster_sightings(
+            self._candidates(
+                [_jsq_arrival("PGR", 3, base), _jsq_arrival("PNP", 12, base)]
+            )
+        )
+
+        assert len(clusters) == 2
+
+    def test_clusters_come_back_in_departure_order(self):
+        base = now_et()
+        clusters = _cluster_sightings(
+            self._candidates(
+                [
+                    _jsq_arrival("PJS", 6, base),
+                    _jsq_arrival("PJS", 1, base),
+                    _jsq_arrival("PJS", 4, base),
+                ]
+            )
+        )
+
+        assert [c.arrival.minutes_away for c in clusters] == [1, 4, 6]
+
+
+class TestBuildTrainCandidate:
+    """Tests for _build_train_candidate, which resolves a sighting onto a route."""
+
+    def test_mid_route_sighting_back_calculates_the_origin_departure(self):
+        base = now_et()
+        candidate = _build_train_candidate(_jsq_arrival("PGR", 3, base), {})
+
+        assert candidate is not None
+        assert candidate.origin_station == "PJS"
+        assert candidate.minutes_from_origin == 3.0
+        assert normalize_to_et(candidate.origin_departure) == normalize_to_et(base)
+
+    def test_unknown_destination_is_dropped(self):
+        base = now_et()
+        candidate = _build_train_candidate(
+            _jsq_arrival("PJS", 3, base, headsign="Somewhere Else"), {}
+        )
+
+        assert candidate is None
+
+    def test_sighting_off_the_resolved_route_is_dropped(self):
+        """Nothing to work backwards from means no candidate at all.
+
+        The route resolver and the origin inference agree today, so this branch
+        is defensive — but if they ever disagree the fallback must not be a
+        fabricated origin time, which would flow into both the train_id and
+        every stop time.
+        """
+        base = now_et()
+        with patch(
+            "trackrat.collectors.path.collector.get_path_route_and_stops",
+            return_value=("861", ["PJS", "PNP", "PCH", "P9S", "P14", "P23", "P33"]),
+        ):
+            candidate = _build_train_candidate(_jsq_arrival("PGR", 3, base), {})
+
+        assert candidate is None
+
+
+class TestAssignArrivalsToJourneys:
+    """Tests for _assign_arrivals_to_journeys, the update-phase claim."""
+
+    def _journey(self, destination="33rd Street", line_color="#ff9900"):
+        journey = MagicMock(spec=TrainJourney)
+        journey.destination = destination
+        journey.line_color = line_color
+        return journey
+
+    def _stop(self, station_code, scheduled_arrival):
+        stop = MagicMock(spec=JourneyStop)
+        stop.station_code = station_code
+        stop.scheduled_arrival = scheduled_arrival
+        return stop
+
+    def test_one_arrival_cannot_land_on_two_journeys(self):
+        """The nearer journey claims it; the other is left with nothing.
+
+        Both stops are inside the +/-5 min window of the single PGR arrival,
+        which is exactly the overlap a 4-minute headway produces.
+        """
+        base = now_et()
+        near = self._journey()
+        far = self._journey()
+        arrivals = [_jsq_arrival("PGR", 7, base)]
+
+        assigned = _assign_arrivals_to_journeys(
+            [
+                (far, [self._stop("PGR", base + timedelta(minutes=3))]),
+                (near, [self._stop("PGR", base + timedelta(minutes=7))]),
+            ],
+            arrivals,
+        )
+
+        assert assigned == {1: arrivals}
+
+    def test_consecutive_trains_each_claim_their_own_arrival(self):
+        base = now_et()
+        first = self._journey()
+        second = self._journey()
+        arrivals = [_jsq_arrival("PGR", 3, base), _jsq_arrival("PGR", 7, base)]
+
+        assigned = _assign_arrivals_to_journeys(
+            [
+                (first, [self._stop("PGR", base + timedelta(minutes=3))]),
+                (second, [self._stop("PGR", base + timedelta(minutes=7))]),
+            ],
+            arrivals,
+        )
+
+        assert assigned == {0: [arrivals[0]], 1: [arrivals[1]]}
+
+    def test_a_journey_claims_one_arrival_per_station(self):
+        """A journey tracks its own progress across stations, not a queue at one."""
+        base = now_et()
+        journey = self._journey()
+        arrivals = [_jsq_arrival("PGR", 3, base), _jsq_arrival("PNP", 6, base)]
+
+        assigned = _assign_arrivals_to_journeys(
+            [
+                (
+                    journey,
+                    [
+                        self._stop("PGR", base + timedelta(minutes=3)),
+                        self._stop("PNP", base + timedelta(minutes=6)),
+                    ],
+                )
+            ],
+            arrivals,
+        )
+
+        assert sorted(a.station_code for a in assigned[0]) == ["PGR", "PNP"]
+
+    def test_line_color_beats_proximity(self):
+        """Two lines share a destination; the colour says which train is whose."""
+        base = now_et()
+        orange = self._journey(line_color="#ff9900")
+        blue_arrival = _jsq_arrival("PCH", 4, base, line_color="4D92FB")
+        orange_arrival = _jsq_arrival("PCH", 6, base, line_color="FF9900")
+
+        assigned = _assign_arrivals_to_journeys(
+            [(orange, [self._stop("PCH", base + timedelta(minutes=4))])],
+            [blue_arrival, orange_arrival],
+        )
+
+        assert assigned == {0: [orange_arrival]}
+
+    def test_arrival_outside_the_window_is_not_claimed(self):
+        base = now_et()
+        journey = self._journey()
+
+        assigned = _assign_arrivals_to_journeys(
+            [(journey, [self._stop("PGR", base + timedelta(minutes=3))])],
+            [_jsq_arrival("PGR", 20, base)],
+        )
+
+        assert assigned == {}
+
+    def test_different_destination_is_not_claimed(self):
+        base = now_et()
+        journey = self._journey(destination="World Trade Center")
+
+        assigned = _assign_arrivals_to_journeys(
+            [(journey, [self._stop("PGR", base + timedelta(minutes=3))])],
+            [_jsq_arrival("PGR", 3, base)],
+        )
+
+        assert assigned == {}

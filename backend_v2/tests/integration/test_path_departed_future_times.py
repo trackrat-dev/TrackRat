@@ -70,7 +70,9 @@ async def _persisted_stops(
 
 async def _discover(db_session: AsyncSession, arrival: PathArrival) -> TrainJourney:
     collector = PathCollector()
-    created = await collector._process_arrival_for_discovery(db_session, arrival, {})
+    created = (await collector._discover_trains(db_session, [arrival], {}))[
+        "new_journeys"
+    ]
     assert created, "discovery should have created a journey for this arrival"
     await db_session.commit()
 
