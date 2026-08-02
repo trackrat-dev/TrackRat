@@ -81,6 +81,176 @@ final class SettingsViewEnvironmentTests: XCTestCase {
     }
 }
 
+final class TrackPredictionViewTests: XCTestCase {
+    func testNYPennGroupsIndividualTracksIntoPlatforms() {
+        let segments = TrackPredictionSegment.makeSegments(
+            from: ["1": 0.2, "2": 0.3, "3": 0.5],
+            groupTracksAtNYPenn: true
+        )
+
+        XCTAssertEqual(segments.map(\.platformName), ["1 & 2", "3 & 4"])
+        XCTAssertEqual(segments.map(\.probability), [0.5, 0.5])
+    }
+
+    func testNYPennPreservesPregroupedPlatformKeys() {
+        let segments = TrackPredictionSegment.makeSegments(
+            from: ["1 & 2": 0.6, "3 & 4": 0.4],
+            groupTracksAtNYPenn: true
+        )
+
+        XCTAssertEqual(segments.map(\.platformName), ["1 & 2", "3 & 4"])
+        XCTAssertEqual(segments.map(\.probability), [0.6, 0.4])
+    }
+
+    func testNonNYPennTracksRemainSeparate() {
+        let segments = TrackPredictionSegment.makeSegments(
+            from: ["1": 0.4, "2": 0.35, "10": 0.25],
+            groupTracksAtNYPenn: false
+        )
+
+        XCTAssertEqual(segments.map(\.platformName), ["1", "2", "10"])
+    }
+
+    func testExpandedRankingIncludesLowProbabilityCandidates() {
+        let segments = TrackPredictionSegment.makeSegments(
+            from: ["1": 0.12, "2": 0.7, "3": 0.18],
+            groupTracksAtNYPenn: false
+        )
+
+        XCTAssertEqual(
+            segments.sortedByProbability.map(\.platformName),
+            ["2", "3", "1"]
+        )
+        XCTAssertEqual(segments.sortedByProbability.last?.percentageText, "12%")
+    }
+
+    func testProbabilityFingerprintChangesWhenDistributionChangesWithSameLeader() {
+        let original = TrackPredictionSegment.probabilityFingerprint([
+            "7 & 8": 0.6,
+            "9 & 10": 0.4
+        ])
+        let updated = TrackPredictionSegment.probabilityFingerprint([
+            "7 & 8": 0.55,
+            "9 & 10": 0.45
+        ])
+
+        XCTAssertNotEqual(original, updated)
+    }
+
+    func testAccessibilitySummaryLimitsCollapsedAnnouncement() {
+        let segments = TrackPredictionSegment.makeSegments(
+            from: ["1": 0.4, "2": 0.3, "3": 0.2, "4": 0.1],
+            groupTracksAtNYPenn: false
+        )
+
+        XCTAssertEqual(
+            segments.accessibilitySummary,
+            "Track 1, 40%, Track 2, 30%, Track 3, 20%, and 1 more"
+        )
+    }
+
+    func testTrackLabelsAreReadableForAccessibility() {
+        let grouped = TrackPredictionSegment(
+            id: "7 & 8",
+            platformName: "7 & 8",
+            probability: 0.421,
+            rank: 1
+        )
+        let single = TrackPredictionSegment(
+            id: "17",
+            platformName: "17",
+            probability: 0.1,
+            rank: 2
+        )
+
+        XCTAssertEqual(grouped.trackLabel, "Tracks 7 & 8")
+        XCTAssertEqual(grouped.percentageText, "42%")
+        XCTAssertEqual(single.trackLabel, "Track 17")
+        XCTAssertEqual(single.percentageText, "10%")
+    }
+
+    // MARK: - Prediction source selection
+
+    /// The inline distribution rides on every train-details poll, so it always
+    /// wins when present — that is what makes the card track a distribution
+    /// that shifts without changing its leading track.
+    func testInlinePredictionIsPreferredOverThePrefetch() {
+        XCTAssertEqual(
+            SegmentedTrackPredictionView.predictionSource(
+                hasInlinePrediction: true,
+                hasPrefetchedPrediction: true,
+                isTrackAssigned: false,
+                hasLoadedPredictions: true
+            ),
+            .inline
+        )
+    }
+
+    /// First paint: the prefetch is already in hand, so use it instead of
+    /// showing a spinner while a redundant request runs.
+    func testPrefetchServesTheFirstPaintBeforeAnythingHasLoaded() {
+        XCTAssertEqual(
+            SegmentedTrackPredictionView.predictionSource(
+                hasInlinePrediction: false,
+                hasPrefetchedPrediction: true,
+                isTrackAssigned: false,
+                hasLoadedPredictions: false
+            ),
+            .prefetched
+        )
+    }
+
+    /// Regression: a later poll can omit `trackPrediction` when the backend's
+    /// inline predictor returns nothing or fails. `prefetchSecondaryData` runs
+    /// only on the initial load — `refreshTrainDetails` never calls it — so the
+    /// prefetch is arbitrarily old by then. Reinstating it pinned the card to
+    /// the initial-load snapshot for the life of the screen, because every
+    /// later poll produces the same task id and never re-runs the task.
+    func testPrefetchIsNotReinstatedAfterPredictionsHaveLoaded() {
+        XCTAssertEqual(
+            SegmentedTrackPredictionView.predictionSource(
+                hasInlinePrediction: false,
+                hasPrefetchedPrediction: true,
+                isTrackAssigned: false,
+                hasLoadedPredictions: true
+            ),
+            .fetch,
+            "A poll that drops the inline prediction must re-request, not reuse the initial-load prefetch"
+        )
+    }
+
+    func testMissingInlineAndPrefetchFallsBackToTheService() {
+        XCTAssertEqual(
+            SegmentedTrackPredictionView.predictionSource(
+                hasInlinePrediction: false,
+                hasPrefetchedPrediction: false,
+                isTrackAssigned: false,
+                hasLoadedPredictions: false
+            ),
+            .fetch
+        )
+    }
+
+    /// An assigned track retires the prediction card, and that path is owned by
+    /// `loadAdjustedPredictions` — no shortcut may pre-empt it.
+    func testAssignedTrackAlwaysDefersToTheService() {
+        for hasInline in [true, false] {
+            for hasPrefetch in [true, false] {
+                XCTAssertEqual(
+                    SegmentedTrackPredictionView.predictionSource(
+                        hasInlinePrediction: hasInline,
+                        hasPrefetchedPrediction: hasPrefetch,
+                        isTrackAssigned: true,
+                        hasLoadedPredictions: false
+                    ),
+                    .fetch,
+                    "inline=\(hasInline) prefetch=\(hasPrefetch) must defer once a track is assigned"
+                )
+            }
+        }
+    }
+}
+
 /// Regression tests for `StationNameWithBadges`. The component's custom
 /// `StationNameBadgesLayout` once collapsed to zero size when the badge
 /// subview was empty — i.e. on every non-subway stop in TrainDetailsView —
