@@ -128,11 +128,15 @@ _SUBWAY_STATION_LINES: dict[str, frozenset[str]] = _build_subway_station_lines()
 #
 # KNOWN LIMITATION, not fixed by membership: Source 5 only pairs lines that
 # meet at ONE station code. No code carries both Broad St (SEPTA-B1) and
-# Market-Frankford (SEPTA-L1) — they interchange at 15th St/City Hall and
-# 13th St, which are adjacent but distinct codes ~103 m apart, and SEPTA has no
-# STATION_EQUIVALENCE_GROUPS entries. Source 3 (proximity) is cross-system only,
-# so that interchange still produces no transfer point. Connecting it needs
-# SEPTA Metro complex data, the way SUBWAY_STATION_COMPLEXES does for NYC.
+# Market-Frankford (SEPTA-L1) — they interchange at 15th St/City Hall
+# (SEPM33029/SEPM1281) and 13th St (SEPM2455), adjacent but distinct codes
+# 229 m apart, and SEPTA has no STATION_EQUIVALENCE_GROUPS entries. Source 3
+# (proximity) is cross-system only, so that interchange still produces no
+# transfer point, and every BSL↔MFL trip returns `no_transfer_points`.
+# Connecting it needs SEPTA Metro complex data, the way SUBWAY_STATION_COMPLEXES
+# does for NYC — which is also what would let the trolley tunnel's separate
+# inbound/outbound curb codes serve as one interchange (see
+# `_junction_legs_run` in services/trip_search.py). Tracked as issue #1709.
 _INTRA_TRANSFER_SYSTEMS = (
     "PATH",
     "BART",

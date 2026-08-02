@@ -41,11 +41,13 @@ from trackrat.config.route_topology import (
     SUBWAY_A_ROCKAWAY,
     SUBWAY_H,
     Route,
+    _DIRECTIONAL_DATA_SOURCES,
     _resolve_to_topology_code,
     find_route_for_segment,
     get_canonical_segments,
     get_route_by_line_code,
     get_routes_for_data_source,
+    is_directionally_reachable,
 )
 
 
@@ -1929,3 +1931,83 @@ class TestNJTTrunkInclusion:
                 f"Jervis Line by {baseline - path_length(swapped):.1f} mi — the "
                 "station order zig-zags, as in issue #1660"
             )
+
+
+class TestDirectionalReachability:
+    """`is_directionally_reachable` — can one ride carry a rider A -> B?
+
+    Only meaningful where a system gives a physical stop a different code per
+    direction. SEPTA Metro does that for every trolley curb, so a stop reached
+    on a trip toward 13th St carries a different code from the one trips
+    leaving 13th St serve, and treating the two as interchangeable invents
+    rides that no train makes (PR #1708 codex review).
+    """
+
+    # 33rd St in the subway-surface tunnel, served by T1-T5. SEPM20642 is the
+    # outbound-sequence curb (trips running toward 13th St); SEPM20658 is the
+    # inbound-sequence one (trips running away from it). Same platform pair, no
+    # code in common.
+    OUTBOUND_33RD = "SEPM20642"
+    INBOUND_33RD = "SEPM20658"
+    T1_WEST_END = "SEPM31294"  # 63rd-Malvern, T1 terminal
+    T2_WEST_END = "SEPM610"  # Elmwood Av & 73rd St, T2/T5 terminal
+    THIRTEENTH_ST = "SEPM283"  # trolley terminal, in both directional sequences
+
+    def test_only_septa_metro_models_directions_separately(self):
+        """Pins the blast radius: every other system reuses one code per
+        station, so this helper short-circuits to True for them. If a new
+        provider ships `reverse_stations`, this fails and forces a look at the
+        junction filtering in trip search that depends on it."""
+        assert _DIRECTIONAL_DATA_SOURCES == frozenset({"SEPTA_METRO"})
+
+    def test_non_directional_system_is_never_gated(self):
+        """NJT reuses one code per station and runs it both ways, so order
+        cannot matter — including for codes that share no route at all, which
+        the helper answers without consulting the topology."""
+        assert is_directionally_reachable("NJT", "NY", "TR")
+        assert is_directionally_reachable("NJT", "TR", "NY")
+        assert is_directionally_reachable("NJT", "NY", "NOT_A_STATION")
+
+    def test_septa_regional_rail_is_not_gated(self):
+        """Regional Rail has no `reverse_stations`, so Chestnut Hill East ->
+        Suburban is rideable even though the route tuple lists Suburban first."""
+        assert is_directionally_reachable("SEPTA_RR", "SEPR90720", "SEPR90005")
+        assert is_directionally_reachable("SEPTA_RR", "SEPR90005", "SEPR90720")
+
+    def test_outbound_curb_only_serves_trips_toward_13th_st(self):
+        assert is_directionally_reachable(
+            "SEPTA_METRO", self.T1_WEST_END, self.OUTBOUND_33RD
+        )
+        assert not is_directionally_reachable(
+            "SEPTA_METRO", self.OUTBOUND_33RD, self.T2_WEST_END
+        ), "No trolley leaves 13th St from the outbound-sequence curb code"
+
+    def test_inbound_curb_only_serves_trips_away_from_13th_st(self):
+        assert is_directionally_reachable(
+            "SEPTA_METRO", self.INBOUND_33RD, self.T2_WEST_END
+        )
+        assert not is_directionally_reachable(
+            "SEPTA_METRO", self.T1_WEST_END, self.INBOUND_33RD
+        ), "No trolley reaches the inbound-sequence curb code from the west end"
+
+    def test_shared_terminal_works_in_both_directions(self):
+        """13th St keeps one code across both sequences, which is why it is the
+        only tunnel stop that can host a direction-reversing transfer today."""
+        assert is_directionally_reachable(
+            "SEPTA_METRO", self.T1_WEST_END, self.THIRTEENTH_ST
+        )
+        assert is_directionally_reachable(
+            "SEPTA_METRO", self.THIRTEENTH_ST, self.T2_WEST_END
+        )
+
+    def test_single_code_metro_subway_station_works_in_both_directions(self):
+        """Broad St stations group their platforms into one code, so both
+        sequences contain it and the per-route index check finds the right one
+        — a system-level flag would have wrongly gated these."""
+        assert is_directionally_reachable("SEPTA_METRO", "SEPM20965", "SEPM152")
+        assert is_directionally_reachable("SEPTA_METRO", "SEPM152", "SEPM20965")
+
+    def test_stations_on_no_common_route_are_unreachable(self):
+        """15th St/City Hall's Market-Frankford platform and Walnut-Locust on
+        Broad St share no route, so no single ride connects them (issue #1709)."""
+        assert not is_directionally_reachable("SEPTA_METRO", "SEPM1392", "SEPM1282")

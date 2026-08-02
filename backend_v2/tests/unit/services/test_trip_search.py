@@ -1184,6 +1184,91 @@ class TestSecaucusJunctionBudget:
         assert self._secaucus_in_budget({"NJT"}, {"NJT", "AMTRAK", "LIRR"})
 
 
+class TestSeptaMetroDirectionalJunctions:
+    """PR #1708 codex review: a junction that shares lines with both endpoints
+    can still be unable to carry either leg.
+
+    SEPTA Metro gives each trolley curb a separate code per direction, so most
+    subway-surface junctions can only ever fill one of the two legs. Every
+    same-station junction ties on all four ranking keys and falls through to
+    the station-code tiebreak, so those dead codes sorted first and consumed
+    the whole MAX_TRANSFER_QUERIES budget — 63rd-Malvern -> Elmwood Av & 73rd
+    St queried six tunnel platforms that no itinerary can use and dropped 13th
+    St, the one junction both directions serve.
+    """
+
+    T1_WEST_END = "SEPM31294"  # 63rd-Malvern, T1 terminal
+    T2_WEST_END = "SEPM610"  # Elmwood Av & 73rd St, T2/T5 terminal
+    THIRTEENTH_ST = "SEPM283"  # trolley terminal, in both directional sequences
+    OUTBOUND_33RD = "SEPM20642"  # 33rd St, trips running toward 13th St only
+    INBOUND_33RD = "SEPM20658"  # 33rd St, trips running away from it only
+
+    def _junction_codes(self, from_station: str, to_station: str) -> set[str]:
+        transfers = _find_relevant_transfer_points(
+            {"SEPTA_METRO"},
+            {"SEPTA_METRO"},
+            from_station=from_station,
+            to_station=to_station,
+        )
+        return {tp.station_a for tp in transfers}
+
+    def test_direction_reversing_trip_drops_one_legged_junctions(self):
+        codes = self._junction_codes(self.T1_WEST_END, self.T2_WEST_END)
+        assert self.OUTBOUND_33RD not in codes, (
+            f"{self.OUTBOUND_33RD} can carry leg 1 but no trolley departs it "
+            "toward Elmwood Av, so it can never complete this trip"
+        )
+        assert self.INBOUND_33RD not in codes, (
+            f"{self.INBOUND_33RD} can carry leg 2 but no trolley from "
+            "63rd-Malvern reaches it"
+        )
+        assert self.THIRTEENTH_ST in codes, (
+            "13th St keeps one code in both directional sequences, so it is "
+            "the junction this trip actually turns at"
+        )
+
+    def test_usable_junction_survives_the_query_budget(self):
+        """The point of the filter: 13th St now fits inside the truncation that
+        previously kept six dead tunnel platforms ahead of it."""
+        transfers = _find_relevant_transfer_points(
+            {"SEPTA_METRO"},
+            {"SEPTA_METRO"},
+            from_station=self.T1_WEST_END,
+            to_station=self.T2_WEST_END,
+        )
+        ranked = _rank_transfer_points(
+            transfers,
+            self.T1_WEST_END,
+            self.T2_WEST_END,
+            {"SEPTA_METRO"},
+            {"SEPTA_METRO"},
+        )
+        budget = MAX_TRANSFER_QUERIES // 2
+        assert any(
+            tp.station_a == self.THIRTEENTH_ST for tp in ranked[:budget]
+        ), f"13th St must be among the {budget} transfer points actually queried"
+
+    def test_same_direction_transfer_at_a_one_way_curb_is_kept(self):
+        """The filter checks each leg, not whether the code is two-way. Main St
+        & Front St (T4) -> Baltimore Av & 49th St (T2) transfers at Woodland Av
+        & Island Av with both legs running the same way, so that curb code —
+        which appears in only one sequence — is still a valid junction."""
+        codes = self._junction_codes("SEPM20703", "SEPM600")
+        assert "SEPM20704" in codes
+
+    def test_regional_rail_trunk_junctions_are_unaffected(self):
+        """Regional Rail has no directional codes, so the filter must not touch
+        the Center City trunk that issue #1634 added."""
+        codes = self._junction_codes("SEPR90720", "SEPR90302")
+        assert {
+            "SEPR90004",  # Gray 30th St
+            "SEPR90005",  # Suburban
+            "SEPR90006",  # Jefferson
+            "SEPR90007",  # Temple University
+            "SEPR90406",  # Penn Medicine
+        } <= codes, "Chestnut Hill East -> Media lost a trunk interchange"
+
+
 class TestMaxTransferQueriesIncreased:
     """Verify MAX_TRANSFER_QUERIES is large enough to avoid aggressive truncation."""
 

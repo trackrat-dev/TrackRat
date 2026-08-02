@@ -4512,6 +4512,44 @@ def find_route_for_segment(
     return None
 
 
+# Data sources whose routes model each direction as its own station sequence.
+# Only SEPTA Metro does today: every trolley curb gets a separate GTFS stop per
+# direction, so the code a rider arrives at inbound is not the code outbound
+# trips serve. Every other system reuses one code per station in both
+# directions, which makes sequence position meaningless there.
+_DIRECTIONAL_DATA_SOURCES: frozenset[str] = frozenset(
+    route.data_source for route in ALL_ROUTES if route.reverse_stations
+)
+
+
+def is_directionally_reachable(
+    data_source: str, from_station: str, to_station: str
+) -> bool:
+    """Whether some route can carry a rider from `from_station` to `to_station`.
+
+    For systems that keep one code per station, trains run that sequence both
+    ways, so this is True whenever any route serves both codes — and True for a
+    system with no directional routes at all, without consulting the topology.
+
+    For a directional system the two directions are separate physical paths
+    (see `Route.sequence_containing`), so the codes must appear in the *same*
+    sequence with `from_station` ahead of `to_station`.
+    """
+    if data_source not in _DIRECTIONAL_DATA_SOURCES:
+        return True
+
+    for route in get_routes_for_data_source(data_source):
+        if not route.contains_segment(from_station, to_station):
+            continue
+        if not route.reverse_stations:
+            return True
+        for sequence in (route.stations, route.reverse_stations):
+            if from_station in sequence and to_station in sequence:
+                if sequence.index(from_station) < sequence.index(to_station):
+                    return True
+    return False
+
+
 def _resolve_to_topology_code(station_code: str, data_source: str) -> str:
     """Resolve a station code to the code used in route topology via equivalences.
 
