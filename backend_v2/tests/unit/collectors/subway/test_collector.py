@@ -1729,3 +1729,38 @@ class TestSubwaySyntheticOriginRealDatabase:
         assert codes == ["S132", "S101"], f"Expected only the feed's stops, got {codes}"
         assert journey.origin_station_code == "S132"
         assert journey.stops_count == 2
+
+    @pytest.mark.asyncio
+    async def test_dropped_origin_still_persists_with_an_encoded_origin(
+        self, collector, db_session
+    ):
+        """The other side of the #1704 gate, against the same real services.
+
+        The case above proves a decodable trip_id can decline an inference;
+        this proves it does not decline every one. Same feed shape, but the
+        encoded origin sits a travel segment earlier — a train that really did
+        leave South Ferry — so the origin must still be backfilled and
+        persisted. Without this, a gate that always declined would look
+        correct from the database's side.
+        """
+        arrivals = _northbound_1_train(first_stop_minutes_out=2, origin_lead_minutes=8)
+
+        result, journey = await collector._process_trip(
+            db_session, "091150_1..N03R", arrivals, None
+        )
+        await db_session.commit()
+        train_id = journey.train_id
+
+        assert result == "discovered"
+
+        journey, stops = await self._persisted(db_session, train_id)
+        codes = [s.station_code for s in stops]
+        assert codes == ["S142", "S132", "S101"], (
+            "A trip whose encoded origin precedes its first visible stop by a "
+            f"full travel segment still gets South Ferry persisted; got {codes}"
+        )
+        assert journey.origin_station_code == "S142"
+        assert journey.stops_count == 3
+        assert stops[0].departure_source == "synthetic_origin"
+        assert stops[0].has_departed_station is True
+        assert stops[0].actual_departure < datetime.now(UTC)

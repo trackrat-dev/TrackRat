@@ -99,11 +99,15 @@ def parse_nyct_trip_origin_time(
         return None
     try:
         midnight = datetime.strptime(start_date, "%Y%m%d")
-    except ValueError:
+        # Wall-clock arithmetic before localizing: the encoded value is minutes
+        # past local midnight, not an elapsed-time offset. The regex bounds the
+        # prefix to digits but not its magnitude, and an absurd one overflows
+        # rather than raising ValueError — contain it here, because the caller's
+        # only handler wraps the whole feed and would drop every other trip in
+        # it over one malformed id.
+        return ET.localize(midnight + timedelta(minutes=int(match.group(1)) / 100))
+    except (ValueError, OverflowError):
         return None
-    # Wall-clock arithmetic before localizing: the encoded value is minutes past
-    # local midnight, not an elapsed-time offset.
-    return ET.localize(midnight + timedelta(minutes=int(match.group(1)) / 100))
 
 
 class SubwayArrival(BaseModel):

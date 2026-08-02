@@ -369,6 +369,18 @@ class TestParseNyctTripOriginTime:
         assert parse_nyct_trip_origin_time("SIR-FA2017-SI-Weekday", "20260802") is None
         assert parse_nyct_trip_origin_time("", "20260802") is None
 
+    @pytest.mark.parametrize(
+        "prefix",
+        ["9" * 30, "-" + "9" * 30, "9" * 400],
+        ids=["overflows-c-int", "negative-overflow", "overflows-float"],
+    )
+    def test_absurd_origin_value_returns_none_rather_than_raising(self, prefix):
+        """An oversized numeric prefix overflows the timedelta/float conversion
+        with OverflowError, which is not a ValueError. The only handler above
+        this wraps an entire feed, so an escape would discard every other trip
+        in that feed and serve stale data for it."""
+        assert parse_nyct_trip_origin_time(f"{prefix}_1..N03R", "20260802") is None
+
     def test_result_is_eastern_time(self):
         result = parse_nyct_trip_origin_time("091150_1..N03R", "20260802")
         assert result is not None and result.tzinfo is not None
