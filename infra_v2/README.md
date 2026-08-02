@@ -143,9 +143,11 @@ Deploys need two secrets, read by both triggers from Secret Manager:
 
 Manual deploy from the repo root:
 ```bash
-./scripts/deploy-webpage.sh [staging|production] [--project=<name>] [--dry-run]
+./scripts/deploy-webpage.sh [staging|production] [--project=<name>] [--cloudflare-only] [--dry-run]
 ```
 `--project` overrides the destination Pages project while keeping the environment's API URL — useful for rehearsing a migration in a scratch project. Requires `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the environment.
+
+While `cloudbuild-webpage.yaml` still dual-deploys to GCS, `trackrat.net` is served from the bucket, so a manual production run updates Pages only and leaves the live site unchanged. The script refuses a bare `production` run in that window and requires `--cloudflare-only` to acknowledge it; both the guard and the flag disappear when the GCS steps are deleted at cutover. To ship to the live site during the window, push to the `production` branch.
 
 ## Key Configuration
 

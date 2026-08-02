@@ -535,8 +535,14 @@ is serving while the other goes stale. Do not delete the GCS steps early.
      --secret=cloudflare-pages-api-token --project=trackrat-v2)
    export CLOUDFLARE_ACCOUNT_ID=$(gcloud secrets versions access latest \
      --secret=cloudflare-account-id --project=trackrat-v2)
-   ./scripts/deploy-webpage.sh production
+   ./scripts/deploy-webpage.sh production --cloudflare-only
    ```
+   `--cloudflare-only` is required here and is the point of the flag: until the
+   GCS steps come out at P5.5 the script refuses a bare `production` run, because
+   writing to Pages alone does not change what `trackrat.net` serves and a plain
+   "Deploy complete" would say otherwise. The flag retires itself with those
+   steps.
+
    Run the full S8 verification block against the project's `*.pages.dev` URL.
    `trackrat.net` is untouched at this point.
 3. Merge `main` → `production` so the dual-deploy pipeline is live. Confirm one
