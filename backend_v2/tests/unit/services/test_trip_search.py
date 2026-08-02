@@ -1203,10 +1203,12 @@ class TestSeptaMetroDirectionalJunctions:
     OUTBOUND_33RD = "SEPM20642"  # 33rd St, trips running toward 13th St only
     INBOUND_33RD = "SEPM20658"  # 33rd St, trips running away from it only
 
-    def _junction_codes(self, from_station: str, to_station: str) -> set[str]:
+    def _junction_codes(
+        self, from_station: str, to_station: str, system: str = "SEPTA_METRO"
+    ) -> set[str]:
         transfers = _find_relevant_transfer_points(
-            {"SEPTA_METRO"},
-            {"SEPTA_METRO"},
+            {system},
+            {system},
             from_station=from_station,
             to_station=to_station,
         )
@@ -1259,7 +1261,7 @@ class TestSeptaMetroDirectionalJunctions:
     def test_regional_rail_trunk_junctions_are_unaffected(self):
         """Regional Rail has no directional codes, so the filter must not touch
         the Center City trunk that issue #1634 added."""
-        codes = self._junction_codes("SEPR90720", "SEPR90302")
+        codes = self._junction_codes("SEPR90720", "SEPR90302", system="SEPTA_RR")
         assert {
             "SEPR90004",  # Gray 30th St
             "SEPR90005",  # Suburban
