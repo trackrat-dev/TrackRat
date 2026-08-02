@@ -278,6 +278,12 @@ def _junction_legs_run(
     e.g. 63rd-Malvern (T1) -> Elmwood Av & 73rd St (T2) kept six dead tunnel
     platforms and dropped 13th St, the one junction both directions serve, so
     the search returned nothing (PR #1708 codex review).
+
+    Still needed once SEPTA_METRO_STATION_COMPLEXES joins the directional codes
+    (#1709): a complex transfer alights at one code and boards the other, so
+    ``alight`` and ``board`` differ and each side has to be checked against the
+    leg it actually serves.  ``_orient_transfer`` uses this for the same reason
+    — line overlap alone cannot tell the two platforms of one station apart.
     """
     return is_directionally_reachable(system, origin, alight) and (
         is_directionally_reachable(system, board, dest)
@@ -423,7 +429,17 @@ def _orient_transfer(
     # Intra-system transfer: orient by line overlap with origin/destination
     if tp.system_a == tp.system_b and tp.lines_a and tp.lines_b and from_station:
         origin_lines = _get_station_lines_expanded(from_station, tp.system_a)
-        if tp.lines_a & origin_lines:
+        a_first = bool(tp.lines_a & origin_lines)
+        # Both sides carry the origin's lines at a same-station junction and at
+        # a SEPTA Metro platform pair, so line overlap alone cannot say which
+        # code the rider actually reaches. Fall back to which orientation runs;
+        # for systems that reuse one code per direction this is always the
+        # a-side, leaving them on the original behaviour (#1709).
+        if a_first and tp.lines_b & origin_lines and to_station:
+            a_first = _junction_legs_run(
+                tp.system_a, from_station, tp.station_a, tp.station_b, to_station
+            )
+        if a_first:
             return tp.station_a, tp.system_a, tp.station_b, tp.system_b
         return tp.station_b, tp.system_b, tp.station_a, tp.system_a
 

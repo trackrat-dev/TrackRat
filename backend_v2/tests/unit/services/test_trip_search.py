@@ -16,8 +16,10 @@ from zoneinfo import ZoneInfo
 
 import pytest
 
+from trackrat.config.route_topology import is_directionally_reachable
 from trackrat.config.transfer_points import (
     TransferPoint,
+    get_intra_subway_transfers,
     get_systems_serving_station,
     get_transfer_points,
 )
@@ -1206,19 +1208,23 @@ class TestSeptaMetroDirectionalJunctions:
     def _junction_codes(
         self, from_station: str, to_station: str, system: str = "SEPTA_METRO"
     ) -> set[str]:
+        """Codes of the single-code junctions (Source 5) relevant to a trip."""
         transfers = _find_relevant_transfer_points(
             {system},
             {system},
             from_station=from_station,
             to_station=to_station,
         )
-        return {tp.station_a for tp in transfers}
+        return {tp.station_a for tp in transfers if tp.station_a == tp.station_b}
 
     def test_direction_reversing_trip_drops_one_legged_junctions(self):
+        """On its own a 33rd St code can only ever fill one leg, so neither
+        survives as a junction. Joining the two as a station complex is what
+        makes 33rd St usable — see TestSeptaMetroStationComplexTransfers."""
         codes = self._junction_codes(self.T1_WEST_END, self.T2_WEST_END)
         assert self.OUTBOUND_33RD not in codes, (
             f"{self.OUTBOUND_33RD} can carry leg 1 but no trolley departs it "
-            "toward Elmwood Av, so it can never complete this trip"
+            "toward Elmwood Av, so alone it can never complete this trip"
         )
         assert self.INBOUND_33RD not in codes, (
             f"{self.INBOUND_33RD} can carry leg 2 but no trolley from "
@@ -1226,7 +1232,7 @@ class TestSeptaMetroDirectionalJunctions:
         )
         assert self.THIRTEENTH_ST in codes, (
             "13th St keeps one code in both directional sequences, so it is "
-            "the junction this trip actually turns at"
+            "the junction this trip turns at without a platform pair"
         )
 
     def test_usable_junction_survives_the_query_budget(self):
@@ -1269,6 +1275,113 @@ class TestSeptaMetroDirectionalJunctions:
             "SEPR90007",  # Temple University
             "SEPR90406",  # Penn Medicine
         } <= codes, "Chestnut Hill East -> Media lost a trunk interchange"
+
+
+# Trips that have to reverse direction inside the subway-surface tunnel, so the
+# only interchange they could use before #1709 was the 13th St terminal.
+SEPTA_DIRECTION_REVERSING_TRIPS = [
+    ("SEPM31294", "SEPM610"),  # 63rd-Malvern (T1) -> Elmwood Av & 73rd St (T2)
+    ("SEPM20932", "SEPM31294"),  # and back (SEPM20932 is Elmwood's departure code)
+]
+
+
+class TestSeptaMetroStationComplexTransfers:
+    """Issue #1709: SEPTA Metro codes joined as one physical station.
+
+    Two gaps, both closed by SEPTA_METRO_STATION_COMPLEXES feeding Source 4:
+    Broad St and Market-Frankford share no station code, so every BSL<->MFL
+    trip returned `no_transfer_points`; and each trolley tunnel platform is its
+    own code, so a rider changing direction mid-tunnel had no interchange
+    outside the shared terminals.
+    """
+
+    ERIE_BSL = "SEPM140"  # Erie, Broad St local + express
+    INDEPENDENCE_HALL = "SEPM2458"  # 5th St/Independence Hall, MFL
+    CITY_HALL_B1 = "SEPM33029"  # 15th St/City Hall, BSL local platform
+    CITY_HALL_MFL = "SEPM1392"  # 15th St/City Hall, MFL platform
+    TOWARD_13TH_33RD = "SEPM20642"  # 33rd St, trips running toward 13th St
+    FROM_13TH_33RD = "SEPM20658"  # 33rd St, trips running away from it
+
+    SYSTEMS = {"SEPTA_METRO"}
+
+    def _transfer_between(
+        self, from_station: str, to_station: str, codes: set[str]
+    ) -> TransferPoint | None:
+        for tp in _find_relevant_transfer_points(
+            self.SYSTEMS,
+            self.SYSTEMS,
+            from_station=from_station,
+            to_station=to_station,
+        ):
+            if {tp.station_a, tp.station_b} == codes:
+                return tp
+        return None
+
+    def test_broad_street_to_market_frankford_has_a_transfer(self):
+        """The reported bug: Erie (B1) -> 5th St/Independence Hall (L1) found
+        no transfer point at all and returned no itinerary."""
+        tp = self._transfer_between(
+            self.ERIE_BSL,
+            self.INDEPENDENCE_HALL,
+            {self.CITY_HALL_B1, self.CITY_HALL_MFL},
+        )
+        assert tp is not None, "No City Hall transfer for a Broad St -> MFL trip"
+        assert tp.same_station is True
+        assert tp.walk_meters == 0.0
+
+    @pytest.mark.parametrize("reverse", [False, True])
+    def test_city_hall_transfer_orients_to_the_travelled_direction(self, reverse):
+        """Both platforms sit on lines the origin touches only in one case, but
+        orientation must still put the BSL platform on the BSL side."""
+        origin, dest = self.ERIE_BSL, self.INDEPENDENCE_HALL
+        if reverse:
+            origin, dest = dest, origin
+        tp = self._transfer_between(
+            origin, dest, {self.CITY_HALL_B1, self.CITY_HALL_MFL}
+        )
+        assert tp is not None
+        alight, _, board, _ = _orient_transfer(
+            tp, self.SYSTEMS, self.SYSTEMS, origin, dest
+        )
+        expected = (
+            (self.CITY_HALL_MFL, self.CITY_HALL_B1)
+            if reverse
+            else (self.CITY_HALL_B1, self.CITY_HALL_MFL)
+        )
+        assert (alight, board) == expected
+
+    @pytest.mark.parametrize("origin,dest", SEPTA_DIRECTION_REVERSING_TRIPS)
+    def test_paired_platforms_make_33rd_st_usable(self, origin, dest):
+        """Both trips reverse direction and previously had to run all the way
+        to the 13th St terminal to turn. Pairing the two 33rd St codes gives
+        them an interchange mid-tunnel: alight on the platform the origin's
+        trolleys reach, board on the one that leaves toward the destination."""
+        tp = self._transfer_between(
+            origin, dest, {self.TOWARD_13TH_33RD, self.FROM_13TH_33RD}
+        )
+        assert tp is not None, "33rd St platforms did not produce a transfer"
+        alight, _, board, _ = _orient_transfer(
+            tp, self.SYSTEMS, self.SYSTEMS, origin, dest
+        )
+        assert (alight, board) == (self.TOWARD_13TH_33RD, self.FROM_13TH_33RD), (
+            "Both platforms carry T1-T5, so line overlap alone cannot orient "
+            "the transfer — it has to fall back to which legs actually run"
+        )
+        assert is_directionally_reachable("SEPTA_METRO", origin, alight)
+        assert is_directionally_reachable("SEPTA_METRO", board, dest)
+
+    def test_subway_orientation_is_unchanged(self):
+        """Regression guard on the orientation fallback: SUBWAY reuses one code
+        per station, so `_junction_legs_run` always passes there and the
+        original line-overlap answer must stand."""
+        subway = {"SUBWAY"}
+        union_sq = next(
+            tp
+            for tp in get_intra_subway_transfers()
+            if {tp.station_a, tp.station_b} == {"SL03", "S635"}
+        )
+        alight, _, board, _ = _orient_transfer(union_sq, subway, subway, "SG29", "S419")
+        assert (alight, board) == ("SL03", "S635")
 
 
 class TestMaxTransferQueriesIncreased:

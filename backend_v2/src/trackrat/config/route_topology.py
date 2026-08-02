@@ -4522,6 +4522,17 @@ _DIRECTIONAL_DATA_SOURCES: frozenset[str] = frozenset(
 )
 
 
+def models_directions_separately(data_source: str) -> bool:
+    """Whether this data source gives each direction its own station codes.
+
+    True only for SEPTA Metro today. Callers use it to decide whether two codes
+    at one physical station can differ by direction — for every other source a
+    single code serves both ways, so a pair of codes there can only differ by
+    which lines they carry.
+    """
+    return data_source in _DIRECTIONAL_DATA_SOURCES
+
+
 def is_directionally_reachable(
     data_source: str, from_station: str, to_station: str
 ) -> bool:
@@ -4535,7 +4546,7 @@ def is_directionally_reachable(
     (see `Route.sequence_containing`), so the codes must appear in the *same*
     sequence with `from_station` ahead of `to_station`.
     """
-    if data_source not in _DIRECTIONAL_DATA_SOURCES:
+    if not models_directions_separately(data_source):
         return True
 
     for route in get_routes_for_data_source(data_source):

@@ -10,6 +10,15 @@ Tests that the transfer map correctly discovers:
 
 import pytest
 
+from trackrat.config.route_topology import is_directionally_reachable
+from trackrat.config.stations.common import (
+    SEPTA_METRO_STATION_COMPLEXES,
+    STATION_EQUIVALENTS,
+)
+from trackrat.config.stations.septa_metro import (
+    SEPTA_METRO_STATION_COORDINATES,
+    SEPTA_METRO_STATION_NAMES,
+)
 from trackrat.config.transfer_points import (
     MIN_TRANSFER_MINUTES,
     TRANSFER_POINTS,
@@ -417,16 +426,21 @@ class TestLookupIndexes:
 
     def test_septa_junctions_have_same_station_shape(self):
         """Both SEPTA systems must follow the #1296 junction shape: one
-        same-station entry carrying every line on both sides."""
+        same-station entry carrying every line on both sides.
+
+        Only checks single-code junctions (Source 5). SEPTA Metro also emits
+        two-code complex transfers (Source 4), covered by
+        TestSeptaMetroStationComplexes below."""
         for system in ("SEPTA_RR", "SEPTA_METRO"):
-            tps = get_transfer_points(system, system)
-            assert tps, f"Expected {system} intra-system transfers"
+            tps = [
+                tp
+                for tp in get_transfer_points(system, system)
+                if tp.station_a == tp.station_b
+            ]
+            assert tps, f"Expected {system} intra-system junction transfers"
             seen: set[str] = set()
             for tp in tps:
                 assert tp.system_a == system and tp.system_b == system
-                assert (
-                    tp.station_a == tp.station_b
-                ), f"{system} junction spans two codes: {tp.station_a} != {tp.station_b}"
                 assert tp.same_station is True
                 assert (
                     tp.lines_a == tp.lines_b
@@ -438,25 +452,6 @@ class TestLookupIndexes:
                     tp.station_a not in seen
                 ), f"Duplicate {system} junction emitted for {tp.station_a}"
                 seen.add(tp.station_a)
-
-    def test_septa_broad_street_and_market_frankford_share_no_station_code(self):
-        """Documents the limitation the #1634 membership fix does NOT close.
-
-        Source 5 pairs lines meeting at ONE station code. Broad St (SEPTA-B1)
-        and Market-Frankford (SEPTA-L1) interchange at 15th St/City Hall and
-        13th St, which are adjacent but distinct codes ~103 m apart, and SEPTA
-        has no STATION_EQUIVALENCE_GROUPS entries — so no junction can connect
-        them and trip search still returns `no_transfer_points` for that pair.
-
-        If this assertion ever fails, the data gained a shared code or an
-        equivalence group: delete this test and assert the transfer instead."""
-        tps = get_transfer_points("SEPTA_METRO", "SEPTA_METRO")
-        connecting = [tp for tp in tps if {"SEPTA-B1", "SEPTA-L1"} <= tp.lines_a]
-        assert connecting == [], (
-            "Broad St <-> Market-Frankford now has a junction transfer; the "
-            "documented limitation is stale and this test should be replaced. "
-            f"Found: {[tp.station_a for tp in connecting]}"
-        )
 
     def test_get_transfers_from_station_returns_list(self):
         """Known transfer station should return transfers."""
@@ -583,6 +578,153 @@ class TestIntraSubwayTransfers:
             seen.add(key)
 
 
+# The subway-surface trolley tunnel: (station name, code served by trips running
+# toward the 13th St terminal loop, code served by trips running back away from
+# it). Neutral naming on purpose — `Route.stations` vs `reverse_stations` is the
+# distinction, and SEPTA's own inbound/outbound labels run the other way.
+SEPTA_TUNNEL_PLATFORM_PAIRS = [
+    ("15th St/City Hall", "SEPM31140", "SEPM20659"),
+    ("19th St", "SEPM20646", "SEPM20660"),
+    ("22nd St", "SEPM20645", "SEPM20661"),
+    ("Drexel Station at 30th St", "SEPM20643", "SEPM20662"),
+    ("33rd St", "SEPM20642", "SEPM20658"),
+    ("36th-Sansom", "SEPM20732", "SEPM20733"),
+    ("37th-Spruce", "SEPM20731", "SEPM20734"),
+    ("36th St Portal", "SEPM20641", "SEPM287"),
+    ("40th St Portal", "SEPM20804", "SEPM301"),
+]
+
+
+class TestSeptaMetroStationComplexes:
+    """Issue #1709: SEPTA Metro codes that make up one physical station.
+
+    Source 5 only pairs lines meeting at ONE code, so it cannot connect Broad
+    St to Market-Frankford (separate codes across the City Hall concourse) or
+    join a trolley tunnel platform to the one across the tracks.
+    """
+
+    def _complex_transfers(self) -> list[TransferPoint]:
+        return [
+            tp
+            for tp in get_transfer_points("SEPTA_METRO", "SEPTA_METRO")
+            if tp.station_a != tp.station_b
+        ]
+
+    def test_broad_street_connects_to_market_frankford(self):
+        """The headline gap: every BSL<->MFL trip returned `no_transfer_points`
+        because no code carried both SEPTA-B1 and SEPTA-L1."""
+        connecting = [
+            tp
+            for tp in self._complex_transfers()
+            if {"SEPTA-B1"} <= tp.lines_a
+            and {"SEPTA-L1"} <= tp.lines_b
+            or {"SEPTA-L1"} <= tp.lines_a
+            and {"SEPTA-B1"} <= tp.lines_b
+        ]
+        assert len(connecting) == 1, (
+            "Expected exactly one Broad St <-> Market-Frankford transfer, got "
+            f"{[(tp.station_a, tp.station_b) for tp in connecting]}"
+        )
+        tp = connecting[0]
+        assert {tp.station_a, tp.station_b} == {"SEPM33029", "SEPM1392"}
+        assert tp.same_station is True
+        assert tp.walk_meters == 0.0
+        assert tp.walk_minutes == MIN_TRANSFER_MINUTES
+
+    def test_city_hall_pairs_every_platform(self):
+        """15th St/City Hall carries five codes — BSL local, BSL express, MFL
+        and both trolley tunnel platforms — so all ten pairs must be emitted."""
+        city_hall = {"SEPM33029", "SEPM1281", "SEPM1392", "SEPM31140", "SEPM20659"}
+        pairs = {
+            frozenset({tp.station_a, tp.station_b})
+            for tp in self._complex_transfers()
+            if {tp.station_a, tp.station_b} <= city_hall
+        }
+        expected = {frozenset({a, b}) for a in city_hall for b in city_hall if a != b}
+        missing = expected - pairs
+        assert not missing, f"Missing City Hall pairs: {sorted(map(sorted, missing))}"
+
+    @pytest.mark.parametrize(
+        "name,toward_13th,from_13th", SEPTA_TUNNEL_PLATFORM_PAIRS, ids=lambda v: str(v)
+    )
+    def test_trolley_tunnel_platforms_are_paired(self, name, toward_13th, from_13th):
+        """Each tunnel platform pair carries the same lines in opposite
+        directions, which is exactly the pair Source 4 skips for a system that
+        reuses one code per station."""
+        pairs = {
+            frozenset({tp.station_a, tp.station_b}): tp
+            for tp in self._complex_transfers()
+        }
+        tp = pairs.get(frozenset({toward_13th, from_13th}))
+        assert tp is not None, f"{name}: no transfer joins its two platforms"
+        assert tp.lines_a == tp.lines_b, f"{name}: platforms carry different lines"
+        assert tp.same_station is True
+
+        # Each code must be rideable in exactly one direction, or the pair is
+        # redundant rather than a cross-platform interchange.
+        assert is_directionally_reachable(
+            "SEPTA_METRO", toward_13th, "SEPM283"
+        ), f"{name}: no trolley runs {toward_13th} -> 13th St"
+        assert not is_directionally_reachable(
+            "SEPTA_METRO", from_13th, "SEPM283"
+        ), f"{name}: {from_13th} also runs to 13th St; the pair is not directional"
+        assert is_directionally_reachable(
+            "SEPTA_METRO", "SEPM283", from_13th
+        ), f"{name}: no trolley runs 13th St -> {from_13th}"
+
+    def test_every_complex_code_is_a_real_served_station(self):
+        """Pins the hand-written complexes against the generated SEPTA module.
+
+        `stations/septa_metro.py` is regenerated from SEPTA's GTFS feed; if a
+        code is renumbered or dropped, this fails loudly instead of silently
+        emitting fewer transfers."""
+        for group in SEPTA_METRO_STATION_COMPLEXES:
+            assert len(group) >= 2, f"Complex with fewer than two codes: {group}"
+            for code in group:
+                assert code in SEPTA_METRO_STATION_NAMES, f"{code} is not a station"
+                assert get_systems_serving_station(code) == {
+                    "SEPTA_METRO"
+                }, f"{code} is not served by any SEPTA Metro route"
+                assert code in SEPTA_METRO_STATION_COORDINATES, f"{code} has no coords"
+
+    def test_complex_codes_are_within_walking_distance(self):
+        """A complex is one station; every code in it must be a short walk from
+        the others, or it is modelling an interchange that does not exist."""
+        for group in SEPTA_METRO_STATION_COMPLEXES:
+            codes = sorted(group)
+            for i, code_a in enumerate(codes):
+                for code_b in codes[i + 1 :]:
+                    a = SEPTA_METRO_STATION_COORDINATES[code_a]
+                    b = SEPTA_METRO_STATION_COORDINATES[code_b]
+                    dist = _haversine_meters(a["lat"], a["lon"], b["lat"], b["lon"])
+                    assert dist <= WALK_THRESHOLD_METERS, (
+                        f"{code_a} <-> {code_b} are {dist:.0f}m apart, beyond the "
+                        f"{WALK_THRESHOLD_METERS}m walk threshold"
+                    )
+
+    def test_complexes_are_disjoint(self):
+        """A code belongs to at most one complex, so pairs cannot be emitted
+        twice and the groups stay eligible for equivalence later."""
+        seen: set[str] = set()
+        for group in SEPTA_METRO_STATION_COMPLEXES:
+            overlap = seen & group
+            assert not overlap, f"Code in two complexes: {sorted(overlap)}"
+            seen |= group
+
+    def test_complexes_are_transfers_not_equivalences(self):
+        """Deliberate modelling choice: unlike SUBWAY_STATION_COMPLEXES these
+        are NOT spread into STATION_EQUIVALENCE_GROUPS. Equivalence pools
+        departure boards across the group, which for the directional platform
+        pairs would put outbound trolleys on the inbound board."""
+        for group in SEPTA_METRO_STATION_COMPLEXES:
+            for code in group:
+                assert code not in STATION_EQUIVALENTS, (
+                    f"{code} gained a station equivalence; departure boards now "
+                    "pool across the complex — see the note on "
+                    "SEPTA_METRO_STATION_COMPLEXES before keeping this"
+                )
+
+
 class TestGetSubwayLinesAtStation:
     """Test subway line lookup with equivalence expansion."""
 
@@ -640,9 +782,7 @@ class TestCrossModalHubTransfers:
             ("PWC", "PATH", "S138"),  # WTC: PATH -> subway
         ],
     )
-    def test_rail_to_subway_transfer_exists(
-        self, rail_code, rail_system, subway_code
-    ):
+    def test_rail_to_subway_transfer_exists(self, rail_code, rail_system, subway_code):
         expected = {(rail_code, rail_system), (subway_code, "SUBWAY")}
         match = [
             tp

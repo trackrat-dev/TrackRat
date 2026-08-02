@@ -5,7 +5,8 @@ close enough for a passenger to walk between. They are discovered by:
 1. Shared station codes (e.g., NY used by NJT, Amtrak, and LIRR)
 2. Existing STATION_EQUIVALENCE_GROUPS (e.g., Amtrak NRO <-> MNR MNRC)
 3. Coordinate proximity (stations within WALK_THRESHOLD_METERS of each other)
-4. Intra-subway complexes where different subway lines meet (e.g., Union Sq L + 4/5/6)
+4. Station complexes where one physical station is split across several codes
+   (e.g., Union Sq L + 4/5/6; SEPTA's City Hall / 15th St concourse)
 5. Intra-system junctions where different routes within the same system share a station
    (e.g., PATH Journal Sq where NWK-WTC meets JSQ-33)
 6. Cross-modal mega-hubs where a commuter-rail / PATH station shares a building
@@ -18,9 +19,10 @@ import math
 from collections import defaultdict
 from dataclasses import dataclass
 
-from trackrat.config.route_topology import ALL_ROUTES
+from trackrat.config.route_topology import ALL_ROUTES, models_directions_separately
 from trackrat.config.stations.common import (
     CROSS_MODAL_HUBS,
+    SEPTA_METRO_STATION_COMPLEXES,
     STATION_COORDINATES,
     STATION_EQUIVALENCE_GROUPS,
     STATION_EQUIVALENTS,
@@ -126,17 +128,10 @@ _SUBWAY_STATION_LINES: dict[str, frozenset[str]] = _build_subway_station_lines()
 # Chestnut Hill East → Media/Wawa, the ordinary Regional Rail transfer, yielded
 # no itinerary at all.
 #
-# KNOWN LIMITATION, not fixed by membership: Source 5 only pairs lines that
-# meet at ONE station code. No code carries both Broad St (SEPTA-B1) and
-# Market-Frankford (SEPTA-L1) — they interchange at 15th St/City Hall
-# (SEPM33029/SEPM1281) and 13th St (SEPM2455), adjacent but distinct codes
-# 229 m apart, and SEPTA has no STATION_EQUIVALENCE_GROUPS entries. Source 3
-# (proximity) is cross-system only, so that interchange still produces no
-# transfer point, and every BSL↔MFL trip returns `no_transfer_points`.
-# Connecting it needs SEPTA Metro complex data, the way SUBWAY_STATION_COMPLEXES
-# does for NYC — which is also what would let the trolley tunnel's separate
-# inbound/outbound curb codes serve as one interchange (see
-# `_junction_legs_run` in services/trip_search.py). Tracked as issue #1709.
+# Source 5 only pairs lines that meet at ONE station code, so it cannot connect
+# Broad St (SEPTA-B1) to Market-Frankford (SEPTA-L1) — they interchange across
+# separate codes at the City Hall / 15th St concourse. Source 4 closes that via
+# SEPTA_METRO_STATION_COMPLEXES (issue #1709).
 _INTRA_TRANSFER_SYSTEMS = (
     "PATH",
     "BART",
@@ -152,6 +147,20 @@ _SYSTEM_STATION_LINES: dict[str, dict[str, frozenset[str]]] = {
     system: _build_station_lines_for_system(system)
     for system in _INTRA_TRANSFER_SYSTEMS
 }
+
+# Systems where one physical station is split across several station codes,
+# paired with the curated code groups and that system's station->lines map.
+# Source 4 turns each group into in-station transfers.
+_STATION_COMPLEXES: tuple[
+    tuple[str, list[set[str]], dict[str, frozenset[str]]], ...
+] = (
+    ("SUBWAY", SUBWAY_STATION_COMPLEXES, _SUBWAY_STATION_LINES),
+    (
+        "SEPTA_METRO",
+        SEPTA_METRO_STATION_COMPLEXES,
+        _SYSTEM_STATION_LINES["SEPTA_METRO"],
+    ),
+)
 
 
 def _generate_transfer_points() -> tuple[TransferPoint, ...]:
@@ -234,24 +243,33 @@ def _generate_transfer_points() -> tuple[TransferPoint, ...]:
             if dist <= WALK_THRESHOLD_METERS:
                 _add(code_a, sys_a, code_b, sys_b, dist, False)
 
-    # --- Source 4: Intra-subway transfers at station complexes ---
-    # At each subway complex, pair platform codes serving different line groups.
-    # The departure service already expands station equivalences, so these
-    # transfer points enable line-change connections within the subway system.
-    for complex_stations in SUBWAY_STATION_COMPLEXES:
-        codes_with_lines: list[tuple[str, frozenset[str]]] = []
-        for code in complex_stations:
-            lines = _SUBWAY_STATION_LINES.get(code)
-            if lines and code in station_systems and "SUBWAY" in station_systems[code]:
-                codes_with_lines.append((code, lines))
-        for i, (code_a, lines_a) in enumerate(codes_with_lines):
-            for code_b, lines_b in codes_with_lines[i + 1 :]:
-                if lines_a != lines_b:  # Different line groups = valid transfer
+    # --- Source 4: In-station transfers at station complexes ---
+    # At each complex, pair the platform codes that make up one physical
+    # station. The departure service already expands station equivalences, so
+    # these transfer points are what lets trip search change lines inside a
+    # subway complex (Union Sq) or inside SEPTA's City Hall / 15th St
+    # concourse, where Broad St and Market-Frankford share no station code.
+    for system, complexes, system_station_lines in _STATION_COMPLEXES:
+        directional = models_directions_separately(system)
+        for complex_stations in complexes:
+            codes_with_lines: list[tuple[str, frozenset[str]]] = []
+            for code in sorted(complex_stations):
+                lines = system_station_lines.get(code)
+                if lines and system in station_systems.get(code, set()):
+                    codes_with_lines.append((code, lines))
+            for i, (code_a, lines_a) in enumerate(codes_with_lines):
+                for code_b, lines_b in codes_with_lines[i + 1 :]:
+                    # Two codes carrying the same lines connect nothing new
+                    # where one code serves both directions. Where the system
+                    # splits codes by direction (SEPTA Metro), that pair is
+                    # precisely the cross-platform interchange (issue #1709).
+                    if lines_a == lines_b and not directional:
+                        continue
                     _add(
                         code_a,
-                        "SUBWAY",
+                        system,
                         code_b,
-                        "SUBWAY",
+                        system,
                         0.0,
                         True,
                         lines_a=lines_a,
