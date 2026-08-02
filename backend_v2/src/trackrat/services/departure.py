@@ -4,6 +4,7 @@ Departure service for handling train departure queries.
 
 import asyncio
 import time
+from collections.abc import Collection
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -17,7 +18,11 @@ from trackrat.collectors.njt.client import NJTransitClient, TrainNotFoundError
 from trackrat.collectors.njt.journey import JourneyCollector as NJTJourneyCollector
 from trackrat.collectors.njt.schedule import parse_njt_line_code
 from trackrat.config.route_topology import find_route_for_segment
-from trackrat.config.stations import expand_station_codes, get_station_name
+from trackrat.config.stations import (
+    SEPTA_METRO_SCHEDULE_ONLY_LINE_CODES,
+    expand_station_codes,
+    get_station_name,
+)
 from trackrat.db.engine import get_session, retry_on_deadlock
 from trackrat.models.api import (
     DataFreshness,
@@ -136,6 +141,36 @@ REAL_TIME_DATA_SOURCES: frozenset[str] = frozenset(
         "SEPTA_RR",
     }
 )
+
+
+def expects_real_time_departures(
+    data_source: str, line_codes: Collection[str] = ()
+) -> bool:
+    """Whether departures on this line should reach OBSERVED, not stay SCHEDULED.
+
+    ``REAL_TIME_DATA_SOURCES`` answers this for every source whose lines are
+    uniform, but it cannot answer it for SEPTA Metro, which is deliberately
+    absent from that set while still being fed in real time on *some* of its
+    lines. Reading source membership alone therefore gets Metro exactly
+    backwards: it concludes nothing on the system is expected to be live, when
+    in fact NHSL and the trolleys are, and only Broad St / Market-Frankford are
+    not (``SEPTA_METRO_SCHEDULE_ONLY_ROUTES``).
+
+    That distinction is the one thing that tells "Metro's real-time ingest
+    works" apart from "Metro is serving its timetable and the collector is
+    upgrading nothing" — the two look identical from a departure board, since
+    both produce a full set of plausible times (issue #1634).
+
+    An empty ``line_codes`` returns False rather than guessing: a route with no
+    line tags (LIRR terminal variants are resolved geometrically) carries no
+    evidence either way, and a false expectation is worse than none.
+    """
+    if data_source == "SEPTA_METRO":
+        return any(
+            code not in SEPTA_METRO_SCHEDULE_ONLY_LINE_CODES for code in line_codes
+        )
+    return data_source in REAL_TIME_DATA_SOURCES
+
 
 # Per-source minutes before departure to hide SCHEDULED trains that weren't discovered.
 # Sized to each provider's discovery cadence with a small buffer, so SCHEDULED trains
