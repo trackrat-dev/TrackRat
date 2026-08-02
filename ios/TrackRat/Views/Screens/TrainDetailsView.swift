@@ -1627,6 +1627,18 @@ struct TrainProgressIndicator: View {
 
 
 // MARK: - Segmented Track Prediction View
+
+/// Where `SegmentedTrackPredictionView` sources the distribution it displays.
+enum TrackPredictionSource: Equatable {
+    /// The distribution carried inline on the train details response, which
+    /// refreshes on every poll.
+    case inline
+    /// The one-time prefetch from the initial screen load. First paint only.
+    case prefetched
+    /// Ask `StaticTrackDistributionService` for a current distribution.
+    case fetch
+}
+
 struct SegmentedTrackPredictionView: View {
     let train: TrainV2
     let isDepartingFromNYPenn: Bool
@@ -1679,6 +1691,31 @@ struct SegmentedTrackPredictionView: View {
     
     private var hasOnlyLowConfidencePredictions: Bool {
         !predictionSegments.isEmpty && predictionSegments.allSatisfy { $0.probability < 0.17 }
+    }
+
+    /// Which source satisfies the current prediction task.
+    ///
+    /// The prefetch is a first-paint shortcut and nothing more. It is fetched
+    /// once, by `prefetchSecondaryData` on the initial load, and is never
+    /// refreshed for the lifetime of the screen — `refreshTrainDetails`, the
+    /// polling path, does not call it. So once anything has loaded, a poll whose
+    /// response omits `trackPrediction` must re-request rather than reinstate a
+    /// prefetch that is by then arbitrarily old: the task id changes when the
+    /// inline distribution disappears, and without `hasLoadedPredictions` that
+    /// re-run would pin the card to the initial-load snapshot indefinitely,
+    /// since every later poll produces that same id and never re-runs the task.
+    static func predictionSource(
+        hasInlinePrediction: Bool,
+        hasPrefetchedPrediction: Bool,
+        isTrackAssigned: Bool,
+        hasLoadedPredictions: Bool
+    ) -> TrackPredictionSource {
+        // An assigned track retires the card; `loadAdjustedPredictions` owns
+        // that case, as it did before predictions became expandable.
+        guard !isTrackAssigned else { return .fetch }
+        if hasInlinePrediction { return .inline }
+        if hasPrefetchedPrediction && !hasLoadedPredictions { return .prefetched }
+        return .fetch
     }
     
     @ViewBuilder
@@ -1773,17 +1810,23 @@ struct SegmentedTrackPredictionView: View {
                     .stroke(Color.orange.opacity(0.3), lineWidth: 1)
             )
             .task(id: predictionTaskID) {
-                if let inline = train.trackPrediction, train.track == nil {
-                    adjustedPredictions = PredictionData(
-                        trackProbabilities: inline.platformProbabilities
-                    )
+                switch Self.predictionSource(
+                    hasInlinePrediction: train.trackPrediction != nil,
+                    hasPrefetchedPrediction: prefetchedPredictions != nil,
+                    isTrackAssigned: train.track != nil,
+                    hasLoadedPredictions: adjustedPredictions != nil
+                ) {
+                case .inline:
+                    adjustedPredictions = train.trackPrediction.map {
+                        PredictionData(trackProbabilities: $0.platformProbabilities)
+                    }
                     isLoadingPredictions = false
                     revealWaitingLinkIfNeeded()
-                } else if let prefetched = prefetchedPredictions, train.track == nil {
-                    adjustedPredictions = prefetched
+                case .prefetched:
+                    adjustedPredictions = prefetchedPredictions
                     isLoadingPredictions = false
                     revealWaitingLinkIfNeeded()
-                } else {
+                case .fetch:
                     await loadAdjustedPredictions()
                 }
             }

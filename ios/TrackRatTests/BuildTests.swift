@@ -157,6 +157,87 @@ final class TrackPredictionViewTests: XCTestCase {
         XCTAssertEqual(single.trackLabel, "Track 17")
         XCTAssertEqual(single.percentageText, "10%")
     }
+
+    // MARK: - Prediction source selection
+
+    /// The inline distribution rides on every train-details poll, so it always
+    /// wins when present — that is what makes the card track a distribution
+    /// that shifts without changing its leading track.
+    func testInlinePredictionIsPreferredOverThePrefetch() {
+        XCTAssertEqual(
+            SegmentedTrackPredictionView.predictionSource(
+                hasInlinePrediction: true,
+                hasPrefetchedPrediction: true,
+                isTrackAssigned: false,
+                hasLoadedPredictions: true
+            ),
+            .inline
+        )
+    }
+
+    /// First paint: the prefetch is already in hand, so use it instead of
+    /// showing a spinner while a redundant request runs.
+    func testPrefetchServesTheFirstPaintBeforeAnythingHasLoaded() {
+        XCTAssertEqual(
+            SegmentedTrackPredictionView.predictionSource(
+                hasInlinePrediction: false,
+                hasPrefetchedPrediction: true,
+                isTrackAssigned: false,
+                hasLoadedPredictions: false
+            ),
+            .prefetched
+        )
+    }
+
+    /// Regression: a later poll can omit `trackPrediction` when the backend's
+    /// inline predictor returns nothing or fails. `prefetchSecondaryData` runs
+    /// only on the initial load — `refreshTrainDetails` never calls it — so the
+    /// prefetch is arbitrarily old by then. Reinstating it pinned the card to
+    /// the initial-load snapshot for the life of the screen, because every
+    /// later poll produces the same task id and never re-runs the task.
+    func testPrefetchIsNotReinstatedAfterPredictionsHaveLoaded() {
+        XCTAssertEqual(
+            SegmentedTrackPredictionView.predictionSource(
+                hasInlinePrediction: false,
+                hasPrefetchedPrediction: true,
+                isTrackAssigned: false,
+                hasLoadedPredictions: true
+            ),
+            .fetch,
+            "A poll that drops the inline prediction must re-request, not reuse the initial-load prefetch"
+        )
+    }
+
+    func testMissingInlineAndPrefetchFallsBackToTheService() {
+        XCTAssertEqual(
+            SegmentedTrackPredictionView.predictionSource(
+                hasInlinePrediction: false,
+                hasPrefetchedPrediction: false,
+                isTrackAssigned: false,
+                hasLoadedPredictions: false
+            ),
+            .fetch
+        )
+    }
+
+    /// An assigned track retires the prediction card, and that path is owned by
+    /// `loadAdjustedPredictions` — no shortcut may pre-empt it.
+    func testAssignedTrackAlwaysDefersToTheService() {
+        for hasInline in [true, false] {
+            for hasPrefetch in [true, false] {
+                XCTAssertEqual(
+                    SegmentedTrackPredictionView.predictionSource(
+                        hasInlinePrediction: hasInline,
+                        hasPrefetchedPrediction: hasPrefetch,
+                        isTrackAssigned: true,
+                        hasLoadedPredictions: false
+                    ),
+                    .fetch,
+                    "inline=\(hasInline) prefetch=\(hasPrefetch) must defer once a track is assigned"
+                )
+            }
+        }
+    }
 }
 
 /// Regression tests for `StationNameWithBadges`. The component's custom
