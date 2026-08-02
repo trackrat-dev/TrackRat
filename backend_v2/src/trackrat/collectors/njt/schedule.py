@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
-from trackrat.collectors.njt.client import NJTransitClient
+from trackrat.collectors.njt.client import NJTransitClient, NJTransitNullDataError
 from trackrat.collectors.njt.journey import STALE_PRIOR_RUN_THRESHOLD_SECONDS
 from trackrat.db.engine import get_session
 from trackrat.models.database import JourneyStop, TrainJourney
@@ -123,7 +123,7 @@ class NJTScheduleCollector:
         except Exception as e:
             logger.error(
                 "njt_schedule_collection_failed",
-                error=str(e),
+                error=str(e) or repr(e),
                 error_type=type(e).__name__,
             )
             raise
@@ -291,7 +291,7 @@ class NJTScheduleCollector:
                         "schedule_item_processing_failed",
                         station_code=station_code,
                         train_id=item.get("TRAIN_ID"),
-                        error=str(e),
+                        error=str(e) or repr(e),
                         error_type=type(e).__name__,
                     )
 
@@ -488,6 +488,7 @@ class NJTScheduleCollector:
             "stop_collections_attempted": 0,
             "stop_collections_successful": 0,
             "stop_collections_failed": 0,
+            "stop_collections_no_upstream_data": 0,
         }
 
         # Get all NJT scheduled trains from tonight's run that need stop
@@ -560,6 +561,27 @@ class NJTScheduleCollector:
                     stop_count=len(train_data.STOPS) if train_data.STOPS else 0,
                 )
 
+            except NJTransitNullDataError:
+                # NJT has no stop list for this train number. Counted apart
+                # from real failures because it is neither actionable nor
+                # transient: the same train numbers come back null every night
+                # until NJT's coverage changes, so folding them into
+                # `stop_collections_failed` reported a fifth of the run as
+                # broken and buried the handful of genuine errors under 300
+                # tracebacks (issue #1725). Info, no traceback — the
+                # exception carries no information the counter doesn't.
+                # session.get() above autobegins a transaction even though
+                # null-data collection performs no writes. End it before the
+                # next train so every iteration starts with a clean boundary.
+                await session.rollback()
+                stats["stop_collections_no_upstream_data"] += 1
+                logger.info(
+                    "no_upstream_stop_list_for_scheduled_train",
+                    train_id=train_id,
+                    journey_id=journey_id,
+                )
+                continue
+
             except Exception as e:
                 # Clear the failed transaction so the next train starts clean.
                 await session.rollback()
@@ -568,7 +590,7 @@ class NJTScheduleCollector:
                     "failed_to_collect_stops_for_scheduled_train",
                     train_id=train_id,
                     journey_id=journey_id,
-                    error=str(e),
+                    error=str(e) or repr(e),
                     error_type=type(e).__name__,
                     exc_info=True,
                 )

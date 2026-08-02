@@ -16,8 +16,13 @@ from structlog import get_logger
 from trackrat.collectors.base import BaseClient
 from trackrat.models.api import AmtrakTrainData
 from trackrat.utils.metrics import track_api_call
+from trackrat.utils.sanitize import bounded_text
 
 logger = get_logger(__name__)
+
+# A Pydantic ValidationError over a malformed train payload stringifies to a
+# multi-line report that echoes the input, once per bad train.
+AMTRAK_PARSE_ERROR_MAX_CHARS = 500
 
 
 class AmtrakClient(BaseClient):
@@ -107,9 +112,13 @@ class AmtrakClient(BaseClient):
             raw_data = response.json()
 
         except Exception as e:
+            # A bare str(e) is empty for an argless httpx.ReadTimeout, which
+            # left this entry with no diagnostic content at all beyond the URL
+            # — it did not even name the exception class (issue #1725).
             logger.error(
                 "amtrak_api_failed",
-                error=str(e),
+                error=str(e) or repr(e),
+                error_type=type(e).__name__,
                 url=url,
             )
             raise
@@ -130,8 +139,16 @@ class AmtrakClient(BaseClient):
                     train = AmtrakTrainData(**train_dict)
                     parsed_trains.append(train)
                 except Exception as e:
+                    # Pydantic ValidationError stringifies to a multi-line
+                    # report that echoes the offending payload, so bound it
+                    # the same way the upstream error bodies are (issue #1725).
                     logger.warning(
-                        "failed_to_parse_train", train_num=train_num, error=str(e)
+                        "failed_to_parse_train",
+                        train_num=train_num,
+                        error=bounded_text(
+                            str(e) or repr(e), AMTRAK_PARSE_ERROR_MAX_CHARS
+                        ),
+                        error_type=type(e).__name__,
                     )
                     continue
 

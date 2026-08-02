@@ -20,13 +20,13 @@ from trackrat.services.gtfs import (
     GTFSFeedStatus,
     GTFSRefreshOutcome,
     GTFSService,
-    _bounded,
     _extract_lirr_train_number,
     _gtfs_csv_rows,
     _lirr_train_id_from_gtfs,
     _mnr_train_id_from_gtfs,
     _strip_source_prefix,
 )
+from trackrat.utils.sanitize import bounded_text
 from trackrat.utils.time import ET
 
 
@@ -1946,32 +1946,23 @@ class TestGtfsCsvRows:
 
 
 class TestBoundedErrorText:
-    """Tests for _bounded, the truncation guard on refresh-failure text.
+    """GTFS's use of bounded_text, the truncation guard on refresh-failure text.
 
     A SQLAlchemy statement error embeds the full SQL in str(exc) (~650 KB for
     the issue #1588 failure), and an oversized log entry is dropped by the
     logging pipeline instead of ingested — so everything logged or persisted
     on a refresh failure must pass through this bound.
+
+    The helper moved to utils.sanitize in issue #1725 so the NJT and Amtrak
+    collectors could bound upstream error bodies with it rather than growing a
+    second copy. Its generic behaviour is covered at
+    tests/unit/utils/test_sanitize_bounded_text.py; what remains here is the
+    GTFS-specific pairing with GTFS_ERROR_MESSAGE_MAX_CHARS.
     """
-
-    def test_short_text_unchanged(self):
-        assert _bounded("all good", 100) == "all good"
-
-    def test_text_at_limit_unchanged(self):
-        text = "x" * 100
-        assert _bounded(text, 100) == text
-
-    def test_long_text_truncated_with_annotation(self):
-        text = "y" * 5_000
-        result = _bounded(text, 2_000)
-        assert result.startswith("y" * 2_000)
-        assert result.endswith("[truncated 3000 chars]")
-        # Bounded: original content capped at the limit plus a short suffix
-        assert len(result) < 2_100
 
     def test_giant_statement_error_text_is_bounded(self):
         """The real failure shape: a ~650 KB message stays ingestible."""
         giant = "DELETE FROM gtfs_stop_times WHERE trip_id IN " + "$1, " * 170_000
-        result = _bounded(giant, GTFS_ERROR_MESSAGE_MAX_CHARS)
+        result = bounded_text(giant, GTFS_ERROR_MESSAGE_MAX_CHARS)
         assert len(result) < GTFS_ERROR_MESSAGE_MAX_CHARS + 100
         assert "truncated" in result
