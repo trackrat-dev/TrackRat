@@ -170,7 +170,7 @@ webpage_v2/
 │   ├── store/
 │   │   └── appStore.ts     # Zustand global state
 │   ├── data/
-│   │   ├── stations.ts     # Static station list (1500+ stations, 13 transit systems); DISABLED_SYSTEMS / AVAILABLE_SYSTEMS hide app-wide-disabled systems (currently BART, WMATA, MBTA, Metra — mirrors backend TRACKRAT_DISABLED_DATA_SOURCES). SEPTA is enabled for the #1634 rollout but only served by staging, so do NOT promote main → production until the production flag clears
+│   │   ├── stations.ts     # Static station list (1500+ stations, 13 transit systems); DISABLED_SYSTEMS / AVAILABLE_SYSTEMS hide app-wide-disabled systems (currently BART, WMATA, MBTA, Metra — mirrors backend TRACKRAT_DISABLED_DATA_SOURCES). SEPTA is enabled for the #1634 rollout and the production backend flag is now cleared to match, so main → production is safe to promote — that promotion is the SEPTA production cutover
 │   │   ├── routeTopology.ts # Route topology for smart search and filtering
 │   │   └── subwayLines.ts  # Subway line definitions and color mappings
 │   ├── types/

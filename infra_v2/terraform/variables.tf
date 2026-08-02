@@ -61,23 +61,30 @@ variable "disabled_data_sources" {
   description = "Per-environment TRACKRAT_DISABLED_DATA_SOURCES value: data_source codes fully disabled (collection, schedule generation, GTFS refresh, service-alert polling, and API serving). Keyed by environment so staging can carry a source through a soak while production stays dark — previously this was a single hardcoded literal in compute.tf shared by both workspaces, so enabling a source for a staging soak armed the next production apply to enable it too (issue #1634). Set via committed defaults, not -var: infra_v2/cloudbuild-terraform.yaml auto-applies this root on every deploy-branch push and passes only environment/project_id, so an uncommitted -var would be silently reverted by the next push. Codes must match ALL_DATA_SOURCES in the backend; an unknown code is ignored by settings.py rather than erroring, so a typo here silently ENABLES a source. See infra_v2/RUNBOOK-data-source-flags.md."
   type        = map(list(string))
   default = {
-    # SEPTA soak: both SEPTA systems run in staging only (issue #1634). Every
-    # hard prerequisite is closed (#1567, #1629, #1630, #1631, #1632, #1633);
-    # what remains is the 48-hour soak the staging gates require. Production
-    # stays dark until those gates pass and the iOS/web disabled sets move with
-    # it in one coordinated release.
+    # BART, WMATA, MBTA and Metra stay dark in both environments: no backend
+    # collection runs for them.
     #
-    # Staging has never held a SEPTA GTFS bundle — the flag gates the refresh —
-    # and both systems depend on one (Metro is schedule-first; the Regional Rail
+    # SEPTA (RR + Metro) is now enabled in both (issue #1634). Staging carried
+    # the soak; clearing production restores the runbook's rule 3 ordering,
+    # because the iOS and web disabled sets already dropped SEPTA on `main`
+    # (PR #1738) and leaving production dark would ship a picker entry that
+    # returns nothing.
+    #
+    # ⚠️ THE NEXT PROMOTION TO THE `production` BRANCH IS THE SEPTA CUTOVER.
+    # Production has never held a SEPTA GTFS bundle — the flag gates the
+    # refresh, so there is no stale bundle there, there is none — and both
+    # systems depend on one (Metro is schedule-first; the Regional Rail
     # collector joins its delay-only feed to the static schedule by
     # trip_id/stop_sequence). The bundle loads on startup, not on the 3:00 AM
-    # cron: this apply replaces the instance, and Scheduler.start() force-
-    # refreshes every enabled source with no successful parse. So SEPTA serves
-    # nothing for the few minutes that download and parse take, and the soak
-    # clock starts at the first successful parse, not at the apply. See
+    # cron: the apply replaces the instance, and Scheduler.start() force-
+    # refreshes every enabled source with no successful parse. So expect a
+    # short API restart (MIG REPLACE, max_unavailable_fixed = 1) and SEPTA
+    # serving nothing for the few minutes download and parse take. Promote
+    # outside peak hours, then confirm with /health `data_sources` and a
+    # production ground-truth run before judging the data. See
     # infra_v2/RUNBOOK-data-source-flags.md.
     staging    = ["BART", "WMATA", "MBTA", "METRA"]
-    production = ["BART", "WMATA", "MBTA", "METRA", "SEPTA_RR", "SEPTA_METRO"]
+    production = ["BART", "WMATA", "MBTA", "METRA"]
   }
   validation {
     condition     = alltrue([for env in ["staging", "production"] : contains(keys(var.disabled_data_sources), env)])

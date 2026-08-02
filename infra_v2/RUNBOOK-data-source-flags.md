@@ -52,15 +52,15 @@ and production diverge deliberately and visibly in version control.
 **only the environment you intend to move**:
 
 Illustrated with MBTA, to keep the example distinct from the committed state —
-SEPTA's staging soak is live, so copying the current value would look like a
-no-op edit:
+staging and production currently hold the same set, so an example that copied
+it would show no divergence at all and defeat the point:
 
 ```hcl
 default = {
   # MBTA soak: enabled in staging only. Production stays dark until the
   # staging gates pass.
   staging    = ["BART", "WMATA", "METRA"]
-  production = ["BART", "WMATA", "MBTA", "METRA", "SEPTA_RR", "SEPTA_METRO"]
+  production = ["BART", "WMATA", "MBTA", "METRA"]
 }
 ```
 
