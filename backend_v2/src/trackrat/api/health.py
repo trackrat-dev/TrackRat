@@ -155,10 +155,18 @@ async def health_check(
         ]
         statuses = await GTFSService().get_feed_statuses(db, gtfs_sources)
         stale = [s for s in statuses if s.is_stale]
+        # A lapsed bundle is a separate failure from a stale one and neither
+        # implies the other: a feed re-downloaded nightly reports a healthy
+        # `age_hours` while the calendar inside it expired, and every trip it
+        # generates is then fabricated from a dead timetable. Invisible to the
+        # staleness check, and invisible to coverage sweeps too, since
+        # departures keep appearing (issue #1634).
+        lapsed = [s for s in statuses if s.is_lapsed]
         health_status["checks"]["gtfs_feeds"] = {
-            "status": "warning" if stale else "healthy",
+            "status": "warning" if stale or lapsed else "healthy",
             "stale_after_hours": GTFS_STALE_FEED_HOURS,
             "stale_sources": [s.data_source for s in stale],
+            "lapsed_sources": [s.data_source for s in lapsed],
             "feeds": {
                 s.data_source: {
                     "last_successful_parse_at": (
@@ -169,6 +177,10 @@ async def health_check(
                     "age_hours": s.age_hours,
                     "trip_count": s.trip_count,
                     "error_message": s.error_message,
+                    "feed_end_date": (
+                        s.feed_end_date.isoformat() if s.feed_end_date else None
+                    ),
+                    "days_until_feed_end": s.days_until_feed_end,
                 }
                 for s in statuses
             },

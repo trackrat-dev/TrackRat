@@ -385,6 +385,8 @@ class GTFSFeedStatus:
     age_hours: float | None
     trip_count: int | None
     error_message: str | None
+    feed_end_date: date | None = None
+    days_until_feed_end: int | None = None
 
     @property
     def is_stale(self) -> bool:
@@ -394,6 +396,29 @@ class GTFSFeedStatus:
         — there is no feed at all, which is strictly worse than an old one.
         """
         return self.age_hours is None or self.age_hours > GTFS_STALE_FEED_HOURS
+
+    @property
+    def is_lapsed(self) -> bool:
+        """True if the parsed bundle's own service period has already ended.
+
+        Orthogonal to :attr:`is_stale`, and not implied by it. Staleness asks
+        "when did we last download a feed"; this asks "does the feed we did
+        download still describe service". A source re-downloading its bundle
+        every night reports ``age_hours`` of a few hours — perfectly fresh —
+        while the calendar inside it expired last week and every trip it
+        generates is fabricated from a dead timetable.
+
+        That is the dominant failure mode for a schedule-first source (PATCO,
+        SEPTA Metro), where the static bundle is not a backstop for real-time
+        data but the only thing being served, and it fails silently: departures
+        keep appearing, so no coverage or emptiness check notices (issue #1634).
+
+        ``feed_end_date`` comes from ``max(calendar.end_date)``, which GTFS
+        defines as inclusive, so a bundle ending today is still valid. Feeds
+        that publish only ``calendar_dates.txt`` have no end date at all and
+        report ``None`` — unknown, deliberately not treated as lapsed.
+        """
+        return self.days_until_feed_end is not None and self.days_until_feed_end < 0
 
 
 def _bounded(text: str, limit: int) -> str:
@@ -1969,6 +1994,11 @@ class GTFSService:
         ``age_hours=None`` — which :attr:`GTFSFeedStatus.is_stale` treats as
         stale. Absence of a feed is a worse state than an old feed, not a
         missing data point to be skipped over.
+
+        ``days_until_feed_end`` is resolved here rather than inside
+        :attr:`GTFSFeedStatus.is_lapsed` so the dataclass stays a pure value
+        object with no hidden clock read — the same reason ``age_hours`` is
+        precomputed.
         """
         rows = (
             (
@@ -1984,10 +2014,12 @@ class GTFSService:
         by_source = {row.data_source: row for row in rows}
 
         now = now_et()
+        today = now.date()
         statuses = []
         for source in data_sources:
             feed_info = by_source.get(source)
             parsed_at = feed_info.last_successful_parse_at if feed_info else None
+            end_date = feed_info.feed_end_date if feed_info else None
             statuses.append(
                 GTFSFeedStatus(
                     data_source=source,
@@ -1999,6 +2031,10 @@ class GTFSService:
                     ),
                     trip_count=feed_info.trip_count if feed_info else None,
                     error_message=feed_info.error_message if feed_info else None,
+                    feed_end_date=end_date,
+                    days_until_feed_end=(
+                        (end_date - today).days if end_date else None
+                    ),
                 )
             )
         return statuses

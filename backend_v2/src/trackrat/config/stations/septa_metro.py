@@ -1405,6 +1405,14 @@ SEPTA_METRO_ROUTES: dict[str, tuple[str, str, str]] = {
 # starts feeding, with no config change required.
 SEPTA_METRO_SCHEDULE_ONLY_ROUTES: frozenset[str] = frozenset(["B1", "B2", "B3", "L1"])
 
+# The same set expressed as line codes, for consumers that hold a route's
+# `line_codes` rather than its GTFS route_id (the topology `Route` carries the
+# former). Derived from SEPTA_METRO_ROUTES so a code change cannot leave the two
+# lists disagreeing about which lines are schedule-only.
+SEPTA_METRO_SCHEDULE_ONLY_LINE_CODES: frozenset[str] = frozenset(
+    SEPTA_METRO_ROUTES[route_id][0] for route_id in SEPTA_METRO_SCHEDULE_ONLY_ROUTES
+)
+
 
 # Ordered station sequences per route (direction_id=0), from route_stops.txt.
 SEPTA_METRO_ROUTE_STATIONS: dict[str, tuple[str, ...]] = {

@@ -162,15 +162,38 @@ branch-to-hub lines (LIRR branches transferring at Jamaica, SEPTA RR branches th
 Center City) aren't false-flagged — and reports any line with zero departures. AMTRAK
 is skipped (single national line_code; verified via `--provider AMTRAK` ground truth).
 
+The sweep also asserts that lines expected to carry real-time data actually reach
+`OBSERVED`. A system whose real-time ingest is entirely dark still returns a full,
+plausible board off the static timetable, so emptiness checks alone cannot see it.
+The expectation is decided per line, not per source (`expects_real_time_departures`
+in `services/departure.py`): SEPTA Metro is fed live on NHSL and the trolleys while
+Broad St / Market-Frankford are timetable-only, so source membership in
+`REAL_TIME_DATA_SOURCES` gets Metro backwards. Reported at source level — "served
+departures, zero OBSERVED across every line expected to be live" — since one quiet
+line proves little at 04:00 but a whole system serving no live rows does.
+
 ```bash
 cd backend_v2
 poetry run python3 ../scripts/ground-truth-validate.py --coverage            # WARN on empty lines
 poetry run python3 ../scripts/ground-truth-validate.py --coverage --verbose  # also list live lines
 poetry run python3 ../scripts/ground-truth-validate.py --coverage --fail-empty  # exit 1 on any empty line (CI gate)
+poetry run python3 ../scripts/ground-truth-validate.py --coverage --fail-no-realtime  # exit 1 if a source served zero OBSERVED
+poetry run python3 ../scripts/ground-truth-validate.py --coverage --fail-empty --fail-no-realtime  # both (soak gate)
 ```
 
-Empty lines are WARN by default (low-frequency / overnight gaps can be legitimate);
-`--fail-empty` escalates to FAIL for CI. Also wired into `validate-staging.sh --coverage`.
+Empty lines and dark real-time ingest are WARN by default (low-frequency / overnight
+gaps can be legitimate); `--fail-empty` and `--fail-no-realtime` escalate to FAIL for
+CI. `validate-staging.sh --coverage` runs the sweep in its default WARN mode, so it
+reports but does not gate — invoke the sweep directly with both flags when the run is
+meant to be a gate.
+
+A schedule-first source has a second silent failure mode the sweep cannot see at all:
+serving an expired timetable. `/health`'s `gtfs_feeds` check reports `lapsed_sources`
+plus per-feed `feed_end_date` / `days_until_feed_end` for that, separately from
+`stale_sources` (which measures download age, not calendar validity). Because `/health`
+still returns 200 for a lapsed bundle, `verify-deployment.sh` asserts on
+`lapsed_sources` explicitly and exits non-zero — a lapse fails step 1 of
+`validate-staging.sh`, rather than sitting in the JSON for someone to notice.
 
 **Server Usage Report:**
 

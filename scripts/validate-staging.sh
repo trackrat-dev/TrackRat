@@ -121,8 +121,9 @@ fi
 # ---------- Step 5: Line coverage sweep (optional) ----------
 # Probes every line of every active system and flags any with zero departures —
 # catches a whole line silently going dark (e.g. SEPTA Metro's Market-Frankford)
-# that no hardcoded E2E route exercises. Empty lines are WARN, not fatal, so this
-# step is informational; run the sweep directly with --fail-empty to gate CI.
+# that no hardcoded E2E route exercises. Also reports a source whose real-time ingest
+# is entirely dark. Both are WARN, not fatal, so this step is informational; run the
+# sweep directly with --fail-empty --fail-no-realtime to gate CI.
 
 if [[ "$COVERAGE" == "true" ]]; then
   echo -e "${BOLD}===== Step 5: Line Coverage Sweep (every active line) =====${NC}"

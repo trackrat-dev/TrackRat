@@ -36,6 +36,7 @@ from trackrat.config.stations import (  # noqa: E402
     get_station_name,
     map_amtrak_station_code,
 )
+from trackrat.services.departure import expects_real_time_departures  # noqa: E402
 from trackrat.utils.time import parse_njt_time  # noqa: E402
 
 # --- ANSI colors (matching e2e-api-test.sh) ---
@@ -2175,7 +2176,12 @@ def _fetch_active_data_sources(client: httpx.Client, base_url: str) -> list[str]
     return data.get("data_sources", {}).get("active")
 
 
-def run_line_coverage(base_url: str, verbose: bool, fail_empty: bool = False) -> None:
+def run_line_coverage(
+    base_url: str,
+    verbose: bool,
+    fail_empty: bool = False,
+    fail_no_realtime: bool = False,
+) -> None:
     """Sweep every line of every active system and flag any with zero departures.
 
     Data-driven from route_topology, so new lines are covered automatically. This
@@ -2185,6 +2191,22 @@ def run_line_coverage(base_url: str, verbose: bool, fail_empty: bool = False) ->
     it returns no departures in EITHER direction. Empty lines are WARN by default
     (low-frequency and overnight gaps can be legitimate); pass ``fail_empty`` to
     escalate to FAIL.
+
+    The sweep also checks that lines expected to carry real-time data actually
+    reach OBSERVED. Coverage alone cannot see this: a system whose real-time
+    ingest is entirely dark still returns a full, plausible-looking board off the
+    static timetable and passes every emptiness check. The OBSERVED/SCHEDULED
+    split was already computed here but only printed under ``--verbose`` and
+    never asserted on, so nothing failed when a source served pure schedule
+    (issue #1634). ``expects_real_time_departures`` decides per line rather than
+    per source, because SEPTA Metro is fed live on NHSL and the trolleys while
+    Broad St / Market-Frankford are timetable-only.
+
+    Reported at source level — "this source served departures and not one was
+    OBSERVED" — because a single quiet line proves little (a real-time source at
+    04:00 legitimately shows only future SCHEDULED rows), whereas a whole system
+    serving zero live rows while its trains are running is unambiguous. WARN by
+    default for the same overnight reason; ``fail_no_realtime`` escalates.
     """
     print(f"\n{BOLD}Line coverage sweep (every line of every active system){NC}")
     print(f"Target: {base_url}\n")
@@ -2199,6 +2221,8 @@ def run_line_coverage(base_url: str, verbose: bool, fail_empty: bool = False) ->
         lines_checked = 0
         empty_lines: list[str] = []
         contract_failures: list[str] = []
+        schedule_only_lines: list[str] = []
+        dark_real_time_sources: list[str] = []
 
         for source in sorted(active_set):
             if source in COVERAGE_SKIP_SOURCES:
@@ -2215,6 +2239,11 @@ def run_line_coverage(base_url: str, verbose: bool, fail_empty: bool = False) ->
             print(f"\n{BOLD}--- {source} ({len(routes)} lines) ---{NC}")
             source_ok = 0
             source_empty = 0
+            # Tracked only over lines that are BOTH expected to be live and
+            # actually served departures — a line with nothing on it says
+            # nothing about whether real-time ingest works.
+            live_expected_lines = 0
+            live_observed_total = 0
             for route in routes:
                 stations = list(route.stations)
                 if len(stations) < 2:
@@ -2227,14 +2256,23 @@ def run_line_coverage(base_url: str, verbose: bool, fail_empty: bool = False) ->
                 label = f"{route.name} [{route.id}] ({direction})"
                 if deps:
                     source_ok += 1
+                    obs = sum(1 for d in deps if d.observation_type == "OBSERVED")
+                    sched = sum(1 for d in deps if d.observation_type == "SCHEDULED")
+                    expects_live = expects_real_time_departures(
+                        source, route.line_codes
+                    )
+                    if expects_live:
+                        live_expected_lines += 1
+                        live_observed_total += obs
+                        if obs == 0:
+                            schedule_only_lines.append(
+                                f"{source}: {label} ({sched} SCHEDULED, 0 OBSERVED)"
+                            )
                     if verbose:
-                        obs = sum(1 for d in deps if d.observation_type == "OBSERVED")
-                        sched = sum(
-                            1 for d in deps if d.observation_type == "SCHEDULED"
-                        )
                         log_pass(
                             f"{label}: {len(deps)} departures "
                             f"({obs} OBSERVED, {sched} SCHEDULED)"
+                            f"{'' if expects_live else ' [schedule-first]'}"
                         )
                 else:
                     source_empty += 1
@@ -2247,6 +2285,18 @@ def run_line_coverage(base_url: str, verbose: bool, fail_empty: bool = False) ->
                 f"  {source}: {source_ok}/{source_ok + source_empty} "
                 "lines have departures"
             )
+
+            # Every line that should be live served departures, and not one of
+            # them was OBSERVED. The board looks normal; the collector upgraded
+            # nothing.
+            if live_expected_lines > 0 and live_observed_total == 0:
+                dark_real_time_sources.append(source)
+                (log_fail if fail_no_realtime else log_warn)(
+                    f"{source}: real-time ingest appears dark",
+                    f"{live_expected_lines} line(s) expected to carry real-time "
+                    "data served departures, 0 OBSERVED across all of them — "
+                    "every row came from the static timetable",
+                )
 
         print(f"\n{BOLD}========== LINE COVERAGE SUMMARY =========={NC}")
         print(f"  Lines checked: {lines_checked}")
@@ -2261,6 +2311,21 @@ def run_line_coverage(base_url: str, verbose: bool, fail_empty: bool = False) ->
             print(f"  Line-filter contract failures: {len(contract_failures)}")
             for entry in contract_failures:
                 print(f"    {RED}CONTRACT{NC} {entry}")
+        # Listed even when the source as a whole has live data somewhere, since
+        # this is the per-line detail #1634's Metro gate is written against
+        # ("NHSL and the trolleys reach OBSERVED"). Informational on its own —
+        # only the source-level rollout above is counted as a finding.
+        if schedule_only_lines:
+            print(f"  Lines serving schedule only: {len(schedule_only_lines)}")
+            for entry in schedule_only_lines:
+                print(f"    {YELLOW}NO-REALTIME{NC} {entry}")
+        if dark_real_time_sources:
+            color = RED if fail_no_realtime else YELLOW
+            print(
+                f"  Sources with no real-time data at all: "
+                f"{', '.join(dark_real_time_sources)}"
+            )
+            print(f"    {color}DARK{NC} every departure served came from the timetable")
         print_summary(lines_checked)
     finally:
         client.close()
@@ -2331,13 +2396,26 @@ def main() -> None:
         action="store_true",
         help="In --coverage mode, treat an empty line as FAIL instead of WARN",
     )
+    parser.add_argument(
+        "--fail-no-realtime",
+        action="store_true",
+        help=(
+            "In --coverage mode, treat a source that served departures but zero "
+            "OBSERVED rows as FAIL instead of WARN (real-time ingest is dark)"
+        ),
+    )
     args = parser.parse_args()
 
     global STOP_ORDER_WARN
     STOP_ORDER_WARN = args.stop_order_warn
 
     if args.coverage:
-        run_line_coverage(args.base_url, verbose=args.verbose, fail_empty=args.fail_empty)
+        run_line_coverage(
+            args.base_url,
+            verbose=args.verbose,
+            fail_empty=args.fail_empty,
+            fail_no_realtime=args.fail_no_realtime,
+        )
         sys.exit(1 if FAIL_COUNT > 0 else 0)
 
     runners = {
