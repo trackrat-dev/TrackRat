@@ -215,10 +215,24 @@ class TrainV2Tests: XCTestCase {
         XCTAssertNotNil(retrievedTime, "Should return arrival time")
         TestHelpers.assertDatesEqual(retrievedTime!, arrivalTime)
 
-        // Test specific destination name method
-        let namedArrivalTime = train.getScheduledArrivalTime(toStationName: "Philadelphia")
-        print("  - Named destination arrival time: \(namedArrivalTime?.description ?? "none")")
-        XCTAssertNotNil(namedArrivalTime, "Should return arrival time for destination name")
+        // Station-code lookup with no stops falls back to the train's own arrival
+        let fallbackArrivalTime = train.getScheduledArrivalTime(toStationCode: "PH")
+        print("  - Station-code arrival (no stops, fallback): \(fallbackArrivalTime?.description ?? "none")")
+        XCTAssertNotNil(fallbackArrivalTime, "Should fall back to the train arrival when stops are unavailable")
+        TestHelpers.assertDatesEqual(fallbackArrivalTime!, arrivalTime)
+
+        // With stops present the lookup returns that stop's scheduled arrival, not the
+        // train-level fallback — so give the two different times to tell them apart.
+        let trainWithStops = createTestTrainV2(
+            trainId: "ARR123",
+            departureTime: departureTime,
+            arrivalTime: arrivalTime.addingTimeInterval(1800),
+            stops: createTestStops(baseTime: departureTime)
+        )
+        let stopArrivalTime = trainWithStops.getScheduledArrivalTime(toStationCode: "PH")
+        print("  - Station-code arrival (from stops): \(stopArrivalTime?.description ?? "none")")
+        XCTAssertNotNil(stopArrivalTime, "Should return the matching stop's scheduled arrival")
+        TestHelpers.assertDatesEqual(stopArrivalTime!, arrivalTime)
 
         print("  ✅ Scheduled arrival time test passed")
     }

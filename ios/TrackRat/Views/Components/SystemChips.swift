@@ -22,7 +22,7 @@ struct SystemPill: View {
     var size: CGFloat = 14
 
     var body: some View {
-        let bg = Color(hex: system.color) ?? .gray
+        let bg = Color(hex: system.color)
         Text(system.chipLabel)
             .font(.system(size: size * 0.55, weight: .heavy, design: .rounded))
             .foregroundColor(.white)

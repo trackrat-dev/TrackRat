@@ -62,6 +62,7 @@ class BuildTests: XCTestCase {
         XCTAssertNotNil(storageService)
     }
     
+    @MainActor
     func testLiveActivityServiceExists() {
         // Test that LiveActivityService can be instantiated
         let liveActivityService = LiveActivityService.shared

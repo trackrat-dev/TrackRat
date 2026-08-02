@@ -242,21 +242,6 @@ struct TrainV2: Identifiable, Codable {
         return arrival?.scheduledTime
     }
 
-    // Get scheduled arrival time at specific destination station by NAME (legacy, less reliable)
-    @available(*, deprecated, message: "Use getScheduledArrivalTime(toStationCode:) instead for reliable matching")
-    func getScheduledArrivalTime(toStationName: String) -> Date? {
-        // Look up the specific station in stops array
-        if let stops = stops,
-           let destinationStop = stops.first(where: {
-               $0.stationName.lowercased().contains(toStationName.lowercased())
-           }) {
-            return destinationStop.scheduledArrival
-        }
-
-        // Fallback to train's final destination if station not found
-        return arrival?.scheduledTime
-    }
-
     // Get estimated (delay-adjusted) departure time from a specific station.
     // Uses the NJT-inversion-safe live estimate (see StopV2.liveEstimatedDeparture)
     // and falls back to the schedule when no live estimate is available.

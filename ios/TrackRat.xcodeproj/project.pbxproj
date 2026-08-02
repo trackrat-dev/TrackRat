@@ -28,7 +28,6 @@
 		A11A0DB92F4B83CF00C96DA1 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DB72F4B83CF00C96DA1 /* APIService.swift */; };
 		A11A0DBA2F4B83CF00C96DA1 /* AlertSubscriptionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DB62F4B83CF00C96DA1 /* AlertSubscriptionService.swift */; };
 		A11A0DBB2F4B83CF00C96DA1 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DB72F4B83CF00C96DA1 /* APIService.swift */; };
-		A11A0DBF2F4B840B00C96DA1 /* TripHistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DBE2F4B840B00C96DA1 /* TripHistoryView.swift */; };
 		A11A0DC12F4B840B00C96DA1 /* AddRouteAlertView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A11A0DBC2F4B840B00C96DA1 /* AddRouteAlertView.swift */; };
 		F1TRNROW01000000000000A2 /* TrainRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1TRNROW01000000000000A1 /* TrainRow.swift */; };
 		F1STDETAIL00000000000000A2 /* StationDetailsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1STDETAIL00000000000000A1 /* StationDetailsView.swift */; };
@@ -279,7 +278,6 @@
 		A11A0DBC2F4B840B00C96DA1 /* AddRouteAlertView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AddRouteAlertView.swift; path = Views/Screens/AddRouteAlertView.swift; sourceTree = "<group>"; };
 		F1TRNROW01000000000000A1 /* TrainRow.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainRow.swift; path = Views/Components/TrainRow.swift; sourceTree = "<group>"; };
 		F1STDETAIL00000000000000A1 /* StationDetailsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StationDetailsView.swift; path = Views/Screens/StationDetailsView.swift; sourceTree = "<group>"; };
-		A11A0DBE2F4B840B00C96DA1 /* TripHistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TripHistoryView.swift; path = Views/Screens/TripHistoryView.swift; sourceTree = "<group>"; };
 		A11A2C322E27C1A400B74BB5 /* StaticTrackDistributionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = StaticTrackDistributionService.swift; path = Services/StaticTrackDistributionService.swift; sourceTree = "<group>"; };
 		A126E5552E25BBC700958ABA /* DeepLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = DeepLink.swift; path = Models/DeepLink.swift; sourceTree = "<group>"; };
 		A126E5562E25BBC700958ABA /* TrainV2.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = TrainV2.swift; path = Models/TrainV2.swift; sourceTree = "<group>"; };
@@ -531,7 +529,6 @@
 				A1ROUTE0012F5000000000001 /* RouteStatusView.swift */,
 				F1TRNROW01000000000000A1 /* TrainRow.swift */,
 				F1STDETAIL00000000000000A1 /* StationDetailsView.swift */,
-				A11A0DBE2F4B840B00C96DA1 /* TripHistoryView.swift */,
 				A18E54392DEB88E500AB2B74 /* LiveActivityService.swift */,
 				A126E5552E25BBC700958ABA /* DeepLink.swift */,
 				A126E5562E25BBC700958ABA /* TrainV2.swift */,
@@ -822,7 +819,6 @@
 				A10E98022DE39F23002F3214 /* DestinationPickerView.swift in Sources */,
 				A10E98032DE39F23002F3214 /* HistoricalDataView.swift in Sources */,
 				A12C31482F1DA63A00CAF76D /* TrackTrainInlineButton.swift in Sources */,
-				A11A0DBF2F4B840B00C96DA1 /* TripHistoryView.swift in Sources */,
 				A1STNPK0012F6000000000002 /* StationPickerSheet.swift in Sources */,
 				A1ROUTE0012F5000000000002 /* RouteStatusView.swift in Sources */,
 				F1TRNROW01000000000000A2 /* TrainRow.swift in Sources */,

@@ -63,8 +63,24 @@ jobs:
           xcodebuild test \
             -scheme TrackRat \
             -destination "platform=iOS Simulator,name=${{ steps.sim.outputs.name }}" \
+            -derivedDataPath DerivedData \
             -resultBundlePath TestResults.xcresult \
             CODE_SIGNING_ALLOWED=NO
+
+      # The app's Info.plist deliberately carries no MinimumOSVersion so the shipped
+      # value can only come from IPHONEOS_DEPLOYMENT_TARGET (issue #389). Assert the
+      # processed plist really says 18.0 — a stale hardcoded key made the bundle claim
+      # iOS 17 support until Xcode overrode it with a warning.
+      - name: Verify processed MinimumOSVersion
+        working-directory: ios
+        run: |
+          PLIST=DerivedData/Build/Products/Debug-iphonesimulator/TrackRat.app/Info.plist
+          MIN=$(plutil -extract MinimumOSVersion raw "$PLIST")
+          echo "Processed MinimumOSVersion: $MIN"
+          if [ "$MIN" != "18.0" ]; then
+            echo "::error::Processed MinimumOSVersion is '$MIN', expected '18.0'"
+            exit 1
+          fi
 
       - name: Upload test results
         uses: actions/upload-artifact@v7

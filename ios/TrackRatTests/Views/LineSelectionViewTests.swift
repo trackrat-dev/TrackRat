@@ -7,7 +7,7 @@ class LineSelectionViewTests: XCTestCase {
     // MARK: - hasContent
 
     func testHasContent_noSystems_returnsFalse() {
-        var enabledLineIds: Set<String> = []
+        let enabledLineIds: Set<String> = []
         let view = LineSelectionView(systems: [], enabledLineIds: .constant(enabledLineIds))
         XCTAssertFalse(view.hasContent, "Empty systems should not show line selection")
     }
