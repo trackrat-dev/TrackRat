@@ -25,9 +25,9 @@ startup script consume them, and the last group *executes* the real connector
 config block out of ``compute.tf``.
 """
 
+import os
 import shutil
 import subprocess
-import sys
 import textwrap
 from pathlib import Path
 
@@ -212,6 +212,26 @@ def test_startup_script_clears_stale_tunnel_file_before_download():
     ), "stale connector config must be cleared before the enabled download attempt"
 
 
+def test_startup_script_validates_connector_config_after_env_is_written():
+    """Validation merges the api/db compose file, which interpolates ${IMAGE_URL}
+    and friends out of .env — so `compose config` only succeeds once .env exists.
+    Moving the connector block back above the .env write would make validation
+    fail on every boot and silently disable the connector for good (issue #1594).
+    """
+    startup = _COMPUTE_TF.read_text().split("shutdown-script", 1)[0]
+    marker = '-f "$TUNNEL_TMP" config -q'
+    assert marker in startup, (
+        "the downloaded connector config must be validated with `compose config` "
+        "before it is installed"
+    )
+    env_write = startup.index("ENVEOF")
+    validation = startup.index(marker)
+    assert env_write < validation, (
+        "the connector config download/validation must run after the .env "
+        "heredoc, or compose config cannot resolve the base file's variables"
+    )
+
+
 def test_shutdown_script_drains_connector_before_base_stack():
     """When the tunnel is enabled, the shutdown path must stop cloudflared before
     api so the connector deregisters from Cloudflare's edge (connection draining)
@@ -245,51 +265,48 @@ def test_shutdown_script_drains_connector_before_base_stack():
 # a temp $APP_DIR, so the fail-closed and atomic-replacement behaviour is
 # verified rather than asserted textually.
 #
-# Two collaborators are stood in for, because neither exists off the VM:
-#   * `toolbox` — the GCS download. The stub copies a fixture (success) or exits
-#     non-zero without writing (failure), which is what a missing object or a
-#     broken network does on the instance.
-#   * `$COMPOSE_PATH config -q` — the stub parses the -f files as YAML and
-#     requires a compose-shaped mapping, a faithful subset of what
-#     `docker-compose config -q` rejects. The subject under test is the script's
-#     reaction to the exit status, not compose's own schema coverage.
+# Validation runs the **real** compose binary — `docker compose config -q` over
+# the real backend_v2/docker-compose.yml merged with the downloaded file — so
+# compose's own merging, `${VAR}` interpolation, `.env` discovery and schema
+# checks are what accept or reject a download, not a reimplementation of them.
+# (CI and dev boxes carry the v2 CLI plugin; the VM pins the v2.24.0 standalone
+# binary. Same compose-go loader, invoked the same way.) These tests skip where
+# no compose binary exists.
+#
+# `toolbox` is the one collaborator that cannot be real: it is a COS-only
+# wrapper that runs gsutil inside a chroot against GCS with instance
+# credentials, and exists on no CI runner. The stand-in reproduces the property
+# the script actually has to cope with — **toolbox writes into its own chroot,
+# never to the host path**, which is why the script does the find+cp dance — so
+# the mount-copy flow is exercised rather than bypassed. To make that reachable
+# the harness repoints the block's `/var/lib/toolbox` search root at a temp
+# directory; nothing else about the block is rewritten.
 
 _TUNNEL_BLOCK_START = "TUNNEL_ENABLED=0"
 _TUNNEL_BLOCK_END = "# Write the tunnel token"
+_TOOLBOX_ROOT = "/var/lib/toolbox"
 
 _TOOLBOX_STUB = """#!/bin/bash
 # Emulates: toolbox --quiet gsutil cp gs://<bucket>/<object> <dest>
+#
+# Real COS toolbox runs gsutil inside a container whose filesystem is separate
+# from the host's, so the download lands at <chroot>/<dest> and NOT at <dest>.
+# Reproducing that is the point: the startup script's find+cp exists solely to
+# bridge the gap, and a stub that wrote straight to $dest would skip it.
 echo "toolbox $*" >> "$STUB_CALL_LOG"
 if [ ! -f "$STUB_DOWNLOAD_SOURCE" ]; then
   echo "CommandException: No URLs matched" >&2
   exit 1
 fi
-cp "$STUB_DOWNLOAD_SOURCE" "${@: -1}"
-"""
-
-_COMPOSE_STUB = """\
-# Emulates `docker-compose -f A -f B config -q`: parse every -f file and require
-# a compose-shaped mapping. Exits non-zero on anything docker-compose would
-# refuse to load.
-import sys
-
-import yaml
-
-argv = sys.argv[1:]
-paths = [argv[i + 1] for i, arg in enumerate(argv) if arg == "-f"]
-if "config" not in argv:
-    sys.exit(0)
-for path in paths:
-    try:
-        with open(path) as fh:
-            doc = yaml.safe_load(fh)
-    except (OSError, yaml.YAMLError) as exc:
-        print(f"validating {path}: {exc}", file=sys.stderr)
-        sys.exit(1)
-    if not isinstance(doc, dict) or not isinstance(doc.get("services"), dict):
-        print(f"validating {path}: no services defined", file=sys.stderr)
-        sys.exit(1)
-sys.exit(0)
+if [ -n "$STUB_SILENT_SUCCESS" ]; then
+  # Exits 0 having produced nothing — the swallowed-failure class this issue is
+  # about, and the only way the find below can be reached with no fresh file.
+  exit 0
+fi
+dest="${@: -1}"
+chroot_dest="$STUB_TOOLBOX_ROOT/mnt/disks/data/compose/$(basename "$dest")"
+mkdir -p "$(dirname "$chroot_dest")"
+cp "$STUB_DOWNLOAD_SOURCE" "$chroot_dest"
 """
 
 _STALE_TUNNEL_YML = """# left behind by a previous enabled boot
@@ -305,8 +322,29 @@ _TRUNCATED_TUNNEL_YML = (
 )
 
 
-def _extract_tunnel_config_block() -> str:
-    """Slice the connector-config block out of the real startup script."""
+def _compose_argv() -> list | None:
+    """The real compose CLI, or None when this machine has none."""
+    for argv in (["docker", "compose"], ["docker-compose"]):
+        if shutil.which(argv[0]) is None:
+            continue
+        probe = subprocess.run(
+            [*argv, "version"], capture_output=True, text=True, check=False
+        )
+        if probe.returncode == 0:
+            return argv
+    return None
+
+
+_COMPOSE_ARGV = _compose_argv()
+requires_compose = pytest.mark.skipif(
+    _COMPOSE_ARGV is None,
+    reason="needs a real docker compose binary to validate the downloaded file",
+)
+
+
+def _extract_tunnel_config_block(toolbox_root: Path) -> str:
+    """Slice the connector-config block out of the real startup script, with the
+    toolbox search root repointed at a temp directory."""
     startup = _COMPUTE_TF.read_text().split("shutdown-script", 1)[0]
     assert _TUNNEL_BLOCK_START in startup, "connector-config block not found"
     block = startup.split(_TUNNEL_BLOCK_START, 1)[1].split(_TUNNEL_BLOCK_END, 1)[0]
@@ -316,7 +354,11 @@ def _extract_tunnel_config_block() -> str:
     while lines and (not lines[-1].strip() or lines[-1].lstrip().startswith("#")):
         lines.pop()
     body = textwrap.dedent("\n".join(lines))
-    return f"{_TUNNEL_BLOCK_START}\n{body}\n"
+    assert body.count(_TOOLBOX_ROOT) == 1, (
+        f"expected exactly one {_TOOLBOX_ROOT} search root in the block so the "
+        "harness' repoint cannot silently become a no-op"
+    )
+    return f"{_TUNNEL_BLOCK_START}\n{body.replace(_TOOLBOX_ROOT, str(toolbox_root))}\n"
 
 
 class _BlockRun:
@@ -351,30 +393,41 @@ def _run_tunnel_block(
     token: str = "test-tunnel-token",
     download: str | None = None,
     stale_file: str | None = None,
+    stale_toolbox_copy: str | None = None,
+    silent_success: bool = False,
+    write_env: bool = True,
 ) -> _BlockRun:
     """Execute the block with a temp $APP_DIR. ``download`` is the object GCS
-    serves (None = download failure); ``stale_file`` seeds a tunnel file from a
-    prior boot."""
+    serves (None = download failure); ``silent_success`` makes the download exit
+    0 without producing a file; ``stale_file`` seeds a tunnel file from a prior
+    boot; ``stale_toolbox_copy`` seeds one inside the toolbox chroot under the
+    fixed name a pre-#1594 boot would have used."""
     app_dir = tmp_path / "compose"
     app_dir.mkdir()
     # The real api/db compose file and a representative .env: the block must
     # leave both untouched, and `config -q` merges the base file.
     shutil.copy(_BASE_COMPOSE, app_dir / "docker-compose.yml")
-    (app_dir / ".env").write_text(
-        "DATA_DIR=/mnt/disks/data\nIMAGE_URL=example.dev/trackrat/api:latest\n"
-    )
+    if write_env:
+        (app_dir / ".env").write_text(
+            "DATA_DIR=/mnt/disks/data\nIMAGE_URL=example.dev/trackrat/api:latest\n"
+        )
     if stale_file is not None:
         (app_dir / "docker-compose.tunnel.yml").write_text(stale_file)
+
+    toolbox_root = tmp_path / "toolbox"
+    if stale_toolbox_copy is not None:
+        chroot_dir = toolbox_root / "mnt/disks/data/compose"
+        chroot_dir.mkdir(parents=True)
+        (chroot_dir / "docker-compose.tunnel.yml").write_text(stale_toolbox_copy)
 
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     toolbox = bin_dir / "toolbox"
     toolbox.write_text(_TOOLBOX_STUB)
     toolbox.chmod(0o755)
-    compose = bin_dir / "docker-compose"
-    # Shebang on the running interpreter so the stub sees the same PyYAML the
-    # test suite does, whatever /usr/bin/python3 happens to have.
-    compose.write_text(f"#!{sys.executable}\n{_COMPOSE_STUB}")
+    # $COMPOSE_PATH is a single binary on the VM; forward to the real CLI here.
+    compose = bin_dir / "docker-compose-shim"
+    compose.write_text(f'#!/bin/bash\nexec {" ".join(_COMPOSE_ARGV)} "$@"\n')
     compose.chmod(0o755)
 
     source = tmp_path / "gcs-object.yml"
@@ -382,20 +435,26 @@ def _run_tunnel_block(
         source.write_text(download)
 
     script = (
-        _extract_tunnel_config_block() + '\necho "TUNNEL_ENABLED=$TUNNEL_ENABLED"\n'
+        _extract_tunnel_config_block(toolbox_root)
+        + '\necho "TUNNEL_ENABLED=$TUNNEL_ENABLED"\n'
     )
     proc = subprocess.run(
         ["bash", "-e", "-c", script],
         capture_output=True,
         text=True,
         env={
-            "PATH": f"{bin_dir}:/usr/bin:/bin",
+            # docker needs HOME/PATH from the real environment to find its
+            # config and the CLI plugin directory.
+            **os.environ,
+            "PATH": f"{bin_dir}:{os.environ.get('PATH', '/usr/bin:/bin')}",
             "APP_DIR": str(app_dir),
             "COMPOSE_PATH": str(compose),
             "DEPLOY_BUCKET": "trackrat-deploy-test",
             "ENABLE_CLOUDFLARE_TUNNEL": enabled,
             "CLOUDFLARE_TUNNEL_TOKEN": token,
             "STUB_DOWNLOAD_SOURCE": str(source),
+            "STUB_SILENT_SUCCESS": "1" if silent_success else "",
+            "STUB_TOOLBOX_ROOT": str(toolbox_root),
             "STUB_CALL_LOG": str(tmp_path / "calls.log"),
         },
     )
@@ -415,6 +474,7 @@ def _assert_api_db_config_intact(run: _BlockRun) -> None:
     ), ".env was modified"
 
 
+@requires_compose
 def test_tunnel_block_installs_only_the_validated_download(tmp_path):
     """Enabled boot + successful download installs exactly the new file."""
     served = _TUNNEL_COMPOSE.read_text()
@@ -429,6 +489,7 @@ def test_tunnel_block_installs_only_the_validated_download(tmp_path):
     assert run.leftover_temp_files == [], "download temp file was not cleaned up"
 
 
+@requires_compose
 def test_tunnel_block_fails_closed_when_download_fails_over_stale_file(tmp_path):
     """Enabled boot + stale file + failed download does not launch cloudflared.
 
@@ -447,10 +508,11 @@ def test_tunnel_block_fails_closed_when_download_fails_over_stale_file(tmp_path)
         "the stale connector config must be gone — the shutdown drain and the "
         "bring-up both key off file presence"
     )
-    assert "WARN" in run.output and "download failed" in run.output, run.output
+    assert "download failed" in run.output, run.output
     assert run.leftover_temp_files == []
 
 
+@requires_compose
 def test_tunnel_block_rejects_malformed_download(tmp_path):
     """A malformed download neither replaces the last known file nor launches."""
     run = _run_tunnel_block(
@@ -467,6 +529,7 @@ def test_tunnel_block_rejects_malformed_download(tmp_path):
     assert run.leftover_temp_files == []
 
 
+@requires_compose
 def test_tunnel_block_rejects_download_that_is_not_a_compose_file(tmp_path):
     """Parseable YAML that is not a compose file is still rejected — an HTML or
     JSON error page from a misconfigured bucket must not be installed."""
@@ -478,6 +541,7 @@ def test_tunnel_block_rejects_download_that_is_not_a_compose_file(tmp_path):
     assert "failed validation" in run.output, run.output
 
 
+@requires_compose
 @pytest.mark.parametrize(
     "enabled,token,reason",
     [
@@ -502,6 +566,7 @@ def test_tunnel_block_removes_stale_state_when_disabled(
     assert run.leftover_temp_files == []
 
 
+@requires_compose
 def test_tunnel_block_download_target_is_unique_per_boot(tmp_path):
     """The toolbox-mount lookup is a name-based `find`, so a fixed temp name
     could resolve to a copy left in the toolbox chroot by an earlier boot even
@@ -515,3 +580,49 @@ def test_tunnel_block_download_target_is_unique_per_boot(tmp_path):
         log = (run_dir / "calls.log").read_text()
         names.add(log.strip().rsplit("/", 1)[-1])
     assert len(names) == 2, f"download target name must be unique per boot, got {names}"
+
+
+@requires_compose
+def test_tunnel_block_ignores_stale_copy_inside_the_toolbox_chroot(tmp_path):
+    """The other half of the staleness problem, and why the temp name is unique.
+
+    toolbox writes into its own chroot, so the script locates the download with
+    `find <toolbox> -name <file> | head -1`. When gsutil exits 0 without
+    producing anything — the swallowed-failure class this issue is about — that
+    find is still reached. Against the old fixed name it matches the copy an
+    earlier boot left in the chroot, and the script installs and launches it. A
+    per-boot name makes the stale copy unmatchable.
+    """
+    run = _run_tunnel_block(
+        tmp_path,
+        download=_TUNNEL_COMPOSE.read_text(),
+        silent_success=True,
+        stale_toolbox_copy=_STALE_TUNNEL_YML,
+    )
+
+    _assert_api_db_config_intact(run)
+    assert not run.tunnel_enabled, (
+        "a stale copy in the toolbox chroot must not satisfy this boot's "
+        f"download: {run.output}"
+    )
+    assert not run.tunnel_file.exists()
+    assert "download failed" in run.output, run.output
+
+
+@requires_compose
+def test_tunnel_block_validation_depends_on_the_env_file(tmp_path):
+    """Pins why the block sits *below* the .env write (and the ordering test
+    above): the base compose file interpolates ${IMAGE_URL} and friends from
+    .env, so `compose config` on the merged pair rejects the project outright
+    when .env is absent. Run the block any earlier and validation fails on every
+    boot — the connector would be permanently, silently disabled."""
+    run = _run_tunnel_block(
+        tmp_path, download=_TUNNEL_COMPOSE.read_text(), write_env=False
+    )
+
+    assert run.proc.returncode == 0, run.output
+    assert not run.tunnel_enabled, (
+        "expected the merged config to be invalid without .env — if this now "
+        f"passes, the ordering guarantee is no longer load-bearing: {run.output}"
+    )
+    assert "failed validation" in run.output, run.output
