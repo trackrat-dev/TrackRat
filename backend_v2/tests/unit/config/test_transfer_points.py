@@ -72,10 +72,19 @@ class TestTransferPointGeneration:
     """Test that known transfer points are discovered."""
 
     def test_total_count_reasonable(self):
-        """Should find a meaningful number of transfers (not 0, not thousands)."""
+        """Should find a meaningful number of transfers (not 0, not thousands).
+
+        A smoke test against generation collapsing to nothing or exploding, not
+        an exact-count pin. The ceiling was raised from 500 when both SEPTA
+        systems joined _INTRA_TRANSFER_SYSTEMS (issue #1634), which adds ~92
+        same-station junctions: 12 Regional Rail (the Center City trunk plus
+        Wayne Junction/Glenside and the Fern Rock branch points) and ~80 Metro
+        (the subway-surface trolley tunnel, Broad St local/express, 8th-Market,
+        69th St).
+        """
         assert (
-            30 < len(TRANSFER_POINTS) < 500
-        ), f"Expected 30-500 transfer points, got {len(TRANSFER_POINTS)}"
+            30 < len(TRANSFER_POINTS) < 700
+        ), f"Expected 30-700 transfer points, got {len(TRANSFER_POINTS)}"
 
     def test_cross_system_transfers_exist(self):
         """Cross-system transfers must exist."""
@@ -277,10 +286,15 @@ class TestLookupIndexes:
         assert result == []
 
     def test_get_transfer_points_same_non_branching_system_empty(self):
-        """Systems not in _INTRA_TRANSFER_SYSTEMS return no same-system transfers."""
+        """Systems not in _INTRA_TRANSFER_SYSTEMS return no same-system transfers.
+
+        Also guards the #1634 SEPTA addition: adding members must not leak
+        intra-system transfers to systems still excluded as hub-and-spoke.
+        """
         assert get_transfer_points("AMTRAK", "AMTRAK") == []
         assert get_transfer_points("PATCO", "PATCO") == []
         assert get_transfer_points("WMATA", "WMATA") == []
+        assert get_transfer_points("MNR", "MNR") == []
 
     def test_get_transfer_points_njt_njt_has_junction_transfers(self):
         """NJT intra-system should return junction transfers (e.g., Secaucus)."""
@@ -337,6 +351,112 @@ class TestLookupIndexes:
         """SUBWAY <-> SUBWAY should return intra-subway transfer points."""
         tps = get_transfer_points("SUBWAY", "SUBWAY")
         assert len(tps) > 0, "Expected SUBWAY intra-transfers"
+
+    def test_septa_rr_center_city_trunk_junctions(self):
+        """Issue #1634: every Regional Rail line runs through the Center City
+        trunk, so a line->line transfer there is the ordinary RR trip (e.g.
+        Chestnut Hill East -> Media/Wawa). Before SEPTA_RR joined
+        _INTRA_TRANSFER_SYSTEMS no junction existed and trip search returned
+        `no_transfer_points` for every such pair."""
+        tps = get_transfer_points("SEPTA_RR", "SEPTA_RR")
+        assert len(tps) > 0, "Expected SEPTA_RR intra-system junction transfers"
+
+        by_station = {tp.station_a: tp for tp in tps}
+        # Suburban / 30th St / Jefferson / Temple form the shared trunk. All 13
+        # RR lines call at Suburban and 30th St; Jefferson and Temple carry 12.
+        for code, name, min_lines in (
+            ("SEPR90005", "Suburban Station", 13),
+            ("SEPR90004", "Gray 30th St Station", 13),
+            ("SEPR90006", "Jefferson Station", 12),
+            ("SEPR90007", "Temple University", 12),
+        ):
+            assert code in by_station, f"No junction transfer at {name} ({code})"
+            lines = by_station[code].lines_a
+            msg = f"{name} ({code}): want >={min_lines} lines, got {sorted(lines)}"
+            assert len(lines) >= min_lines, msg
+
+        # A same-station junction carries every line on both sides (#1296), so a
+        # Chestnut Hill East -> Media/Wawa transfer resolves off one entry.
+        suburban = by_station["SEPR90005"].lines_a
+        for line in ("SEPTA-CHE", "SEPTA-MED", "SEPTA-PAO", "SEPTA-TRE"):
+            assert line in suburban, f"Suburban missing {line}, got {sorted(suburban)}"
+
+    def test_septa_metro_junctions_pair_distinct_lines(self):
+        """Issue #1634: Metro junctions where two different services share one
+        station code — 8th-Market (Broad-Ridge Spur x Market-Frankford) and
+        69th St (Market-Frankford x Norristown HSL)."""
+        tps = get_transfer_points("SEPTA_METRO", "SEPTA_METRO")
+        assert len(tps) > 0, "Expected SEPTA_METRO intra-system junction transfers"
+
+        by_station = {tp.station_a: tp for tp in tps}
+        for code, name, expected in (
+            ("SEPM2457", "8th-Market", {"SEPTA-B3", "SEPTA-L1"}),
+            ("SEPM416", "69th St Transit Center", {"SEPTA-L1", "SEPTA-M1"}),
+        ):
+            assert code in by_station, f"No junction transfer at {name} ({code})"
+            lines = by_station[code].lines_a
+            msg = f"{name} ({code}): want {sorted(expected)}, got {sorted(lines)}"
+            assert expected <= lines, msg
+
+    def test_septa_metro_junction_includes_inbound_only_station(self):
+        """Issue #1632 integration: 271 Metro station codes appear ONLY in the
+        inbound sequence (each trolley curb stop is its own code). Junction
+        detection reads `route.all_stations`, so those must be eligible too —
+        reading `route.stations` alone would silently drop them.
+
+        SEPM20659 (15th St/City Hall, subway-surface trolley platform) is
+        inbound-only and carries all five trolley routes."""
+        tps = get_transfer_points("SEPTA_METRO", "SEPTA_METRO")
+        by_station = {tp.station_a: tp for tp in tps}
+        assert (
+            "SEPM20659" in by_station
+        ), "Inbound-only trolley platform SEPM20659 produced no junction transfer"
+        lines = by_station["SEPM20659"].lines_a
+        for trolley in ("SEPTA-T1", "SEPTA-T2", "SEPTA-T3", "SEPTA-T4", "SEPTA-T5"):
+            assert trolley in lines, f"SEPM20659 missing {trolley}, got {sorted(lines)}"
+
+    def test_septa_junctions_have_same_station_shape(self):
+        """Both SEPTA systems must follow the #1296 junction shape: one
+        same-station entry carrying every line on both sides."""
+        for system in ("SEPTA_RR", "SEPTA_METRO"):
+            tps = get_transfer_points(system, system)
+            assert tps, f"Expected {system} intra-system transfers"
+            seen: set[str] = set()
+            for tp in tps:
+                assert tp.system_a == system and tp.system_b == system
+                assert (
+                    tp.station_a == tp.station_b
+                ), f"{system} junction spans two codes: {tp.station_a} != {tp.station_b}"
+                assert tp.same_station is True
+                assert (
+                    tp.lines_a == tp.lines_b
+                ), f"{system} junction at {tp.station_a} differs per side"
+                assert (
+                    len(tp.lines_a) >= 2
+                ), f"{system} junction at {tp.station_a} has < 2 lines"
+                assert (
+                    tp.station_a not in seen
+                ), f"Duplicate {system} junction emitted for {tp.station_a}"
+                seen.add(tp.station_a)
+
+    def test_septa_broad_street_and_market_frankford_share_no_station_code(self):
+        """Documents the limitation the #1634 membership fix does NOT close.
+
+        Source 5 pairs lines meeting at ONE station code. Broad St (SEPTA-B1)
+        and Market-Frankford (SEPTA-L1) interchange at 15th St/City Hall and
+        13th St, which are adjacent but distinct codes ~103 m apart, and SEPTA
+        has no STATION_EQUIVALENCE_GROUPS entries — so no junction can connect
+        them and trip search still returns `no_transfer_points` for that pair.
+
+        If this assertion ever fails, the data gained a shared code or an
+        equivalence group: delete this test and assert the transfer instead."""
+        tps = get_transfer_points("SEPTA_METRO", "SEPTA_METRO")
+        connecting = [tp for tp in tps if {"SEPTA-B1", "SEPTA-L1"} <= tp.lines_a]
+        assert connecting == [], (
+            "Broad St <-> Market-Frankford now has a junction transfer; the "
+            "documented limitation is stale and this test should be replaced. "
+            f"Found: {[tp.station_a for tp in connecting]}"
+        )
 
     def test_get_transfers_from_station_returns_list(self):
         """Known transfer station should return transfers."""
