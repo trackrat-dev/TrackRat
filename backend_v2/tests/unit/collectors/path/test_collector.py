@@ -15,7 +15,7 @@ from trackrat.collectors.path.collector import (
     PathCollector,
     _assign_arrivals_to_journeys,
     _build_train_candidate,
-    _claim_one_to_one,
+    _match_in_order,
     _cluster_sightings,
     _generate_path_train_id,
     _get_destination_station_from_headsign,
@@ -3340,28 +3340,65 @@ def _jsq_arrival(
     )
 
 
-class TestClaimOneToOne:
-    """Tests for _claim_one_to_one, the shared assignment primitive."""
+class TestMatchInOrder:
+    """Tests for _match_in_order, the shared assignment primitive."""
 
-    def test_best_pair_wins_and_blocks_the_losers(self):
-        """Both sides of a claimed pair are consumed."""
-        assignment = _claim_one_to_one([("a", 1), ("b", 1), ("a", 2)])
+    def _times(self, base, *minutes):
+        return [base + timedelta(minutes=m) for m in minutes]
 
-        assert assignment == {"a": 1}, "b lost 1 to a, and a was already spent"
+    def test_closest_pair_never_strands_its_neighbours(self):
+        """Maximum cardinality beats minimum distance.
 
-    def test_each_side_pairs_with_its_own_best_remaining_option(self):
-        assignment = _claim_one_to_one([("a", 1), ("b", 2), ("b", 1), ("a", 2)])
+        Existing trains at 10:00 and 10:04, sightings at 10:03 and 10:08. The
+        single closest pair is 10:03 -> 10:04, but taking it leaves 10:00 with
+        nothing and makes 10:08 look like a train we have never seen. Pairing
+        10:03 -> 10:00 and 10:08 -> 10:04 costs more in total and is right.
+        """
+        base = now_et()
 
-        assert assignment == {"a": 1, "b": 2}
+        assignment = _match_in_order(
+            self._times(base, 3, 8), self._times(base, 0, 4), 5
+        )
 
-    def test_order_is_the_only_ranking(self):
-        """Pairs are consumed as given — callers own the ranking."""
-        assignment = _claim_one_to_one([("b", 1), ("a", 1)])
+        assert assignment == {0: 0, 1: 1}
 
-        assert assignment == {"b": 1}
+    def test_pairings_do_not_cross(self):
+        """PATH trains on a line do not overtake, so neither do their pairings."""
+        base = now_et()
 
-    def test_no_pairs_assigns_nothing(self):
-        assert _claim_one_to_one([]) == {}
+        assignment = _match_in_order(
+            self._times(base, 0, 1), self._times(base, 1, 2), 5
+        )
+
+        assert assignment == {0: 0, 1: 1}
+
+    def test_unmatchable_entries_are_skipped_not_forced(self):
+        """A train with no counterpart inside tolerance is left unpaired."""
+        base = now_et()
+
+        assignment = _match_in_order(
+            self._times(base, 0, 30, 60), self._times(base, 1, 61), 5
+        )
+
+        assert assignment == {0: 0, 2: 1}
+
+    def test_closest_of_several_candidates_wins_at_equal_cardinality(self):
+        base = now_et()
+
+        assignment = _match_in_order(self._times(base, 4), self._times(base, 0, 3), 5)
+
+        assert assignment == {0: 1}
+
+    def test_everything_outside_tolerance_pairs_nothing(self):
+        base = now_et()
+
+        assert _match_in_order(self._times(base, 0), self._times(base, 20), 5) == {}
+
+    def test_empty_inputs_pair_nothing(self):
+        base = now_et()
+
+        assert _match_in_order([], self._times(base, 0), 5) == {}
+        assert _match_in_order(self._times(base, 0), [], 5) == {}
 
 
 class TestClusterSightings:
@@ -3396,6 +3433,22 @@ class TestClusterSightings:
         clusters = _cluster_sightings(
             self._candidates(
                 [_jsq_arrival("PJS", 1, base), _jsq_arrival("PJS", 2, base)]
+            )
+        )
+
+        assert len(clusters) == 2
+
+    def test_a_full_headway_apart_is_two_trains_even_across_stations(self):
+        """The merge tolerance is exclusive, so it never eats a whole headway.
+
+        PGR at +3 implies origin base; PNP at +8 implies origin base+2 — exactly
+        PATH's tightest per-line headway apart, at different stations, so
+        nothing but the threshold separates them.
+        """
+        base = now_et()
+        clusters = _cluster_sightings(
+            self._candidates(
+                [_jsq_arrival("PGR", 3, base), _jsq_arrival("PNP", 8, base)]
             )
         )
 
@@ -3506,6 +3559,29 @@ class TestAssignArrivalsToJourneys:
         first = self._journey()
         second = self._journey()
         arrivals = [_jsq_arrival("PGR", 3, base), _jsq_arrival("PGR", 7, base)]
+
+        assigned = _assign_arrivals_to_journeys(
+            [
+                (first, [self._stop("PGR", base + timedelta(minutes=3))]),
+                (second, [self._stop("PGR", base + timedelta(minutes=7))]),
+            ],
+            arrivals,
+        )
+
+        assert assigned == {0: [arrivals[0]], 1: [arrivals[1]]}
+
+    def test_a_shared_delay_does_not_strand_both_journeys(self):
+        """Every train running late shifts the arrivals off the stop schedule.
+
+        Stops due at +3 and +7, trains actually turning up at +6 and +11. The
+        single closest pair (+7 stop to the +6 arrival) would leave the +3 stop
+        with no arrival and the +11 arrival with no journey — one train wearing
+        another's time and the other collecting a no-arrival strike.
+        """
+        base = now_et()
+        first = self._journey()
+        second = self._journey()
+        arrivals = [_jsq_arrival("PGR", 6, base), _jsq_arrival("PGR", 11, base)]
 
         assigned = _assign_arrivals_to_journeys(
             [

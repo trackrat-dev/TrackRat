@@ -9,10 +9,9 @@ Runs every 4 minutes for responsive tracking with single API call.
 """
 
 from collections import defaultdict
-from collections.abc import Hashable, Iterable
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Any, TypeVar
+from typing import Any, NamedTuple
 
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -52,51 +51,89 @@ logger = get_logger(__name__)
 # two stations produces origin estimates minutes apart. The window has to
 # absorb that — but on JSQ-33 (2-4 minute headways) a window that wide also
 # spans the neighbouring train, and narrowing it only trades swallowed trains
-# for duplicate journeys. Both passes therefore resolve their candidate pairs
-# into a one-to-one assignment, closest first, so a wide window can no longer
-# collapse N trains onto one row (#1723).
+# for duplicate journeys. Both passes therefore pair whole runs of trains at
+# once via ``_match_in_order``, so a wide window can no longer collapse N
+# trains onto one row (#1723).
 MATCH_TOLERANCE_MINUTES = 5
 
 # Maximum spread between origin-departure estimates back-calculated from two
-# sightings of the SAME train in one collection cycle. Sightings further apart
-# than this are different trains. Kept below the tightest PATH headway, and
-# reinforced by the rule that RidePATH never lists one train twice at the same
-# station.
+# sightings of the SAME train in one collection cycle, exclusive: sightings must
+# be closer together than two trains on one line ever are. PATH's tightest
+# per-line headway is ~2 minutes (the 2-minute figure quoted for the system as a
+# whole is the shared trunk, which mixes lines that group separately here), so
+# at exactly 2 minutes apart the sightings are two trains, not one.
+#
+# Below that the ambiguity is irreducible: when two trains on the same line,
+# origin and destination run closer together than the back-calculation noise,
+# and each is seen at only one station, no time-based rule separates them —
+# ordering does not help either, since there is only one sighting per station to
+# order. What does hold structurally is that RidePATH never lists one train
+# twice at a station, so multiple sightings there stay separate however close
+# their estimates land.
 SAME_TRAIN_TOLERANCE_MINUTES = 2
-
-_Left = TypeVar("_Left", bound=Hashable)
-_Right = TypeVar("_Right", bound=Hashable)
-
-
-def _claim_one_to_one(
-    ranked_pairs: Iterable[tuple[_Left, _Right]],
-) -> dict[_Left, _Right]:
-    """Resolve ranked candidate pairs into a one-to-one assignment.
-
-    Pairs are consumed in the order given (best first); a pair is kept only if
-    neither of its sides has already been claimed.
-
-    Args:
-        ranked_pairs: (left, right) pairs, best match first
-
-    Returns:
-        Mapping of left -> right where each side appears at most once
-    """
-    assignment: dict[_Left, _Right] = {}
-    claimed: set[_Right] = set()
-
-    for left, right in ranked_pairs:
-        if left in assignment or right in claimed:
-            continue
-        assignment[left] = right
-        claimed.add(right)
-
-    return assignment
 
 
 def _minutes_apart(first: datetime, second: datetime) -> float:
     """Absolute difference between two datetimes in minutes, timezone-safe."""
     return abs(safe_datetime_subtract(first, second).total_seconds()) / 60
+
+
+def _match_in_order(
+    left: list[datetime], right: list[datetime], tolerance_minutes: float
+) -> dict[int, int]:
+    """Pair two time-ordered runs of trains one-to-one, without crossing.
+
+    PATH trains on a line do not overtake, so pairings cannot cross: if the i-th
+    time on the left pairs with the j-th on the right, everything after i pairs
+    after j. Within that constraint this maximizes the number of pairs first and
+    minimizes total separation second.
+
+    Ranking every candidate pair by distance and claiming greedily does neither.
+    With existing trains at 10:00 and 10:04 and sightings at 10:03 and 10:08,
+    the closest pair (10:03 -> 10:04) strands both neighbours — 10:00 gets
+    nothing and 10:08 looks new — even though 10:03 -> 10:00 with 10:08 -> 10:04
+    pairs all four inside the same tolerance.
+
+    Args:
+        left: Times to pair, ascending
+        right: Times to pair against, ascending
+        tolerance_minutes: Maximum separation of a pair
+
+    Returns:
+        Mapping of left index -> right index
+    """
+    # best[i][j] = (pairs, -total separation) reachable from left[i:], right[j:].
+    # Maximizing the tuple maximizes pairs, then minimizes separation.
+    best: list[list[tuple[int, float]]] = [
+        [(0, 0.0)] * (len(right) + 1) for _ in range(len(left) + 1)
+    ]
+
+    for i in reversed(range(len(left))):
+        for j in reversed(range(len(right))):
+            options = [best[i + 1][j], best[i][j + 1]]
+            separation = _minutes_apart(left[i], right[j])
+            if separation <= tolerance_minutes:
+                pairs, cost = best[i + 1][j + 1]
+                options.append((pairs + 1, cost - separation))
+            best[i][j] = max(options)
+
+    assignment: dict[int, int] = {}
+    i = j = 0
+    while i < len(left) and j < len(right):
+        separation = _minutes_apart(left[i], right[j])
+        if separation <= tolerance_minutes:
+            pairs, cost = best[i + 1][j + 1]
+            if best[i][j] == (pairs + 1, cost - separation):
+                assignment[i] = j
+                i += 1
+                j += 1
+                continue
+        if best[i][j] == best[i + 1][j]:
+            i += 1
+        else:
+            j += 1
+
+    return assignment
 
 
 # =============================================================================
@@ -575,10 +612,10 @@ def _cluster_sightings(candidates: list[_TrainCandidate]) -> list[_TrainCandidat
 
     Candidates share line, origin and destination (see ``group_key``), so the
     only thing separating consecutive trains is the back-calculated origin
-    departure. Two sightings are the same train when those estimates agree
-    within ``SAME_TRAIN_TOLERANCE_MINUTES`` *and* come from different stations —
-    RidePATH never lists one train twice at the same station, so two arrivals
-    there are two trains however close their estimates land.
+    departure. Two sightings are the same train when those estimates agree to
+    strictly inside ``SAME_TRAIN_TOLERANCE_MINUTES`` *and* come from different
+    stations — RidePATH never lists one train twice at the same station, so two
+    arrivals there are two trains however close their estimates land.
 
     The surviving candidate is the one seen closest to the origin: back-
     calculation error grows with distance, so that sighting carries the most
@@ -601,14 +638,14 @@ def _cluster_sightings(candidates: list[_TrainCandidate]) -> list[_TrainCandidat
                 continue
             if (
                 _minutes_apart(candidate.origin_departure, cluster[0].origin_departure)
-                <= SAME_TRAIN_TOLERANCE_MINUTES
+                < SAME_TRAIN_TOLERANCE_MINUTES
             ):
                 cluster.append(candidate)
                 break
         else:
             clusters.append([candidate])
 
-    return [
+    survivors = [
         min(
             cluster,
             key=lambda c: (
@@ -619,20 +656,45 @@ def _cluster_sightings(candidates: list[_TrainCandidate]) -> list[_TrainCandidat
         )
         for cluster in clusters
     ]
+    # The survivor's own estimate can sit anywhere inside its cluster's spread,
+    # so re-sort: callers pair these against existing journeys in time order.
+    survivors.sort(key=lambda c: c.origin_departure)
+    return survivors
+
+
+class _Listing(NamedTuple):
+    """A train due at a station: either a journey's stop or a RidePATH arrival."""
+
+    station_code: str
+    headsign: str
+    line_color: str
+    time: datetime
+    owner: int  # journey index for a stop, arrival index for an arrival
+
+
+def _run_key(listing: _Listing, by_color: bool) -> tuple[str, ...]:
+    """Key identifying the run of trains a listing belongs to."""
+    if by_color:
+        return (listing.station_code, listing.headsign, listing.line_color)
+    return (listing.station_code, listing.headsign)
 
 
 def _assign_arrivals_to_journeys(
     journeys: list[tuple[TrainJourney, list[JourneyStop]]],
     arrivals: list[PathArrival],
 ) -> dict[int, list[PathArrival]]:
-    """Assign each arrival to at most one journey, closest match first.
+    """Assign each arrival to at most one journey.
 
-    Journeys are matched by destination headsign (preferring an exact line-color
-    match, which separates lines that share a destination) and then by how close
-    the arrival lands to the stop it would update. Matching each journey
-    independently let a single arrival be written onto the stops of several
-    consecutive trains at once, because the tolerance that absorbs RidePATH's
-    integer-minute countdowns is wider than the headway (#1723).
+    Each (station, destination) is a run of trains: journeys ordered by when
+    they are due there, arrivals ordered by when RidePATH says they turn up.
+    Pairing a whole run at once is what stops one arrival being written onto the
+    stops of several consecutive trains — the tolerance that absorbs RidePATH's
+    integer-minute countdowns is wider than the headway, so matching each
+    journey independently let them all claim it (#1723).
+
+    Line color separates lines that share a destination, so color-matched runs
+    are paired first; a second pass sweeps up whatever is left, for journeys
+    whose color came from the route table rather than from the API.
 
     Args:
         journeys: Active journeys paired with their ordered stops
@@ -643,46 +705,69 @@ def _assign_arrivals_to_journeys(
         journey (at most one per station, so each stop still has an
         unambiguous match)
     """
-    arrivals_by_station: dict[str, list[tuple[int, PathArrival]]] = defaultdict(list)
-    for index, arrival in enumerate(arrivals):
-        arrivals_by_station[arrival.station_code].append((index, arrival))
-
-    # (color mismatch, seconds apart, journey slot, arrival index)
-    ranked: list[tuple[int, float, tuple[int, str], int]] = []
-
-    for journey_index, (journey, stops) in enumerate(journeys):
-        journey_headsign = _normalize_headsign(journey.destination or "")
-        journey_color = (journey.line_color or "").lstrip("#").lower()
-
-        for stop in stops:
-            station_code = stop.station_code or ""
-            if not stop.scheduled_arrival:
-                continue
-
-            for arrival_index, arrival in arrivals_by_station.get(station_code, []):
-                if _normalize_headsign(arrival.headsign) != journey_headsign:
-                    continue
-
-                minutes = _minutes_apart(arrival.arrival_time, stop.scheduled_arrival)
-                if minutes > MATCH_TOLERANCE_MINUTES:
-                    continue
-
-                color = (arrival.line_color or "").split(",")[0].lstrip("#").lower()
-                ranked.append(
-                    (
-                        0 if color == journey_color else 1,
-                        minutes,
-                        (journey_index, station_code),
-                        arrival_index,
-                    )
-                )
-
-    ranked.sort(key=lambda pair: (pair[0], pair[1]))
-    claimed = _claim_one_to_one([(slot, index) for _, _, slot, index in ranked])
+    stop_listings = [
+        _Listing(
+            station_code=stop.station_code,
+            headsign=_normalize_headsign(journey.destination or ""),
+            line_color=(journey.line_color or "").lstrip("#").lower(),
+            time=stop.scheduled_arrival,
+            owner=journey_index,
+        )
+        for journey_index, (journey, stops) in enumerate(journeys)
+        for stop in stops
+        if stop.station_code and stop.scheduled_arrival
+    ]
+    arrival_listings = [
+        _Listing(
+            station_code=arrival.station_code,
+            headsign=_normalize_headsign(arrival.headsign),
+            line_color=(arrival.line_color or "").split(",")[0].lstrip("#").lower(),
+            time=arrival.arrival_time,
+            owner=arrival_index,
+        )
+        for arrival_index, arrival in enumerate(arrivals)
+    ]
 
     assigned: dict[int, list[PathArrival]] = defaultdict(list)
-    for (journey_index, _station), arrival_index in claimed.items():
-        assigned[journey_index].append(arrivals[arrival_index])
+
+    for by_color in (True, False):
+        runs: dict[tuple[str, ...], tuple[list[_Listing], list[_Listing]]] = (
+            defaultdict(lambda: ([], []))
+        )
+        for listing in stop_listings:
+            runs[_run_key(listing, by_color)][0].append(listing)
+        for listing in arrival_listings:
+            runs[_run_key(listing, by_color)][1].append(listing)
+
+        paired_stops: set[tuple[int, str]] = set()
+        paired_arrivals: set[int] = set()
+
+        for run_stops, run_arrivals in runs.values():
+            run_stops.sort(key=lambda listing: listing.time)
+            run_arrivals.sort(key=lambda listing: listing.time)
+            matches = _match_in_order(
+                [listing.time for listing in run_stops],
+                [listing.time for listing in run_arrivals],
+                MATCH_TOLERANCE_MINUTES,
+            )
+            for stop_index, arrival_index in matches.items():
+                stop_listing = run_stops[stop_index]
+                arrival_listing = run_arrivals[arrival_index]
+                assigned[stop_listing.owner].append(arrivals[arrival_listing.owner])
+                paired_stops.add((stop_listing.owner, stop_listing.station_code))
+                paired_arrivals.add(arrival_listing.owner)
+
+        # Only unclaimed listings reach the color-blind pass.
+        stop_listings = [
+            listing
+            for listing in stop_listings
+            if (listing.owner, listing.station_code) not in paired_stops
+        ]
+        arrival_listings = [
+            listing
+            for listing in arrival_listings
+            if listing.owner not in paired_arrivals
+        ]
 
     return dict(assigned)
 
@@ -846,8 +931,8 @@ class PathCollector:
         integer-minute countdowns is wider than the gap between trains. Matching
         each train independently therefore let consecutive trains all resolve to
         the oldest journey, which was then updated and never created (#1723).
-        Matching them together, closest first and one-to-one, means N trains can
-        never collapse onto fewer than N journeys.
+        Pairing the whole run at once means N trains can never collapse onto
+        fewer than N journeys.
 
         Args:
             session: Database session
@@ -861,37 +946,34 @@ class PathCollector:
         window = timedelta(minutes=MATCH_TOLERANCE_MINUTES)
         origin_times = [train.origin_departure for train in trains]
 
-        existing = await self._find_active_journeys(
-            session,
-            journey_date=trains[0].journey_date,
-            line_code=trains[0].line_code,
-            origin_station=trains[0].origin_station,
-            destination=trains[0].destination_headsign,
-            time_min=min(origin_times) - window,
-            time_max=max(origin_times) + window,
-        )
+        # Paired with their departures so the times passed to the matcher line
+        # up by index. The SQL range predicate already excludes a NULL
+        # scheduled_departure, so nothing is dropped here.
+        existing = [
+            (journey, journey.scheduled_departure)
+            for journey in await self._find_active_journeys(
+                session,
+                journey_date=trains[0].journey_date,
+                line_code=trains[0].line_code,
+                origin_station=trains[0].origin_station,
+                destination=trains[0].destination_headsign,
+                time_min=min(origin_times) - window,
+                time_max=max(origin_times) + window,
+            )
+            if journey.scheduled_departure is not None
+        ]
 
-        ranked: list[tuple[float, int, int]] = []
-        for train_index, train in enumerate(trains):
-            for journey_index, journey in enumerate(existing):
-                if not journey.scheduled_departure:
-                    continue
-                minutes = _minutes_apart(
-                    train.origin_departure, journey.scheduled_departure
-                )
-                if minutes <= MATCH_TOLERANCE_MINUTES:
-                    ranked.append((minutes, train_index, journey_index))
-
-        ranked.sort(key=lambda pair: pair[0])
-        assignment = _claim_one_to_one(
-            [(train_index, journey_index) for _, train_index, journey_index in ranked]
+        assignment = _match_in_order(
+            origin_times,
+            [departure for _, departure in existing],
+            MATCH_TOLERANCE_MINUTES,
         )
 
         created: list[_TrainCandidate] = []
         for train_index, train in enumerate(trains):
             matched_index = assignment.get(train_index)
             if matched_index is not None:
-                existing[matched_index].last_updated_at = now_et()
+                existing[matched_index][0].last_updated_at = now_et()
                 continue
             if await self._create_journey(session, train, segment_times):
                 created.append(train)

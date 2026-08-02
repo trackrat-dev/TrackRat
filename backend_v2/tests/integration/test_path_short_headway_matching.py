@@ -198,6 +198,36 @@ class TestDiscoveryDoesNotSwallowConsecutiveTrains:
             journey.train_id for journey in first_cycle
         ]
 
+    async def test_a_shared_delay_does_not_duplicate_the_second_train(
+        self, db_session: AsyncSession
+    ):
+        """Both trains slipping keeps them both matched, not one duplicated.
+
+        Journeys on record leave PJS at base and base+4; next cycle the same two
+        trains are listed at base+3 and base+8. The single closest pair is
+        base+3 to the base+4 journey, and taking it strands base+8 outside the
+        window of the base journey — a duplicate for a train already tracked.
+        """
+        base = now_et()
+        collector = PathCollector()
+
+        await collector._discover_trains(
+            db_session, [_arrival("PJS", minutes, base) for minutes in (0, 4)], {}
+        )
+        await db_session.commit()
+        first_cycle = await _path_journeys(db_session)
+        assert len(first_cycle) == 2
+
+        stats = await collector._discover_trains(
+            db_session, [_arrival("PJS", minutes, base) for minutes in (3, 8)], {}
+        )
+        await db_session.commit()
+
+        assert stats["new_journeys"] == 0, "both trains were already on record"
+        assert [journey.train_id for journey in await _path_journeys(db_session)] == [
+            journey.train_id for journey in first_cycle
+        ]
+
 
 @pytest.mark.asyncio
 class TestUpdatesDoNotShareOneArrivalBetweenTrains:
