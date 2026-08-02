@@ -24,7 +24,7 @@ fully deterministic.
 import asyncio
 import gzip
 from collections import Counter, defaultdict
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
@@ -39,6 +39,7 @@ from trackrat.collectors.mta_common import (
 from trackrat.collectors.subway.client import (
     SubwayArrival,
     SubwayClient,
+    parse_nyct_service_date,
     parse_nyct_trip_origin_time,
 )
 from trackrat.config.route_topology import get_route_by_line_code
@@ -361,6 +362,18 @@ class TestParseNyctTripOriginTime:
 
     def test_missing_start_date_returns_none(self):
         assert parse_nyct_trip_origin_time("091150_1..N03R", None) is None
+
+    def test_service_date_is_parsed_separately_from_overnight_origin(self):
+        service_date = parse_nyct_service_date("20260802")
+        origin = parse_nyct_trip_origin_time("148000_A..S55R", "20260802")
+
+        assert service_date == date(2026, 8, 2)
+        assert origin is not None
+        assert origin.date() == date(2026, 8, 3)
+
+    @pytest.mark.parametrize("value", [None, "", "not-a-date", "202681", "20261340"])
+    def test_invalid_service_date_returns_none(self, value):
+        assert parse_nyct_service_date(value) is None
 
     def test_malformed_start_date_returns_none(self):
         assert parse_nyct_trip_origin_time("091150_1..N03R", "not-a-date") is None

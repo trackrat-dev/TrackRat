@@ -5,7 +5,8 @@ Tests unified NYC Subway train discovery, journey updates,
 full-replacement expiration logic, and JIT updates.
 """
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
+from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -21,7 +22,15 @@ from trackrat.collectors.subway.collector import (
     SubwayCollector,
     _generate_train_id,
 )
-from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.models.database import (
+    GTFSCalendar,
+    GTFSRoute,
+    GTFSStopTime,
+    GTFSTrip,
+    JourneyStop,
+    TrainJourney,
+)
+from trackrat.services.gtfs import GTFSService
 from trackrat.utils.time import ET
 
 # =============================================================================
@@ -257,6 +266,7 @@ class TestSubwayCollectorCollect:
         trip_ids = [c[0] for c in process_calls]
         assert "trip_1" in trip_ids
         assert "trip_2" in trip_ids
+        collector._gtfs_service.clear_subway_realtime_trip_cache.assert_called_once_with()
         mock_session.commit.assert_called_once()
 
     @pytest.mark.asyncio
@@ -1226,6 +1236,7 @@ def _northbound_1_train(
         if origin_lead_minutes is None
         else first - timedelta(minutes=origin_lead_minutes)
     )
+    service_date = trip_origin_time.astimezone(ET).date() if trip_origin_time else None
     return [
         SubwayArrival(
             station_code="S132",  # 14 St
@@ -1241,6 +1252,7 @@ def _northbound_1_train(
             nyct_train_id="01 1200+ SFR/VCP",
             is_assigned=True,
             trip_origin_time=trip_origin_time,
+            service_date=service_date,
         ),
         SubwayArrival(
             station_code="S101",  # Van Cortlandt Park-242 St
@@ -1256,8 +1268,47 @@ def _northbound_1_train(
             nyct_train_id="01 1200+ SFR/VCP",
             is_assigned=True,
             trip_origin_time=trip_origin_time,
+            service_date=service_date,
         ),
     ]
+
+
+def _static_northbound_1_stops(
+    arrivals: list[SubwayArrival], *, include_south_ferry: bool
+) -> list[dict[str, Any]]:
+    """Build the matching static extent for the short-turn regression cases."""
+    first, last = arrivals[0], arrivals[-1]
+    first_scheduled = first.trip_origin_time or first.arrival_time
+    stops: list[dict[str, Any]] = []
+    sequence = 1
+    if include_south_ferry:
+        stops.append(
+            {
+                "station_code": "S142",
+                "stop_sequence": sequence,
+                "arrival_time": first.trip_origin_time,
+                "departure_time": first.trip_origin_time,
+            }
+        )
+        sequence += 1
+        first_scheduled = first.arrival_time - timedelta(seconds=first.delay_seconds)
+    stops.extend(
+        [
+            {
+                "station_code": "S132",
+                "stop_sequence": sequence,
+                "arrival_time": first_scheduled,
+                "departure_time": first_scheduled,
+            },
+            {
+                "station_code": "S101",
+                "stop_sequence": sequence + 1,
+                "arrival_time": last.arrival_time,
+                "departure_time": last.arrival_time,
+            },
+        ]
+    )
+    return stops
 
 
 class TestSubwaySyntheticOriginNotServed:
@@ -1528,6 +1579,9 @@ class TestSubwayShortTurnKeepsItsOwnOrigin:
         but the trip_id places the trip's origin 8 minutes earlier, which is
         what a train that already left South Ferry looks like."""
         arrivals = _northbound_1_train(first_stop_minutes_out=2, origin_lead_minutes=8)
+        collector._gtfs_service.get_static_stop_times.return_value = (
+            _static_northbound_1_stops(arrivals, include_south_ferry=True)
+        )
 
         _, journey = await collector._process_trip(
             mock_session, "091150_1..N03R", arrivals, None
@@ -1540,6 +1594,69 @@ class TestSubwayShortTurnKeepsItsOwnOrigin:
         )
         assert journey.origin_station_code == "S142"
         assert journey.stops_count == 3
+
+    @pytest.mark.asyncio
+    async def test_delayed_short_turn_uses_static_mid_route_origin(
+        self, collector, mock_session
+    ):
+        """Reopened #1704: a two-minute unpublished delay must not make the
+        encoded origin look like an earlier, omitted terminal."""
+        arrivals = _northbound_1_train(first_stop_minutes_out=3, origin_lead_minutes=2)
+        collector._gtfs_service.get_static_stop_times.return_value = (
+            _static_northbound_1_stops(arrivals, include_south_ferry=False)
+        )
+
+        _, journey = await collector._process_trip(
+            mock_session, "091150_1..N03X053", arrivals, None
+        )
+
+        codes = [s.station_code for s in self._added_stops(mock_session)]
+        assert codes == ["S132", "S101"]
+        assert journey.origin_station_code == "S132"
+        assert journey.stops_count == 2
+
+    @pytest.mark.asyncio
+    async def test_encoded_trip_without_static_match_fails_closed(
+        self, collector, mock_session
+    ):
+        arrivals = _northbound_1_train(first_stop_minutes_out=2, origin_lead_minutes=8)
+
+        _, journey = await collector._process_trip(
+            mock_session, "091150_1..N03R", arrivals, None
+        )
+
+        codes = [s.station_code for s in self._added_stops(mock_session)]
+        assert codes == ["S132", "S101"]
+        assert journey.origin_station_code == "S132"
+        assert journey.stops_count == 2
+
+    @pytest.mark.asyncio
+    async def test_after_midnight_uses_service_date_for_static_lookup(
+        self, collector, mock_session
+    ):
+        service_date = date(2026, 8, 2)
+        first_arrival = ET.localize(datetime(2026, 8, 3, 1, 3))
+        trip_origin = ET.localize(datetime(2026, 8, 3, 1, 1))
+        arrivals = _northbound_1_train(first_stop_minutes_out=3, origin_lead_minutes=2)
+        for index, arrival in enumerate(arrivals):
+            arrival.service_date = service_date
+            arrival.trip_origin_time = trip_origin
+            arrival.arrival_time = first_arrival + timedelta(minutes=45 * index)
+            arrival.departure_time = (
+                arrival.arrival_time + timedelta(seconds=30) if index == 0 else None
+            )
+
+        _, journey = await collector._process_trip(
+            mock_session, "006100_1..N03X053", arrivals, None
+        )
+
+        collector._gtfs_service.get_static_stop_times.assert_awaited_once_with(
+            mock_session,
+            "SUBWAY",
+            "006100_1..N03X053",
+            service_date,
+        )
+        assert journey.journey_date == date(2026, 8, 3)
 
     @pytest.mark.asyncio
     async def test_trip_without_the_encoding_falls_back_to_the_temporal_guard(
@@ -1626,6 +1743,81 @@ class TestSubwaySyntheticOriginRealDatabase:
             .all()
         )
         return journey, stops
+
+    @staticmethod
+    def _gtfs_time(value: datetime, service_date: date) -> str:
+        local = value.astimezone(ET)
+        day_offset = (local.date() - service_date).days
+        hour = local.hour + day_offset * 24
+        return f"{hour:02d}:{local.minute:02d}:{local.second:02d}"
+
+    async def _insert_static_trip(
+        self,
+        db_session,
+        realtime_trip_id: str,
+        arrivals: list[SubwayArrival],
+        *,
+        include_south_ferry: bool,
+    ) -> None:
+        service_date = arrivals[0].service_date
+        assert service_date is not None
+        service_id = f"TEST-{realtime_trip_id}"
+        route = GTFSRoute(
+            data_source="SUBWAY",
+            route_id=f"route-{realtime_trip_id}",
+            route_short_name="1",
+            route_long_name="Broadway-7 Avenue",
+            route_color="EE352E",
+        )
+        db_session.add(route)
+        await db_session.flush()
+        trip = GTFSTrip(
+            data_source="SUBWAY",
+            trip_id=f"TEST-SERVICE_{realtime_trip_id}",
+            route_id=route.id,
+            service_id=service_id,
+            trip_headsign="Van Cortlandt Park-242 St",
+            direction_id=0,
+        )
+        db_session.add_all(
+            [
+                trip,
+                GTFSCalendar(
+                    data_source="SUBWAY",
+                    service_id=service_id,
+                    monday=True,
+                    tuesday=True,
+                    wednesday=True,
+                    thursday=True,
+                    friday=True,
+                    saturday=True,
+                    sunday=True,
+                    start_date=service_date - timedelta(days=1),
+                    end_date=service_date + timedelta(days=1),
+                ),
+            ]
+        )
+        await db_session.flush()
+        static_stops = _static_northbound_1_stops(
+            arrivals, include_south_ferry=include_south_ferry
+        )
+        db_session.add_all(
+            [
+                GTFSStopTime(
+                    trip_id=trip.id,
+                    stop_sequence=stop["stop_sequence"],
+                    gtfs_stop_id=f"{stop['station_code']}N",
+                    station_code=stop["station_code"],
+                    arrival_time=self._gtfs_time(stop["arrival_time"], service_date),
+                    departure_time=self._gtfs_time(
+                        stop["departure_time"], service_date
+                    ),
+                )
+                for stop in static_stops
+            ]
+        )
+        await db_session.flush()
+        GTFSService._service_id_cache.clear()
 
     @pytest.mark.asyncio
     async def test_truncated_feed_persists_no_south_ferry_stop(
@@ -1731,6 +1923,28 @@ class TestSubwaySyntheticOriginRealDatabase:
         assert journey.stops_count == 2
 
     @pytest.mark.asyncio
+    async def test_delayed_short_turn_persists_static_mid_route_origin(
+        self, collector, db_session
+    ):
+        arrivals = _northbound_1_train(first_stop_minutes_out=3, origin_lead_minutes=2)
+        await self._insert_static_trip(
+            db_session,
+            "091150_1..N03X053",
+            arrivals,
+            include_south_ferry=False,
+        )
+
+        _, journey = await collector._process_trip(
+            db_session, "091150_1..N03X053", arrivals, None
+        )
+        await db_session.commit()
+        journey, stops = await self._persisted(db_session, journey.train_id)
+
+        assert [stop.station_code for stop in stops] == ["S132", "S101"]
+        assert journey.origin_station_code == "S132"
+        assert journey.stops_count == 2
+
+    @pytest.mark.asyncio
     async def test_dropped_origin_still_persists_with_an_encoded_origin(
         self, collector, db_session
     ):
@@ -1744,6 +1958,12 @@ class TestSubwaySyntheticOriginRealDatabase:
         correct from the database's side.
         """
         arrivals = _northbound_1_train(first_stop_minutes_out=2, origin_lead_minutes=8)
+        await self._insert_static_trip(
+            db_session,
+            "091150_1..N03R",
+            arrivals,
+            include_south_ferry=True,
+        )
 
         result, journey = await collector._process_trip(
             db_session, "091150_1..N03R", arrivals, None
@@ -1761,6 +1981,6 @@ class TestSubwaySyntheticOriginRealDatabase:
         )
         assert journey.origin_station_code == "S142"
         assert journey.stops_count == 3
-        assert stops[0].departure_source == "synthetic_origin"
+        assert stops[0].departure_source != "synthetic_origin"
         assert stops[0].has_departed_station is True
-        assert stops[0].actual_departure < datetime.now(UTC)
+        assert stops[0].actual_departure is None

@@ -10,6 +10,8 @@ import pytest
 
 from trackrat.models.database import (
     GTFSFeedInfo,
+    GTFSRoute,
+    GTFSTrip,
 )
 from trackrat.services.gtfs import (
     GTFS_DOWNLOAD_INTERVAL_HOURS,
@@ -25,6 +27,7 @@ from trackrat.services.gtfs import (
     _lirr_train_id_from_gtfs,
     _mnr_train_id_from_gtfs,
     _strip_source_prefix,
+    _subway_realtime_trip_id,
 )
 from trackrat.utils.sanitize import bounded_text
 from trackrat.utils.time import ET
@@ -244,6 +247,39 @@ class TestRateLimiting:
         # Should refresh despite recent download because force=True
         assert result is GTFSRefreshOutcome.REFRESHED
         assert result.refreshed is True
+
+    @pytest.mark.asyncio
+    async def test_subway_refresh_invalidates_realtime_trip_index(self):
+        service = GTFSService()
+        service._subway_rt_trip_id_cache[(date(2026, 8, 2), frozenset({"SVC"}))] = {
+            "077500_1..N03X053": 42
+        }
+        mock_feed_info = MagicMock(spec=GTFSFeedInfo)
+        mock_feed_info.last_downloaded_at = None
+        mock_db = AsyncMock()
+
+        with (
+            patch.object(
+                service, "_get_or_create_feed_info", return_value=mock_feed_info
+            ),
+            patch("httpx.AsyncClient") as mock_client_class,
+            patch.object(service, "_parse_and_store_gtfs", return_value={}),
+        ):
+            mock_client = AsyncMock()
+            mock_response = MagicMock()
+            mock_response.content = b"mock zip content"
+            mock_response.raise_for_status = MagicMock()
+            mock_client.get = AsyncMock(return_value=mock_response)
+            mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+            mock_client.__aexit__ = AsyncMock(return_value=None)
+            mock_client_class.return_value = mock_client
+            mock_db.flush = AsyncMock()
+            mock_db.commit = AsyncMock()
+
+            result = await service.refresh_feed(mock_db, "SUBWAY", force=True)
+
+        assert result is GTFSRefreshOutcome.REFRESHED
+        assert service._subway_rt_trip_id_cache == {}
 
 
 class TestActiveServiceIds:
@@ -1228,6 +1264,189 @@ class TestGetStaticStopTimes:
     def setup_method(self):
         self.service = GTFSService()
         GTFSService._empty_service_warned.clear()
+        self.service.clear_subway_realtime_trip_cache()
+
+    @pytest.mark.asyncio
+    async def test_subway_realtime_trip_uses_normalized_static_id(self):
+        mock_db = AsyncMock()
+        target_date = date(2026, 8, 2)
+        mock_stop = MagicMock()
+        mock_stop.station_code = "S132"
+        mock_stop.stop_sequence = 1
+        mock_stop.arrival_time = "12:55:00"
+        mock_stop.departure_time = "12:55:00"
+        mock_result = MagicMock()
+        mock_result.all.return_value = [mock_stop]
+        mock_db.execute = AsyncMock(return_value=mock_result)
+
+        with (
+            patch.object(
+                self.service, "get_active_service_ids", return_value={"SUNDAY"}
+            ),
+            patch.object(
+                self.service,
+                "_resolve_subway_static_trip_id",
+                return_value=42,
+            ) as resolve,
+        ):
+            result = await self.service.get_static_stop_times(
+                mock_db,
+                "SUBWAY",
+                "077500_1..N03X053",
+                target_date,
+            )
+
+        assert result is not None
+        assert result[0]["station_code"] == "S132"
+        resolve.assert_awaited_once_with(
+            mock_db,
+            "077500_1..N03X053",
+            target_date,
+            {"SUNDAY"},
+        )
+
+    @pytest.mark.parametrize(
+        ("trip_id", "expected"),
+        [
+            ("077500_1..N03X053", "077500_1..N03X053"),
+            (
+                "L0S2-1-3038-S91_077500_1..N03X053",
+                "077500_1..N03X053",
+            ),
+            (
+                "ASP26GEN-1038-Sunday-00_091100_1..N03R",
+                "091100_1..N03R",
+            ),
+            ("PREFIX_-00300_1..N03R", "-00300_1..N03R"),
+            ("not-a-subway-trip", None),
+            ("PREFIX_091100_bad_extra", None),
+        ],
+    )
+    def test_normalizes_static_and_realtime_ids(self, trip_id, expected):
+        assert _subway_realtime_trip_id(trip_id) == expected
+
+    @pytest.mark.asyncio
+    async def test_active_index_is_built_once_and_marks_duplicates_ambiguous(self):
+        mock_db = AsyncMock()
+        result = MagicMock()
+        result.all.return_value = [
+            (11, "SVC_A_077500_1..N03X053"),
+            (12, "SVC_A_091100_1..N03R"),
+            (13, "SVC_B_091100_1..N03R"),
+        ]
+        mock_db.execute = AsyncMock(return_value=result)
+        target_date = date(2026, 8, 2)
+        services = {"SUNDAY"}
+
+        resolved = await self.service._resolve_subway_static_trip_id(
+            mock_db,
+            "077500_1..N03X053",
+            target_date,
+            services,
+        )
+        ambiguous = await self.service._resolve_subway_static_trip_id(
+            mock_db,
+            "091100_1..N03R",
+            target_date,
+            services,
+        )
+        missing = await self.service._resolve_subway_static_trip_id(
+            mock_db,
+            "099999_1..N03R",
+            target_date,
+            services,
+        )
+
+        assert resolved == 11
+        assert ambiguous is None
+        assert missing is None
+        assert mock_db.execute.await_count == 1
+
+        self.service.clear_subway_realtime_trip_cache()
+        await self.service._resolve_subway_static_trip_id(
+            mock_db,
+            "077500_1..N03X053",
+            target_date,
+            services,
+        )
+        assert mock_db.execute.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_subway_index_filters_inactive_duplicates(self, db_session):
+        route = GTFSRoute(
+            data_source="SUBWAY",
+            route_id="1",
+            route_short_name="1",
+            route_long_name="Broadway-7 Avenue",
+            route_color="EE352E",
+        )
+        db_session.add(route)
+        await db_session.flush()
+        active_trip = GTFSTrip(
+            data_source="SUBWAY",
+            trip_id="ACTIVE_PREFIX_077500_1..N03X053",
+            route_id=route.id,
+            service_id="ACTIVE",
+            trip_headsign="Van Cortlandt Park-242 St",
+            direction_id=0,
+        )
+        inactive_trip = GTFSTrip(
+            data_source="SUBWAY",
+            trip_id="INACTIVE_PREFIX_077500_1..N03X053",
+            route_id=route.id,
+            service_id="INACTIVE",
+            trip_headsign="Van Cortlandt Park-242 St",
+            direction_id=0,
+        )
+        db_session.add_all([active_trip, inactive_trip])
+        await db_session.flush()
+        target_date = date(2026, 8, 2)
+
+        resolved = await self.service._resolve_subway_static_trip_id(
+            db_session,
+            "077500_1..N03X053",
+            target_date,
+            {"ACTIVE"},
+        )
+        assert resolved == active_trip.id
+
+        self.service.clear_subway_realtime_trip_cache()
+        ambiguous = await self.service._resolve_subway_static_trip_id(
+            db_session,
+            "077500_1..N03X053",
+            target_date,
+            {"ACTIVE", "INACTIVE"},
+        )
+        assert ambiguous is None
+
+    @pytest.mark.asyncio
+    async def test_prefixed_subway_static_id_keeps_exact_lookup_path(self):
+        mock_db = AsyncMock()
+        target_date = date(2026, 8, 2)
+        trip_row = MagicMock()
+        trip_row.id = 42
+        stop_result = MagicMock()
+        stop_result.all.return_value = []
+        mock_db.execute = AsyncMock(return_value=stop_result)
+        static_trip_id = "SVC_A_077500_1..N03X053"
+
+        with (
+            patch.object(
+                self.service, "get_active_service_ids", return_value={"SUNDAY"}
+            ),
+            patch.object(
+                self.service, "_find_trip_in_source", return_value=trip_row
+            ) as find_trip,
+            patch.object(self.service, "_resolve_subway_static_trip_id") as resolve,
+        ):
+            await self.service.get_static_stop_times(
+                mock_db, "SUBWAY", static_trip_id, target_date
+            )
+
+        find_trip.assert_awaited_once_with(
+            mock_db, static_trip_id, "SUBWAY", {"SUNDAY"}, "trip_id"
+        )
+        resolve.assert_not_awaited()
 
     @pytest.mark.asyncio
     async def test_returns_stops_for_valid_trip(self):

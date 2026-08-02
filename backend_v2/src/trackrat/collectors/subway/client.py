@@ -8,7 +8,7 @@ the NYCT protobuf extensions for train_id, is_assigned, and direction.
 import asyncio
 import logging
 import re
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -73,6 +73,16 @@ _ROUTE_TO_FEED: dict[str, str] = {
 _NYCT_TRIP_ORIGIN_RE = re.compile(r"^(-?\d+)_")
 
 
+def parse_nyct_service_date(start_date: str | None) -> date | None:
+    """Parse a GTFS-RT service date without conflating it with wall-clock date."""
+    if not start_date or re.fullmatch(r"\d{8}", start_date) is None:
+        return None
+    try:
+        return datetime.strptime(start_date, "%Y%m%d").date()
+    except ValueError:
+        return None
+
+
 def parse_nyct_trip_origin_time(
     trip_id: str, start_date: str | None
 ) -> datetime | None:
@@ -95,10 +105,15 @@ def parse_nyct_trip_origin_time(
         missing or malformed — callers then fall back to their own guards.
     """
     match = _NYCT_TRIP_ORIGIN_RE.match(trip_id)
-    if not match or not start_date:
+    service_date = parse_nyct_service_date(start_date)
+    if not match or service_date is None:
         return None
     try:
-        midnight = datetime.strptime(start_date, "%Y%m%d")
+        midnight = datetime(
+            service_date.year,
+            service_date.month,
+            service_date.day,
+        )
         # Wall-clock arithmetic before localizing: the encoded value is minutes
         # past local midnight, not an elapsed-time offset. The regex bounds the
         # prefix to digits but not its magnitude, and an absurd one overflows
@@ -128,6 +143,9 @@ class SubwayArrival(BaseModel):
     # The trip's own origin departure, decoded from the trip_id. None when the
     # feed omits start_date or the id doesn't carry the encoding.
     trip_origin_time: datetime | None = None
+    # GTFS service date from TripDescriptor.start_date. This can differ from
+    # the first visible arrival's calendar date after midnight.
+    service_date: date | None = None
 
     class Config:
         """Pydantic config."""
@@ -234,6 +252,7 @@ class SubwayClient:
                 trip_id = trip.trip_id if trip.HasField("trip_id") else ""
                 route_id = trip.route_id if trip.HasField("route_id") else ""
                 start_date = trip.start_date if trip.HasField("start_date") else None
+                service_date = parse_nyct_service_date(start_date)
                 trip_origin_time = parse_nyct_trip_origin_time(trip_id, start_date)
 
                 # Extract NYCT trip descriptor extension
@@ -306,6 +325,7 @@ class SubwayClient:
                             nyct_train_id=nyct_train_id,
                             is_assigned=is_assigned,
                             trip_origin_time=trip_origin_time,
+                            service_date=service_date,
                         )
                     )
 

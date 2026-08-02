@@ -475,6 +475,7 @@ class TestSubwayClient:
         trip = entity.trip_update.trip
         trip.trip_id = "131800_1..S03R"
         trip.route_id = "1"
+        trip.start_date = "20260802"
 
         stu = entity.trip_update.stop_time_update.add()
         stu.stop_id = "127S"
@@ -517,6 +518,10 @@ class TestSubwayClient:
             arrival.direction_id == 1
         ), f"Expected 1 (SOUTH), got {arrival.direction_id}"
         assert arrival.track == "M1"
+        assert arrival.service_date is not None
+        assert arrival.service_date.isoformat() == "2026-08-02"
+        assert arrival.trip_origin_time is not None
+        assert arrival.trip_origin_time.date().isoformat() == "2026-08-02"
 
     @pytest.mark.asyncio
     async def test_fetch_feed_handles_missing_extensions(self, client):
