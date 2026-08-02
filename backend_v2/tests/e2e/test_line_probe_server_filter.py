@@ -44,6 +44,14 @@ BERGEN = "NC"
 # line's train falls outside it unless the server filters first.
 SIBLING_COUNT = 60
 
+# The Main train has to depart after every sibling (so the limit really does
+# hide it) while staying inside the window the endpoint queries by default:
+# today 00:00 ET through +26h. That headroom shrinks as the day advances and
+# bottoms out at ~120 minutes just before midnight, so a fixed +180 put the
+# train past the window — and failed both scoped tests — on any run after
+# 23:00 ET. Sits clear of both bounds: SIBLING_COUNT + 5 < 90 < 120.
+MAIN_DEPARTURE_OFFSET_MINUTES = 90
+
 
 def _seed_journey(session, *, train_id, line_code, departs_in_minutes):
     """Persist one upcoming NJT journey with an origin and a terminal stop."""
@@ -112,7 +120,10 @@ def busy_shared_terminal(sync_session):
             departs_in_minutes=5 + i,
         )
     _seed_journey(
-        sync_session, train_id="MAIN_1", line_code=MAIN, departs_in_minutes=180
+        sync_session,
+        train_id="MAIN_1",
+        line_code=MAIN,
+        departs_in_minutes=MAIN_DEPARTURE_OFFSET_MINUTES,
     )
     sync_session.commit()
 
