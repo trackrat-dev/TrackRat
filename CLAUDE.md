@@ -178,16 +178,22 @@ poetry run python3 ../scripts/ground-truth-validate.py --coverage            # W
 poetry run python3 ../scripts/ground-truth-validate.py --coverage --verbose  # also list live lines
 poetry run python3 ../scripts/ground-truth-validate.py --coverage --fail-empty  # exit 1 on any empty line (CI gate)
 poetry run python3 ../scripts/ground-truth-validate.py --coverage --fail-no-realtime  # exit 1 if a source served zero OBSERVED
+poetry run python3 ../scripts/ground-truth-validate.py --coverage --fail-empty --fail-no-realtime  # both (soak gate)
 ```
 
 Empty lines and dark real-time ingest are WARN by default (low-frequency / overnight
 gaps can be legitimate); `--fail-empty` and `--fail-no-realtime` escalate to FAIL for
-CI. Also wired into `validate-staging.sh --coverage`.
+CI. `validate-staging.sh --coverage` runs the sweep in its default WARN mode, so it
+reports but does not gate — invoke the sweep directly with both flags when the run is
+meant to be a gate.
 
 A schedule-first source has a second silent failure mode the sweep cannot see at all:
 serving an expired timetable. `/health`'s `gtfs_feeds` check reports `lapsed_sources`
 plus per-feed `feed_end_date` / `days_until_feed_end` for that, separately from
-`stale_sources` (which measures download age, not calendar validity).
+`stale_sources` (which measures download age, not calendar validity). Because `/health`
+still returns 200 for a lapsed bundle, `verify-deployment.sh` asserts on
+`lapsed_sources` explicitly and exits non-zero — a lapse fails step 1 of
+`validate-staging.sh`, rather than sitting in the JSON for someone to notice.
 
 **Server Usage Report:**
 

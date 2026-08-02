@@ -73,6 +73,44 @@ for i in $(seq 1 $MAX_RETRIES); do
     fi
 done
 
+# GTFS calendar lapse check
+#
+# /health reports a lapsed bundle as a `warning` and still returns HTTP 200, so
+# the curl above passes while a source serves an expired timetable. That is the
+# dominant silent failure for a schedule-first source (PATCO, SEPTA Metro):
+# the feed re-downloads nightly and looks fresh, departures keep appearing, and
+# every one of them is fabricated from a dead calendar. Asserted here rather
+# than left to an operator reading JSON, so the staging validation path actually
+# gates it (issue #1634).
+#
+# Absent on deployments predating the `lapsed_sources` field, which read as
+# empty — unknown is not lapsed, matching GTFSFeedStatus.is_lapsed.
+echo ""
+echo "📅 Checking GTFS feed calendars..."
+
+if ! LAPSED_SOURCES=$(python3 -c '
+import json
+
+with open("/tmp/health-response.json") as fh:
+    health = json.load(fh)
+
+gtfs = health.get("checks", {}).get("gtfs_feeds") or {}
+print(",".join(gtfs.get("lapsed_sources") or []))
+' 2>/dev/null); then
+    echo "   ❌ Could not parse the health response for GTFS feed status"
+    exit 1
+fi
+
+if [[ -n "$LAPSED_SOURCES" ]]; then
+    echo "   ❌ GTFS bundle calendar has lapsed: $LAPSED_SOURCES"
+    echo "      These sources are still serving departures, generated from a"
+    echo "      timetable whose service period has already ended. Check the daily"
+    echo "      gtfs_feed_refresh job and the upstream feed URL."
+    exit 1
+fi
+
+echo "   ✅ No lapsed GTFS bundles"
+
 # API Endpoint Tests
 echo ""
 echo "🧪 Testing API endpoints..."
