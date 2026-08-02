@@ -1319,10 +1319,15 @@ class TestDepartureServiceIntegration:
 class TestPathCutoffTime:
     """Test suite for dynamic PATH train cutoff time calculation."""
 
-    async def test_no_observed_trains_returns_minimum_cutoff(
+    async def test_no_observed_trains_serves_full_timetable(
         self, db_session: AsyncSession
     ):
-        """When no observed PATH trains exist, cutoff is now + 20 min."""
+        """With no observed PATH trains, nothing suppresses the timetable.
+
+        Regression for #1724: this used to return now + 20 min, which hid
+        every GTFS row for the next 20 minutes in exactly the situation where
+        the timetable is the only data left — a total collector outage.
+        """
         service = DepartureService()
         current_time = now_et()
         today = current_time.date()
@@ -1332,15 +1337,21 @@ class TestPathCutoffTime:
             db_session, "PWC", current_time, today
         )
 
-        # Should return minimum: now + 20 minutes
-        expected = current_time + timedelta(minutes=20)
+        # Cutoff collapses to "now", so the GTFS filter becomes a no-op and
+        # the board degrades to schedule-only rather than to an empty list.
         # Allow 1 second tolerance for test execution time
-        assert abs((cutoff - expected).total_seconds()) < 1
+        assert abs((cutoff - current_time).total_seconds()) < 1
 
-    async def test_observed_train_within_minimum_uses_minimum(
+    async def test_observed_train_within_twenty_minutes_fills_from_coverage_end(
         self, db_session: AsyncSession
     ):
-        """When last observed train is within 20 min, use 20 min minimum."""
+        """Real-time ending inside 20 min hands off to GTFS where it ends.
+
+        Regression for #1724, and the exact production shape reported in
+        #1672: PWC → PNK had its newest OBSERVED row ~5 min out, the fixed
+        now+20 floor suppressed every GTFS row below that horizon, and the
+        board showed nothing between the two.
+        """
         service = DepartureService()
         current_time = now_et()
         today = current_time.date()
@@ -1378,15 +1389,19 @@ class TestPathCutoffTime:
             db_session, "PWC", current_time, today
         )
 
-        # Last observed at +10 min → +12 min cutoff
-        # But minimum is +20 min, so should use minimum
-        expected = current_time + timedelta(minutes=20)
+        # Last observed at +10 min → +12 min cutoff. The old +20 min floor no
+        # longer overrides it, so GTFS rows from +12 on are free to fill in.
+        expected = current_time + timedelta(minutes=12)
         assert abs((cutoff - expected).total_seconds()) < 1
 
-    async def test_observed_train_beyond_minimum_uses_observed_plus_buffer(
+        # The window the blackout used to swallow is now served: a timetable
+        # departure at +15 sits above the cutoff instead of being suppressed.
+        assert current_time + timedelta(minutes=15) > cutoff
+
+    async def test_observed_train_beyond_twenty_minutes_uses_observed_plus_buffer(
         self, db_session: AsyncSession
     ):
-        """When last observed train is beyond 20 min, use observed + 2 min."""
+        """Healthy deep coverage still suppresses GTFS up to where it ends."""
         service = DepartureService()
         current_time = now_et()
         today = current_time.date()
@@ -1424,7 +1439,8 @@ class TestPathCutoffTime:
             db_session, "PWC", current_time, today
         )
 
-        # Last observed at +25 min → +27 min cutoff (greater than +20 min minimum)
+        # Last observed at +25 min → +27 min cutoff. Unchanged by #1724: the
+        # old max() picked this same value whenever coverage ran past +18.
         expected = current_time + timedelta(minutes=27)
         assert abs((cutoff - expected).total_seconds()) < 1
 
@@ -1464,9 +1480,9 @@ class TestPathCutoffTime:
             db_session, "PWC", current_time, today
         )
 
-        # Past train should be ignored, so use minimum cutoff
-        expected = current_time + timedelta(minutes=20)
-        assert abs((cutoff - expected).total_seconds()) < 1
+        # Past train should be ignored, leaving no forward coverage at all —
+        # so nothing suppresses the timetable.
+        assert abs((cutoff - current_time).total_seconds()) < 1
 
     async def test_only_considers_observed_trains(self, db_session: AsyncSession):
         """SCHEDULED trains (not yet seen in realtime) should not affect cutoff."""
@@ -1504,9 +1520,9 @@ class TestPathCutoffTime:
             db_session, "PWC", current_time, today
         )
 
-        # SCHEDULED train should be ignored, so use minimum cutoff
-        expected = current_time + timedelta(minutes=20)
-        assert abs((cutoff - expected).total_seconds()) < 1
+        # SCHEDULED train should be ignored — it is not real-time coverage, so
+        # it cannot suppress its own timetable row.
+        assert abs((cutoff - current_time).total_seconds()) < 1
 
     async def test_station_specific_cutoff(self, db_session: AsyncSession):
         """Cutoff is calculated per-station, not globally."""
@@ -1547,12 +1563,12 @@ class TestPathCutoffTime:
         expected_pwc = current_time + timedelta(minutes=32)  # 30 + 2 min buffer
         assert abs((pwc_cutoff - expected_pwc).total_seconds()) < 1
 
-        # Check cutoff for PHO (Hoboken) - no observed trains there
+        # Check cutoff for PHO (Hoboken) - no observed trains there, so its
+        # timetable is served in full while PWC's stays suppressed to +32.
         pho_cutoff = await service._get_path_cutoff_time(
             db_session, "PHO", current_time, today
         )
-        expected_pho = current_time + timedelta(minutes=20)  # minimum
-        assert abs((pho_cutoff - expected_pho).total_seconds()) < 1
+        assert abs((pho_cutoff - current_time).total_seconds()) < 1
 
     async def test_multiple_observed_trains_uses_latest(self, db_session: AsyncSession):
         """When multiple observed trains exist, use the one with latest departure."""
@@ -1619,6 +1635,230 @@ class TestPathCutoffTime:
         # Should use the later train: 35 min + 2 min buffer = 37 min
         expected = current_time + timedelta(minutes=37)
         assert abs((cutoff - expected).total_seconds()) < 1
+
+    async def test_stalled_collector_serves_full_timetable(
+        self, db_session: AsyncSession
+    ):
+        """A stalled collector degrades to schedule-only, not to an empty board.
+
+        Acceptance criterion for #1724. The journey still has a future
+        scheduled departure, so the horizon check alone would happily keep
+        suppressing GTFS behind it — only the freshness check catches that the
+        rows are stale and stops them gating the timetable.
+        """
+        service = DepartureService()
+        current_time = now_et()
+        today = current_time.date()
+
+        # Observed train still departing in 30 min, but last collected well
+        # beyond PATH_REALTIME_STALE_AFTER (10 min) — the PATH collector runs
+        # every 4 minutes, so this is several missed cycles.
+        stale_journey = TrainJourney(
+            train_id="PATH_PWC_hoboken_stalled",
+            journey_date=today,
+            data_source="PATH",
+            observation_type="OBSERVED",
+            line_code="HOB-33",
+            destination="Hoboken",
+            origin_station_code="PWC",
+            terminal_station_code="PHO",
+            scheduled_departure=current_time + timedelta(minutes=30),
+            first_seen_at=current_time - timedelta(minutes=60),
+            last_updated_at=current_time - timedelta(minutes=25),
+            update_count=1,
+        )
+        stale_stop = JourneyStop(
+            station_code="PWC",
+            station_name="World Trade Center",
+            scheduled_departure=current_time + timedelta(minutes=30),
+            stop_sequence=0,
+            has_departed_station=False,
+        )
+        stale_journey.stops = [stale_stop]
+        db_session.add(stale_journey)
+        await db_session.commit()
+
+        cutoff = await service._get_path_cutoff_time(
+            db_session, "PWC", current_time, today
+        )
+
+        # Stale rows must not suppress anything.
+        assert abs((cutoff - current_time).total_seconds()) < 1
+
+    async def test_recently_collected_feed_still_suppresses_duplicates(
+        self, db_session: AsyncSession
+    ):
+        """Freshness check must not weaken duplicate suppression on a live feed.
+
+        Guards the other half of #1724's acceptance criteria: a feed collected
+        within PATH_REALTIME_STALE_AFTER keeps its full suppression window, so
+        removing the fixed floor doesn't start double-listing trains.
+        """
+        service = DepartureService()
+        current_time = now_et()
+        today = current_time.date()
+
+        # Collected 6 minutes ago — one missed cycle, still inside the window.
+        fresh_journey = TrainJourney(
+            train_id="PATH_PWC_hoboken_fresh",
+            journey_date=today,
+            data_source="PATH",
+            observation_type="OBSERVED",
+            line_code="HOB-33",
+            destination="Hoboken",
+            origin_station_code="PWC",
+            terminal_station_code="PHO",
+            scheduled_departure=current_time + timedelta(minutes=30),
+            first_seen_at=current_time - timedelta(minutes=20),
+            last_updated_at=current_time - timedelta(minutes=6),
+            update_count=1,
+        )
+        fresh_stop = JourneyStop(
+            station_code="PWC",
+            station_name="World Trade Center",
+            scheduled_departure=current_time + timedelta(minutes=30),
+            stop_sequence=0,
+            has_departed_station=False,
+        )
+        fresh_journey.stops = [fresh_stop]
+        db_session.add(fresh_journey)
+        await db_session.commit()
+
+        cutoff = await service._get_path_cutoff_time(
+            db_session, "PWC", current_time, today
+        )
+
+        # +30 min coverage + 2 min buffer, unaffected by the staleness check.
+        expected = current_time + timedelta(minutes=32)
+        assert abs((cutoff - expected).total_seconds()) < 1
+
+    async def test_stale_row_does_not_set_horizon_for_fresh_station(
+        self, db_session: AsyncSession
+    ):
+        """Freshness is per row, not per station.
+
+        A stale ghost row (last collected 25 min ago, departing +40) sitting
+        alongside a fresh row (collected now, departing +5) must not set the
+        cutoff to +42. Checking only whether *some* row at the station is
+        fresh would let it, re-creating #1724's blackout off a single
+        abandoned journey — here it would suppress ~37 minutes of timetable.
+        """
+        service = DepartureService()
+        current_time = now_et()
+        today = current_time.date()
+
+        stale_ghost = TrainJourney(
+            train_id="PATH_PWC_hoboken_ghost",
+            journey_date=today,
+            data_source="PATH",
+            observation_type="OBSERVED",
+            line_code="HOB-33",
+            destination="Hoboken",
+            origin_station_code="PWC",
+            terminal_station_code="PHO",
+            scheduled_departure=current_time + timedelta(minutes=40),
+            first_seen_at=current_time - timedelta(minutes=60),
+            last_updated_at=current_time - timedelta(minutes=25),
+            update_count=1,
+        )
+        stale_ghost.stops = [
+            JourneyStop(
+                station_code="PWC",
+                station_name="World Trade Center",
+                scheduled_departure=current_time + timedelta(minutes=40),
+                stop_sequence=0,
+                has_departed_station=False,
+            )
+        ]
+
+        fresh = TrainJourney(
+            train_id="PATH_PWC_hoboken_live",
+            journey_date=today,
+            data_source="PATH",
+            observation_type="OBSERVED",
+            line_code="HOB-33",
+            destination="Hoboken",
+            origin_station_code="PWC",
+            terminal_station_code="PHO",
+            scheduled_departure=current_time + timedelta(minutes=5),
+            first_seen_at=current_time - timedelta(minutes=10),
+            last_updated_at=current_time,
+            update_count=1,
+        )
+        fresh.stops = [
+            JourneyStop(
+                station_code="PWC",
+                station_name="World Trade Center",
+                scheduled_departure=current_time + timedelta(minutes=5),
+                stop_sequence=0,
+                has_departed_station=False,
+            )
+        ]
+
+        db_session.add(stale_ghost)
+        db_session.add(fresh)
+        await db_session.commit()
+
+        cutoff = await service._get_path_cutoff_time(
+            db_session, "PWC", current_time, today
+        )
+
+        # Horizon comes from the fresh row only: +5 + 2 min buffer.
+        expected = current_time + timedelta(minutes=7)
+        assert abs((cutoff - expected).total_seconds()) < 1
+        # And emphatically not from the stale ghost.
+        assert cutoff < current_time + timedelta(minutes=40)
+
+    async def test_production_blackout_scenario_is_covered(
+        self, db_session: AsyncSession
+    ):
+        """Reproduces the #1672 PWC → PNK board that reported this bug.
+
+        At 09:23 ET the newest OBSERVED row was 09:28 and the next SCHEDULED
+        rows were 09:49 / 10:00 — RidePATH's 09:33 train appeared as neither.
+        The cutoff must now sit below that 09:33 timetable row so it is served.
+        """
+        service = DepartureService()
+        current_time = now_et()
+        today = current_time.date()
+
+        # Newest observed departure ~5 min out, matching the reported board.
+        observed = TrainJourney(
+            train_id="PATH_PWC_newark_1785245340",
+            journey_date=today,
+            data_source="PATH",
+            observation_type="OBSERVED",
+            line_code="NWK-WTC",
+            destination="Newark",
+            origin_station_code="PWC",
+            terminal_station_code="PNK",
+            scheduled_departure=current_time + timedelta(minutes=5),
+            first_seen_at=current_time - timedelta(minutes=10),
+            last_updated_at=current_time - timedelta(minutes=1),
+            update_count=1,
+        )
+        observed_stop = JourneyStop(
+            station_code="PWC",
+            station_name="World Trade Center",
+            scheduled_departure=current_time + timedelta(minutes=5),
+            stop_sequence=0,
+            has_departed_station=False,
+        )
+        observed.stops = [observed_stop]
+        db_session.add(observed)
+        await db_session.commit()
+
+        cutoff = await service._get_path_cutoff_time(
+            db_session, "PWC", current_time, today
+        )
+
+        # The 09:33-equivalent timetable row (+10 min) must clear the cutoff.
+        # Under the old floor the cutoff was +20, so it was suppressed and the
+        # board jumped straight from +5 to the +26 scheduled row.
+        assert current_time + timedelta(minutes=10) > cutoff
+        # The already-observed +5 train is still suppressed, so it is not
+        # listed twice.
+        assert current_time + timedelta(minutes=5) < cutoff
 
     async def test_hide_departed_excludes_past_cancelled_trains(
         self, db_session: AsyncSession
