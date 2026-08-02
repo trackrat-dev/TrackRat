@@ -202,32 +202,6 @@ resource "google_compute_instance_template" "trackrat" {
         exit 1
       fi
 
-      # Cloudflare Tunnel is opt-in: only fetch its (isolated) compose file when the
-      # committed flag is on AND a token was read. Kept non-fatal so a missing object
-      # can never abort api/db startup (issue #1578).
-      TUNNEL_ENABLED=0
-      if [ "$ENABLE_CLOUDFLARE_TUNNEL" = "true" ] && [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
-        echo "=== Downloading docker-compose.tunnel.yml (tunnel enabled) ==="
-        if toolbox --quiet gsutil cp "gs://$DEPLOY_BUCKET/docker-compose.tunnel.yml" "$APP_DIR/docker-compose.tunnel.yml"; then
-          TUNNEL_TOOLBOX_FILE=$(find /var/lib/toolbox -name "docker-compose.tunnel.yml" -path "*/mnt/disks/data/compose/*" 2>/dev/null | head -1)
-          if [ -n "$TUNNEL_TOOLBOX_FILE" ]; then
-            cp "$TUNNEL_TOOLBOX_FILE" "$APP_DIR/docker-compose.tunnel.yml"
-          fi
-        fi
-        if [ -f "$APP_DIR/docker-compose.tunnel.yml" ]; then
-          TUNNEL_ENABLED=1
-        else
-          echo "WARN: tunnel enabled but docker-compose.tunnel.yml missing — skipping connector; api/db unaffected"
-        fi
-      else
-        # Tunnel off this boot: remove any stale tunnel file so that file
-        # presence always means "tunnel enabled this boot" — the shutdown
-        # drain below relies on that invariant. $APP_DIR is on the persistent
-        # data disk (and staging's disk is cloned from production's on every
-        # deploy), so a file from a prior enabled boot can otherwise linger.
-        rm -f "$APP_DIR/docker-compose.tunnel.yml"
-      fi
-
       # ===========================================
       # 6. Create .env file with configuration
       # ===========================================
@@ -252,6 +226,47 @@ TRACKRAT_ENVIRONMENT=$ENVIRONMENT
 TRACKRAT_LOG_LEVEL=INFO
 TRACKRAT_DISABLED_DATA_SOURCES=${local.disabled_data_sources}
 ENVEOF
+
+      # Cloudflare Tunnel is opt-in: only fetch its (isolated) compose file when the
+      # committed flag is on AND a token was read. Kept non-fatal so a missing object
+      # can never abort api/db startup (issue #1578). It runs after .env exists so
+      # the validation below sees the same substitutions the bring-up will.
+      TUNNEL_ENABLED=0
+      # Clear stale connector config unconditionally, before any download attempt.
+      # File presence is the invariant everything downstream keys off (the bring-up
+      # in section 7 and the shutdown drain), so it must mean "downloaded and
+      # validated THIS boot". $APP_DIR is on the persistent data disk (and staging's
+      # is cloned from production's on every deploy), so a file from a prior enabled
+      # boot otherwise lingers — and a failed download would then silently launch
+      # last boot's connector definition instead of failing closed (issue #1594).
+      rm -f "$APP_DIR/docker-compose.tunnel.yml"
+      if [ "$ENABLE_CLOUDFLARE_TUNNEL" = "true" ] && [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
+        echo "=== Downloading docker-compose.tunnel.yml (tunnel enabled) ==="
+        # Download to a unique per-boot temp file: the toolbox-mount lookup below is
+        # a name-based find, so a fixed name could resolve to a copy left inside the
+        # toolbox chroot by an earlier boot even when this boot's download failed.
+        TUNNEL_TMP=$(mktemp "$APP_DIR/docker-compose.tunnel.yml.XXXXXX")
+        TUNNEL_TMP_NAME=$(basename "$TUNNEL_TMP")
+        if toolbox --quiet gsutil cp "gs://$DEPLOY_BUCKET/docker-compose.tunnel.yml" "$TUNNEL_TMP"; then
+          TUNNEL_TOOLBOX_FILE=$(find /var/lib/toolbox -name "$TUNNEL_TMP_NAME" -path "*/mnt/disks/data/compose/*" 2>/dev/null | head -1)
+          if [ -n "$TUNNEL_TOOLBOX_FILE" ]; then
+            cp "$TUNNEL_TOOLBOX_FILE" "$TUNNEL_TMP"
+          fi
+        fi
+        # Install over the real path only after the download parses as a compose
+        # file, and only via mv (atomic within $APP_DIR) — a partial or malformed
+        # download must never become the file the connector bring-up loads.
+        if [ ! -s "$TUNNEL_TMP" ]; then
+          echo "WARN: tunnel enabled but docker-compose.tunnel.yml download failed — connector disabled this boot; api/db unaffected"
+        elif ! $COMPOSE_PATH -f "$APP_DIR/docker-compose.yml" -f "$TUNNEL_TMP" config -q; then
+          echo "WARN: tunnel enabled but downloaded docker-compose.tunnel.yml failed validation — connector disabled this boot; api/db unaffected"
+        elif mv -f "$TUNNEL_TMP" "$APP_DIR/docker-compose.tunnel.yml"; then
+          TUNNEL_ENABLED=1
+        else
+          echo "WARN: tunnel enabled but installing docker-compose.tunnel.yml failed — connector disabled this boot; api/db unaffected"
+        fi
+        rm -f "$TUNNEL_TMP"
+      fi
 
       # Write the tunnel token for the (separately brought-up) cloudflared service
       # only when the connector is actually enabled. No COMPOSE_PROFILES here — the
