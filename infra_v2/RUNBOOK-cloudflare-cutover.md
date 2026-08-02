@@ -183,6 +183,12 @@ Phases complete: **0 of 4.** (The LB consolidation was a different runbook.)
   separate **non-fatal** `up -d --no-deps cloudflared` (issue #1594). The
   shutdown script drains the connector first so Cloudflare's edge deregisters
   the instance before the API goes away.
+  The connector config itself **fails closed** (issue #1594): the stale tunnel
+  file is removed before any download attempt, the download lands in a unique
+  temp file that is validated with `compose config -q` and only then `mv`d into
+  place. A failed or malformed download therefore leaves the connector off for
+  that boot — grep `/var/log/startup.log` for `WARN: tunnel enabled but` — rather
+  than launching the definition a previous boot left on the persistent disk.
 - `infra_v2/terraform/secrets.tf` — a NOTE only; the tunnel-token secrets and
   their IAM grants stay out-of-band during the cutover.
 
