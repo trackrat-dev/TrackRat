@@ -13,6 +13,7 @@ import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from trackrat.collectors.mta_common import JOURNEY_UPDATE_LOAD_OPTIONS
 from trackrat.collectors.subway.client import (
     _ROUTE_TO_FEED,
     SubwayArrival,
@@ -799,9 +800,18 @@ class TestSubwayCollectorJourneyDetails:
 
         await collector.collect_journey_details(mock_session, journey)
 
-        # Must use trip_correct (track "2" at SL01), NOT trip_wrong
-        assert journey.actual_departure == correct_time
+        # Must use trip_correct (track "2" at SL01), NOT trip_wrong. Asserted on
+        # the times the selected trip actually wrote: the journey's departure is
+        # no longer a proxy for trip selection, because it now comes from the
+        # origin stop rather than from whichever stop the feed lists first.
+        assert stop1.actual_arrival == correct_time
+        assert stop2.actual_arrival == correct_time + timedelta(minutes=10)
         assert journey.actual_arrival == correct_time + timedelta(minutes=10)
+        # SL01 is the origin and the feed sent no departure time for it, so the
+        # departure already recorded there stands. Before, each poll rewrote the
+        # journey's departure to the feed's current estimate for its earliest
+        # visible stop — here, three minutes into the future.
+        assert journey.actual_departure == now - timedelta(minutes=10)
 
     @pytest.mark.asyncio
     async def test_fuzzy_fallback_when_trip_id_changed(
@@ -865,7 +875,11 @@ class TestSubwayCollectorJourneyDetails:
         await collector.collect_journey_details(mock_session, journey)
 
         # Fuzzy fallback should still update the journey
-        assert journey.actual_departure == now + timedelta(seconds=30)
+        assert stop1.actual_arrival == now + timedelta(seconds=30)
+        assert journey.actual_arrival == now + timedelta(seconds=30)
+        # SL01 is the origin and the reassigned trip sent no departure time for
+        # it, so the journey keeps the departure already recorded there.
+        assert journey.actual_departure == now
 
 
 # =============================================================================
@@ -1984,3 +1998,91 @@ class TestSubwaySyntheticOriginRealDatabase:
         assert stops[0].departure_source != "synthetic_origin"
         assert stops[0].has_departed_station is True
         assert stops[0].actual_departure is None
+
+    @pytest.mark.asyncio
+    async def test_backfilled_origin_is_not_recorded_as_a_departure_delay(
+        self, collector, db_session
+    ):
+        """A trip discovered after it left its origin must not be stored as
+        departing late by its own running time.
+
+        Backfilling South Ferry moves `scheduled_departure` to the real origin.
+        Pairing that with the first *visible* stop's live arrival — the only
+        stop the feed still lists — invents a delay equal to the running time
+        between them. `alert_evaluator._is_significantly_delayed` subtracts
+        exactly those two fields, so a train-following subscriber is pushed a
+        delay alert for a train that is on time. Every collector restart
+        rediscovers every in-flight train mid-route, so this is the common
+        case, not an edge one.
+        """
+        arrivals = _northbound_1_train(first_stop_minutes_out=2, origin_lead_minutes=8)
+        await self._insert_static_trip(
+            db_session,
+            "091150_1..N03R",
+            arrivals,
+            include_south_ferry=True,
+        )
+
+        _, journey = await collector._process_trip(
+            db_session, "091150_1..N03R", arrivals, None
+        )
+        await db_session.commit()
+        journey, stops = await self._persisted(db_session, journey.train_id)
+
+        # The scheduled side is the backfilled origin's — that pairing is
+        # precisely what made substituting a downstream actual wrong.
+        assert stops[0].station_code == "S142"
+        assert journey.scheduled_departure == stops[0].scheduled_departure
+
+        substituted = arrivals[0].arrival_time - journey.scheduled_departure
+        assert journey.actual_departure is None, (
+            "South Ferry was never observed, so the departure is unknown. "
+            "Using the first visible stop instead would report this on-time "
+            f"train as {substituted.total_seconds() / 60:.0f} minutes late."
+        )
+
+    @pytest.mark.asyncio
+    async def test_update_cycle_keeps_a_backfilled_origin_departure_unknown(
+        self, collector, db_session
+    ):
+        """Fixing only the discovery path would last four minutes.
+
+        `_process_trip` re-runs against the existing journey on every
+        collection cycle, and that branch set the same first-visible-arrival
+        value. The journey is re-read with its stops eagerly loaded, the way
+        the collector's own update query loads them.
+        """
+        arrivals = _northbound_1_train(first_stop_minutes_out=2, origin_lead_minutes=8)
+        await self._insert_static_trip(
+            db_session,
+            "091150_1..N03R",
+            arrivals,
+            include_south_ferry=True,
+        )
+
+        _, created = await collector._process_trip(
+            db_session, "091150_1..N03R", arrivals, None
+        )
+        await db_session.commit()
+        train_id = created.train_id
+
+        db_session.expunge_all()
+        existing = (
+            await db_session.execute(
+                select(TrainJourney)
+                .where(TrainJourney.train_id == train_id)
+                .options(*JOURNEY_UPDATE_LOAD_OPTIONS)
+            )
+        ).scalar_one()
+
+        result, _ = await collector._process_trip(
+            db_session, "091150_1..N03R", arrivals, existing
+        )
+        await db_session.commit()
+        journey, _ = await self._persisted(db_session, train_id)
+
+        assert result == "updated"
+        assert journey.actual_departure is None, (
+            "The update branch must derive the departure from the origin stop "
+            "too, or the next collection cycle reinstates the fabricated delay"
+        )

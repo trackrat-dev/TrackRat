@@ -17,6 +17,7 @@ from trackrat.collectors.mta_common import (
     infer_missing_origin,
     infer_subway_origin,
     nyct_trip_begins_at_first_stop,
+    origin_actual_departure,
     select_matching_trip,
     set_stop_track,
     synthetic_origin_departure,
@@ -467,6 +468,75 @@ class TestSelectMatchingTrip:
         )
 
         assert result is candidate
+
+
+class TestOriginActualDeparture:
+    """Tests for origin_actual_departure().
+
+    The journey's departure belongs to its origin stop, the way its final
+    arrival belongs to its terminal one. GTFS-RT prunes stops a trip has already
+    passed, so a trip first seen mid-route has a static-backfilled origin with
+    no observation at all — and the first stop the feed still lists is not a
+    stand-in for one, because `scheduled_departure` is taken from the origin.
+    """
+
+    def test_returns_the_origin_stops_departure(self):
+        now = datetime.now(timezone.utc)
+        origin = _make_stop("S142", 1, now, actual_departure=now)
+        second = _make_stop("S132", 2, now + timedelta(minutes=8))
+
+        assert origin_actual_departure([origin, second]) == now
+
+    def test_falls_back_to_the_origin_arrival_when_no_departure_was_sent(self):
+        """GTFS-RT often carries only one of the two times. An observed arrival
+        still proves the train was there."""
+        now = datetime.now(timezone.utc)
+        origin = _make_stop("S142", 1, now, actual_arrival=now)
+
+        assert origin_actual_departure([origin]) == now
+
+    def test_returns_none_when_the_origin_was_only_backfilled(self):
+        """The regression: South Ferry came from the static schedule and was
+        never observed, so the real departure is unknown. Returning the first
+        visible stop instead pairs an origin `scheduled_departure` with a
+        downstream `actual_departure`, and every consumer that subtracts the two
+        reads the running time from the origin as delay — most consequentially
+        `alert_evaluator._is_significantly_delayed`.
+        """
+        now = datetime.now(timezone.utc)
+        backfilled_origin = _make_stop("S142", 1, now - timedelta(minutes=8))
+        backfilled_origin.has_departed_station = True
+        observed = _make_stop("S132", 2, now, actual_arrival=now)
+
+        assert origin_actual_departure([backfilled_origin, observed]) is None
+
+    def test_origin_is_chosen_by_sequence_not_list_order(self):
+        now = datetime.now(timezone.utc)
+        origin = _make_stop("S142", 1, now, actual_departure=now)
+        later = _make_stop(
+            "S132",
+            2,
+            now + timedelta(minutes=8),
+            actual_departure=now + timedelta(minutes=8),
+        )
+
+        assert origin_actual_departure([later, origin]) == now
+
+    def test_unsequenced_stops_are_ignored(self):
+        """Schedule-only rows can carry a null stop_sequence; they must not be
+        mistaken for the origin (the mirror of check_journey_completed's guard).
+        """
+        now = datetime.now(timezone.utc)
+        unsequenced = _make_stop("S999", 1, now, actual_departure=now)
+        unsequenced.stop_sequence = None
+        origin = _make_stop("S142", 2, now, actual_departure=now + timedelta(minutes=1))
+
+        assert origin_actual_departure([unsequenced, origin]) == now + timedelta(
+            minutes=1
+        )
+
+    def test_returns_none_for_no_stops(self):
+        assert origin_actual_departure([]) is None
 
 
 class TestCheckJourneyCompleted:
