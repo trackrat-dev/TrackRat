@@ -501,11 +501,26 @@ tunnel in Cloudflare.
 
 ### P8. Cleanup (optional, ~1 week later)
 
-The API backend service, its health check, and `trackrat-production-cert` are
-dead once nothing routes through a Google LB. They are free to keep and serve as
-a rollback path — leave them a week, then remove. Fold the two out-of-band
-secret IAM grants into `secrets.tf` at that point (the note in that file
-anticipates this).
+Removable: the API backend service (`loadbalancer.tf`) and
+`trackrat-production-cert`. Both are dead once nothing routes through a Google
+LB. They are free to keep and serve as a rollback path — leave them a week, then
+remove. Fold the two out-of-band secret IAM grants into `secrets.tf` at that
+point (the note in that file anticipates this).
+
+**Must keep — do not delete with the load balancer:**
+
+| Resource | Why it outlives the LB |
+|---|---|
+| `google_compute_health_check.trackrat` (`compute.tf:405`) | Also drives the MIG's `auto_healing_policies` (`compute.tf:437-440`), not just the backend service |
+| `google_compute_firewall.allow_health_checks` (`network.tf:5`) | Auto-healing probes come from `130.211.0.0/22` + `35.191.0.0/16` on port 8000 — the same ranges the LB used |
+
+The health check has two consumers: `loadbalancer.tf:72` (backend service, dies
+with the cutover) and `compute.tf:438` (MIG auto-healing, does not). Deleting it
+leaves the production MIG unable to replace a wedged instance, and the failure is
+**silent** — nothing breaks at deletion time; you find out the next time an
+instance needs auto-healing and doesn't get it. Neither resource is `count`-gated,
+so nothing in Terraform protects against removing them by hand in the console.
+This matches the invariant already stated for the staging rehearsal in S9.
 
 ---
 
