@@ -99,16 +99,22 @@ def test_tunnel_connector_not_gated_by_compose_profile():
 # --------------------------------------------------------------------------- #
 
 
-def test_enable_cloudflare_tunnel_variable_defaults_off():
+def test_enable_cloudflare_tunnel_variable_has_committed_boolean_default():
+    """The connector must be gated by a committed default — never by secret
+    presence or an ad-hoc ``-var`` (the #1578 failure mode). The flag shipped
+    ``false`` until the staging cutover deliberately flipped it (see
+    infra_v2/RUNBOOK-cloudflare-cutover.md); either value is a valid deliberate
+    choice, but the block must keep an explicit literal boolean default so
+    push-triggered applies stay consistent across workspaces."""
     text = _VARIABLES_TF.read_text()
     assert 'variable "enable_cloudflare_tunnel"' in text
-    # The block must default to false (committed-off).
     block = text.split('variable "enable_cloudflare_tunnel"', 1)[1].split(
         "variable ", 1
     )[0]
+    assert "type        = bool" in block
     assert (
-        "default     = false" in block
-    ), "connector must ship off by default (issue #1578)"
+        "default     = true" in block or "default     = false" in block
+    ), "connector gate must keep an explicit committed boolean default (issue #1578)"
 
 
 def test_startup_script_gates_connector_on_flag_and_token():
