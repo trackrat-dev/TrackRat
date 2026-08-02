@@ -239,22 +239,35 @@ def fetch_lb_logs(token, env, hours):
 
 
 def lb_traffic_source_note(env, lb_entry_count):
-    """Explain an empty load-balancer window, or return None when the counts are real.
+    """Caveat the API traffic counts when they cannot be read as real, else None.
 
-    The API traffic section is derived entirely from load balancer logs. When
-    that window comes back empty the report cannot tell "nobody used the server"
-    from "the traffic never touched the load balancer", and silently rendering
-    zeros asserts the first. Returns a caveat to print alongside those zeros;
-    returns None whenever any LB entry was seen, so a normal report is unchanged.
+    The API traffic section is derived entirely from load balancer logs, so it
+    is only a measure of real traffic when the API actually goes through the
+    load balancer. Two ways it is not:
+
+    - A tunnel-fronted env never routes its API through the LB at all. The
+      count is checked *before* lb_entry_count because a nonzero count does not
+      clear staging: the same forwarding rule host-routes staging.trackrat.net
+      to the webpage bucket, so browsing the staging site — or a scanner, or
+      the legacy API host — puts entries in this window while every real
+      staging-api.trackrat.net request still bypasses it. Suppressing the
+      caveat on those incidental entries would present a partial count as whole.
+    - An empty window anywhere else cannot distinguish "nobody used the server"
+      from "the traffic never touched the load balancer", and rendering bare
+      zeros asserts the first.
+
+    Returns None only when LB entries exist for an LB-fronted env, so a normal
+    production report is unchanged.
     """
-    if lb_entry_count:
-        return None
     if env in TUNNEL_FRONTED_ENVS:
         return (
-            f"No load balancer logs: {env} is fronted by the Cloudflare Tunnel, so its "
-            "requests bypass the load balancer these numbers come from. The API traffic "
+            f"{env} is fronted by the Cloudflare Tunnel, so its API requests bypass "
+            "the load balancer these numbers come from; any entries counted here are "
+            "incidental (webpage host, legacy API host, scanners). The API traffic "
             "and business activity counts below are NOT a measure of real traffic."
         )
+    if lb_entry_count:
+        return None
     return (
         "No load balancer log entries in this window — the counts below are empty "
         "because nothing was recorded, not because it was filtered out."

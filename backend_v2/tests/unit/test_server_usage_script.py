@@ -148,11 +148,33 @@ def test_json_report_includes_client_breakdown(su):
 # "0 requests" states as fact something the report cannot know.
 # ---------------------------------------------------------------------------
 def test_traffic_note_absent_when_lb_entries_exist(su):
-    """A window with real LB entries carries no caveat, tunnel-fronted or not."""
+    """An LB-fronted env with real LB entries carries no caveat."""
+    assert "production" not in su.TUNNEL_FRONTED_ENVS
     assert su.lb_traffic_source_note("production", 1) is None
     assert su.lb_traffic_source_note("production", 4200) is None
-    # Even staging: if LB logs came back, the numbers they produced are real.
-    assert su.lb_traffic_source_note("staging", 1) is None
+
+
+def test_traffic_note_survives_incidental_lb_entries_on_a_tunnel_env(su):
+    """Nonzero LB entries must not clear the caveat for a tunnel-fronted env.
+
+    The staging forwarding rule the script reads also host-routes
+    staging.trackrat.net to the webpage bucket, so browsing the staging site —
+    or a scanner, or the legacy API host — is enough to make lb_entry_count
+    nonzero while every real staging-api.trackrat.net request still travels
+    through the tunnel and is absent from these logs. Clearing the caveat there
+    would present a partial count as a whole one, which is the exact failure
+    this function exists to prevent.
+    """
+    assert "staging" in su.TUNNEL_FRONTED_ENVS
+
+    for count in (1, 37, 4200):
+        note = su.lb_traffic_source_note("staging", count)
+
+        assert note is not None, f"caveat dropped with {count} incidental LB entries"
+        assert "Cloudflare Tunnel" in note
+        assert "NOT a measure of real traffic" in note
+        # The wording must not claim an empty window when entries were counted.
+        assert "No load balancer" not in note
 
 
 def test_traffic_note_names_the_tunnel_for_tunnel_fronted_envs(su):
