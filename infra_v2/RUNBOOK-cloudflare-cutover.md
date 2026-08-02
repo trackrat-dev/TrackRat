@@ -530,17 +530,35 @@ early.
 2. Run the full S8 verification block against that `workers.dev` URL.
    `trackrat.net` is untouched at this point.
 3. Confirm one push writes to both destinations (Worker + GCS bucket).
-4. **This is the cutover.** Add the custom domains to the `production` env in
-   `webpage_v2/wrangler.jsonc` and merge to `production`:
-   ```jsonc
-   "routes": [
-     { "pattern": "trackrat.net",     "custom_domain": true },
-     { "pattern": "www.trackrat.net", "custom_domain": true }
-   ]
-   ```
+4. **This is the cutover.** One hazard first: `trackrat.net` and
+   `www.trackrat.net` still carry the grey `A` records pointing at
+   `136.110.151.144`, and a Custom Domain cannot be created over an existing
+   DNS record — wrangler's conflict path is an interactive "override?" prompt,
+   which has no answer inside the non-TTY Cloud Build. S8 never rehearses this:
+   `staging.trackrat.net` was NXDOMAIN, so its Custom Domain landed on a clean
+   name. So, in this order:
+
+   1. Note the TTL on the two grey `A` records, then delete them in the
+      Cloudflare dashboard. Resolvers keep serving the cached record for that
+      long, which masks most of the gap — and the bucket behind the LB is
+      receiving every build, so anything still resolving the old record serves
+      the current site.
+   2. Immediately add the custom domains to the `production` env in
+      `webpage_v2/wrangler.jsonc` and merge to `production`:
+      ```jsonc
+      "routes": [
+        { "pattern": "trackrat.net",     "custom_domain": true },
+        { "pattern": "www.trackrat.net", "custom_domain": true }
+      ]
+      ```
+
    The deploy creates both Custom Domains, their DNS records and certificates,
-   repointing the apex away from `136.110.151.144`. Re-run the S8 verification
-   block against `https://trackrat.net` and `https://www.trackrat.net`.
+   repointing the apex away from `136.110.151.144`. If the deploy step fails on
+   a record conflict anyway (a record recreated in the meantime), the failure is
+   the safe outcome — the apex keeps resolving to GCS — so fix the record and
+   re-run the trigger rather than working around it locally. Re-run the S8
+   verification block against `https://trackrat.net` and
+   `https://www.trackrat.net`.
 5. **Soak ≥24h.** Then delete the `sync`, `cache-html` and `cache-assets` steps
    and the `_WEBPAGE_BUCKET` substitution from `cloudbuild-webpage.yaml`.
 
