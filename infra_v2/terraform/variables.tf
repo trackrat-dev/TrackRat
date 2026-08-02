@@ -61,7 +61,21 @@ variable "disabled_data_sources" {
   description = "Per-environment TRACKRAT_DISABLED_DATA_SOURCES value: data_source codes fully disabled (collection, schedule generation, GTFS refresh, service-alert polling, and API serving). Keyed by environment so staging can carry a source through a soak while production stays dark — previously this was a single hardcoded literal in compute.tf shared by both workspaces, so enabling a source for a staging soak armed the next production apply to enable it too (issue #1634). Set via committed defaults, not -var: infra_v2/cloudbuild-terraform.yaml auto-applies this root on every deploy-branch push and passes only environment/project_id, so an uncommitted -var would be silently reverted by the next push. Codes must match ALL_DATA_SOURCES in the backend; an unknown code is ignored by settings.py rather than erroring, so a typo here silently ENABLES a source. See infra_v2/RUNBOOK-data-source-flags.md."
   type        = map(list(string))
   default = {
-    staging    = ["BART", "WMATA", "MBTA", "METRA", "SEPTA_RR", "SEPTA_METRO"]
+    # SEPTA soak: both SEPTA systems run in staging only (issue #1634). Every
+    # hard prerequisite is closed (#1567, #1629, #1630, #1631, #1632, #1633);
+    # what remains is the 48-hour soak the staging gates require. Production
+    # stays dark until those gates pass and the iOS/web disabled sets move with
+    # it in one coordinated release.
+    #
+    # Staging has never held a SEPTA GTFS bundle — the flag gates the refresh,
+    # so /health lists no SEPTA feed at all. Both systems depend on it (Metro is
+    # schedule-first; the Regional Rail collector joins its delay-only feed to
+    # the static schedule by trip_id/stop_sequence), and there is no manual
+    # trigger — the daily 3:00 AM ET gtfs_feed_refresh job is what loads it. So
+    # SEPTA serves nothing between this apply and that job, and the soak clock
+    # starts at the first successful parse, not at the apply. See
+    # infra_v2/RUNBOOK-data-source-flags.md.
+    staging    = ["BART", "WMATA", "MBTA", "METRA"]
     production = ["BART", "WMATA", "MBTA", "METRA", "SEPTA_RR", "SEPTA_METRO"]
   }
   validation {
