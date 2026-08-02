@@ -19,6 +19,15 @@ logger = get_logger(__name__)
 # NJT returns HTML error pages (Cloudflare-style 409s) on some failures, and
 # the body was previously interpolated whole into the raised error message.
 NJT_ERROR_BODY_MAX_CHARS = 500
+NJT_REQUIRED_TRAIN_FIELDS = ("TRAIN_ID", "LINECODE", "BACKCOLOR", "DESTINATION")
+
+
+def _has_explicit_null_train_fields(response: dict[str, Any]) -> bool:
+    """Return whether NJT supplied every required train field explicitly null."""
+    return all(
+        field in response and response[field] is None
+        for field in NJT_REQUIRED_TRAIN_FIELDS
+    )
 
 
 class NJTransitAPIError(Exception):
@@ -313,8 +322,7 @@ class NJTransitClient:
         # (getTrainSchedule) even though getTrainStopList returns null data.
         # Distinct from a genuine TrainNotFoundError and must NOT count toward
         # expiry. Persistent rather than transient — see NJTransitNullDataError.
-        required_fields = ["TRAIN_ID", "LINECODE", "BACKCOLOR", "DESTINATION"]
-        if all(response.get(field) is None for field in required_fields):
+        if _has_explicit_null_train_fields(response):
             logger.info(
                 "train_null_data_response",
                 train_id=train_id,

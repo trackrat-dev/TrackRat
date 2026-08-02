@@ -17,8 +17,8 @@ nights of 2026-07-27..07-31), so these tests additionally pin that the
 collector does not retry.
 
 Uses a real in-memory SQLite session (same pattern as
-test_schedule_stop_collection_expired_attribute.py) so the savepoint and
-counter behaviour are genuine rather than asserted against a mock.
+test_schedule_stop_collection_expired_attribute.py) so transaction boundaries
+and counter behaviour are genuine rather than asserted against a mock.
 """
 
 from unittest.mock import AsyncMock, MagicMock
@@ -195,6 +195,9 @@ class TestNullDataIsCountedSeparately:
             f"a healthy run look 20-80% broken: {stats}"
         )
         assert stats["stop_collections_successful"] == 0
+        assert not sqlite_session.in_transaction(), (
+            "null data must end the per-train transaction before continuing"
+        )
 
     @pytest.mark.asyncio
     async def test_null_data_is_logged_without_a_traceback(

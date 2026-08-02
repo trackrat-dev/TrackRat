@@ -7,7 +7,24 @@ from trackrat.collectors.njt.client import (
     NJTransitClient,
     NJTransitNullDataError,
     TrainNotFoundError,
+    _has_explicit_null_train_fields,
 )
+
+
+def test_null_train_data_requires_present_fields():
+    """An error envelope or changed schema must not look like known null data."""
+    assert _has_explicit_null_train_fields(
+        {
+            "TRAIN_ID": None,
+            "LINECODE": None,
+            "BACKCOLOR": None,
+            "DESTINATION": None,
+        }
+    )
+    assert not _has_explicit_null_train_fields({"error": "authentication failed"})
+    assert not _has_explicit_null_train_fields(
+        {"TRAIN_ID": None, "LINECODE": None, "BACKCOLOR": None}
+    )
 
 
 @pytest.mark.asyncio
