@@ -104,14 +104,11 @@ class JourneyFeedbackService: ObservableObject {
 
         print("📊 Journey feedback: User responded positively, requesting App Store review")
 
-        // Request App Store review using the recommended API
+        // Request App Store review using the recommended API. Deferred to the next
+        // main-actor turn so the prompt finishes dismissing before StoreKit takes over.
         Task {
-            do {
-                if let windowScene = await UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                    try await AppStore.requestReview(in: windowScene)
-                }
-            } catch {
-                print("⚠️ Failed to request review: \(error)")
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                AppStore.requestReview(in: windowScene)
             }
         }
     }

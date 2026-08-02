@@ -210,7 +210,7 @@ private struct LegDetailSection: View {
     }
 
     private var lineColor: Color {
-        Color(hex: leg.line.color) ?? .gray
+        Color(hex: leg.line.color)
     }
 
     var body: some View {

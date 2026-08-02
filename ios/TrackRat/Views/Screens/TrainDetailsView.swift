@@ -1748,7 +1748,7 @@ struct SegmentedTrackPredictionView: View {
 
     private func loadAdjustedPredictions() async {
         print("🔄 [TrainDetailsView] Loading predictions for train \(train.trainId)")
-        print("   - Origin: \(train.originStationCode ?? "nil" as String)")
+        print("   - Origin: \(train.originStationCode)")
         print("   - Is NY Penn: \(isDepartingFromNYPenn)")
 
         isLoadingPredictions = true

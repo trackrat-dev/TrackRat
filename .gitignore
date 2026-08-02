@@ -13,6 +13,10 @@ infra/environments/staging/.terraform.lock.hcl
 infra/environments/dev/.terraform/
 infra/environments/dev/.terraform.lock.hcl
 
+# Xcode build products (CI writes these with -derivedDataPath / -resultBundlePath)
+ios/DerivedData/
+ios/TestResults.xcresult/
+
 # Xcode user data
 ios/TrackRat.xcodeproj/project.xcworkspace/xcuserdata/
 ios/TrackRat.xcodeproj/project.xcworkspace/xcuserdata/**

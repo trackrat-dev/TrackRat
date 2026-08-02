@@ -167,7 +167,7 @@ class LiveActivityService: ObservableObject {
             }
 
             // Reset journey feedback state for new activity
-            await JourneyFeedbackService.shared.onActivityStarted()
+            JourneyFeedbackService.shared.onActivityStarted()
 
             print("✅ Live Activity started successfully")
             print("  - Activity ID: \(activity.id)")
@@ -240,7 +240,7 @@ class LiveActivityService: ObservableObject {
         }
 
         // Clear journey feedback state
-        await JourneyFeedbackService.shared.onActivityEnded()
+        JourneyFeedbackService.shared.onActivityEnded()
 
         print("🛑 Live Activity ended and cleaned up")
     }
@@ -295,7 +295,7 @@ class LiveActivityService: ObservableObject {
                 print("🚀 Train departed from origin - triggering journey events")
 
                 // Record trip immediately on departure (Pro feature)
-                await TripRecordingService.shared.recordDeparture(
+                TripRecordingService.shared.recordDeparture(
                     train: train,
                     originCode: activity.attributes.originStationCode,
                     destinationCode: activity.attributes.destinationStationCode,
@@ -304,7 +304,7 @@ class LiveActivityService: ObservableObject {
                 )
 
                 // Trigger feedback eligibility on departure
-                await JourneyFeedbackService.shared.onDeparture(
+                JourneyFeedbackService.shared.onDeparture(
                     trainId: activity.attributes.trainId,
                     originCode: activity.attributes.originStationCode,
                     destinationCode: activity.attributes.destinationStationCode

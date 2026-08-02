@@ -646,15 +646,15 @@ struct TripSelectionView: View {
 
     private func trainSystemColor(for trainNumber: String) -> Color {
         if trainNumber.hasPrefix("A") {
-            return Color(hex: TrainSystem.amtrak.color) ?? .gray
+            return Color(hex: TrainSystem.amtrak.color)
         } else if trainNumber.hasPrefix("S") {
-            return Color(hex: TrainSystem.subway.color) ?? .gray
+            return Color(hex: TrainSystem.subway.color)
         } else if trainNumber.hasPrefix("L") {
-            return Color(hex: TrainSystem.lirr.color) ?? .gray
+            return Color(hex: TrainSystem.lirr.color)
         } else if trainNumber.hasPrefix("M") {
-            return Color(hex: TrainSystem.mnr.color) ?? .gray
+            return Color(hex: TrainSystem.mnr.color)
         } else {
-            return Color(hex: TrainSystem.njt.color) ?? .gray
+            return Color(hex: TrainSystem.njt.color)
         }
     }
     
