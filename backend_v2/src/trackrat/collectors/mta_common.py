@@ -50,6 +50,13 @@ _ORIGIN_TERMINAL_CONFIG: dict[str, tuple[frozenset[str], str | None]] = {
 # Used when synthesizing a departed origin stop without GTFS static data.
 ORIGIN_TRAVEL_BUFFER = timedelta(minutes=10)
 
+# How far a trip's encoded origin must lead its first visible stop before we
+# believe an earlier stop was dropped. In the captured feed sample the encoded
+# origin matches the first visible stop *exactly* when that stop is the trip's
+# own origin, while every trip whose origin really was dropped led it by at
+# least 1.5 minutes — a minute of slack sits cleanly between the two.
+NYCT_ORIGIN_LEAD_TOLERANCE = timedelta(minutes=1)
+
 
 def infer_missing_origin(
     first_arrival_station: str,
@@ -126,6 +133,35 @@ def infer_subway_origin(
 
     # Terminal is mid-route (express shortline, etc.) — can't determine
     return None
+
+
+def nyct_trip_begins_at_first_stop(
+    trip_origin_time: datetime | None,
+    first_arrival_time: datetime,
+) -> bool:
+    """Whether the trip's own origin is the first stop the feed still shows.
+
+    ``synthetic_origin_departure`` can only ask whether the synthesized origin
+    lands in the past, and two different situations land there: GTFS-RT dropped
+    stops the train already passed (inference is right), and a short-turn trip
+    first seen shortly before its real mid-route first stop (inference invents
+    a terminal the train never calls at — issue #1704). The NYCT trip_id
+    settles it, because it carries the trip's *own* origin departure: when that
+    time coincides with the first visible stop, nothing was dropped.
+
+    Args:
+        trip_origin_time: Origin departure decoded from the NYCT trip_id, or
+            None when the feed didn't carry a usable one.
+        first_arrival_time: Arrival time of the first visible RT stop.
+
+    Returns:
+        True when the trip demonstrably starts at its first visible stop, so
+        origin inference must be skipped. False when the id is unavailable —
+        the caller's temporal guard then decides alone, as it did before.
+    """
+    if trip_origin_time is None:
+        return False
+    return first_arrival_time - trip_origin_time <= NYCT_ORIGIN_LEAD_TOLERANCE
 
 
 def synthetic_origin_departure(
