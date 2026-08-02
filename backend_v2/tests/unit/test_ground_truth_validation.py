@@ -729,6 +729,19 @@ class TestPairByTrainId:
         assert paired == {1: 0}, f"closest GT should claim the record, got {paired}"
         assert len(set(paired.values())) == len(paired), "a record was claimed twice"
 
+    def test_repeated_id_maximizes_pair_count_before_delta(self):
+        """The closest single edge must not consume the only edge for another GT."""
+        gt = [
+            _gt(minutes_offset=0, train_id="DUP"),
+            _gt(minutes_offset=1, train_id="DUP"),
+        ]
+        tr = [
+            _tr(minutes_offset=1, train_id="DUP"),
+            _tr(minutes_offset=3, train_id="DUP"),
+        ]
+
+        assert pair_by_train_id(gt, tr, 120) == {0: 0, 1: 1}
+
 
 class TestParseArrivalSeconds:
     """Test parse_arrival_seconds which prefers precise seconds over rounded minutes."""

@@ -872,6 +872,9 @@ def format_delta(seconds: int) -> str:
     return f"{minutes}m {secs}s"
 
 
+IdPairing = tuple[int, int, tuple[tuple[int, int], ...]]
+
+
 def pair_by_train_id(
     gt_arrivals: list[GroundTruthArrival],
     tr_departures: list[TrackRatDeparture],
@@ -889,34 +892,68 @@ def pair_by_train_id(
     is reported missing (issue #1703). Reserving ID pairs up front makes that
     preference global rather than per-iteration.
 
-    Ties are broken by smallest delta, so when one train_id appears more than
-    once on either side the closest pairing wins and each record is claimed at
-    most once. Pairs outside tolerance are deliberately left alone: those are
-    genuine drift (TrackRat has the train, at the wrong time) and must stay a
-    FAIL rather than become a match. ``run_validation_loop``'s missing-report
-    path already surfaces those as "Same-trip TR", by design.
+    When one train_id appears more than once on either side, pairing maximizes
+    the number of matches first and minimizes their total delta second. Pairs
+    outside tolerance are deliberately left alone: those are genuine drift
+    (TrackRat has the train, at the wrong time) and must stay a FAIL rather than
+    become a match. ``run_validation_loop``'s missing-report path already
+    surfaces those as "Same-trip TR", by design.
     """
-    candidates: list[tuple[int, int, int]] = []  # (delta, gt_index, tr_index)
+    gt_by_id: dict[str, list[int]] = {}
     for gt_idx, gt in enumerate(gt_arrivals):
-        if not gt.train_id:
-            continue
-        for tr_idx, tr in enumerate(tr_departures):
-            if not tr.train_id or tr.train_id != gt.train_id:
-                continue
-            delta = abs(int((tr.departure_time - gt.expected_time).total_seconds()))
-            if delta <= tolerance_secs:
-                candidates.append((delta, gt_idx, tr_idx))
+        if gt.train_id:
+            gt_by_id.setdefault(gt.train_id, []).append(gt_idx)
+    tr_by_id: dict[str, list[int]] = {}
+    for tr_idx, tr in enumerate(tr_departures):
+        if tr.train_id:
+            tr_by_id.setdefault(tr.train_id, []).append(tr_idx)
 
-    # Closest pairs claim first; gt_index/tr_index keep ordering deterministic.
-    candidates.sort()
+    def better(left: IdPairing, right: IdPairing) -> IdPairing:
+        """Prefer cardinality, then total delta, then deterministic indices."""
+        if left[0] != right[0]:
+            return left if left[0] > right[0] else right
+        if left[1] != right[1]:
+            return left if left[1] < right[1] else right
+        return left if left[2] < right[2] else right
 
     paired: dict[int, int] = {}
-    claimed_tr: set[int] = set()
-    for _delta, gt_idx, tr_idx in candidates:
-        if gt_idx in paired or tr_idx in claimed_tr:
-            continue
-        paired[gt_idx] = tr_idx
-        claimed_tr.add(tr_idx)
+    for train_id in sorted(gt_by_id.keys() & tr_by_id.keys()):
+        gt_indices = sorted(
+            gt_by_id[train_id], key=lambda i: (gt_arrivals[i].expected_time, i)
+        )
+        tr_indices = sorted(
+            tr_by_id[train_id], key=lambda i: (tr_departures[i].departure_time, i)
+        )
+        # Points on a timeline have an order-preserving optimal assignment.
+        # Each cell stores (match count, total delta, index pairs).
+        dp: list[list[IdPairing]] = [
+            [(0, 0, ()) for _ in range(len(tr_indices) + 1)]
+            for _ in range(len(gt_indices) + 1)
+        ]
+        for gt_pos, gt_idx in enumerate(gt_indices, start=1):
+            for tr_pos, tr_idx in enumerate(tr_indices, start=1):
+                best = better(dp[gt_pos - 1][tr_pos], dp[gt_pos][tr_pos - 1])
+                delta = abs(
+                    int(
+                        (
+                            tr_departures[tr_idx].departure_time
+                            - gt_arrivals[gt_idx].expected_time
+                        ).total_seconds()
+                    )
+                )
+                if delta <= tolerance_secs:
+                    previous = dp[gt_pos - 1][tr_pos - 1]
+                    match = (
+                        previous[0] + 1,
+                        previous[1] + delta,
+                        previous[2] + ((gt_idx, tr_idx),),
+                    )
+                    best = better(best, match)
+                dp[gt_pos][tr_pos] = best
+
+        for gt_idx, tr_idx in dp[-1][-1][2]:
+            paired[gt_idx] = tr_idx
+
     return paired
 
 
