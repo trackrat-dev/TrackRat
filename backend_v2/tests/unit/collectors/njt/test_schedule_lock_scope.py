@@ -313,7 +313,9 @@ class TestScheduleStopCollectionLockScope:
         run_session = session_factory()
         observer = session_factory()
         try:
-            stats = await collector._collect_stop_lists_for_scheduled_trains(run_session)
+            stats = await collector._collect_stop_lists_for_scheduled_trains(
+                run_session
+            )
 
             assert stats["stop_collections_attempted"] == 3
             assert stats["stop_collections_successful"] == 2
@@ -451,7 +453,9 @@ class TestScheduleStopCollectionLockScope:
 
         run_session = session_factory()
         try:
-            stats = await collector._collect_stop_lists_for_scheduled_trains(run_session)
+            stats = await collector._collect_stop_lists_for_scheduled_trains(
+                run_session
+            )
             assert sorted(client.calls) == ["3941", "3942"]
             assert stats["stop_collections_successful"] == 2
             assert stats["stop_collections_failed"] == 0
