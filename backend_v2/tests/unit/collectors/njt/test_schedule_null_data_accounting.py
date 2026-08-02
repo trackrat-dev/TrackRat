@@ -176,7 +176,7 @@ class TestNullDataIsCountedSeparately:
     ):
         """The 80% "failure rate" on 2026-08-01 was entirely this condition."""
         _create_scheduled_journey(sqlite_session, train_id="4687")
-        await sqlite_session.flush()
+        await sqlite_session.commit()
 
         schedule_collector.client.get_train_stop_list.side_effect = (
             NJTransitNullDataError("Train 4687 - API returned null data")
@@ -206,7 +206,7 @@ class TestNullDataIsCountedSeparately:
         """300 tracebacks per night for a non-actionable condition buried the
         genuine errors that occurred alongside them."""
         _create_scheduled_journey(sqlite_session, train_id="4687")
-        await sqlite_session.flush()
+        await sqlite_session.commit()
 
         schedule_collector.client.get_train_stop_list.side_effect = (
             NJTransitNullDataError("Train 4687 - API returned null data")
@@ -240,7 +240,7 @@ class TestNullDataIsCountedSeparately:
         """The condition is persistent — the same train numbers return null
         every night — so a retry re-asks a question NJT has no answer to."""
         _create_scheduled_journey(sqlite_session, train_id="4687")
-        await sqlite_session.flush()
+        await sqlite_session.commit()
 
         schedule_collector.client.get_train_stop_list.side_effect = (
             NJTransitNullDataError("Train 4687 - API returned null data")
@@ -265,7 +265,7 @@ class TestGenuineFailuresAreStillReported:
         """A database error is actionable and must stay a warning with a
         traceback (the #1367 behaviour)."""
         _create_scheduled_journey(sqlite_session, train_id="1234")
-        await sqlite_session.flush()
+        await sqlite_session.commit()
 
         schedule_collector.client.get_train_stop_list.return_value = (
             _make_train_data_with_invalid_stop()
@@ -287,7 +287,7 @@ class TestGenuineFailuresAreStillReported:
     ):
         """An argless exception used to log `error=` with nothing after it."""
         _create_scheduled_journey(sqlite_session, train_id="1234")
-        await sqlite_session.flush()
+        await sqlite_session.commit()
 
         import httpx
 
@@ -321,7 +321,7 @@ class TestGenuineFailuresAreStillReported:
 
         for train_id in ("1000", "2000", "3000"):
             _create_scheduled_journey(sqlite_session, train_id=train_id)
-        await sqlite_session.flush()
+        await sqlite_session.commit()
 
         # A response with real stops, not an empty one: _update_journey_with_stops
         # early-outs on an empty STOPS list, so an empty "good" response would
