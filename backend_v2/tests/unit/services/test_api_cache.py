@@ -19,6 +19,7 @@ from trackrat.services.api_cache import (
     ROUTE_HISTORY_CACHE_TTL_SECONDS,
     ApiCacheService,
 )
+from trackrat.services.congestion_types import SegmentCongestion
 
 # The route-history precompute runs on IntervalTrigger(minutes=5) in
 # scheduler.py; keep in sync if that interval changes.
@@ -371,9 +372,12 @@ class TestApiCacheService:
         """Test computation of congestion response."""
         params = {"time_window_hours": 3, "max_per_segment": 100, "data_source": "NJT"}
 
-        # Mock the congestion analyzer
+        # Real SegmentCongestion, not a Mock: the cache builds an API model from
+        # every field of this object, so a stand-in silently passes attributes
+        # Pydantic then rejects, and derived values (effective_congestion_factor)
+        # would never be exercised at all.
         mock_aggregated = [
-            Mock(
+            SegmentCongestion(
                 from_station="NY",
                 to_station="NP",
                 data_source="NJT",
@@ -389,7 +393,6 @@ class TestApiCacheService:
                 baseline_train_count=12,
                 frequency_factor=0.83,
                 frequency_level="healthy",
-                dominant_real_pair=None,
             )
         ]
         mock_individual = []
@@ -455,7 +458,7 @@ class TestApiCacheService:
 
         # Mock data already filtered by data source (SQL layer handles filtering)
         mock_aggregated = [
-            Mock(
+            SegmentCongestion(
                 from_station="NY",
                 to_station="NP",
                 data_source="NJT",
@@ -471,7 +474,6 @@ class TestApiCacheService:
                 baseline_train_count=12,
                 frequency_factor=0.83,
                 frequency_level="healthy",
-                dominant_real_pair=None,
             ),
         ]
         mock_individual = []

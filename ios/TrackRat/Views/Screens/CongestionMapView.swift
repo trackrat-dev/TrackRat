@@ -449,6 +449,50 @@ struct LegendItem: View {
     }
 }
 
+/// The delay scale, drawn as the ramp the map actually paints.
+///
+/// Samples `CongestionColors.color(forCongestionFactor:)` at every quantised
+/// step rather than hardcoding a gradient, so the legend cannot drift from the
+/// map: change the ramp and this follows. Tier names sit under the factors they
+/// anchor, which is what lets a rider read an in-between color as
+/// "between Heavy and Severe" (#1715).
+struct DelayRampLegend: View {
+    private static let tierLabels = ["Normal", "Moderate", "Heavy", "Severe"]
+
+    private var rampColors: [Color] {
+        (0...CongestionColors.congestionRampSteps).map { step in
+            let position = Double(step) / Double(CongestionColors.congestionRampSteps)
+            let factor = CongestionColors.rampFactor(atPosition: position)
+            return Color(CongestionColors.color(forCongestionFactor: factor))
+        }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            LinearGradient(colors: rampColors, startPoint: .leading, endPoint: .trailing)
+                .frame(height: 8)
+                .clipShape(Capsule())
+            HStack(spacing: 0) {
+                ForEach(Array(Self.tierLabels.enumerated()), id: \.offset) { index, label in
+                    Text(label)
+                        .font(.caption2)
+                        .foregroundColor(.primary)
+                        .frame(
+                            maxWidth: .infinity,
+                            alignment: index == 0
+                                ? .leading
+                                : (index == Self.tierLabels.count - 1 ? .trailing : .center))
+                }
+            }
+        }
+        // The bar has no intrinsic width, so it needs a floor to survive being
+        // placed in an HStack (the compact legend) as well as a VStack.
+        .frame(minWidth: 180)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Delay levels, from normal on the left to severe on the right")
+    }
+}
+
 struct FilterSheet: View {
     @Binding var timeWindow: Int
     @Binding var selectedDataSource: String
@@ -1173,7 +1217,7 @@ struct IndividualJourneyOverlayIdentity: Hashable {
         id = segment.id
         visualKey = segment.isCancelled
             ? "cancelled"
-            : "delay:" + CongestionColors.congestionTierKey(forFactor: segment.congestionFactor)
+            : "delay:" + CongestionColors.congestionColorKey(forFactor: segment.congestionFactor)
     }
 }
 
@@ -1357,9 +1401,9 @@ func visualMergeKey(for segment: CongestionSegment) -> String {
             return "freq:" + CongestionColors.frequencyTierKey(
                 forFactor: segment.frequencyFactor, cancellationRate: segment.cancellationRate)
         }
-        return "delay:" + segment.congestionTierKey
+        return "delay:" + segment.congestionColorKey
     case .delays, .off:
-        return "delay:" + segment.congestionTierKey
+        return "delay:" + segment.congestionColorKey
     }
 }
 

@@ -195,20 +195,29 @@ export function CongestionMap({ segments }: CongestionMapProps) {
         </Map>
       </div>
 
-      {/* Legend — mirrors iOS's "Delay Levels" legend. */}
+      {/* Legend — mirrors iOS's "Delay Levels" legend.
+          A continuous bar rather than four chips: segments are shaded along a
+          ramp between the tier colours (#1715), so a line's colour routinely
+          falls between two tiers and discrete swatches would leave nothing to
+          match it against. Built from CONGESTION_LEVELS so it cannot drift from
+          the ramp's own anchors. */}
       <div className="absolute bottom-2 left-2 bg-black/60 backdrop-blur-sm rounded-md px-2 py-1.5 pointer-events-none">
-        <div className="flex flex-col gap-1">
-          {CONGESTION_LEVELS.map((level) => (
-            <div key={level} className="flex items-center gap-1.5">
-              <span
-                className="w-3 h-1 rounded-full"
-                style={{ backgroundColor: CONGESTION_HEX[level] }}
-              />
-              <span className="text-[10px] leading-none text-white/80">
+        <div className="flex flex-col gap-1 w-36">
+          <span
+            className="h-1 rounded-full w-full"
+            style={{
+              backgroundImage: `linear-gradient(to right, ${CONGESTION_LEVELS.map(
+                (level) => CONGESTION_HEX[level],
+              ).join(', ')})`,
+            }}
+          />
+          <div className="flex justify-between">
+            {CONGESTION_LEVELS.map((level) => (
+              <span key={level} className="text-[10px] leading-none text-white/80">
                 {getCongestionShortLabel(level)}
               </span>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 

@@ -22,6 +22,33 @@ CONGESTION_THRESHOLD_HEAVY = 1.5  # <= 50% slower than baseline
 # loses >= 1 min and stays escalated.
 MIN_CONGESTION_DELAY_MINUTES = 1.0
 
+# Minimum baseline (minutes) used as the denominator when converting a segment's
+# lost time into a congestion factor. The factor is a ratio, so identical
+# absolute delay reads wildly differently depending on how short the hop is: two
+# minutes lost on a 3-minute baseline is 1.67 (severe) while the same two
+# minutes on a 20-minute baseline is 1.10 (normal). Most inter-station hops are
+# short — on production NJT the median segment baseline is 5 minutes and the
+# 10th percentile is 3 — so across most of the network the factor is dominated
+# by the shortness of the hop rather than by the delay.
+#
+# That compression is what produced issue #1715's "green directly to red
+# directly back to green". With MIN_CONGESTION_DELAY_MINUTES suppressing
+# everything under a minute, the smallest delay a segment can show is 1 minute,
+# which on a 3-minute hop is already 1.33 — heavy. The moderate tier is
+# therefore unreachable in practice and adjacent segments leap two or three
+# tiers at once: measured on production NJT, of the 60 adjacent segment pairs
+# whose colours differed, 48 differed by >= 2 tiers, and only 4 of 272 segments
+# were moderate.
+#
+# Flooring the denominator makes the factor track lost minutes on short hops
+# while leaving long hops on their true ratio (the max() is a no-op above the
+# floor, so a 20-minute leg is unaffected). At the floor the tier boundaries
+# land on 1, 2.5 and 5 minutes lost, so the first escalation lines up exactly
+# with MIN_CONGESTION_DELAY_MINUTES instead of vaulting past it. Re-simulated
+# against the same production data, 3-tier jumps between adjacent segments fall
+# from 26 to 8.
+CONGESTION_BASELINE_FLOOR_MINUTES = 10.0
+
 # Weight applied to a segment's cancellation rate (a percentage, 0-100) when
 # folding cancellations into the congestion factor. Mirrors the iOS client's
 # CongestionColors.cancellationCongestionWeight (ios/.../Utilities/Extensions.swift)
@@ -79,6 +106,27 @@ FREQ_MIN_BASELINE_TRAINS = 5
 # Data sources where frequency/service health is more meaningful than delay stats.
 # Mirrors iOS TrainSystem.preferredHighlightMode == .health
 FREQUENCY_FIRST_SOURCES = {"SUBWAY", "PATH", "PATCO", "WMATA", "BART", "SEPTA_METRO"}
+
+
+def congestion_factor_from_delay(
+    average_delay_minutes: float, baseline_minutes: float
+) -> float:
+    """Congestion factor for a segment that lost ``average_delay_minutes``.
+
+    Algebraically ``current_average / baseline``, but written as
+    ``1 + delay / baseline`` so the denominator can be floored at
+    ``CONGESTION_BASELINE_FLOOR_MINUTES`` — see that constant for why the raw
+    ratio makes short hops swing across whole tiers on a delay a long hop would
+    call normal. Above the floor this is exactly the old ratio.
+
+    A non-positive baseline (no scheduled time and no usable actuals) has no
+    scale to measure against, so the segment reports nominal.
+    """
+    if baseline_minutes <= 0:
+        return 1.0
+    return 1.0 + average_delay_minutes / max(
+        baseline_minutes, CONGESTION_BASELINE_FLOOR_MINUTES
+    )
 
 
 def get_congestion_level(congestion_factor: float) -> str:
@@ -289,3 +337,19 @@ class SegmentCongestion:
         # train stops at (e.g. Amtrak TR→PH -> CWH→PHN); clients use this to
         # redirect a tap on such a segment to a real, served station board.
         self.dominant_real_pair = dominant_real_pair
+
+    @property
+    def effective_congestion_factor(self) -> float:
+        """The factor ``congestion_level`` was bucketed from.
+
+        ``congestion_factor`` with this segment's cancellation rate folded in,
+        so clients can shade the map continuously between the tier colours
+        without re-deriving the cancellation weighting themselves (issue #1715).
+        Delegates to the module-level function of the same name — the single
+        source of the weighting and its sparse-segment gate.
+        """
+        return effective_congestion_factor(
+            self.congestion_factor,
+            self.cancellation_rate,
+            self.sample_count + self.cancellation_count,
+        )

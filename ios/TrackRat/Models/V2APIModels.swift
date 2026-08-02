@@ -713,10 +713,10 @@ struct CongestionSegment: Codable, Identifiable {
         Color(displayUIColor)
     }
 
-    /// Stable key for the delay-tier color this segment renders as, used to merge
+    /// Stable key for the delay color this segment renders as, used to merge
     /// adjacent same-color segments into one map overlay.
-    var congestionTierKey: String {
-        CongestionColors.congestionTierKey(
+    var congestionColorKey: String {
+        CongestionColors.congestionColorKey(
             forFactor: congestionFactor,
             cancellationRate: cancellationRate,
             totalJourneys: totalJourneys)

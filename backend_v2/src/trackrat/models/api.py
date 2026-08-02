@@ -615,6 +615,13 @@ class SegmentCongestion(BaseModel):
     data_source: str
     congestion_level: Literal["normal", "moderate", "heavy", "severe"]
     congestion_factor: float = Field(..., ge=0.0)
+    # The factor congestion_level was actually bucketed from: congestion_factor
+    # with the segment's cancellation rate folded in (see
+    # congestion_types.effective_congestion_factor). Served so clients can shade
+    # the map continuously between tier colours (issue #1715) without
+    # re-deriving the cancellation weighting — and drifting from it. Equals
+    # congestion_factor whenever cancellations did not move the tier.
+    effective_congestion_factor: float = Field(..., ge=0.0)
     average_delay_minutes: float
     sample_count: int = Field(..., ge=0)
     baseline_minutes: float = Field(..., ge=0.0)

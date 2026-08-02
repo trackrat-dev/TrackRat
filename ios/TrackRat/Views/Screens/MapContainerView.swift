@@ -838,15 +838,15 @@ struct CongestionMapControlsView: View {
                     }
                 }
                 if hasDelaySystems {
+                    // A continuous bar, not four swatches: delay segments are now
+                    // shaded along a ramp between the tier colors (#1715), so a
+                    // segment's color routinely falls between two tiers. Four
+                    // discrete chips would leave the rider matching an in-between
+                    // color against swatches none of it equals.
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Delay Levels")
                             .trackRatSectionHeader()
-                        HStack(spacing: 16) {
-                            LegendItem(color: .green, label: "Normal")
-                            LegendItem(color: .yellow, label: "Moderate")
-                            LegendItem(color: .orange, label: "Heavy")
-                            LegendItem(color: .red, label: "Severe")
-                        }
+                        DelayRampLegend()
                     }
                 }
             }

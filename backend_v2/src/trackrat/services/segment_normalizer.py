@@ -18,6 +18,7 @@ from trackrat.config.route_topology import (
 )
 from trackrat.services.congestion_types import (
     SegmentCongestion,
+    congestion_factor_from_delay,
     congestion_level_and_cause,
     frequency_is_reliable,
     get_frequency_level,
@@ -261,11 +262,9 @@ def normalize_aggregated_segments(
         )
         avg_baseline = weighted_baseline / total_samples
 
-        # Calculate congestion factor
-        congestion_factor = avg_transit / avg_baseline if avg_baseline > 0 else 1.0
-
-        # Average delay
+        # Average delay, and the congestion factor it produces
         average_delay = avg_transit - avg_baseline
+        congestion_factor = congestion_factor_from_delay(average_delay, avg_baseline)
 
         # Suppress sub-minute timing noise on closely-spaced stops before the
         # factor drives any color (see reliable_congestion_factor). Reassigned

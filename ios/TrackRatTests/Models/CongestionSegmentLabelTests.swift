@@ -200,6 +200,10 @@ final class CongestionSegmentLabelTests: XCTestCase {
     }
 
     func testSustainedCancellationsStillColorTheSegmentRed() throws {
+        // Colours are ramped (#1715), so "red" is now "well along the ramp
+        // toward red", not literally `.systemRed`: a 50% cancellation rate
+        // blends to 1.75, three quarters of the way up. Asserting a specific
+        // UIColor here would just re-encode the ramp's arithmetic.
         let sustained = try segment(
             congestionLevel: "severe",
             sampleCount: 5,
@@ -207,19 +211,26 @@ final class CongestionSegmentLabelTests: XCTestCase {
             cancellationRate: 50.0,
             congestionCause: "cancellations")
         XCTAssertEqual(sustained.totalJourneys, 10)
-        XCTAssertEqual(sustained.displayUIColor, .systemRed)
+        XCTAssertNotEqual(sustained.displayUIColor, .systemGreen)
+        XCTAssertEqual(
+            sustained.congestionColorKey,
+            CongestionColors.congestionColorKey(forFactor: 1.75))
     }
 
     /// The map merge key and the color must agree; a mismatch draws a merged run
     /// in a color none of its segments would render on its own.
-    func testTierKeyAgreesWithDisplayColorAcrossTheFloor() throws {
+    func testColorKeyAgreesWithDisplayColorAcrossTheFloor() throws {
+        // Below the floor the cancellations are dropped, so this segment must key
+        // and render exactly like an on-time one.
         let sparse = try segment(
             congestionLevel: "normal", sampleCount: 1, cancellationCount: 1)
-        XCTAssertEqual(sparse.congestionTierKey, "normal")
+        XCTAssertEqual(
+            sparse.congestionColorKey, CongestionColors.congestionColorKey(forFactor: 1.0))
+        XCTAssertEqual(sparse.displayUIColor, .systemGreen)
 
         let sustained = try segment(
             congestionLevel: "severe", sampleCount: 5, cancellationCount: 5)
-        XCTAssertEqual(sustained.congestionTierKey, "severe")
+        XCTAssertNotEqual(sustained.congestionColorKey, sparse.congestionColorKey)
     }
 
     /// The floor gates cancellations only — a sparse segment whose train really
@@ -232,7 +243,9 @@ final class CongestionSegmentLabelTests: XCTestCase {
             sampleCount: 1,
             cancellationCount: 1,
             congestionCause: "delays")
+        // 2.0 is the top of the ramp, so this one *is* fully severe.
         XCTAssertEqual(delayed.displayUIColor, .systemRed)
-        XCTAssertEqual(delayed.congestionTierKey, "severe")
+        XCTAssertEqual(
+            delayed.congestionColorKey, CongestionColors.congestionColorKey(forFactor: 2.0))
     }
 }

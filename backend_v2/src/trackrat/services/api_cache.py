@@ -428,12 +428,18 @@ class ApiCacheService:
                 data_source=segment.data_source,
                 congestion_level=segment.congestion_level,
                 congestion_factor=segment.congestion_factor,
+                effective_congestion_factor=segment.effective_congestion_factor,
                 average_delay_minutes=segment.average_delay_minutes,
                 sample_count=segment.sample_count,
                 baseline_minutes=segment.baseline_minutes,
                 current_average_minutes=segment.avg_transit_minutes,
                 cancellation_count=segment.cancellation_count,
                 cancellation_rate=segment.cancellation_rate,
+                # Without this the pre-computed cache silently served the
+                # "delays" default, so a segment coloured purely by
+                # cancellations was captioned as delayed on every cached
+                # response — the contradiction #1638 fixed on the live path.
+                congestion_cause=segment.congestion_cause,
                 train_count=segment.train_count,
                 baseline_train_count=segment.baseline_train_count,
                 frequency_factor=segment.frequency_factor,

@@ -24,6 +24,7 @@ from trackrat.services.congestion_types import (
     FREQ_THRESHOLD_MODERATE,
     FREQ_THRESHOLD_REDUCED,
     SegmentCongestion,
+    congestion_factor_from_delay,
     congestion_level_and_cause,
     effective_congestion_factor,
     frequency_is_reliable,
@@ -712,10 +713,8 @@ class CongestionAnalyzer:
                 row.baseline_minutes or row.median_actual or row.avg_actual or 1.0
             )
             current_avg = float(row.current_avg_minutes or row.avg_actual or baseline)
-            congestion_factor = current_avg / baseline if baseline > 0 else 1.0
-
-            # Calculate average delay
             average_delay = current_avg - baseline
+            congestion_factor = congestion_factor_from_delay(average_delay, baseline)
 
             # Suppress sub-minute timing noise on closely-spaced stops before the
             # factor drives any color (see reliable_congestion_factor). Reassigned
@@ -902,13 +901,7 @@ class CongestionAnalyzer:
                 actual_minutes,
                 scheduled_minutes,
                 -- Calculate delay
-                actual_minutes - COALESCE(scheduled_minutes, actual_minutes) as delay_minutes,
-                -- Calculate congestion factor
-                CASE
-                    WHEN scheduled_minutes > 0
-                    THEN actual_minutes / scheduled_minutes
-                    ELSE 1.0
-                END as congestion_factor
+                actual_minutes - COALESCE(scheduled_minutes, actual_minutes) as delay_minutes
             FROM ranked_segments
             WHERE rank_within_route <= :max_per_segment
             ORDER BY departure_time DESC
@@ -979,13 +972,7 @@ class CongestionAnalyzer:
                 actual_minutes,
                 scheduled_minutes,
                 -- Calculate delay
-                actual_minutes - COALESCE(scheduled_minutes, actual_minutes) as delay_minutes,
-                -- Calculate congestion factor
-                CASE
-                    WHEN scheduled_minutes > 0
-                    THEN actual_minutes / scheduled_minutes
-                    ELSE 1.0
-                END as congestion_factor
+                actual_minutes - COALESCE(scheduled_minutes, actual_minutes) as delay_minutes
             FROM segment_data
             ORDER BY departure_time DESC
             LIMIT :global_limit
@@ -1029,7 +1016,6 @@ class CongestionAnalyzer:
         individual_segments = []
         for row in rows:
             # Convert database types to Python types
-            congestion_factor = float(row.congestion_factor)
             actual_minutes = float(row.actual_minutes)
             scheduled_minutes = (
                 float(row.scheduled_minutes)
@@ -1037,6 +1023,9 @@ class CongestionAnalyzer:
                 else actual_minutes
             )
             delay_minutes = float(row.delay_minutes)
+            congestion_factor = congestion_factor_from_delay(
+                delay_minutes, scheduled_minutes
+            )
 
             # Suppress sub-minute timing noise on closely-spaced stops so a
             # per-train segment is not shown as heavy/severe from a few seconds
@@ -1276,13 +1265,11 @@ class CongestionAnalyzer:
                 [s["actual_minutes"] for s in recent_segments]
             )
 
-            # Calculate congestion factor
-            congestion_factor = (
-                current_avg / baseline_minutes if baseline_minutes > 0 else 1.0
-            )
-
-            # Calculate average delay
+            # Calculate average delay and the factor it produces
             average_delay_minutes = current_avg - baseline_minutes
+            congestion_factor = congestion_factor_from_delay(
+                average_delay_minutes, baseline_minutes
+            )
 
             level = get_congestion_level(congestion_factor)
 
@@ -1303,72 +1290,3 @@ class CongestionAnalyzer:
             )
 
         return congestion_data
-
-    def _extract_individual_segments(
-        self,
-        segment_groups: dict[tuple[str, str, str], list[dict[str, Any]]],
-        max_per_segment: int = 100,
-    ) -> list[Any]:
-        """Extract individual journey segments for visualization."""
-        from trackrat.config.stations import get_station_name
-        from trackrat.models.api import IndividualJourneySegment
-
-        individual_segments = []
-
-        for segment_key, segments in segment_groups.items():
-            from_station, to_station, data_source = segment_key
-
-            # Sort by departure time (most recent first) and limit
-            recent_segments = sorted(
-                segments, key=lambda x: x["departure_time"], reverse=True
-            )[:max_per_segment]
-
-            for segment_data in recent_segments:
-                # Calculate congestion level
-                actual_minutes = segment_data["actual_minutes"]
-                scheduled_minutes = segment_data.get("scheduled_minutes")
-
-                if scheduled_minutes and scheduled_minutes > 0:
-                    congestion_factor = actual_minutes / scheduled_minutes
-                    delay_minutes = actual_minutes - scheduled_minutes
-                else:
-                    congestion_factor = 1.0
-                    delay_minutes = 0.0
-
-                level = get_congestion_level(congestion_factor)
-
-                individual_segment = IndividualJourneySegment(
-                    journey_id=str(segment_data["journey_id"]),
-                    train_id=segment_data["train_id"],
-                    from_station=from_station,
-                    to_station=to_station,
-                    from_station_name=get_station_name(from_station),
-                    to_station_name=get_station_name(to_station),
-                    data_source=data_source,
-                    line=segment_data.get("line_code", ""),
-                    scheduled_departure=segment_data[
-                        "departure_time"
-                    ],  # Using actual as proxy for scheduled
-                    actual_departure=segment_data["departure_time"],
-                    scheduled_arrival=segment_data["departure_time"]
-                    + timedelta(
-                        minutes=(
-                            scheduled_minutes if scheduled_minutes else actual_minutes
-                        )
-                    ),
-                    actual_arrival=segment_data["departure_time"]
-                    + timedelta(minutes=actual_minutes),
-                    scheduled_minutes=(
-                        scheduled_minutes if scheduled_minutes else actual_minutes
-                    ),
-                    actual_minutes=actual_minutes,
-                    delay_minutes=delay_minutes,
-                    congestion_factor=congestion_factor,
-                    congestion_level=level,
-                    is_cancelled=False,  # These segments are from active journeys
-                    journey_date=segment_data["departure_time"].date(),
-                )
-
-                individual_segments.append(individual_segment)
-
-        return individual_segments

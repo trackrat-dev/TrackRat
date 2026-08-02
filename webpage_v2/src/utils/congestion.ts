@@ -92,6 +92,80 @@ export const CONGESTION_HEX: Record<CongestionLevel, string> = {
 export const CONGESTION_LEVELS: CongestionLevel[] = ['normal', 'moderate', 'heavy', 'severe'];
 
 /**
+ * Factor at which each tier's colour is reached, matching the backend's
+ * bucket boundaries (`congestion_types.CONGESTION_THRESHOLD_*`). `severe` has
+ * no upper bound as a tier, so 2.0 — twice the baseline transit time — anchors
+ * the end of the ramp; beyond it the colour simply stays at full severe.
+ */
+const CONGESTION_RAMP_STOPS: ReadonlyArray<readonly [number, CongestionLevel]> = [
+  [1.1, 'normal'],
+  [1.25, 'moderate'],
+  [1.5, 'heavy'],
+  [2.0, 'severe'],
+];
+
+function hexToRgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+}
+
+/** Uppercase to match CONGESTION_HEX, so an interpolated colour that lands on a
+ *  tier is byte-identical to that tier's constant. */
+function rgbToHex([r, g, b]: [number, number, number]): string {
+  return (
+    '#' + [r, g, b].map(c => Math.round(c).toString(16).padStart(2, '0')).join('')
+  ).toUpperCase();
+}
+
+/**
+ * Map-line colour for a congestion factor, interpolated continuously between
+ * the tier colours instead of snapping to one of four.
+ *
+ * The tier colours still land exactly on their own thresholds, so the legend
+ * keeps describing the map truthfully; only the space *between* thresholds is
+ * filled in. This is what issue #1715 asked for: adjacent segments whose delays
+ * differ slightly now differ slightly in colour, rather than one sitting at
+ * 1.24 (full orange) beside one at 1.26 (full red).
+ *
+ * Everything at or below the `normal` threshold is flat green — that plateau is
+ * the backend's "trains are on time" statement (see MIN_CONGESTION_DELAY_MINUTES,
+ * which pins sub-minute noise to exactly 1.0) and must not be shaded, or ordinary
+ * on-time track would read as faintly congested.
+ *
+ * Pass `effective_congestion_factor`, not `congestion_factor`, for aggregated
+ * segments: the former is what `congestion_level` is bucketed from, so a segment
+ * escalated by cancellations keeps its colour.
+ */
+export function congestionRampColor(factor: number): string {
+  const [firstStop, firstLevel] = CONGESTION_RAMP_STOPS[0];
+  if (!Number.isFinite(factor) || factor <= firstStop) return CONGESTION_HEX[firstLevel];
+
+  for (let i = 1; i < CONGESTION_RAMP_STOPS.length; i++) {
+    const [stop, level] = CONGESTION_RAMP_STOPS[i];
+    if (factor >= stop) continue;
+    const [prevStop, prevLevel] = CONGESTION_RAMP_STOPS[i - 1];
+    const t = (factor - prevStop) / (stop - prevStop);
+    const from = hexToRgb(CONGESTION_HEX[prevLevel]);
+    const to = hexToRgb(CONGESTION_HEX[level]);
+    return rgbToHex([
+      from[0] + (to[0] - from[0]) * t,
+      from[1] + (to[1] - from[1]) * t,
+      from[2] + (to[2] - from[2]) * t,
+    ]);
+  }
+  return CONGESTION_HEX[CONGESTION_RAMP_STOPS[CONGESTION_RAMP_STOPS.length - 1][1]];
+}
+
+/**
+ * The factor a segment's colour should be ramped from. Falls back to the
+ * delay-only factor when the backend predates `effective_congestion_factor`
+ * (issue #1715), which only loses the cancellation shading, never the tier.
+ */
+export function segmentColorFactor(segment: SegmentCongestion): number {
+  return segment.effective_congestion_factor ?? segment.congestion_factor;
+}
+
+/**
  * Average delay (minutes) across the segments that make up a route, or `null`
  * when no segment covers any of the route's consecutive station pairs.
  *
@@ -217,7 +291,7 @@ export function buildSegmentFeatureCollection(
           average_delay_minutes: segment.average_delay_minutes,
           congestion_cause: segmentCause(segment),
           cancellation_count: segment.cancellation_count,
-          color: CONGESTION_HEX[segment.congestion_level],
+          color: congestionRampColor(segmentColorFactor(segment)),
         },
         geometry: {
           type: 'LineString',
