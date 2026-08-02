@@ -157,8 +157,80 @@ async def test_safety_check_live_activity_tokens_counted(
 
 
 @pytest.mark.asyncio
-async def test_safety_check_handles_db_errors_gracefully(staging_settings, caplog):
-    """If the database query fails, returns False (allow startup) with warning."""
+async def test_safety_check_live_activity_tokens_alone_returns_true(
+    db_session, staging_settings, caplog
+):
+    """Live Activity tokens above threshold must disable APNS on their own.
+
+    A clone can leave live_activity_tokens full while device_tokens happens to
+    be small (or was partially scrubbed). Live Activity pushes go out roughly
+    every minute to real lock screens, so this case must trigger even though
+    there are zero device tokens.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    la_count = _STAGING_DEVICE_TOKEN_THRESHOLD + 7
+    for i in range(la_count):
+        db_session.add(
+            LiveActivityToken(
+                push_token=f"solo_la_push_token_{i:04d}",
+                activity_id=f"solo_activity_{i:04d}",
+                train_number=f"200{i}",
+                origin_code="NY",
+                destination_code="TR",
+                expires_at=datetime.now(timezone.utc) + timedelta(hours=6),
+            )
+        )
+    await db_session.commit()
+
+    with patch("trackrat.main.get_session", _session_context(db_session)):
+        result = await _check_staging_notification_safety(staging_settings)
+
+    assert result is True, (
+        f"{la_count} Live Activity tokens with 0 device tokens must disable "
+        "APNS — the Live Activity push job would reach production lock screens"
+    )
+    assert "staging_notification_safety_warning" in caplog.text
+    assert "APNS will be disabled" in caplog.text
+    assert str(la_count) in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_safety_check_few_live_activity_tokens_returns_false(
+    db_session, staging_settings, caplog
+):
+    """A handful of Live Activity tokens is staging testers, not a bad clone."""
+    from datetime import datetime, timedelta, timezone
+
+    for i in range(3):
+        db_session.add(
+            LiveActivityToken(
+                push_token=f"few_la_push_token_{i:03d}",
+                activity_id=f"few_activity_{i:03d}",
+                train_number=f"300{i}",
+                origin_code="NY",
+                destination_code="TR",
+                expires_at=datetime.now(timezone.utc) + timedelta(hours=6),
+            )
+        )
+    await db_session.commit()
+
+    with patch("trackrat.main.get_session", _session_context(db_session)):
+        result = await _check_staging_notification_safety(staging_settings)
+
+    assert result is False
+    assert "staging_notification_tokens_present" in caplog.text
+    assert "staging_notification_safety_warning" not in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_safety_check_fails_closed_on_db_error(staging_settings, caplog):
+    """If the token counts cannot be read, APNS is disabled (fail closed).
+
+    A failed query is not evidence that the scrub ran. Staging uses the same
+    APNS key, bundle ID and production gateway as production, so returning
+    False here would push to real devices on an unverified database.
+    """
 
     @asynccontextmanager
     async def failing_get_session():
@@ -168,6 +240,9 @@ async def test_safety_check_handles_db_errors_gracefully(staging_settings, caplo
     with patch("trackrat.main.get_session", failing_get_session):
         result = await _check_staging_notification_safety(staging_settings)
 
-    assert result is False
+    assert result is True, (
+        "safety interlock must fail closed — an unreadable database must "
+        "disable APNS, not leave it enabled"
+    )
     assert "staging_notification_safety_check_failed" in caplog.text
-    assert "Proceeding with caution" in caplog.text
+    assert "APNS will be disabled" in caplog.text

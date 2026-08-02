@@ -57,38 +57,18 @@ run_sql() {
   fi
 }
 
-# Tables to scrub and why:
-#
-# device_tokens (CASCADE → route_alert_subscriptions, route_preferences)
-#   Contains production APNS tokens. If not scrubbed, staging sends real push
-#   notifications to production users' phones within minutes of startup.
-#
-# live_activity_tokens
-#   Contains production APNS Live Activity push tokens. Staging's scheduler
-#   would send Live Activity updates to real users every minute, potentially
-#   showing wrong data or ending their active Live Activities.
-#
-# cached_api_responses
-#   Stale production caches could mask bugs in staging cache generation.
-#
-# scheduler_task_runs
-#   Contains production instance hostnames and last_successful_run timestamps.
-#   If not scrubbed, staging's freshness-check logic may skip scheduled runs
-#   for up to their full interval (thinking tasks already ran recently).
+# The table list lives in scrub-staging-db.sql, which is also embedded into the
+# staging VM startup script by infra_v2/terraform/compute.tf. Keeping it in one
+# file is what stops the automatic boot-time scrub and this manual backstop from
+# drifting apart (issue #1710). That file also documents why each table is here.
+SCRUB_SQL_FILE="$SCRIPT_DIR/scrub-staging-db.sql"
 
-SCRUB_SQL="
--- Remove all device tokens and cascade to route_alert_subscriptions + route_preferences
-TRUNCATE TABLE device_tokens CASCADE;
+if [[ ! -f "$SCRUB_SQL_FILE" ]]; then
+  echo "ERROR: scrub SQL not found at $SCRUB_SQL_FILE" >&2
+  exit 1
+fi
 
--- Remove all Live Activity tokens
-TRUNCATE TABLE live_activity_tokens;
-
--- Clear stale production caches
-TRUNCATE TABLE cached_api_responses;
-
--- Reset scheduler state so staging runs collectors immediately
-TRUNCATE TABLE scheduler_task_runs;
-"
+SCRUB_SQL="$(cat "$SCRUB_SQL_FILE")"
 
 COUNT_SQL="
 SELECT 'device_tokens' AS table_name, COUNT(*) AS row_count FROM device_tokens

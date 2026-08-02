@@ -80,9 +80,28 @@ Consequences:
 `cloudbuild-staging.yaml::prepare-staging-disk` snapshots
 `trackrat-production-data` and rebuilds `trackrat-staging-data` from it. Good
 news — no empty-DB problem, and `validate-staging.sh` works immediately — but it
-lands **production PII in staging**, so `scripts/scrub-staging-db.sh` is
-mandatory, not optional (step S5). The pipeline also already has an
-`upload-compose-tunnel` step that ships `docker-compose.tunnel.yml` to the VM.
+does land **production PII in staging**. That is handled automatically; running
+`scripts/scrub-staging-db.sh` by hand is **not** a required step (issue #1710).
+
+Two layers close it, both on every boot:
+
+1. **Boot-time scrub** — `infra_v2/terraform/compute.tf`, guarded on
+   `$ENVIRONMENT = staging`. It starts *only* the `db` container, waits for
+   `pg_isready`, truncates the tables listed in `scripts/scrub-staging-db.sql`,
+   and only then brings up the API — so the API never sees production
+   notification data. It runs under `set -e`, so if the scrub cannot run the
+   API container is never started at all.
+2. **Startup guard** — `_check_staging_notification_safety` in
+   `backend_v2/src/trackrat/main.py` disables APNS outright if either token
+   table still looks like a production clone, or if the counts cannot be read.
+
+`scripts/scrub-staging-db.sh` is a **backstop for local or hand-managed database
+work**. It reads the same `scrub-staging-db.sql` as the boot scrub, so the two
+cannot drift. Step S5 is therefore an optional verification, not a mandatory
+action.
+
+The pipeline also already has an `upload-compose-tunnel` step that ships
+`docker-compose.tunnel.yml` to the VM.
 
 ### 3. The staging pilot cannot rehearse Phase 4
 
@@ -243,11 +262,21 @@ gcloud compute forwarding-rules list --global --project=trackrat-v2 \
 The managed cert sits in `PROVISIONING` until DNS propagates (15–60 min). This
 gives you a working non-Cloudflare staging to compare against.
 
-### S5. Scrub production PII (mandatory — finding 2)
+### S5. Confirm the PII scrub ran (optional verification — finding 2)
+
+The scrub is automatic on every staging boot; this only confirms it. Expect
+zero rows, and `staging_notification_safety_ok` in the logs.
 
 ```bash
-bash scripts/scrub-staging-db.sh
+bash scripts/scrub-staging-db.sh --dry-run
+
+PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py \
+  --env staging --search staging_notification_safety
 ```
+
+Only run the script without `--dry-run` if those show production data still
+present — that would mean the boot scrub failed and is worth investigating,
+not just papering over.
 
 ### S6. Verify both paths independently
 

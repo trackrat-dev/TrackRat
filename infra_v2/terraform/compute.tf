@@ -323,11 +323,13 @@ TUNNELEOF
           UNION ALL SELECT 'scheduler_task_runs', COUNT(*) FROM scheduler_task_runs;
         "
 
+        # The scrub statements are single-sourced from
+        # scripts/scrub-staging-db.sql (issue #1710) so this boot scrub and the
+        # manual scripts/scrub-staging-db.sh backstop cannot drift. Embedded at
+        # apply time rather than shipped to the VM, so the boot path gains no
+        # new fetch that could fail.
         docker exec trackrat-postgres psql -U trackrat -d trackrat -c "
-          TRUNCATE TABLE device_tokens CASCADE;
-          TRUNCATE TABLE live_activity_tokens;
-          TRUNCATE TABLE cached_api_responses;
-          TRUNCATE TABLE scheduler_task_runs;
+          ${file("${path.module}/../../scripts/scrub-staging-db.sql")}
         "
 
         echo "✅ Staging database scrubbed"

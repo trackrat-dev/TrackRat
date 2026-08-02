@@ -72,9 +72,13 @@ async def _check_staging_notification_safety(settings: Any) -> bool:
     """Check if staging database contains production notification data.
 
     After cloning production to staging, the scrub script should have cleared
-    device_tokens and live_activity_tokens. If they still contain many rows,
+    device_tokens and live_activity_tokens. If either still contains many rows,
     it means the scrub was skipped or failed, and the scheduler would send
     push notifications to real production users.
+
+    This is a safety interlock, so it fails closed: if the token counts cannot
+    be read at all, APNS is disabled rather than left enabled on an unverified
+    database.
 
     Returns True if APNS should be disabled (unsafe token count detected).
     """
@@ -91,7 +95,12 @@ async def _check_staging_notification_safety(settings: Any) -> bool:
                 select(func.count()).select_from(LiveActivityToken)
             )
 
-        if (device_count or 0) > _STAGING_DEVICE_TOKEN_THRESHOLD:
+        # Either token type is enough to reach real users: device tokens drive
+        # route alerts, Live Activity tokens drive the ~1-minute lock-screen
+        # push job. Both are checked against the same threshold.
+        if (device_count or 0) > _STAGING_DEVICE_TOKEN_THRESHOLD or (
+            la_count or 0
+        ) > _STAGING_DEVICE_TOKEN_THRESHOLD:
             logger.critical(
                 "staging_notification_safety_warning",
                 message=(
@@ -118,11 +127,19 @@ async def _check_staging_notification_safety(settings: Any) -> bool:
                 message="No production tokens in staging database.",
             )
     except Exception as e:
-        logger.warning(
+        # Fail closed. An unreadable database is not evidence that the scrub
+        # ran, and staging shares production's APNS key, bundle ID and gateway
+        # (APNS_ENVIRONMENT=prod), so leaving APNS enabled here would push to
+        # real devices on the strength of a failed query.
+        logger.critical(
             "staging_notification_safety_check_failed",
             error=str(e),
-            message="Could not verify staging notification safety. Proceeding with caution.",
+            message=(
+                "Could not verify staging notification safety. APNS will be "
+                "disabled until the token counts can be read."
+            ),
         )
+        return True
 
     return False
 
