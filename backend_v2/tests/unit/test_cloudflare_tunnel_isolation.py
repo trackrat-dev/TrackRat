@@ -342,6 +342,18 @@ requires_compose = pytest.mark.skipif(
 )
 
 
+def test_compose_binary_is_present_in_ci():
+    """A skip is the right answer on a dev box without Docker; in CI it would
+    mean every fail-closed guarantee below silently stopped being checked while
+    the job still reported green. Fail loudly there instead."""
+    if not os.environ.get("CI"):
+        pytest.skip("compose availability is only enforced in CI")
+    assert _COMPOSE_ARGV is not None, (
+        "no docker compose binary on this runner — the connector-config tests "
+        "would skip, leaving the #1594 fail-closed behaviour unverified"
+    )
+
+
 def _extract_tunnel_config_block(toolbox_root: Path) -> str:
     """Slice the connector-config block out of the real startup script, with the
     toolbox search root repointed at a temp directory."""
