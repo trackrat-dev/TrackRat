@@ -274,14 +274,22 @@ class TestNormalizerCancellationFloor:
     def test_sparse_but_genuinely_delayed_segment_still_escalates(self):
         """The floor must not become a general "too few trains" mute. Two
         journeys, one cancelled, but the train that ran lost 5 minutes: that is
-        a real delay and stays severe — attributed to delays, not cancellations."""
+        a real delay and still escalates — attributed to delays, not cancellations.
+
+        5 minutes lost is 'heavy' rather than 'severe' because the baseline is
+        floored at CONGESTION_BASELINE_FLOOR_MINUTES (#1715): 1 + 5/10 = 1.5,
+        the top of the heavy band. Before the floor the same 5 minutes on this
+        5-minute hop doubled the transit time and read severe purely because the
+        hop was short — the amplification that made adjacent segments leap tiers.
+        """
         result = normalize_aggregated_segments(
             [_seg(sample_count=1, cancellation_count=1, avg_transit=10.0, baseline=5.0)]
         )
         assert len(result) == 1
         seg = result[0]
         assert seg.average_delay_minutes == pytest.approx(5.0)
-        assert seg.congestion_level == "severe"
+        assert seg.congestion_factor == pytest.approx(1.5)
+        assert seg.congestion_level == "heavy"
         assert seg.congestion_cause == CONGESTION_CAUSE_DELAYS
 
 

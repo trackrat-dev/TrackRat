@@ -847,15 +847,15 @@ struct CompactCongestionLegend: View {
     var body: some View {
         HStack(spacing: 12) {
             if highlightMode == .health {
+                // Health stays four discrete tiers: frequency is a count ratio
+                // with wide bands, so it does not suffer the tier-skipping the
+                // delay ramp exists to fix (#1715).
                 LegendItem(color: .green, label: "Healthy")
                 LegendItem(color: .yellow, label: "Moderate")
                 LegendItem(color: .orange, label: "Reduced")
                 LegendItem(color: .red, label: "Severe")
             } else {
-                LegendItem(color: .green, label: "Normal")
-                LegendItem(color: .yellow, label: "Moderate")
-                LegendItem(color: .orange, label: "Heavy")
-                LegendItem(color: .red, label: "Severe")
+                DelayRampLegend()
             }
         }
         .font(.caption2)

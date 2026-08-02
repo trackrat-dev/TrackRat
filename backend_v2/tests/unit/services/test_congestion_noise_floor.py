@@ -125,10 +125,18 @@ class TestNormalizerDelayFloor:
         assert seg.average_delay_minutes == pytest.approx(0.75)
 
     def test_genuine_delay_still_escalates_on_short_hop(self):
-        """3 min actual over 0.75 min baseline (delay 2.25) stays severe."""
+        """3 min actual over 0.75 min baseline (delay 2.25) still escalates.
+
+        The tier is 'moderate', not 'severe': the baseline is floored at
+        CONGESTION_BASELINE_FLOOR_MINUTES so the factor is 1 + 2.25/10 = 1.225,
+        which is what 2.25 lost minutes means anywhere on the network. Reading
+        the raw 3/0.75 = 4.0 painted this the same colour as a train 15 minutes
+        down, purely because the hop is 45 seconds long (#1715).
+        """
         result = normalize_aggregated_segments([self._seg(3.0, 0.75)])
         assert len(result) == 1
-        assert result[0].congestion_level == "severe"
+        assert result[0].congestion_factor == pytest.approx(1.225)
+        assert result[0].congestion_level == "moderate"
 
     def test_cancellations_still_escalate_sub_minute_hop(self):
         """A short on-time hop with heavy cancellations must NOT be suppressed:
@@ -318,9 +326,15 @@ class TestDelayFloorRealDB:
         assert seg.congestion_factor == pytest.approx(1.0)
         assert seg.congestion_level == "normal"
 
-    async def test_genuine_delay_still_severe(self, db_session: AsyncSession):
+    async def test_genuine_delay_still_escalates(self, db_session: AsyncSession):
         """A trolley hop scheduled at 45s but taking 4 min (>1 min absolute
-        delay) is a real problem and stays escalated."""
+        delay) is a real problem and stays escalated.
+
+        'heavy' rather than 'severe': the 3.25 minutes lost are measured against
+        CONGESTION_BASELINE_FLOOR_MINUTES (1 + 3.25/10 = 1.325), not against the
+        45-second scheduled hop, which used to read 5.33 and paint this the same
+        colour as a train half an hour down (#1715).
+        """
         dep = now_et() - timedelta(minutes=20)
         for i in range(6):
             await _add_short_hop_journey(
@@ -345,4 +359,5 @@ class TestDelayFloorRealDB:
             None,
         )
         assert seg is not None
-        assert seg.congestion_level == "severe"
+        assert seg.congestion_factor == pytest.approx(1.325, abs=0.02)
+        assert seg.congestion_level == "heavy"

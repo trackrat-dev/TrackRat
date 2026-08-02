@@ -228,6 +228,10 @@ export interface SegmentCongestion {
   data_source: string;
   congestion_level: CongestionLevel;
   congestion_factor: number;
+  // congestion_factor with the segment's cancellation rate folded in — the
+  // value congestion_level is bucketed from, and what the map ramps its colour
+  // along (#1715). Absent on older backend responses.
+  effective_congestion_factor?: number;
   average_delay_minutes: number;
   sample_count: number;
   baseline_minutes: number;

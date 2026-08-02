@@ -27,6 +27,7 @@ from trackrat.services.congestion_types import (
     FREQ_THRESHOLD_MODERATE,
     FREQ_THRESHOLD_REDUCED,
     SegmentCongestion,
+    congestion_factor_from_delay,
     congestion_level_and_cause,
     effective_congestion_factor,
     frequency_is_reliable,
@@ -35,8 +36,7 @@ from trackrat.services.congestion_types import (
     reliable_congestion_factor,
 )
 from trackrat.services.departure import active_data_sources
-from trackrat.utils.time import ensure_timezone_aware, now_et
-from trackrat.utils.train import effective_njt_updated_times
+from trackrat.utils.time import now_et
 
 logger = get_logger(__name__)
 
@@ -639,10 +639,8 @@ class CongestionAnalyzer:
                 row.baseline_minutes or row.median_actual or row.avg_actual or 1.0
             )
             current_avg = float(row.current_avg_minutes or row.avg_actual or baseline)
-            congestion_factor = current_avg / baseline if baseline > 0 else 1.0
-
-            # Calculate average delay
             average_delay = current_avg - baseline
+            congestion_factor = congestion_factor_from_delay(average_delay, baseline)
 
             # Suppress sub-minute timing noise on closely-spaced stops before the
             # factor drives any color (see reliable_congestion_factor). Reassigned
@@ -829,13 +827,7 @@ class CongestionAnalyzer:
                 actual_minutes,
                 scheduled_minutes,
                 -- Calculate delay
-                actual_minutes - COALESCE(scheduled_minutes, actual_minutes) as delay_minutes,
-                -- Calculate congestion factor
-                CASE
-                    WHEN scheduled_minutes > 0
-                    THEN actual_minutes / scheduled_minutes
-                    ELSE 1.0
-                END as congestion_factor
+                actual_minutes - COALESCE(scheduled_minutes, actual_minutes) as delay_minutes
             FROM ranked_segments
             WHERE rank_within_route <= :max_per_segment
             ORDER BY departure_time DESC
@@ -906,13 +898,7 @@ class CongestionAnalyzer:
                 actual_minutes,
                 scheduled_minutes,
                 -- Calculate delay
-                actual_minutes - COALESCE(scheduled_minutes, actual_minutes) as delay_minutes,
-                -- Calculate congestion factor
-                CASE
-                    WHEN scheduled_minutes > 0
-                    THEN actual_minutes / scheduled_minutes
-                    ELSE 1.0
-                END as congestion_factor
+                actual_minutes - COALESCE(scheduled_minutes, actual_minutes) as delay_minutes
             FROM segment_data
             ORDER BY departure_time DESC
             LIMIT :global_limit
@@ -956,7 +942,6 @@ class CongestionAnalyzer:
         individual_segments = []
         for row in rows:
             # Convert database types to Python types
-            congestion_factor = float(row.congestion_factor)
             actual_minutes = float(row.actual_minutes)
             scheduled_minutes = (
                 float(row.scheduled_minutes)
@@ -964,6 +949,9 @@ class CongestionAnalyzer:
                 else actual_minutes
             )
             delay_minutes = float(row.delay_minutes)
+            congestion_factor = congestion_factor_from_delay(
+                delay_minutes, scheduled_minutes
+            )
 
             # Suppress sub-minute timing noise on closely-spaced stops so a
             # per-train segment is not shown as heavy/severe from a few seconds

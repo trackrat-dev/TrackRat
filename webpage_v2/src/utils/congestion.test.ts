@@ -15,6 +15,8 @@ import {
   hasCancellationCause,
   computeSegmentBounds,
   averageRouteDelay,
+  congestionRampColor,
+  segmentRampColor,
   RenderableSegment,
 } from './congestion';
 
@@ -253,6 +255,11 @@ describe('buildSegmentFeatureCollection', () => {
         from_station_name: 'New York Penn Station',
         to_station_name: 'Newark Penn Station',
         congestion_level: 'severe',
+        // Consistent with the level: the stroke is ramped from the factor, so a
+        // fixture whose factor said 1.2 while its level said 'severe' was only
+        // ever asserting the old level→colour lookup.
+        congestion_factor: 2.0,
+        effective_congestion_factor: 2.0,
         average_delay_minutes: 12,
       }),
     ]);
@@ -409,5 +416,162 @@ describe('averageRouteDelay', () => {
     // Only NY→NP is covered (delay 6); NP→HB has no segment.
     const delay = averageRouteDelay(['NY', 'NP', 'HB'], [seg('NY', 'NP', 6)]);
     expect(delay).toBeCloseTo(6, 6);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Continuous colour ramp (issue #1715)
+//
+// The report was that the map jumps "from green directly to red directly back
+// to green". Part of that is the backend's ratio amplifying short hops (fixed
+// separately); the rest is that four hard buckets turn any difference at all
+// into a full colour cliff. These tests pin the ramp that removes the cliff
+// without moving where the named tiers actually sit.
+// ---------------------------------------------------------------------------
+
+/** '#rrggbb' → [r, g, b], so tests can reason about direction of travel. */
+function rgb(hex: string): [number, number, number] {
+  const n = parseInt(hex.slice(1), 16);
+  return [(n >> 16) & 0xff, (n >> 8) & 0xff, n & 0xff];
+}
+
+/** Euclidean distance in RGB — a proxy for "how different do these look". */
+function colorDistance(a: string, b: string): number {
+  const [ar, ag, ab] = rgb(a);
+  const [br, bg, bb] = rgb(b);
+  return Math.hypot(ar - br, ag - bg, ab - bb);
+}
+
+describe('congestionRampColor', () => {
+  it('renders every tier threshold as exactly that tier colour', () => {
+    // The legend names four tiers; the ramp must still hit those exact colours
+    // at the thresholds the backend buckets on, or the legend lies about the map.
+    expect(congestionRampColor(1.1)).toBe(CONGESTION_HEX.normal);
+    expect(congestionRampColor(1.25)).toBe(CONGESTION_HEX.moderate);
+    expect(congestionRampColor(1.5)).toBe(CONGESTION_HEX.heavy);
+    expect(congestionRampColor(2.0)).toBe(CONGESTION_HEX.severe);
+  });
+
+  it('keeps the on-time plateau flat green', () => {
+    // Sub-minute noise is pinned to exactly 1.0 by the backend, and the great
+    // majority of segments sit there. Shading that band would make ordinary
+    // on-time track read as faintly congested.
+    for (const factor of [0, 0.5, 0.82, 1.0, 1.05, 1.1]) {
+      expect(congestionRampColor(factor)).toBe(CONGESTION_HEX.normal);
+    }
+  });
+
+  it('clamps above the ramp instead of wrapping around', () => {
+    // A stuck train can produce a factor of 5+; it must stay severe, not
+    // overflow into some other colour.
+    for (const factor of [2.0, 3.0, 5.21, 100]) {
+      expect(congestionRampColor(factor)).toBe(CONGESTION_HEX.severe);
+    }
+  });
+
+  it('interpolates between tiers instead of snapping', () => {
+    // The midpoint of the moderate→heavy span must be a real blend: distinct
+    // from both endpoints, and roughly equidistant from them.
+    const mid = congestionRampColor(1.375);
+    expect(mid).not.toBe(CONGESTION_HEX.moderate);
+    expect(mid).not.toBe(CONGESTION_HEX.heavy);
+    const toModerate = colorDistance(mid, CONGESTION_HEX.moderate);
+    const toHeavy = colorDistance(mid, CONGESTION_HEX.heavy);
+    expect(Math.abs(toModerate - toHeavy)).toBeLessThan(12);
+  });
+
+  it('moves smoothly across a threshold rather than cliff-edging', () => {
+    // This is the actual defect: 1.24 vs 1.26 used to be two completely
+    // different colours. Either side of a threshold must now look near-identical
+    // — and much closer to each other than the tier colours are to each other.
+    const below = congestionRampColor(1.24);
+    const above = congestionRampColor(1.26);
+    expect(colorDistance(below, above)).toBeLessThan(
+      colorDistance(CONGESTION_HEX.moderate, CONGESTION_HEX.heavy) / 4,
+    );
+  });
+
+  it('is continuous — no cliff anywhere along the ramp', () => {
+    // This is the property the issue is actually about. Walking the ramp in
+    // small steps, no step may produce a large colour jump; the four-bucket
+    // version jumped the full tier-to-tier distance at three points.
+    //
+    // Deliberately not asserted as "distance from green increases": this
+    // palette runs olive → orange → brick → dark red, and RGB distance from
+    // either endpoint is genuinely non-monotonic across it. Continuity is the
+    // real invariant; the tier-anchor test above pins the direction.
+    const tierGap = colorDistance(CONGESTION_HEX.moderate, CONGESTION_HEX.heavy);
+    let previous = congestionRampColor(1.1);
+    for (let factor = 1.11; factor <= 2.0001; factor += 0.01) {
+      const color = congestionRampColor(factor);
+      expect(colorDistance(previous, color)).toBeLessThan(tierGap / 4);
+      previous = color;
+    }
+  });
+
+  it('always emits a well-formed hex colour', () => {
+    for (let factor = 0.5; factor <= 2.5; factor += 0.017) {
+      expect(congestionRampColor(factor)).toMatch(/^#[0-9A-F]{6}$/);
+    }
+  });
+
+  it('falls back to green for a non-finite factor', () => {
+    // Defensive: a malformed payload must not produce '#NaNNaNNaN'. Green
+    // rather than red for both — a garbage factor is missing information, and
+    // painting the map red on missing information invents an outage. The
+    // backend already reports 1.0 when there is no baseline to divide by, so
+    // neither value should reach here in practice.
+    expect(congestionRampColor(NaN)).toBe(CONGESTION_HEX.normal);
+    expect(congestionRampColor(Infinity)).toBe(CONGESTION_HEX.normal);
+  });
+});
+
+describe('segmentRampColor', () => {
+  it('ramps the cancellation-blended factor the backend bucketed from', () => {
+    // A segment whose trains ran on time but were heavily cancelled is coloured
+    // by the blended factor (#1638). Ramping the delay-only factor would drop
+    // that escalation and paint it green.
+    const segment = makeSegment({
+      congestion_factor: 1.0,
+      effective_congestion_factor: 1.75,
+      congestion_level: 'severe',
+    });
+    expect(segmentRampColor(segment)).toBe(congestionRampColor(1.75));
+    expect(segmentRampColor(segment)).not.toBe(CONGESTION_HEX.normal);
+  });
+
+  it('falls back to the tier colour, not the delay factor, when the blended one is absent', () => {
+    // Regression guard for the pre-deployment cache window: a congestion cache
+    // entry minted before effective_congestion_factor existed is still served
+    // until its TTL expires. A cancellation-escalated segment in that payload
+    // has congestion_level 'severe' with congestion_factor 1.0 — ramping the
+    // factor would paint it green beside a status list reading "Severe
+    // cancellations", which is exactly the #1638 contradiction.
+    const segment = makeSegment({
+      congestion_factor: 1.0,
+      congestion_level: 'severe',
+      congestion_cause: 'cancellations',
+    });
+    delete segment.effective_congestion_factor;
+    expect(segmentRampColor(segment)).toBe(CONGESTION_HEX.severe);
+  });
+
+  it('falls back to each tier colour exactly', () => {
+    for (const level of CONGESTION_LEVELS) {
+      const segment = makeSegment({ congestion_level: level });
+      delete segment.effective_congestion_factor;
+      expect(segmentRampColor(segment)).toBe(CONGESTION_HEX[level]);
+    }
+  });
+
+  it('prefers the blended factor even when it is lower than the tier suggests', () => {
+    // The served field is authoritative: it is what the backend bucketed, so it
+    // cannot disagree with the level on a fresh response.
+    const segment = makeSegment({
+      congestion_factor: 2.0,
+      effective_congestion_factor: 1.0,
+      congestion_level: 'normal',
+    });
+    expect(segmentRampColor(segment)).toBe(CONGESTION_HEX.normal);
   });
 });

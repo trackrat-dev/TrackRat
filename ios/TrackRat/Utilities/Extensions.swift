@@ -377,12 +377,111 @@ enum CongestionColors {
         return factor + max(0, cancellationRate) * cancellationCongestionWeight
     }
 
-    /// Color for delay-based congestion factor (higher = more delayed).
+    /// Factor at which each tier's color is fully reached. `severe` has no upper
+    /// bound as a tier, so 2.0 — twice the baseline transit time — anchors the end
+    /// of the ramp; past it the color simply stays fully red.
+    private static let rampStops: [(factor: Double, color: UIColor)] = [
+        (normalThreshold, .systemGreen),
+        (moderateThreshold, .systemYellow),
+        (heavyThreshold, .systemOrange),
+        (2.0, .systemRed),
+    ]
+
+    /// How many discrete colors the ramp is quantised to.
+    ///
+    /// The map merges runs of adjacent segments that render the same color into a
+    /// single overlay (`aggregatedCongestionRuns`), so the color has to come from
+    /// a finite set — a truly continuous ramp would give every segment its own
+    /// color and therefore its own overlay.
+    ///
+    /// Sized against the *narrowest* span, not the whole ramp: moderate is only
+    /// 0.15 wide against the ramp's 0.9, so it gets a ninth of the steps. At 24
+    /// steps that span would be crossed in four visible jumps — banding, which is
+    /// the same complaint in miniature. 64 keeps every span smooth while still
+    /// collapsing the on-time plateau, which is the large majority of segments,
+    /// into a single merged color at step 0.
+    static let congestionRampSteps = 64
+
+    /// Color for a delay-based congestion factor (higher = more delayed),
+    /// interpolated between the tier colors rather than snapped to one of four.
+    ///
+    /// The tier colors still land exactly on their own thresholds, so the map
+    /// legend keeps describing the map truthfully; only the space between
+    /// thresholds is filled in. This is issue #1715: adjacent segments whose
+    /// delays differ slightly now differ slightly in color, instead of one at
+    /// 1.24 rendering full yellow beside one at 1.26 rendering full orange.
+    ///
+    /// Everything at or below `normalThreshold` stays flat green — that plateau
+    /// is the backend's "these trains are on time" statement (sub-minute noise is
+    /// pinned to exactly 1.0 by `MIN_CONGESTION_DELAY_MINUTES`), so shading it
+    /// would make ordinary on-time track read as faintly congested.
     static func color(forCongestionFactor factor: Double) -> UIColor {
-        if factor <= normalThreshold { return .systemGreen }
-        else if factor <= moderateThreshold { return .systemYellow }
-        else if factor <= heavyThreshold { return .systemOrange }
-        else { return .systemRed }
+        rampColor(atStep: rampStep(forFactor: factor))
+    }
+
+    /// Quantised position along the ramp, `0...congestionRampSteps`.
+    /// Colors and merge keys are both derived from this, so two segments share an
+    /// overlay exactly when they share a color.
+    static func rampStep(forFactor factor: Double) -> Int {
+        guard factor.isFinite else { return 0 }
+        let first = rampStops[0].factor
+        let last = rampStops[rampStops.count - 1].factor
+        let position = (factor - first) / (last - first)
+        let clamped = min(max(position, 0), 1)
+        return Int((clamped * Double(congestionRampSteps)).rounded())
+    }
+
+    /// The ramp's anchor colors, ascending. These are the four tier colors the
+    /// ramp interpolates between, so a legend drawing them evenly spaced is a
+    /// *color key* — every color the map can paint appears on the bar exactly
+    /// once, under the right tier name. (Deliberately not a factor axis: the
+    /// factor spans are uneven, so an axis would need positioned labels to stay
+    /// honest, and the bar's job is "which tier is this hue".)
+    static var rampAnchorColors: [UIColor] { rampStops.map(\.color) }
+
+    /// Factor at a normalised position `0...1` along the ramp — the inverse of
+    /// `rampStep(forFactor:)`.
+    private static func rampFactor(atPosition position: Double) -> Double {
+        let first = rampStops[0].factor
+        let last = rampStops[rampStops.count - 1].factor
+        return first + (last - first) * min(max(position, 0), 1)
+    }
+
+    private static func rampColor(atStep step: Int) -> UIColor {
+        let factor = rampFactor(
+            atPosition: Double(step) / Double(congestionRampSteps))
+
+        for i in 1..<rampStops.count where factor < rampStops[i].factor {
+            let lower = rampStops[i - 1]
+            let upper = rampStops[i]
+            let t = (factor - lower.factor) / (upper.factor - lower.factor)
+            return blend(lower.color, upper.color, CGFloat(t))
+        }
+        return rampStops[rampStops.count - 1].color
+    }
+
+    /// Interpolate two colors while preserving their light/dark adaptation:
+    /// both endpoints are resolved inside the dynamic provider, against whatever
+    /// traits the renderer is drawing with, rather than being flattened up front.
+    ///
+    /// The endpoints are returned as-is rather than wrapped, so a step that lands
+    /// exactly on a tier yields that tier's own system color — which is the
+    /// overwhelmingly common case (the on-time plateau is step 0) and keeps those
+    /// segments on a plain, allocation-free `.systemGreen`.
+    private static func blend(_ from: UIColor, _ to: UIColor, _ t: CGFloat) -> UIColor {
+        if t <= 0 { return from }
+        if t >= 1 { return to }
+        return UIColor { traits in
+            var fr: CGFloat = 0, fg: CGFloat = 0, fb: CGFloat = 0, fa: CGFloat = 0
+            var tr: CGFloat = 0, tg: CGFloat = 0, tb: CGFloat = 0, ta: CGFloat = 0
+            from.resolvedColor(with: traits).getRed(&fr, green: &fg, blue: &fb, alpha: &fa)
+            to.resolvedColor(with: traits).getRed(&tr, green: &tg, blue: &tb, alpha: &ta)
+            return UIColor(
+                red: fr + (tr - fr) * t,
+                green: fg + (tg - fg) * t,
+                blue: fb + (tb - fb) * t,
+                alpha: fa + (ta - fa) * t)
+        }
     }
 
     /// Color for delay-based congestion factor with cancellation rate folded in.
@@ -413,24 +512,22 @@ enum CongestionColors {
         return color(forFrequencyFactor: factor - max(0, cancellationRate) * cancellationFrequencyWeight)
     }
 
-    /// Stable identifier for the delay-based color tier this segment would render as.
+    /// Stable identifier for the delay-based color this segment would render as.
     /// Used to group adjacent segments with the same effective color into one overlay.
-    static func congestionTierKey(
+    static func congestionColorKey(
         forFactor factor: Double, cancellationRate: Double, totalJourneys: Int
     ) -> String {
-        congestionTierKey(
+        congestionColorKey(
             forFactor: effectiveCongestionFactor(
                 factor, cancellationRate: cancellationRate, totalJourneys: totalJourneys))
     }
 
-    /// Tier key for a delay factor with no cancellation component — the
+    /// Color key for a delay factor with no cancellation component — the
     /// per-train individual-journey segments, which carry no cancellation rate.
-    /// Mirrors the plain `color(forCongestionFactor:)` overload.
-    static func congestionTierKey(forFactor effective: Double) -> String {
-        if effective <= normalThreshold { return "normal" }
-        if effective <= moderateThreshold { return "moderate" }
-        if effective <= heavyThreshold { return "heavy" }
-        return "severe"
+    /// Derived from the same quantised ramp step as the color itself, so segments
+    /// merge into one overlay exactly when they render identically.
+    static func congestionColorKey(forFactor effective: Double) -> String {
+        "ramp\(rampStep(forFactor: effective))"
     }
 
     /// Stable identifier for the frequency-based color tier this segment would render as.

@@ -1,5 +1,7 @@
 import XCTest
 import SwiftUI
+import UIKit
+
 @testable import TrackRat
 
 class ExtensionsTests: XCTestCase {
@@ -474,55 +476,145 @@ class ExtensionsTests: XCTestCase {
     /// back the rate. Below `cancellationMinJourneys`, one cancelled train against
     /// one running train is a 50% rate that alone clears severe — the arithmetic
     /// behind issue #1638's "red but there are no delays" report.
-    func testCongestionTierKeyIgnoresCancellationsBelowTheJourneyFloor() {
-        // 1.0 + 50% * 0.015 = 1.75 (severe) if the rate were counted.
+    func testCongestionColorKeyIgnoresCancellationsBelowTheJourneyFloor() {
+        // 1.0 + 50% * 0.015 = 1.75 (severe) if the rate were counted. Compared
+        // against an undelayed segment's own key rather than a literal, so the
+        // assertion survives changes to the ramp's step count.
         XCTAssertEqual(
-            CongestionColors.congestionTierKey(
+            CongestionColors.congestionColorKey(
                 forFactor: 1.0, cancellationRate: 50, totalJourneys: 2),
-            "normal"
+            CongestionColors.congestionColorKey(forFactor: 1.0)
         )
     }
 
     /// The floor is inclusive, and above it the #1246 escalation is unchanged.
-    func testCongestionTierKeyFoldsCancellationsAtAndAboveTheFloor() {
+    func testCongestionColorKeyFoldsCancellationsAtAndAboveTheFloor() {
         XCTAssertEqual(
-            CongestionColors.congestionTierKey(
+            CongestionColors.congestionColorKey(
                 forFactor: 1.0, cancellationRate: 50,
                 totalJourneys: CongestionColors.cancellationMinJourneys),
-            "severe"
+            CongestionColors.congestionColorKey(forFactor: 1.75)
+        )
+        XCTAssertNotEqual(
+            CongestionColors.congestionColorKey(
+                forFactor: 1.0, cancellationRate: 50,
+                totalJourneys: CongestionColors.cancellationMinJourneys),
+            CongestionColors.congestionColorKey(forFactor: 1.0)
         )
         XCTAssertEqual(
-            CongestionColors.congestionTierKey(
+            CongestionColors.congestionColorKey(
                 forFactor: 1.0, cancellationRate: 50,
                 totalJourneys: CongestionColors.cancellationMinJourneys - 1),
-            "normal"
+            CongestionColors.congestionColorKey(forFactor: 1.0)
         )
     }
 
     /// The floor gates cancellations only. A sparse segment whose trains really
     /// lost time must still escalate, or the floor would mute real delays on the
     /// low-frequency stretches riders most need warning about.
-    func testCongestionTierKeyKeepsDelaysBelowTheJourneyFloor() {
-        XCTAssertEqual(
-            CongestionColors.congestionTierKey(
+    func testCongestionColorKeyKeepsDelaysBelowTheJourneyFloor() {
+        XCTAssertNotEqual(
+            CongestionColors.congestionColorKey(
                 forFactor: 1.8, cancellationRate: 50, totalJourneys: 1),
-            "severe"
+            CongestionColors.congestionColorKey(forFactor: 1.0)
         )
     }
 
     /// The color and the merge key must agree, or a merged run is drawn in a
-    /// color none of its segments would render individually.
-    func testCongestionColorAgreesWithTierKeyAcrossTheFloor() {
+    /// color none of its segments would render individually. With a ramp the
+    /// interesting case is no longer "which of four tiers" but "do equal keys
+    /// imply equal colors, and unequal keys imply unequal colors".
+    func testCongestionColorAgreesWithColorKeyAcrossTheFloor() {
+        // Below the journey floor the cancellations are dropped, so this is an
+        // undelayed segment: flat green, and the same key as factor 1.0.
         XCTAssertEqual(
             CongestionColors.color(
                 forCongestionFactor: 1.0, cancellationRate: 50, totalJourneys: 2),
             .systemGreen
         )
-        XCTAssertEqual(
-            CongestionColors.color(
-                forCongestionFactor: 1.0, cancellationRate: 50, totalJourneys: 10),
-            .systemRed
+
+        let sparse = (factor: 1.0, rate: 50.0, journeys: 2)
+        let sustained = (factor: 1.0, rate: 50.0, journeys: 10)
+        let sustainedColor = CongestionColors.color(
+            forCongestionFactor: sustained.factor,
+            cancellationRate: sustained.rate, totalJourneys: sustained.journeys)
+
+        // Sustained cancellations must move the segment well off green...
+        XCTAssertNotEqual(
+            rgba(sustainedColor), rgba(.systemGreen),
+            "sustained cancellations must not render as an on-time segment")
+        // ...and the key must move with it.
+        XCTAssertNotEqual(
+            CongestionColors.congestionColorKey(
+                forFactor: sparse.factor, cancellationRate: sparse.rate,
+                totalJourneys: sparse.journeys),
+            CongestionColors.congestionColorKey(
+                forFactor: sustained.factor, cancellationRate: sustained.rate,
+                totalJourneys: sustained.journeys)
         )
+    }
+
+    /// Equal keys must mean pixel-identical strokes: the merge concatenates
+    /// geometry and paints the run with one representative's color, so any
+    /// disagreement silently recolors its neighbours.
+    func testEqualColorKeysImplyIdenticalColors() {
+        var colorsByKey: [String: [UIColor]] = [:]
+        for hundredths in 90...220 {
+            let factor = Double(hundredths) / 100.0
+            let key = CongestionColors.congestionColorKey(forFactor: factor)
+            colorsByKey[key, default: []].append(
+                CongestionColors.color(forCongestionFactor: factor))
+        }
+        XCTAssertGreaterThan(colorsByKey.count, 1, "the ramp must have several steps")
+        for (key, colors) in colorsByKey {
+            let components = Set(colors.map { rgba($0) })
+            XCTAssertEqual(
+                components.count, 1,
+                "key \(key) maps to more than one color: \(components)")
+        }
+    }
+
+    /// The ramp must not cliff-edge anywhere — the actual complaint in #1715.
+    ///
+    /// The bound is a fraction of the ramp's own total length rather than an
+    /// absolute number, so it stays meaningful if the palette is retuned. Under
+    /// the previous four-bucket scheme a single step at a threshold covered a
+    /// whole tier-to-tier gap and would blow straight through this.
+    func testRampHasNoLargeColorJumps() {
+        let samples = stride(from: 1.10, through: 2.00, by: 0.005).map {
+            rgba(CongestionColors.color(forCongestionFactor: $0))
+        }
+        let jumps = zip(samples, samples.dropFirst()).map { from, to in distance(from, to) }
+        let rampLength = jumps.reduce(0, +)
+        XCTAssertGreaterThan(rampLength, 0, "the ramp must actually travel")
+        let largest = jumps.max() ?? 0
+        XCTAssertLessThan(
+            largest, rampLength / 8,
+            "ramp has a cliff: largest single step \(largest) of total \(rampLength)")
+    }
+
+    /// Sub-threshold factors stay flat green: that plateau is the backend's
+    /// "these trains are on time" statement and must not be shaded.
+    func testOnTimePlateauIsFlatGreen() {
+        for factor in [0.82, 0.95, 1.0, 1.05, 1.1] {
+            XCTAssertEqual(
+                CongestionColors.color(forCongestionFactor: factor), .systemGreen,
+                "factor \(factor) should render as an on-time segment")
+        }
+    }
+
+    /// Resolve a possibly-dynamic UIColor to concrete components so two colors
+    /// can be compared by appearance rather than by object identity.
+    private func rgba(_ color: UIColor) -> [CGFloat] {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        color.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
+            .getRed(&r, green: &g, blue: &b, alpha: &a)
+        // Rounded so float noise from interpolation doesn't split equal colors.
+        return [r, g, b, a].map { ($0 * 1000).rounded() / 1000 }
+    }
+
+    private func distance(_ lhs: [CGFloat], _ rhs: [CGFloat]) -> CGFloat {
+        sqrt(zip(lhs, rhs).map { left, right in (left - right) * (left - right) }.reduce(0, +))
     }
 
     /// The merge fix: in Health mode segments are colored by frequency, so the
@@ -537,8 +629,8 @@ class ExtensionsTests: XCTestCase {
             CongestionColors.frequencyTierKey(forFactor: 0.92, cancellationRate: 0)
         )
         XCTAssertNotEqual(
-            CongestionColors.congestionTierKey(forFactor: 1.0),
-            CongestionColors.congestionTierKey(forFactor: 2.0)
+            CongestionColors.congestionColorKey(forFactor: 1.0),
+            CongestionColors.congestionColorKey(forFactor: 2.0)
         )
         // Different frequency colors, identical delay tier -> do NOT merge.
         XCTAssertNotEqual(
@@ -546,8 +638,8 @@ class ExtensionsTests: XCTestCase {
             CongestionColors.frequencyTierKey(forFactor: 0.55, cancellationRate: 0)
         )
         XCTAssertEqual(
-            CongestionColors.congestionTierKey(forFactor: 1.0),
-            CongestionColors.congestionTierKey(forFactor: 1.05)
+            CongestionColors.congestionColorKey(forFactor: 1.0),
+            CongestionColors.congestionColorKey(forFactor: 1.05)
         )
     }
 }
