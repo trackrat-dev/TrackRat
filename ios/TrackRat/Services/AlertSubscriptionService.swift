@@ -219,7 +219,12 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
     }
 
     /// Frequency-first systems use service threshold; delay-first use delay threshold.
-    static let frequencyFirstSources: Set<String> = ["SUBWAY", "PATH", "PATCO"]
+    /// Must match the backend's `FREQUENCY_FIRST_SOURCES` (services/congestion_types.py):
+    /// `alert_evaluator` picks the threshold from that set, so any system missing here
+    /// shows the user a delay threshold the backend never evaluates it against.
+    static let frequencyFirstSources: Set<String> = [
+        "SUBWAY", "PATH", "PATCO", "WMATA", "BART", "SEPTA_METRO",
+    ]
 
     /// Copy mutable alert settings from `source` onto `target`, preserving target's identity fields.
     static func copySettings(from source: RouteAlertSubscription, to target: RouteAlertSubscription) -> RouteAlertSubscription {

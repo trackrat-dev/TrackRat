@@ -53,7 +53,8 @@ class TrainSystemTests: XCTestCase {
                 "\(system.displayName) is disabled and must not appear in availableCases"
             )
         }
-        // BART, DC Metro, MBTA, Metra, and SEPTA (Regional Rail + Metro) are the currently disabled systems.
+        // BART, DC Metro, MBTA, and Metra are the currently disabled systems.
+        // SEPTA (Regional Rail + Metro) was re-enabled for the issue #1634 rollout.
         XCTAssertEqual(
             available.count,
             TrainSystem.allCases.count - TrainSystem.disabledSystems.count,
@@ -130,6 +131,52 @@ class TrainSystemTests: XCTestCase {
         XCTAssertTrue(filtered.contains(.njt))
         XCTAssertTrue(filtered.contains(.path))
         XCTAssertFalse(filtered.contains(.patco))
+    }
+
+    // MARK: - Service-alert feed gating
+
+    /// `serviceAlertFeedSources` gates which systems the station-detail screen and
+    /// the planned-work toggle fetch alerts for. It must stay identical to the
+    /// backend's `SERVICE_ALERT_SOURCES` (services/alert_evaluator.py): a system
+    /// missing here has its alerts silently dropped client-side even though the
+    /// backend collects and would push them.
+    func testServiceAlertFeedSources_matchesBackendServiceAlertSources() {
+        let expected: Set<String> = ["SUBWAY", "LIRR", "MNR", "NJT", "SEPTA_RR", "SEPTA_METRO"]
+        XCTAssertEqual(
+            TrainSystem.serviceAlertFeedSources,
+            expected,
+            "serviceAlertFeedSources must match backend SERVICE_ALERT_SOURCES"
+        )
+    }
+
+    func testHasServiceAlertFeed_agreesWithSourceSet() {
+        for system in TrainSystem.allCases {
+            XCTAssertEqual(
+                system.hasServiceAlertFeed,
+                TrainSystem.serviceAlertFeedSources.contains(system.dataSource),
+                "\(system.displayName).hasServiceAlertFeed must agree with serviceAlertFeedSources"
+            )
+        }
+    }
+
+    /// Regression guard for the duplicated alert lists removed alongside the SEPTA
+    /// re-enablement: `StationDetailsView` and `AlertConfigurationSection` each
+    /// carried their own `[.subway, .lirr, .mnr, .njt]` copy, so SEPTA stations
+    /// showed no alerts and SEPTA subscriptions could never opt into planned work.
+    func testServiceAlertFeedSources_includesBothSeptaSystems() {
+        XCTAssertTrue(TrainSystem.septaRegionalRail.hasServiceAlertFeed,
+                      "SEPTA Regional Rail publishes a GTFS-RT alert feed")
+        XCTAssertTrue(TrainSystem.septaMetro.hasServiceAlertFeed,
+                      "SEPTA Metro publishes a GTFS-RT alert feed")
+    }
+
+    /// A schedule-only system has no alert feed, so the station screen must not
+    /// fetch for it — this is the case the shared constant has to keep excluding.
+    func testHasServiceAlertFeed_excludesScheduleOnlyAndUnfedSystems() {
+        for system in [TrainSystem.patco, .amtrak, .path] {
+            XCTAssertFalse(system.hasServiceAlertFeed,
+                           "\(system.displayName) has no service-alert feed")
+        }
     }
 
     // MARK: - searchGrouped

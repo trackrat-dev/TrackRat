@@ -195,9 +195,13 @@ class AlertConfigurationTests: XCTestCase {
     // MARK: - Frequency-First Sources
 
     func testFrequencyFirstSources_containsExpectedSystems() {
-        let expected: Set<String> = ["SUBWAY", "PATH", "PATCO"]
+        // Must stay identical to the backend's FREQUENCY_FIRST_SOURCES
+        // (services/congestion_types.py) — alert_evaluator picks the service vs
+        // delay threshold from that set, so a divergence shows the user a
+        // threshold the backend never evaluates the subscription against.
+        let expected: Set<String> = ["SUBWAY", "PATH", "PATCO", "WMATA", "BART", "SEPTA_METRO"]
         XCTAssertEqual(RouteAlertSubscription.frequencyFirstSources, expected,
-                       "Frequency-first sources should be SUBWAY, PATH, PATCO")
+                       "Frequency-first sources must match backend FREQUENCY_FIRST_SOURCES")
     }
 
     func testFrequencyFirstSources_excludesDelayBasedSystems() {

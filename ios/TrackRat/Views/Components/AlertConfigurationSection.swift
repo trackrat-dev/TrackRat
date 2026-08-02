@@ -338,12 +338,9 @@ struct AlertConfigurationSection: View {
         RouteAlertSubscription.frequencyFirstSources.contains(subscription.dataSource)
     }
 
-    /// Systems that support planned work notifications.
-    private static let plannedWorkSystems: Set<String> = ["SUBWAY", "LIRR", "MNR", "NJT"]
-
     private var showPlannedWork: Bool {
         (subscription.isSystemWide || subscription.lineId != nil || subscription.fromStationCode != nil)
-            && Self.plannedWorkSystems.contains(subscription.dataSource)
+            && TrainSystem.serviceAlertFeedSources.contains(subscription.dataSource)
     }
 
     private var activeTimePreset: TimePreset {
