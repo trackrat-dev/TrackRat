@@ -112,32 +112,47 @@ against `backend_v2/src/trackrat/services/departure.py`.
 
 ### 5. Wait for the GTFS bundle before judging anything
 
-**A newly enabled source serves nothing until its static GTFS bundle loads, and
-that is not part of the apply.** The flag gates `gtfs_feed_refresh`, so a source
-that has never been enabled in an environment has no bundle there at all — it is
-absent from `/health`'s `gtfs_feeds.feeds` map, not merely stale. There is no
-manual refresh trigger; the daily 3:00 AM ET `gtfs_feed_refresh` job is what
-loads it (24-hour rate limit, so the first run always fetches).
+**A newly enabled source serves nothing until its static GTFS bundle loads.**
+The flag gates the GTFS refresh, so a source that has never been enabled in an
+environment has no bundle there at all — not a stale one, none. Every source
+needs it for future-date schedules, and some cannot produce a departure at all
+without it: SEPTA Metro is schedule-first, and the SEPTA Regional Rail collector
+joins its delay-only GTFS-RT feed to the static schedule by
+`(trip_id, stop_sequence)`.
 
-Every source needs the bundle for future-date schedules, and some cannot produce
-a departure at all without it — SEPTA Metro is schedule-first, and the SEPTA
-Regional Rail collector joins its delay-only GTFS-RT feed to the static schedule
-by `(trip_id, stop_sequence)`.
+The load is part of startup, not of the 3:00 AM cron. `Scheduler.start()`
+launches `check_and_initialize_gtfs_feeds()`, which calls
+`refresh_feed(..., force=True)` for every enabled source that has never recorded
+a successful parse — `force` bypasses the 20-hour download rate limit. Because
+the apply replaces the instance, that runs within minutes of the new instance
+coming up. The daily 3:00 AM ET `gtfs_feed_refresh` job is the *ongoing* refresh;
+it is not what bootstraps a newly enabled source. **Do not schedule the apply
+around it** — waiting for 3:00 AM burns soak hours for nothing.
 
-Two consequences:
+Between the instance coming up and the parse finishing, `/health` shows the
+source with `last_successful_parse_at: null`, lists it in
+`checks.gtfs_feeds.stale_sources`, and reports `checks.gtfs_feeds.status:
+"warning"` — the freshness check is driven by the enabled-source list, not by
+what is in the table, so a source with no row at all still appears. That warning
+is the expected pre-load state and clears itself once the parse lands.
 
-- **Apply in the evening**, so the 3:00 AM refresh is the next scheduled event.
-- **Start the soak clock at the first successful parse, not at the apply.**
-  Confirm the source now appears in `gtfs_feeds.feeds` with a recent
-  `last_successful_parse_at` and a non-zero `trip_count`:
+**Start the soak clock at the first successful parse, not at the apply.** Confirm
+a recent `last_successful_parse_at`, a non-zero `trip_count`, and a null
+`error_message`:
 
 ```bash
 curl -s https://staging-api.trackrat.net/health \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['checks']['gtfs_feeds']['feeds'])"
 ```
 
-A validation run in the gap reports every line of the new source dark. That is
-expected and means nothing — do not record it as a gate result.
+A validation run before that parse reports every line of the new source dark.
+That is expected and means nothing — do not record it as a gate result.
+
+If `error_message` is set, the startup refresh failed and the text says at which
+stage. A failure does not wedge the source: the failure path rolls back the
+uncommitted `last_downloaded_at`, so the rate limit is never armed and the 3:00
+AM job retries normally. To retry sooner, restart the instance — the startup
+path force-refreshes again.
 
 ### 6. Validate
 

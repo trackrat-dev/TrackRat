@@ -67,13 +67,14 @@ variable "disabled_data_sources" {
     # stays dark until those gates pass and the iOS/web disabled sets move with
     # it in one coordinated release.
     #
-    # Staging has never held a SEPTA GTFS bundle — the flag gates the refresh,
-    # so /health lists no SEPTA feed at all. Both systems depend on it (Metro is
-    # schedule-first; the Regional Rail collector joins its delay-only feed to
-    # the static schedule by trip_id/stop_sequence), and there is no manual
-    # trigger — the daily 3:00 AM ET gtfs_feed_refresh job is what loads it. So
-    # SEPTA serves nothing between this apply and that job, and the soak clock
-    # starts at the first successful parse, not at the apply. See
+    # Staging has never held a SEPTA GTFS bundle — the flag gates the refresh —
+    # and both systems depend on one (Metro is schedule-first; the Regional Rail
+    # collector joins its delay-only feed to the static schedule by
+    # trip_id/stop_sequence). The bundle loads on startup, not on the 3:00 AM
+    # cron: this apply replaces the instance, and Scheduler.start() force-
+    # refreshes every enabled source with no successful parse. So SEPTA serves
+    # nothing for the few minutes that download and parse take, and the soak
+    # clock starts at the first successful parse, not at the apply. See
     # infra_v2/RUNBOOK-data-source-flags.md.
     staging    = ["BART", "WMATA", "MBTA", "METRA"]
     production = ["BART", "WMATA", "MBTA", "METRA", "SEPTA_RR", "SEPTA_METRO"]
