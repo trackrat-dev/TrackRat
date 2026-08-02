@@ -92,10 +92,10 @@ The individual steps can still be run separately if needed:
 
 ```bash
 # 1. Verify deployment health (reachability, scheduler, metrics)
-bash scripts/verify-deployment.sh https://staging.apiv2.trackrat.net [--no-wait]
+bash scripts/verify-deployment.sh https://staging-api.trackrat.net [--no-wait]
 
 # 2. Run E2E API tests (mimics iOS app call sequence across all providers)
-bash scripts/e2e-api-test.sh https://staging.apiv2.trackrat.net --no-random
+bash scripts/e2e-api-test.sh https://staging-api.trackrat.net --no-random
 
 # 3. Check backend logs for errors
 PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --env staging --errors
@@ -643,7 +643,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 
 **API Environments:**
 - Production: `https://apiv2.trackrat.net/api/v2`
-- Staging: `https://staging.apiv2.trackrat.net/api/v2`
+- Staging: `https://staging-api.trackrat.net/api/v2`
 - Web uses: Production only
 - iOS uses: Both (configurable)
 

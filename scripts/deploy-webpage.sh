@@ -14,7 +14,7 @@ set -e
 PROD_BUCKET="gs://trackrat-webpage-production"
 STAGING_BUCKET="gs://trackrat-webpage-staging"
 PROD_API_URL="https://apiv2.trackrat.net/api/v2"
-STAGING_API_URL="https://staging.apiv2.trackrat.net/api/v2"
+STAGING_API_URL="https://staging-api.trackrat.net/api/v2"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"

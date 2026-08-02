@@ -89,7 +89,7 @@ gsutil versioning set on gs://trackrat-v2-terraform-state
 
 | Environment | Domain | Workspace | Branch Trigger |
 |-------------|--------|-----------|----------------|
-| Staging | staging.apiv2.trackrat.net | staging | main |
+| Staging | staging-api.trackrat.net | staging | main |
 | Production | apiv2.trackrat.net | production | production |
 
 ## Deployment

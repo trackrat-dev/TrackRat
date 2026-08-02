@@ -114,7 +114,7 @@ class APIServiceTests: XCTestCase {
 
     private func httpResponse(statusCode: Int) -> HTTPURLResponse {
         HTTPURLResponse(
-            url: URL(string: "https://staging.apiv2.trackrat.net/api/v2/routes/summary")!,
+            url: URL(string: "https://staging-api.trackrat.net/api/v2/routes/summary")!,
             statusCode: statusCode,
             httpVersion: "HTTP/1.1",
             headerFields: nil

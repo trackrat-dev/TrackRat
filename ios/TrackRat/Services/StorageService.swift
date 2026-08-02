@@ -22,7 +22,7 @@ enum ServerEnvironment: String, CaseIterable, Codable {
         case .production:
             return "https://apiv2.trackrat.net/api"
         case .staging:
-            return "https://staging.apiv2.trackrat.net/api"
+            return "https://staging-api.trackrat.net/api"
         case .local:
             return "http://localhost:8000/api"
         }

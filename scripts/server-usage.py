@@ -53,7 +53,7 @@ HOSTNAME_PREFIX = {
 
 API_URLS = {
     "production": "https://apiv2.trackrat.net",
-    "staging": "https://staging.apiv2.trackrat.net",
+    "staging": "https://staging-api.trackrat.net",
 }
 
 

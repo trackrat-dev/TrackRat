@@ -34,7 +34,7 @@ data class ServerEnvironment(
 
         fun staging() = ServerEnvironment(
             name = "Staging",
-            baseURL = "https://staging.apiv2.trackrat.net/api/v2/",
+            baseURL = "https://staging-api.trackrat.net/api/v2/",
             isProduction = false
         )
 
