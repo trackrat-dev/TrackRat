@@ -23,7 +23,7 @@ the train ids back out of the stub.
 """
 
 import asyncio
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from typing import Any
 
 import pytest
@@ -33,7 +33,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from trackrat.collectors.njt.schedule import NJTScheduleCollector
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.locks import acquire_njt_journey_lock
-from trackrat.utils.time import now_et
+from trackrat.utils.time import ET, now_et
 
 from tests.fixtures.njt_api_responses import NJT_TIME_FORMAT, StopBuilder
 
@@ -135,7 +135,12 @@ def _build_stops(builder: StopBuilder, base_hour: int) -> list[Any]:
 async def _seed_scheduled_journey(
     session: AsyncSession, train_id: str, journey_date: date
 ) -> int:
-    """Insert one SCHEDULED NJT journey the way the nightly job's first pass does."""
+    """Insert one SCHEDULED NJT journey the way the nightly job's first pass does.
+
+    `scheduled_departure` is NOT NULL on `train_journeys` and the schedule
+    job's first pass always sets it, so the seed has to as well -- SQLite-backed
+    fixtures elsewhere tolerate omitting it, real PostgreSQL does not.
+    """
     journey = TrainJourney(
         train_id=train_id,
         journey_date=journey_date,
@@ -146,6 +151,7 @@ async def _seed_scheduled_journey(
         terminal_station_code="TR",
         data_source="NJT",
         observation_type="SCHEDULED",
+        scheduled_departure=ET.localize(datetime.combine(journey_date, time(hour=6))),
         has_complete_journey=False,
         first_seen_at=now_et(),
         last_updated_at=now_et(),
