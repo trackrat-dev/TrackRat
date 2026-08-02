@@ -227,7 +227,7 @@ npm run preview    # Preview production build locally
 ```
 
 ### Deployment
-- **Automatic**: Cloud Build triggers (`infra_v2/terraform-webpage/`) fire on push when `webpage_v2/` changes — `main` → `gs://trackrat-webpage-staging` (`staging.trackrat.net`), `production` → `gs://trackrat-webpage-production` (`trackrat.net` / `www.trackrat.net`)
+- **Automatic**: Cloud Build triggers (`infra_v2/terraform-webpage/`) fire on push when `webpage_v2/` **or the branch's own cloudbuild config** changes — `main` → `gs://trackrat-webpage-staging` (`staging.trackrat.net`), `production` → `gs://trackrat-webpage-production` (`trackrat.net` / `www.trackrat.net`). The cloudbuild file is in the path filter because its `_API_BASE_URL` substitution is baked into the bundle as `VITE_API_BASE_URL` at build time: change that alone and, without the filter, nothing redeploys and the live site keeps calling the old API host
 - **Manual**: `./scripts/deploy-webpage.sh [staging|production] [--bucket=<name>] [--dry-run]` from repo root (defaults to production)
 - **Cache**: `index.html` and service worker get `no-cache`; hashed assets get `max-age=1yr`
 

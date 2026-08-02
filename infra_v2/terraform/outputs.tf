@@ -6,8 +6,8 @@ output "load_balancer_ip" {
 }
 
 output "api_url" {
-  description = "URL for the API"
-  value       = "https://${var.domain != "" ? var.domain : local.domain}"
+  description = "Public URL clients use to reach the API. In staging this is the Cloudflare-fronted staging-api.trackrat.net, which is deliberately NOT the name on the LB's managed cert (local.domain) — see the locals block in main.tf."
+  value       = "https://${var.domain != "" ? var.domain : local.public_api_domain}"
 }
 
 output "staging_webpage_url" {

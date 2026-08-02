@@ -108,7 +108,8 @@ Deployed to Google Cloud Storage as a static site.
 **Live URL:** https://trackrat.net (staging: https://staging.trackrat.net)
 
 Cloud Build triggers (defined in `infra_v2/terraform-webpage/`) deploy automatically on push
-when `webpage_v2/` changes: `main` → staging, `production` → production.
+when `webpage_v2/` or the branch's own cloudbuild config changes: `main` → staging,
+`production` → production.
 
 To deploy manually from the repo root:
 

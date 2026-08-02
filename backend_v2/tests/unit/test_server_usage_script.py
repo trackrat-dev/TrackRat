@@ -137,3 +137,143 @@ def test_json_report_includes_client_breakdown(su):
     # Serializable: no Counter/set instances leak into the JSON payload.
     assert isinstance(breakdown["ios"]["top_routes"], dict)
     assert isinstance(breakdown["web"]["endpoints"], dict)
+
+
+# ---------------------------------------------------------------------------
+# Empty load-balancer windows
+#
+# The API traffic section is derived entirely from load balancer logs. Staging
+# is now fronted by the Cloudflare Tunnel, so its requests never reach the load
+# balancer and the window is permanently empty — rendering that as a bare
+# "0 requests" states as fact something the report cannot know.
+# ---------------------------------------------------------------------------
+def test_traffic_note_absent_when_lb_entries_exist(su):
+    """An LB-fronted env with real LB entries carries no caveat."""
+    assert "production" not in su.TUNNEL_FRONTED_ENVS
+    assert su.lb_traffic_source_note("production", 1) is None
+    assert su.lb_traffic_source_note("production", 4200) is None
+
+
+def test_traffic_note_survives_incidental_lb_entries_on_a_tunnel_env(su):
+    """Nonzero LB entries must not clear the caveat for a tunnel-fronted env.
+
+    The staging forwarding rule the script reads also host-routes
+    staging.trackrat.net to the webpage bucket, so browsing the staging site —
+    or a scanner, or the legacy API host — is enough to make lb_entry_count
+    nonzero while every real staging-api.trackrat.net request still travels
+    through the tunnel and is absent from these logs. Clearing the caveat there
+    would present a partial count as a whole one, which is the exact failure
+    this function exists to prevent.
+    """
+    assert "staging" in su.TUNNEL_FRONTED_ENVS
+
+    for count in (1, 37, 4200):
+        note = su.lb_traffic_source_note("staging", count)
+
+        assert note is not None, f"caveat dropped with {count} incidental LB entries"
+        assert "Cloudflare Tunnel" in note
+        assert "NOT a measure of real traffic" in note
+        # The wording must not claim an empty window when entries were counted.
+        assert "No load balancer" not in note
+
+
+def test_traffic_note_names_the_tunnel_for_tunnel_fronted_envs(su):
+    """An empty staging window is explained by the tunnel, not reported as zero traffic."""
+    assert "staging" in su.TUNNEL_FRONTED_ENVS
+
+    note = su.lb_traffic_source_note("staging", 0)
+
+    assert note is not None
+    assert "Cloudflare Tunnel" in note
+    assert "bypass the load balancer" in note
+    # The caveat must contradict the zeros rather than merely annotate them.
+    assert "NOT a measure of real traffic" in note
+
+
+def test_traffic_note_for_lb_fronted_env_does_not_blame_the_tunnel(su):
+    """An empty production window means no traffic — it must not claim a tunnel."""
+    assert "production" not in su.TUNNEL_FRONTED_ENVS
+
+    note = su.lb_traffic_source_note("production", 0)
+
+    assert note is not None
+    assert "Cloudflare Tunnel" not in note
+    assert "nothing was recorded" in note
+
+
+def test_json_report_carries_the_traffic_warning(su):
+    """The JSON the daily Routine consumes exposes the caveat next to the zeros."""
+    lb = su.analyze_lb_entries([], {})
+    app_analysis = su.analyze_app_logs([], [], [])
+    note = su.lb_traffic_source_note("staging", 0)
+
+    report = su.build_json_report(
+        "staging", 24, {}, {}, lb, app_analysis, traffic_note=note
+    )
+
+    assert report["api_traffic"]["total_requests"] == 0
+    assert report["traffic_source_warning"] == note
+    assert "Cloudflare Tunnel" in report["traffic_source_warning"]
+
+
+def test_json_report_omits_the_warning_on_a_healthy_window(su):
+    """A production report with traffic reports no warning at all."""
+    entries = [_entry("/api/v2/trains/departures", _IOS_UA, query="from=NY&to=TR")]
+    lb = su.analyze_lb_entries(entries, {"NY": "New York Penn", "TR": "Trenton"})
+    app_analysis = su.analyze_app_logs([], [], [])
+
+    report = su.build_json_report("production", 1, {}, {}, lb, app_analysis)
+
+    assert report["api_traffic"]["total_requests"] == 1
+    assert report["traffic_source_warning"] is None
+
+
+def test_text_report_prints_the_warning_above_the_zeros(su):
+    """The rendered report surfaces the caveat inside the API TRAFFIC section."""
+    lb = su.analyze_lb_entries([], {})
+    app_analysis = su.analyze_app_logs([], [], [])
+    note = su.lb_traffic_source_note("staging", 0)
+
+    text = su.format_report(
+        "staging", 24, {}, {}, lb, app_analysis, use_color=False, traffic_note=note
+    )
+
+    # "WARNING: " with the colon — a bare "WARNING" would also match the
+    # unrelated "ERRORS & WARNINGS" section header and pass vacuously.
+    assert "WARNING: " in text
+    assert "Cloudflare Tunnel" in text
+    # The caveat precedes the count it qualifies.
+    assert text.index("Cloudflare Tunnel") < text.index("API requests:")
+
+
+def test_text_report_unchanged_when_traffic_is_real(su):
+    """No caveat leaks into an ordinary report with traffic."""
+    entries = [_entry("/api/v2/trains/departures", _IOS_UA, query="from=NY&to=TR")]
+    lb = su.analyze_lb_entries(entries, {"NY": "New York Penn", "TR": "Trenton"})
+    app_analysis = su.analyze_app_logs([], [], [])
+
+    text = su.format_report(
+        "production", 1, {}, {}, lb, app_analysis, use_color=False,
+        traffic_note=su.lb_traffic_source_note("production", len(entries)),
+    )
+
+    # "WARNING: " with the colon — the report always contains an unrelated
+    # "ERRORS & WARNINGS" header, so a bare "WARNING" could never be absent.
+    assert "WARNING: " not in text
+    assert "Cloudflare Tunnel" not in text
+    assert "No load balancer log entries" not in text
+    assert "API requests:     1" in text
+
+
+def test_api_urls_point_at_universal_ssl_covered_hosts(su):
+    """Both API hosts sit one label below the apex, which Universal SSL covers.
+
+    Cloudflare Universal SSL's SANs are trackrat.net and *.trackrat.net, and a
+    wildcard matches a single label — the constraint that forced staging off
+    staging.apiv2.trackrat.net.
+    """
+    for env, url in su.API_URLS.items():
+        host = url.split("://", 1)[1].split("/", 1)[0]
+        assert host.endswith(".trackrat.net"), f"{env}: {host}"
+        labels_below_apex = host[: -len(".trackrat.net")].split(".")
+        assert len(labels_below_apex) == 1, f"{env}: {host} is more than one label deep"

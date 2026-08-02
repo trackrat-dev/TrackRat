@@ -38,18 +38,28 @@ provider "google" {
 # Do not reintroduce a per-environment machine_type/disk override; change the
 # shared variable instead so both environments move together.
 locals {
-  # NOTE: staging's API is served at staging-api.trackrat.net via the Cloudflare
-  # Tunnel, NOT at the name below. Cloudflare Universal SSL covers only the apex
-  # and ONE subdomain level (the edge cert's SANs are trackrat.net and
-  # *.trackrat.net), so the two-label staging.apiv2.trackrat.net cannot be
-  # proxied without paid Advanced Certificate Manager — hence the rename.
-  # This local is deliberately left on the old name because its only remaining
-  # consumers are the LB's managed cert (loadbalancer.tf) and an output; DNS for
-  # staging-api points at Cloudflare, so minting a Google cert for it would just
-  # sit in FAILED_NOT_VISIBLE. Both are destroyed when frontend_via_cloudflare
-  # flips — see infra_v2/RUNBOOK-cloudflare-cutover.md.
-  domain      = var.environment == "production" ? "apiv2.trackrat.net" : "staging.apiv2.trackrat.net"
-  use_spot_vm = var.environment == "staging"
+  # Two domain locals, because in staging they are NOT the same name.
+  #
+  # local.domain is the name on the LB's Google-managed certificate
+  # (loadbalancer.tf) and the uptime check host (monitoring.tf, production-only).
+  # Staging's is deliberately left on the old staging.apiv2.trackrat.net: DNS for
+  # staging-api now points at Cloudflare, so a Google cert minted for the new
+  # name would just sit in FAILED_NOT_VISIBLE. Note the certificate is NOT
+  # count-gated — unlike the frontend (local.create_api_frontend), it survives
+  # frontend_via_cloudflare — so staging's cert stays bound to a name Google can
+  # no longer validate until the LB itself is retired.
+  #
+  # local.public_api_domain is where clients actually reach the API, and is what
+  # the api_url output advertises. Staging's API is served at
+  # staging-api.trackrat.net via the Cloudflare Tunnel: Universal SSL covers only
+  # the apex and ONE subdomain level (the edge cert's SANs are trackrat.net and
+  # *.trackrat.net), so the two-label staging.apiv2.trackrat.net cannot be proxied
+  # without paid Advanced Certificate Manager — hence the rename. The two locals
+  # diverge in staging only; production's cert and public hostname are both
+  # apiv2.trackrat.net. See infra_v2/RUNBOOK-cloudflare-cutover.md.
+  domain            = var.environment == "production" ? "apiv2.trackrat.net" : "staging.apiv2.trackrat.net"
+  public_api_domain = var.environment == "production" ? "apiv2.trackrat.net" : "staging-api.trackrat.net"
+  use_spot_vm       = var.environment == "staging"
 
   # TRACKRAT_DISABLED_DATA_SOURCES for THIS workspace only. Resolved from the
   # per-environment map so a staging soak (e.g. SEPTA, issue #1634) cannot arm

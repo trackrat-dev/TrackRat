@@ -218,7 +218,9 @@ automatically and sends it back via the run's completion notification. The routi
 > Generate the TrackRat daily usage report. Run
 > `bash scripts/server-usage.sh --env production --hours 24 --json` (let it install GCP deps
 > if prompted). From the JSON, write a concise narrative summarizing the last 24h: total API
-> requests and unique users; the iOS-app vs web-app breakout (use `api_traffic.client_breakdown`
+> requests and unique users; any `traffic_source_warning` (when present the load-balancer
+> counts are not real traffic — lead with that caveat instead of reporting the zeros as fact);
+> the iOS-app vs web-app breakout (use `api_traffic.client_breakdown`
 > if present — requests, unique users, and top routes for `ios`, `web`, and `other` =
 > Android/curl/scripts; otherwise derive the split from `api_traffic.clients`); the most-searched
 > routes overall with station names; engagement (Live Activity registrations, device
@@ -435,7 +437,7 @@ npm run build        # TypeScript compile + Vite build
 npm run preview      # Preview production build locally
 ```
 
-**Deployment:** Automatic via Cloud Build triggers (defined in `infra_v2/terraform-webpage/`) — push to `main` with `webpage_v2/` changes → `staging.trackrat.net`, push to `production` → `trackrat.net`.
+**Deployment:** Automatic via Cloud Build triggers (defined in `infra_v2/terraform-webpage/`) — push to `main` with `webpage_v2/` (or `infra_v2/cloudbuild-webpage-staging.yaml`) changes → `staging.trackrat.net`, push to `production` with `webpage_v2/` (or `infra_v2/cloudbuild-webpage.yaml`) changes → `trackrat.net`. The cloudbuild files are in the path filters because their `_API_BASE_URL` substitution is baked into the bundle at build time.
 
 Manual deploy from the repo root:
 ```bash

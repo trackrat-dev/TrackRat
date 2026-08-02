@@ -269,7 +269,13 @@ output "production_webpage_bucket" {
 # Cloud Build triggers for webpage deployment
 # ============================================
 # Uses 2nd gen Cloud Build connection (trackrat-github) in us-east4.
-# Triggers deploy webpage on branch push when webpage_v2/ files change.
+# Triggers deploy webpage on branch push when webpage_v2/ files change, OR when
+# the build config itself changes. Each cloudbuild file is in its own trigger's
+# included_files because it bakes _API_BASE_URL into the bundle as
+# VITE_API_BASE_URL at build time: without it, editing that substitution deploys
+# nothing and the live site keeps calling the previous API host until some
+# unrelated webpage_v2/ change happens to land. That is exactly what the staging
+# API rename hit (PR #1712) — the new host reached the repo but not the bundle.
 
 resource "google_cloudbuild_trigger" "webpage_staging" {
   name            = "trackrat-webpage-staging"
@@ -284,7 +290,7 @@ resource "google_cloudbuild_trigger" "webpage_staging" {
     }
   }
 
-  included_files = ["webpage_v2/**"]
+  included_files = ["webpage_v2/**", "infra_v2/cloudbuild-webpage-staging.yaml"]
   filename       = "infra_v2/cloudbuild-webpage-staging.yaml"
 }
 
@@ -301,6 +307,6 @@ resource "google_cloudbuild_trigger" "webpage_production" {
     }
   }
 
-  included_files = ["webpage_v2/**"]
+  included_files = ["webpage_v2/**", "infra_v2/cloudbuild-webpage.yaml"]
   filename       = "infra_v2/cloudbuild-webpage.yaml"
 }
