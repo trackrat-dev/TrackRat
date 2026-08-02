@@ -18,9 +18,11 @@ from sqlalchemy.ext.asyncio import (
     async_sessionmaker,
     create_async_engine,
 )
+from sqlalchemy.orm.exc import StaleDataError
 from structlog import get_logger
 
 from trackrat.settings import get_settings
+from trackrat.utils.locks import JourneyLockTimeout
 
 logger = get_logger(__name__)
 
@@ -57,6 +59,30 @@ def _is_postgresql_concurrency_error(error: Exception) -> bool:
     ]
 
     return any(condition in error_msg for condition in postgresql_retry_conditions)
+
+
+def _is_retryable_after_reread(error: Exception) -> bool:
+    """Whether retrying is worthwhile for an operation that re-reads its state.
+
+    Strictly broader than `_is_postgresql_concurrency_error`, and deliberately
+    kept separate from it: that predicate also gates `with_db_retry`, whose
+    callers do not all re-query between attempts. Every `retry_on_deadlock`
+    call site does (`services/jit.py`, `services/departure.py`), which is what
+    makes these two extra cases safe to retry there.
+
+    - `JourneyLockTimeout`: another writer held the journey's advisory lock.
+      Nothing is wrong with our state; wait and take it next time.
+    - `StaleDataError`: "UPDATE statement on table 'journey_stops' expected to
+      update 1 row(s); 0 were matched" -- a stop row the refresh had loaded was
+      deleted and recreated with new primary keys underneath it (the NJT
+      schedule rebuild does exactly that). The rollback discards the stale
+      identity map and the re-read picks up the new rows (issue #1672). Note
+      this is not a Postgres error at all, so the string-matching predicate
+      above could never have caught it.
+    """
+    if isinstance(error, JourneyLockTimeout | StaleDataError):
+        return True
+    return _is_postgresql_concurrency_error(error)
 
 
 def with_db_retry(max_attempts: int = 3, base_delay: float = 0.5) -> Callable[[F], F]:
@@ -127,7 +153,7 @@ async def retry_on_deadlock(
             return await operation()
         except Exception as e:
             last_error = e
-            if _is_postgresql_concurrency_error(e) and attempt < max_attempts - 1:
+            if _is_retryable_after_reread(e) and attempt < max_attempts - 1:
                 wait_time = base_delay * (2**attempt)
                 logger.warning(
                     "deadlock_retry",

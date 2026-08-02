@@ -17,7 +17,7 @@ from datetime import date
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from trackrat.utils.locks import acquire_njt_journey_lock
+from trackrat.utils.locks import JourneyLockTimeout, acquire_njt_journey_lock
 
 
 @pytest.fixture
@@ -123,3 +123,87 @@ class TestAcquireNjtJourneyLock:
     async def test_raises_without_journey_date(self, db_session):
         with pytest.raises(ValueError):
             await acquire_njt_journey_lock(db_session, "3924", None)
+
+
+class TestJourneyLockWaitBudget:
+    """The wait for a contended lock is bounded (issue #1672).
+
+    It used to block indefinitely, so a contended journey sat there until the
+    engine's 55s `statement_timeout` cancelled the query -- and the resulting
+    QueryCanceledError looks exactly like a genuinely slow query, so it could
+    not be retried without also retrying every runaway statement in the app.
+    """
+
+    @pytest.mark.asyncio
+    async def test_times_out_instead_of_waiting_forever(self, session_factory):
+        train_id = "4105"
+        journey_date = date.today()
+
+        session_a = session_factory()
+        session_b = session_factory()
+        try:
+            await acquire_njt_journey_lock(session_a, train_id, journey_date)
+
+            started = asyncio.get_running_loop().time()
+            with pytest.raises(JourneyLockTimeout):
+                await acquire_njt_journey_lock(
+                    session_b, train_id, journey_date, timeout_seconds=0.3
+                )
+            elapsed = asyncio.get_running_loop().time() - started
+
+            # Must give up on its own budget, nowhere near the 55s
+            # statement_timeout that used to end these waits.
+            assert 0.3 <= elapsed < 5, f"gave up after {elapsed:.2f}s"
+
+            await session_a.commit()
+        finally:
+            await session_a.close()
+            await session_b.close()
+
+    @pytest.mark.asyncio
+    async def test_acquires_within_budget_once_the_holder_commits(
+        self, session_factory
+    ):
+        """The budget is a ceiling, not a fixed delay: a lock released partway
+        through must be picked up promptly rather than after the full wait."""
+        train_id = "4106"
+        journey_date = date.today()
+
+        session_a = session_factory()
+        session_b = session_factory()
+        try:
+            await acquire_njt_journey_lock(session_a, train_id, journey_date)
+
+            async def release_shortly() -> None:
+                await asyncio.sleep(0.2)
+                await session_a.commit()
+
+            releaser = asyncio.create_task(release_shortly())
+
+            started = asyncio.get_running_loop().time()
+            await acquire_njt_journey_lock(
+                session_b, train_id, journey_date, timeout_seconds=5
+            )
+            elapsed = asyncio.get_running_loop().time() - started
+
+            await releaser
+            assert elapsed < 2, f"took {elapsed:.2f}s to notice the release"
+
+            await session_b.commit()
+        finally:
+            await session_a.close()
+            await session_b.close()
+
+    @pytest.mark.asyncio
+    async def test_uncontended_acquire_is_immediate(self, session_factory):
+        """The common case must not pay for the polling loop."""
+        session = session_factory()
+        try:
+            started = asyncio.get_running_loop().time()
+            await acquire_njt_journey_lock(session, "4107", date.today())
+            elapsed = asyncio.get_running_loop().time() - started
+
+            assert elapsed < 1, f"uncontended acquire took {elapsed:.2f}s"
+            await session.commit()
+        finally:
+            await session.close()
