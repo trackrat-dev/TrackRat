@@ -9,7 +9,7 @@
 # Automatically installs Python dependencies for step 3 if missing.
 #
 # Usage: ./scripts/validate-staging.sh [base_url] [--no-wait] [--no-random] [--skip-logs] [--ground-truth]
-#   base_url        defaults to https://staging.apiv2.trackrat.net
+#   base_url        defaults to https://staging-api.trackrat.net
 #   --no-wait       skip the stabilization sleep in step 1
 #   --no-random     skip random route generation in step 2
 #   --skip-logs     skip the GCP log check (step 3)
@@ -19,7 +19,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-BASE_URL="https://staging.apiv2.trackrat.net"
+BASE_URL="https://staging-api.trackrat.net"
 NO_WAIT=false
 NO_RANDOM=false
 SKIP_LOGS=false

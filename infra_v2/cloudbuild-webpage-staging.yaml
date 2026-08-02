@@ -4,7 +4,7 @@
 
 substitutions:
   _WEBPAGE_BUCKET: trackrat-webpage-staging
-  _API_BASE_URL: 'https://staging.apiv2.trackrat.net/api/v2'
+  _API_BASE_URL: 'https://staging-api.trackrat.net/api/v2'
 
 steps:
   # Install dependencies

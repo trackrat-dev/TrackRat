@@ -2276,7 +2276,7 @@ def main() -> None:
     parser.add_argument(
         "base_url",
         nargs="?",
-        default="https://staging.apiv2.trackrat.net",
+        default="https://staging-api.trackrat.net",
         help="TrackRat API base URL (default: staging)",
     )
     parser.add_argument(

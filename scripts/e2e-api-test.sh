@@ -14,13 +14,13 @@
 # and runs the same validation. Deduplicates against fixed routes.
 #
 # Usage: ./scripts/e2e-api-test.sh [base_url] [--no-random] [--seed N]
-#   base_url     defaults to https://staging.apiv2.trackrat.net
+#   base_url     defaults to https://staging-api.trackrat.net
 #   --no-random  skip random route phase
 #   --seed N     reproducible random selection
 
 set -euo pipefail
 
-BASE="https://staging.apiv2.trackrat.net"
+BASE="https://staging-api.trackrat.net"
 NO_RANDOM=false
 SEED=""
 while [[ $# -gt 0 ]]; do
