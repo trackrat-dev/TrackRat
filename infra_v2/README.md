@@ -130,17 +130,26 @@ gcloud builds submit --config=cloudbuild.yaml .
 
 ### Webpage Deployment
 
-The React webpage (`webpage_v2/`) deploys separately from the API via its own Cloud Build triggers (defined in `terraform-webpage/`):
-- **Push to `main`** (with `webpage_v2/` or `cloudbuild-webpage-staging.yaml` changes) → `trackrat-webpage-staging` trigger → `gs://trackrat-webpage-staging` (`staging.trackrat.net`)
-- **Push to `production`** (with `webpage_v2/` or `cloudbuild-webpage.yaml` changes) → `trackrat-webpage-production` trigger → `gs://trackrat-webpage-production` (`trackrat.net` / `www.trackrat.net`)
+The React webpage (`webpage_v2/`) deploys separately from the API via its own Cloud Build triggers (defined in `terraform-webpage/`), to **Cloudflare Workers Static Assets** (issue #1713):
+- **Push to `main`** (with `webpage_v2/` or `cloudbuild-webpage-staging.yaml` changes) → `trackrat-webpage-staging` trigger → Worker `trackrat-webpage-staging` (`staging.trackrat.net`)
+- **Push to `production`** (with `webpage_v2/` or `cloudbuild-webpage.yaml` changes) → `trackrat-webpage-production` trigger → Worker `trackrat-webpage-production` (`trackrat.net` / `www.trackrat.net`), **and** `gs://trackrat-webpage-production` until the DNS cutover completes
 
 Each cloudbuild file is in its own trigger's path filter because it bakes `_API_BASE_URL` into the bundle as `VITE_API_BASE_URL` at build time — editing that substitution alone must redeploy, or the live site keeps calling the previous API host.
 
+Worker names, custom domains and the SPA fallback live in `webpage_v2/wrangler.jsonc`; serving policy (cache headers, HSTS, the AASA `application/json` content type) lives in `webpage_v2/public/_headers`. Neither is in the pipeline. There is deliberately **no** `_redirects` file — `assets.not_found_handling` already covers deep links, and a catch-all would shadow real assets. `webpage_v2/vite.config.test.ts` pins the header policy against a real build.
+
+The site is assets-only (no `main` in `wrangler.jsonc`), so no Worker script runs and no request is billed as an invocation.
+
+Deploys need two secrets, read by both triggers from Secret Manager:
+`cloudflare-workers-api-token` (*Workers Scripts: Edit* on the account, plus *Workers Routes: Edit* on the trackrat.net zone for the custom domains) and `cloudflare-account-id`. The Cloud Build service account (`trackrat-staging@trackrat-v2.iam.gserviceaccount.com`, used by both webpage triggers) needs `roles/secretmanager.secretAccessor` on each.
+
 Manual deploy from the repo root:
 ```bash
-./scripts/deploy-webpage.sh [staging|production] [--bucket=<name>] [--dry-run]
+./scripts/deploy-webpage.sh [staging|production] [--cloudflare-only] [--dry-run]
 ```
-`--bucket` overrides the destination bucket (with or without the `gs://` prefix) while keeping the environment's API URL — useful for pre-populating a new bucket during a migration.
+Requires `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the environment. There is no destination override: the target Worker comes from `wrangler.jsonc`.
+
+While `cloudbuild-webpage.yaml` still dual-deploys to GCS, `trackrat.net` is served from the bucket and the `production` Worker has no routes, so a manual production run updates an unserved `workers.dev` target and leaves the live site unchanged. The script refuses a bare `production` run in that window and requires `--cloudflare-only` to acknowledge it; both the guard and the flag disappear when the GCS steps are deleted at cutover. To ship to the live site during the window, push to the `production` branch.
 
 ## Key Configuration
 

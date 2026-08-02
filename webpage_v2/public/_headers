@@ -1,0 +1,57 @@
+# Response headers for the Cloudflare-hosted build. Vite copies public/ to the
+# root of dist/, which is where Cloudflare parses this file. It is consumed as
+# configuration, never served as an asset.
+#
+# This file replaces the seven `gsutil setmeta` calls that used to apply the
+# same policy imperatively after each GCS sync (issue #1713). Everything the
+# old pipeline set is reproduced below; nothing else was set.
+#
+# THERE IS DELIBERATELY NO _redirects FILE. The obvious SPA rule
+# `/*  /index.html  200` is wrong here: Cloudflare documents that "Redirects
+# are always followed, regardless of whether or not an asset matches the
+# incoming request", so a catch-all would shadow every hashed asset, the
+# service worker, and the AASA file with the HTML shell. It is also
+# unnecessary — dist/ has no top-level 404.html, which is exactly the
+# condition under which Cloudflare falls back to the SPA entrypoint on its
+# own. vite.config.test.ts pins both halves of that.
+#
+# Two matching quirks drive the rule shapes below:
+#   1. Duplicate header names across matching rules are JOINED WITH A COMMA,
+#      not overridden. A Cache-Control under /* would corrupt every rule below
+#      it into "no-store, public, max-age=31536000, immutable". /* therefore
+#      carries the one header that is genuinely global and appears nowhere
+#      else.
+#   2. /index.html is redirected to / before it is served, so a rule keyed on
+#      /index.html only ever decorates that redirect. The app shell has to be
+#      pinned on "/".
+
+# Replaces the HSTS header the production webpage load balancer emitted via
+# google_compute_backend_bucket.custom_response_headers, which goes away with
+# the LB. Applied on staging too, deliberately: staging is the rehearsal for
+# the production cutover, and an unproven header is the whole reason this is
+# here. trackrat.net is NOT currently on the browser preload list, so the
+# `preload` token is a statement of intent rather than a live commitment.
+/*
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+
+# Content-hashed filenames: a rebuild emits a new name rather than mutating an
+# existing one, so these can never go stale in a client cache.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# The app shell. Keyed on "/" and not "/index.html" — see quirk 2 above.
+/
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# vite-plugin-pwa (workbox) output. A cached service worker pins itself and
+# every client that registered it, so these two must always be refetched.
+/sw.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+/registerSW.js
+  Cache-Control: no-cache, no-store, must-revalidate
+
+# Apple requires application/json for Universal Links. The file has no
+# extension, so Cloudflare cannot infer the type from it.
+/.well-known/apple-app-site-association
+  Content-Type: application/json

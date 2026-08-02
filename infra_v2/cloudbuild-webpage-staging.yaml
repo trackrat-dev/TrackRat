@@ -1,9 +1,14 @@
 # TrackRat Webpage Staging Deployment
 # Triggered by push to 'main' branch (path filter: webpage_v2/**)
-# Builds the React app pointing at staging API, deploys to staging GCS bucket
+# Builds the React app pointing at staging API, deploys to Cloudflare Workers
+# Static Assets (Worker `trackrat-webpage-staging`, serving staging.trackrat.net)
+#
+# Serving policy (cache headers, HSTS, the AASA content type) is NOT set here
+# any more — it lives in webpage_v2/public/_headers, which Vite copies to the
+# dist root and Cloudflare parses on upload. The SPA fallback comes from
+# `assets.not_found_handling` in webpage_v2/wrangler.jsonc. See issue #1713.
 
 substitutions:
-  _WEBPAGE_BUCKET: trackrat-webpage-staging
   _API_BASE_URL: 'https://staging-api.trackrat.net/api/v2'
 
 steps:
@@ -32,36 +37,31 @@ steps:
       - 'VITE_API_BASE_URL=${_API_BASE_URL}'
     waitFor: ['test']
 
-  # Sync build output to staging GCS bucket
-  - name: 'gcr.io/cloud-builders/gsutil'
-    id: 'sync'
-    args: ['-m', 'rsync', '-r', '-d', 'webpage_v2/dist', 'gs://${_WEBPAGE_BUCKET}']
+  # Upload dist/ as the Worker's static assets.
+  #
+  # Target Worker name and custom domain both come from the `staging`
+  # environment in webpage_v2/wrangler.jsonc, so the destination is declared in
+  # version control rather than in flags — nothing here can be pointed
+  # somewhere else by editing the pipeline alone.
+  #
+  # `npx wrangler` resolves the version pinned in webpage_v2/package.json and
+  # installed by the `install` step above (Cloud Build steps share /workspace).
+  # Deliberately not `wrangler@latest`: an unpinned deploy tool means the
+  # deployment path can change without a commit.
+  - name: 'node:22'
+    id: 'deploy'
+    dir: 'webpage_v2'
+    entrypoint: 'npx'
+    args: ['wrangler', 'deploy', '--env', 'staging']
+    secretEnv: ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']
     waitFor: ['build']
 
-  # Set no-cache on HTML and service worker files, and Content-Type on AASA
-  - name: 'gcr.io/cloud-builders/gsutil'
-    id: 'cache-html'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        gsutil setmeta -h "Cache-Control:no-cache, no-store, must-revalidate" \
-          "gs://${_WEBPAGE_BUCKET}/index.html"
-        gsutil setmeta -h "Cache-Control:no-cache, no-store, must-revalidate" \
-          "gs://${_WEBPAGE_BUCKET}/sw.js" 2>/dev/null || true
-        gsutil setmeta -h "Cache-Control:no-cache, no-store, must-revalidate" \
-          "gs://${_WEBPAGE_BUCKET}/registerSW.js" 2>/dev/null || true
-        # Apple App Site Association must be served as application/json (no file extension)
-        gsutil setmeta -h "Content-Type:application/json" \
-          "gs://${_WEBPAGE_BUCKET}/.well-known/apple-app-site-association" 2>/dev/null || true
-    waitFor: ['sync']
-
-  # Set long cache on hashed assets
-  - name: 'gcr.io/cloud-builders/gsutil'
-    id: 'cache-assets'
-    args: ['-m', 'setmeta', '-h', 'Cache-Control:public, max-age=31536000, immutable',
-           'gs://${_WEBPAGE_BUCKET}/assets/**']
-    waitFor: ['sync']
+availableSecrets:
+  secretManager:
+    - versionName: projects/trackrat-v2/secrets/cloudflare-workers-api-token/versions/latest
+      env: 'CLOUDFLARE_API_TOKEN'
+    - versionName: projects/trackrat-v2/secrets/cloudflare-account-id/versions/latest
+      env: 'CLOUDFLARE_ACCOUNT_ID'
 
 tags:
   - 'trackrat'

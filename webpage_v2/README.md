@@ -103,7 +103,7 @@ The app connects to the TrackRat backend API at `https://apiv2.trackrat.net/api/
 
 ## Deployment
 
-Deployed to Google Cloud Storage as a static site.
+Deployed to Cloudflare Workers Static Assets.
 
 **Live URL:** https://trackrat.net (staging: https://staging.trackrat.net)
 
@@ -114,10 +114,12 @@ when `webpage_v2/` or the branch's own cloudbuild config changes: `main` → sta
 To deploy manually from the repo root:
 
 ```bash
-./scripts/deploy-webpage.sh [staging|production] [--bucket=<name>] [--dry-run]
+./scripts/deploy-webpage.sh [staging|production] [--dry-run]
 ```
 
-Defaults to production. The deploy script syncs the `dist/` build output to GCS with appropriate cache headers (`no-cache` for `index.html` and service worker, `max-age=1yr` for hashed assets).
+Defaults to production. The script builds `dist/` and uploads it as the Worker's static assets; it needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the environment.
+
+Cache headers (`no-cache` for `index.html` and the service worker, `max-age=1yr` for hashed assets), HSTS, and the `application/json` content type for `/.well-known/apple-app-site-association` come from `public/_headers`, which Vite copies into `dist/`. Deep links are served by `assets.not_found_handling: "single-page-application"` in `wrangler.jsonc`.
 
 ## License
 
