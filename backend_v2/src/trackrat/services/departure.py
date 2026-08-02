@@ -59,6 +59,19 @@ _NJT_REFRESH_LOAD_OPTIONS = (
     selectinload(TrainJourney.progress_snapshots),
 )
 
+# How far past the last real-time PATH departure GTFS rows stay suppressed.
+# Absorbs the origin back-calculation jitter in PATH train IDs (the origin
+# departure is derived from an integer-minute RidePATH arrival minus GTFS
+# segment time), so a timetable row for a train real-time already covers is
+# not double-listed alongside it.
+PATH_OBSERVED_CUTOFF_BUFFER = timedelta(minutes=2)
+
+# How stale the newest PATH collection at a station may be before its rows stop
+# suppressing the timetable. The PATH collector runs every 4 minutes, so this
+# allows roughly two and a half missed cycles before the feed is treated as
+# stalled and the board degrades to schedule-only.
+PATH_REALTIME_STALE_AFTER = timedelta(minutes=10)
+
 
 def _destination_prefix(destination: str | None) -> str:
     """Normalize a destination string for similarity comparison.
@@ -763,9 +776,10 @@ class DepartureService:
                 #    "now", filling the limit with departures that are too early
                 #    to connect.  See issues #1138/#1139/#1140.
                 # 2. PATH trains: Only include if beyond dynamic cutoff window.
-                #    Cutoff = max(now + 20min, last_observed_departure + 2min).
-                #    This prevents duplicates while showing schedules until realtime
-                #    data reliably covers them.
+                #    Cutoff tracks where real-time coverage actually ends, so
+                #    the timetable fills in behind it instead of being
+                #    suppressed to a fixed horizon that real-time may not reach
+                #    (#1724).  See _get_path_cutoff_time.
                 if "PATH" in allowed_sources:
                     path_cutoff_time = await self._get_path_cutoff_time(
                         db, from_station, current_time, target_date
@@ -1127,32 +1141,53 @@ class DepartureService:
     ) -> datetime:
         """Calculate dynamic cutoff for PATH scheduled trains.
 
-        Returns max(now + 20min, last_observed_departure + 2min).
-        This ensures we show scheduled trains until realtime data
-        reliably covers them, while avoiding duplicates once realtime
-        trains are observed.
-        """
-        min_cutoff = current_time + timedelta(minutes=20)
+        GTFS scheduled departures at or below the returned cutoff are
+        suppressed so they don't double-list trains real-time already covers.
 
-        # Find the latest scheduled departure among observed PATH trains at this station
+        The boundary is where real-time coverage actually ends —
+        ``last_observed_departure + PATH_OBSERVED_CUTOFF_BUFFER``. A fixed
+        ``now + 20min`` floor used to be applied on top of that, which assumed
+        real-time always covers the next 20 minutes. When it doesn't — a
+        discovery gap (#1723), or a stalled collector — the assumption turned a
+        thin feed into a blackout: GTFS was suppressed out to +20min while
+        real-time ended a few minutes out, leaving the window between them
+        served by neither source (#1724).
+
+        When there is no forward real-time coverage at this station, or the
+        newest collection is older than ``PATH_REALTIME_STALE_AFTER``,
+        ``current_time`` is returned so the board degrades to the full
+        timetable rather than to an empty list.
+        """
+        # Latest scheduled departure among observed PATH trains at this
+        # station whose own collection is still fresh. Freshness is applied
+        # per row rather than to the station as a whole: a stale ghost row
+        # must not get to set the horizon just because some *other* row here
+        # was collected recently — that would re-create this very bug in
+        # miniature, suppressing the timetable behind a row nothing is
+        # updating.
+        stale_before = current_time - PATH_REALTIME_STALE_AFTER
         result = await db.execute(
             select(func.max(JourneyStop.scheduled_departure))
+            .select_from(JourneyStop)
             .join(TrainJourney, JourneyStop.journey_id == TrainJourney.id)
             .where(
                 TrainJourney.data_source == "PATH",
                 TrainJourney.observation_type == "OBSERVED",
                 TrainJourney.journey_date == journey_date,
+                TrainJourney.last_updated_at >= stale_before,
                 JourneyStop.station_code.in_(expand_station_codes(station_code)),
                 JourneyStop.scheduled_departure > current_time,
             )
         )
         last_observed = result.scalar()
 
+        # No fresh forward coverage here — either the collector has stalled or
+        # it simply has nothing beyond now. Either way the timetable is all
+        # that is left, so suppress nothing.
         if last_observed is None:
-            return min_cutoff
+            return current_time
 
-        observed_cutoff = last_observed + timedelta(minutes=2)
-        return max(min_cutoff, observed_cutoff)
+        return last_observed + PATH_OBSERVED_CUTOFF_BUFFER
 
     async def _has_imminent_scheduled_njt(
         self,
