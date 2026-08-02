@@ -239,24 +239,31 @@ ENVEOF
       # is cloned from production's on every deploy), so a file from a prior enabled
       # boot otherwise lingers — and a failed download would then silently launch
       # last boot's connector definition instead of failing closed (issue #1594).
-      rm -f "$APP_DIR/docker-compose.tunnel.yml"
-      if [ "$ENABLE_CLOUDFLARE_TUNNEL" = "true" ] && [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
+      TUNNEL_STATE_CLEARED=0
+      if rm -f "$APP_DIR/docker-compose.tunnel.yml"; then
+        TUNNEL_STATE_CLEARED=1
+      else
+        echo "WARN: stale tunnel config could not be removed — connector disabled this boot; api/db unaffected"
+      fi
+      if [ "$TUNNEL_STATE_CLEARED" = "1" ] && [ "$ENABLE_CLOUDFLARE_TUNNEL" = "true" ] && [ -n "$CLOUDFLARE_TUNNEL_TOKEN" ]; then
         echo "=== Downloading docker-compose.tunnel.yml (tunnel enabled) ==="
         # Download to a unique per-boot temp file: the toolbox-mount lookup below is
         # a name-based find, so a fixed name could resolve to a copy left inside the
         # toolbox chroot by an earlier boot even when this boot's download failed.
-        TUNNEL_TMP=$(mktemp "$APP_DIR/docker-compose.tunnel.yml.XXXXXX")
-        TUNNEL_TMP_NAME=$(basename "$TUNNEL_TMP")
+        if TUNNEL_TMP=$(mktemp "$APP_DIR/docker-compose.tunnel.yml.XXXXXX"); then
+        TUNNEL_TMP_NAME="$${TUNNEL_TMP##*/}"
+        TUNNEL_COPY_OK=1
         if toolbox --quiet gsutil cp "gs://$DEPLOY_BUCKET/docker-compose.tunnel.yml" "$TUNNEL_TMP"; then
           TUNNEL_TOOLBOX_FILE=$(find /var/lib/toolbox -name "$TUNNEL_TMP_NAME" -path "*/mnt/disks/data/compose/*" 2>/dev/null | head -1)
-          if [ -n "$TUNNEL_TOOLBOX_FILE" ]; then
-            cp "$TUNNEL_TOOLBOX_FILE" "$TUNNEL_TMP"
+          if [ -n "$TUNNEL_TOOLBOX_FILE" ] && ! cp "$TUNNEL_TOOLBOX_FILE" "$TUNNEL_TMP"; then
+            TUNNEL_COPY_OK=0
+            echo "WARN: tunnel enabled but copying docker-compose.tunnel.yml from toolbox failed — connector disabled this boot; api/db unaffected"
           fi
         fi
         # Install over the real path only after the download parses as a compose
         # file, and only via mv (atomic within $APP_DIR) — a partial or malformed
         # download must never become the file the connector bring-up loads.
-        if [ ! -s "$TUNNEL_TMP" ]; then
+        if [ "$TUNNEL_COPY_OK" != "1" ] || [ ! -s "$TUNNEL_TMP" ]; then
           echo "WARN: tunnel enabled but docker-compose.tunnel.yml download failed — connector disabled this boot; api/db unaffected"
         elif ! $COMPOSE_PATH -f "$APP_DIR/docker-compose.yml" -f "$TUNNEL_TMP" config -q; then
           echo "WARN: tunnel enabled but downloaded docker-compose.tunnel.yml failed validation — connector disabled this boot; api/db unaffected"
@@ -265,7 +272,10 @@ ENVEOF
         else
           echo "WARN: tunnel enabled but installing docker-compose.tunnel.yml failed — connector disabled this boot; api/db unaffected"
         fi
-        rm -f "$TUNNEL_TMP"
+        rm -f "$TUNNEL_TMP" || echo "WARN: temporary tunnel config cleanup failed; api/db unaffected"
+        else
+          echo "WARN: tunnel enabled but creating a temporary config file failed — connector disabled this boot; api/db unaffected"
+        fi
       fi
 
       # Write the tunnel token for the (separately brought-up) cloudflared service
@@ -471,4 +481,3 @@ resource "google_compute_instance_group_manager" "trackrat" {
 
   depends_on = [google_compute_instance_template.trackrat]
 }
-

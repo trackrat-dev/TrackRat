@@ -370,6 +370,7 @@ def _extract_tunnel_config_block(toolbox_root: Path) -> str:
         f"expected exactly one {_TOOLBOX_ROOT} search root in the block so the "
         "harness' repoint cannot silently become a no-op"
     )
+    body = body.replace("$${", "${")  # Terraform heredoc escaping
     return f"{_TUNNEL_BLOCK_START}\n{body.replace(_TOOLBOX_ROOT, str(toolbox_root))}\n"
 
 
@@ -408,6 +409,10 @@ def _run_tunnel_block(
     stale_toolbox_copy: str | None = None,
     silent_success: bool = False,
     write_env: bool = True,
+    fail_stale_remove: bool = False,
+    fail_mktemp: bool = False,
+    fail_host_copy: bool = False,
+    fail_cleanup: bool = False,
 ) -> _BlockRun:
     """Execute the block with a temp $APP_DIR. ``download`` is the object GCS
     serves (None = download failure); ``silent_success`` makes the download exit
@@ -437,6 +442,44 @@ def _run_tunnel_block(
     toolbox = bin_dir / "toolbox"
     toolbox.write_text(_TOOLBOX_STUB)
     toolbox.chmod(0o755)
+    real_rm = shutil.which("rm")
+    real_mktemp = shutil.which("mktemp")
+    real_cp = shutil.which("cp")
+    assert real_rm and real_mktemp and real_cp
+    rm = bin_dir / "rm"
+    rm.write_text(
+        f'''#!/bin/bash
+target="${{@: -1}}"
+if [ -n "$STUB_FAIL_STALE_REMOVE" ] && [ "$target" = "$APP_DIR/docker-compose.tunnel.yml" ]; then
+  exit 1
+fi
+if [ -n "$STUB_FAIL_CLEANUP" ] && [ "$target" != "$APP_DIR/docker-compose.tunnel.yml" ]; then
+  exit 1
+fi
+exec {real_rm} "$@"
+'''
+    )
+    rm.chmod(0o755)
+    mktemp = bin_dir / "mktemp"
+    mktemp.write_text(
+        f'''#!/bin/bash
+if [ -n "$STUB_FAIL_MKTEMP" ]; then
+  exit 1
+fi
+exec {real_mktemp} "$@"
+'''
+    )
+    mktemp.chmod(0o755)
+    cp = bin_dir / "cp"
+    cp.write_text(
+        f'''#!/bin/bash
+if [ -n "$STUB_FAIL_HOST_COPY" ] && [[ "$1" == "$STUB_TOOLBOX_ROOT/"* ]]; then
+  exit 1
+fi
+exec {real_cp} "$@"
+'''
+    )
+    cp.chmod(0o755)
     # $COMPOSE_PATH is a single binary on the VM; forward to the real CLI here.
     compose = bin_dir / "docker-compose-shim"
     compose.write_text(f'#!/bin/bash\nexec {" ".join(_COMPOSE_ARGV)} "$@"\n')
@@ -468,6 +511,10 @@ def _run_tunnel_block(
             "STUB_SILENT_SUCCESS": "1" if silent_success else "",
             "STUB_TOOLBOX_ROOT": str(toolbox_root),
             "STUB_CALL_LOG": str(tmp_path / "calls.log"),
+            "STUB_FAIL_STALE_REMOVE": "1" if fail_stale_remove else "",
+            "STUB_FAIL_MKTEMP": "1" if fail_mktemp else "",
+            "STUB_FAIL_HOST_COPY": "1" if fail_host_copy else "",
+            "STUB_FAIL_CLEANUP": "1" if fail_cleanup else "",
         },
     )
     return _BlockRun(proc, app_dir)
@@ -638,3 +685,52 @@ def test_tunnel_block_validation_depends_on_the_env_file(tmp_path):
         f"passes, the ordering guarantee is no longer load-bearing: {run.output}"
     )
     assert "failed validation" in run.output, run.output
+
+
+@requires_compose
+def test_tunnel_block_stale_remove_failure_does_not_abort_startup(tmp_path):
+    run = _run_tunnel_block(
+        tmp_path,
+        download=_TUNNEL_COMPOSE.read_text(),
+        stale_file=_STALE_TUNNEL_YML,
+        fail_stale_remove=True,
+    )
+
+    _assert_api_db_config_intact(run)
+    assert not run.tunnel_enabled, run.output
+    assert "stale tunnel config could not be removed" in run.output
+    assert not (tmp_path / "calls.log").exists(), "download must not be attempted"
+
+
+@requires_compose
+def test_tunnel_block_mktemp_failure_does_not_abort_startup(tmp_path):
+    run = _run_tunnel_block(
+        tmp_path, download=_TUNNEL_COMPOSE.read_text(), fail_mktemp=True
+    )
+
+    _assert_api_db_config_intact(run)
+    assert not run.tunnel_enabled, run.output
+    assert "creating a temporary config file failed" in run.output
+
+
+@requires_compose
+def test_tunnel_block_toolbox_copy_failure_does_not_abort_startup(tmp_path):
+    run = _run_tunnel_block(
+        tmp_path, download=_TUNNEL_COMPOSE.read_text(), fail_host_copy=True
+    )
+
+    _assert_api_db_config_intact(run)
+    assert not run.tunnel_enabled, run.output
+    assert "copying docker-compose.tunnel.yml from toolbox failed" in run.output
+    assert run.leftover_temp_files == []
+
+
+@requires_compose
+def test_tunnel_block_cleanup_failure_does_not_abort_startup(tmp_path):
+    run = _run_tunnel_block(
+        tmp_path, download=_TUNNEL_COMPOSE.read_text(), fail_cleanup=True
+    )
+
+    _assert_api_db_config_intact(run)
+    assert run.tunnel_enabled, run.output
+    assert "temporary tunnel config cleanup failed" in run.output

@@ -517,11 +517,12 @@ point (the note in that file anticipates this).
 
 | Resource | Why it outlives the LB |
 |---|---|
-| `google_compute_health_check.trackrat` (`compute.tf:405`) | Also drives the MIG's `auto_healing_policies` (`compute.tf:437-440`), not just the backend service |
+| `google_compute_health_check.trackrat` | Also drives `google_compute_instance_group_manager.trackrat.auto_healing_policies`, not just the backend service |
 | `google_compute_firewall.allow_health_checks` (`network.tf:5`) | Auto-healing probes come from `130.211.0.0/22` + `35.191.0.0/16` on port 8000 — the same ranges the LB used |
 
-The health check has two consumers: `loadbalancer.tf:72` (backend service, dies
-with the cutover) and `compute.tf:438` (MIG auto-healing, does not). Deleting it
+The health check has two consumers: the backend service in `loadbalancer.tf`
+(dies with the cutover) and the MIG's `auto_healing_policies` in `compute.tf`
+(does not). Deleting it
 leaves the production MIG unable to replace a wedged instance, and the failure is
 **silent** — nothing breaks at deletion time; you find out the next time an
 instance needs auto-healing and doesn't get it. Neither resource is `count`-gated,
