@@ -1,3 +1,4 @@
+import StoreKit
 import SwiftUI
 
 // MARK: - Settings Navigation
@@ -19,6 +20,7 @@ struct SettingsView: View {
     @State private var feedbackRequest: FeedbackSheetRequest?
     @State private var paywallContext: PaywallContext = .generic
     @State private var navigationPath = NavigationPath()
+    @State private var releaseDebugSectionsEnabled = false
 
     var body: some View {
         NavigationStack(path: $navigationPath) {
@@ -130,6 +132,9 @@ struct SettingsView: View {
         }
         .feedbackSheet(request: $feedbackRequest)
         .interactiveDismissDisabled(appState.selectedSystems.isEmpty)
+        .task {
+            await resolveReleaseDebugSectionAvailability()
+        }
     }
 
     /// Shows debug sections in DEBUG builds or TestFlight (but not App Store releases)
@@ -137,8 +142,32 @@ struct SettingsView: View {
         #if DEBUG
         return true
         #else
-        guard let url = Bundle.main.appStoreReceiptURL else { return false }
-        return url.lastPathComponent == "sandboxReceipt"
+        return releaseDebugSectionsEnabled
+        #endif
+    }
+
+    static func shouldEnableReleaseDebugSections(
+        for environment: AppStore.Environment?
+    ) -> Bool {
+        environment == .sandbox
+    }
+
+    @MainActor
+    private func resolveReleaseDebugSectionAvailability() async {
+        #if !DEBUG
+        releaseDebugSectionsEnabled = false
+
+        do {
+            guard case .verified(let appTransaction) = try await AppTransaction.shared else {
+                return
+            }
+
+            releaseDebugSectionsEnabled = Self.shouldEnableReleaseDebugSections(
+                for: appTransaction.environment
+            )
+        } catch {
+            // Optional debug UI fails closed when StoreKit state is unavailable.
+        }
         #endif
     }
 }
