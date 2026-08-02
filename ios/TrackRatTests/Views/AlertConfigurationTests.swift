@@ -212,6 +212,172 @@ class AlertConfigurationTests: XCTestCase {
         }
     }
 
+    // MARK: - Real-time alert eligibility (schedule-only lines)
+
+    /// SEPTA Metro is fed live on NHSL and the trolleys but not on Broad St or
+    /// Market-Frankford, so eligibility has to be decided per line. A source-level
+    /// flag gets it wrong in both directions: `supportsAlerts = false` would strip
+    /// working delay alerts off NHSL, and leaving it true offers Broad St riders
+    /// thresholds that can never fire.
+
+    private func metroLineSub(_ lineId: String, _ lineName: String) -> RouteAlertSubscription {
+        RouteAlertSubscription(
+            dataSource: "SEPTA_METRO", lineId: lineId, lineName: lineName, direction: nil
+        )
+    }
+
+    func testSupportsRealTimeAlerts_falseForScheduleOnlyMetroLines() {
+        for (lineId, name) in [
+            ("septa-metro-b1", "Broad Street Line Local"),
+            ("septa-metro-b2", "Broad Street Line Express"),
+            ("septa-metro-b3", "Broad-Ridge Spur"),
+            ("septa-metro-l1", "Market-Frankford Line All Stops"),
+        ] {
+            XCTAssertFalse(
+                metroLineSub(lineId, name).supportsRealTimeAlerts,
+                "\(name) is timetable-only — delay/cancellation alerts cannot fire"
+            )
+        }
+    }
+
+    func testSupportsRealTimeAlerts_trueForLiveMetroLines() {
+        for (lineId, name) in [
+            ("septa-metro-m1", "Norristown High Speed Line Local"),
+            ("septa-metro-t1", "13th St to 63rd-Malvern/Overbrook"),
+            ("septa-metro-g1", "63rd-Girard to Richmond-Westmorelnd"),
+        ] {
+            XCTAssertTrue(
+                metroLineSub(lineId, name).supportsRealTimeAlerts,
+                "\(name) is fed in real time — delay alerts must stay available"
+            )
+        }
+    }
+
+    func testSupportsRealTimeAlerts_trueForSystemWideMetro() {
+        // A system-wide subscription still covers NHSL and the trolleys.
+        XCTAssertTrue(RouteAlertSubscription(dataSource: "SEPTA_METRO").supportsRealTimeAlerts)
+    }
+
+    func testSupportsRealTimeAlerts_falseForWhollyScheduleOnlySystem() {
+        // PATCO has no real-time feed at all; TrainSystem.supportsAlerts already
+        // says so and must keep short-circuiting before any route lookup.
+        let sub = RouteAlertSubscription(
+            dataSource: "PATCO", lineId: "patco-speedline", lineName: "PATCO Speedline",
+            direction: nil
+        )
+        XCTAssertFalse(sub.supportsRealTimeAlerts)
+    }
+
+    func testSupportsRealTimeAlerts_stationPairOnScheduleOnlyLine() {
+        // Lindenwold-style BSL pair: every route containing both codes (b1, b2) is
+        // schedule-only, so the whole pair is.
+        let sub = RouteAlertSubscription(
+            dataSource: "SEPTA_METRO", fromStationCode: "SEPM20965", toStationCode: "SEPM152"
+        )
+        XCTAssertFalse(sub.supportsRealTimeAlerts,
+                       "A Broad St station pair is served only by schedule-only routes")
+    }
+
+    func testSupportsRealTimeAlerts_stationPairOnLiveLine() {
+        // 69th St -> Norristown is NHSL-only (SEPM416 is also on MFL, but SEPM30520
+        // is not, so routesContaining resolves to m1 alone).
+        let sub = RouteAlertSubscription(
+            dataSource: "SEPTA_METRO", fromStationCode: "SEPM416", toStationCode: "SEPM30520"
+        )
+        XCTAssertTrue(sub.supportsRealTimeAlerts,
+                      "An NHSL station pair is fed in real time")
+    }
+
+    func testSupportsRealTimeAlerts_unknownStationPairFailsOpen() {
+        // No topology match is no evidence either way. Hiding a control that would
+        // have worked is worse than leaving one that cannot fire.
+        let sub = RouteAlertSubscription(
+            dataSource: "SEPTA_METRO", fromStationCode: "SEPM000000", toStationCode: "SEPM999999"
+        )
+        XCTAssertTrue(sub.supportsRealTimeAlerts)
+    }
+
+    func testSupportsRealTimeAlerts_unaffectedForFullyLiveSystems() {
+        let njt = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "njt-nec", lineName: "Northeast Corridor",
+            direction: nil
+        )
+        XCTAssertTrue(njt.supportsRealTimeAlerts, "NJT is unaffected by the Metro gate")
+    }
+
+    // MARK: - Clearing unsupported alert types
+
+    func testClearingUnsupportedAlertTypes_stripsRealTimeFlagsOnScheduleOnlyLine() {
+        // The initializer defaults notifyCancellation/notifyDelay to true, which is
+        // exactly how a dead subscription would otherwise reach the backend.
+        let sub = RouteAlertSubscription(
+            dataSource: "SEPTA_METRO", lineId: "septa-metro-b1",
+            lineName: "Broad Street Line Local", direction: nil,
+            delayThresholdMinutes: 10, serviceThresholdPct: 50, cancellationThresholdPct: 25,
+            notifyCancellation: true, notifyDelay: true, notifyRecovery: true,
+            includePlannedWork: true
+        )
+        XCTAssertTrue(sub.notifyDelay, "precondition: the default is enabled")
+
+        let cleared = sub.clearingUnsupportedAlertTypes()
+
+        XCTAssertFalse(cleared.notifyCancellation)
+        XCTAssertFalse(cleared.notifyDelay)
+        XCTAssertFalse(cleared.notifyRecovery)
+        XCTAssertNil(cleared.cancellationThresholdPct)
+        XCTAssertNil(cleared.delayThresholdMinutes)
+        XCTAssertNil(cleared.serviceThresholdPct)
+        XCTAssertTrue(cleared.includePlannedWork,
+                      "Service alerts still work on a schedule-only line and must survive")
+        XCTAssertEqual(cleared.id, sub.id, "Identity fields must be preserved")
+        XCTAssertEqual(cleared.lineId, sub.lineId)
+    }
+
+    func testClearingUnsupportedAlertTypes_isNoOpOnLiveLine() {
+        let sub = RouteAlertSubscription(
+            dataSource: "SEPTA_METRO", lineId: "septa-metro-m1",
+            lineName: "Norristown High Speed Line Local", direction: nil,
+            delayThresholdMinutes: 10,
+            notifyCancellation: true, notifyDelay: true, notifyRecovery: true
+        )
+        XCTAssertEqual(sub.clearingUnsupportedAlertTypes(), sub,
+                       "A live line must pass through untouched")
+    }
+
+    // MARK: - Schedule-only route ids
+
+    func testScheduleOnlyRouteIds_allResolveToRealMetroRoutes() {
+        // A typo here would silently disable the gate rather than fail, so assert
+        // every id resolves and belongs to SEPTA Metro.
+        for id in RouteTopology.scheduleOnlyRouteIds {
+            guard let route = RouteTopology.allRoutes.first(where: { $0.id == id }) else {
+                XCTFail("scheduleOnlyRouteIds contains unknown route id \(id)")
+                continue
+            }
+            XCTAssertEqual(route.dataSource, "SEPTA_METRO",
+                           "\(id) should be a SEPTA Metro route, got \(route.dataSource)")
+        }
+    }
+
+    func testScheduleOnlyRouteIds_matchesBackendRouteSet() {
+        // Mirrors SEPTA_METRO_SCHEDULE_ONLY_ROUTES (config/stations/septa_metro.py),
+        // whose GTFS route_ids B1/B2/B3/L1 map to these topology ids.
+        XCTAssertEqual(
+            RouteTopology.scheduleOnlyRouteIds,
+            ["septa-metro-b1", "septa-metro-b2", "septa-metro-b3", "septa-metro-l1"]
+        )
+    }
+
+    func testScheduleOnlyRouteIds_excludesLiveMetroRoutes() {
+        let metroRoutes = RouteTopology.allRoutes.filter { $0.dataSource == "SEPTA_METRO" }
+        XCTAssertGreaterThan(metroRoutes.count, RouteTopology.scheduleOnlyRouteIds.count,
+                             "Metro must retain live routes; if not, the source flag would be simpler")
+        for id in ["septa-metro-m1", "septa-metro-t1", "septa-metro-d1"] {
+            XCTAssertFalse(RouteTopology.scheduleOnlyRouteIds.contains(id),
+                           "\(id) is fed in real time and must not be gated")
+        }
+    }
+
     // MARK: - Free Tier Alert Limit
 
     func testFreeRouteAlertLimit_isOne() {

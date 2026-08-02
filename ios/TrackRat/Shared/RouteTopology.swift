@@ -55,6 +55,29 @@ struct RouteTopology {
         allRoutes.filter { selectedDataSources.contains($0.dataSource) }
     }
 
+    // MARK: - Schedule-only Routes
+
+    /// Routes the provider publishes on a timetable but never feeds live, so their
+    /// departures stay SCHEDULED and no delay or cancellation is ever observable.
+    ///
+    /// Mirrors the backend's `SEPTA_METRO_SCHEDULE_ONLY_ROUTES`
+    /// (`config/stations/septa_metro.py`), whose GTFS route_ids B1/B2/B3/L1 become
+    /// these topology ids. SEPTA Metro is the only system that needs this: it is a
+    /// mixed system, live on NHSL and the trolleys while Broad St and
+    /// Market-Frankford are not, so no source-level flag can express it — the same
+    /// reason the backend has `expects_real_time_departures` instead of reading
+    /// `REAL_TIME_DATA_SOURCES` membership. A wholly schedule-only system (PATCO)
+    /// is handled by `TrainSystem.supportsAlerts` and does not belong here.
+    ///
+    /// If SEPTA starts feeding one of these lines, drop it here and in the backend
+    /// set; nothing else needs to change.
+    static let scheduleOnlyRouteIds: Set<String> = [
+        "septa-metro-b1",  // Broad Street Line Local
+        "septa-metro-b2",  // Broad Street Line Express
+        "septa-metro-b3",  // Broad-Ridge Spur
+        "septa-metro-l1",  // Market-Frankford Line All Stops
+    ]
+
     // MARK: - NJ Transit Routes
 
     static let njtRoutes: [RouteLine] = [

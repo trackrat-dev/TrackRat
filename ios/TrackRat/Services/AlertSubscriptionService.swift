@@ -54,7 +54,7 @@ final class AlertSubscriptionService: ObservableObject {
                 isDuplicate = false
             }
             if !isDuplicate {
-                subscriptions.append(sub)
+                subscriptions.append(sub.clearingUnsupportedAlertTypes())
             }
         }
         saveToDefaults()
@@ -191,6 +191,57 @@ struct RouteAlertSubscription: Codable, Identifiable, Equatable {
     /// Whether this is a system-wide subscription (no line, station pair, or train specified).
     var isSystemWide: Bool {
         lineId == nil && fromStationCode == nil && toStationCode == nil && trainId == nil
+    }
+
+    /// Whether delay, cancellation, and recovery alerts can ever fire here.
+    ///
+    /// The backend derives all three from observed journeys — `alert_evaluator`
+    /// computes delay from `actual_departure`, which only a real-time collector
+    /// ever sets. A line served purely from the timetable therefore produces no
+    /// delay, no cancellation, and no recovery, however the thresholds are set.
+    /// Service alerts are unaffected: those come from the provider's alert feed,
+    /// so a schedule-only line can still carry planned work and disruptions.
+    ///
+    /// System-wide and train-scoped subscriptions return true — on a mixed system
+    /// like SEPTA Metro they still cover the lines that are fed live.
+    var supportsRealTimeAlerts: Bool {
+        guard TrainSystem(rawValue: dataSource)?.supportsAlerts == true else { return false }
+
+        if let lineId {
+            return !RouteTopology.scheduleOnlyRouteIds.contains(lineId)
+        }
+
+        guard let fromStationCode else { return true }
+        let routes: [RouteLine]
+        if let toStationCode {
+            routes = RouteTopology.routesContaining(
+                from: fromStationCode, to: toStationCode, dataSource: dataSource
+            )
+        } else {
+            routes = RouteTopology.allRoutes.filter {
+                $0.dataSource == dataSource && $0.stationCodes.contains(fromStationCode)
+            }
+        }
+        // An unrecognised pair is no evidence of anything, and hiding a control
+        // that would have worked is worse than leaving one that cannot fire, so
+        // only a match that is entirely schedule-only suppresses the controls.
+        guard !routes.isEmpty else { return true }
+        return routes.contains { !RouteTopology.scheduleOnlyRouteIds.contains($0.id) }
+    }
+
+    /// Clears the real-time alert types on a subscription that can never observe
+    /// them, so a control the user was never shown cannot be persisted — or synced
+    /// to the backend — as enabled.
+    func clearingUnsupportedAlertTypes() -> RouteAlertSubscription {
+        guard !supportsRealTimeAlerts else { return self }
+        var result = self
+        result.notifyCancellation = false
+        result.notifyDelay = false
+        result.notifyRecovery = false
+        result.cancellationThresholdPct = nil
+        result.delayThresholdMinutes = nil
+        result.serviceThresholdPct = nil
+        return result
     }
 
     /// Human-readable name for this subscription (e.g. "Hoboken to 33rd Street").

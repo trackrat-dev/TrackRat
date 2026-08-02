@@ -382,15 +382,24 @@ struct AlertConfigurationSection: View {
 
                     Divider().opacity(0.3)
 
-                    // Alert types
-                    Text("When there are...")
-                        .font(.subheadline)
-                        .foregroundColor(.white.opacity(0.6))
-                    sensitivityRow(label: "Cancellations", sensitivity: cancellationSensitivity)
-                    sensitivityRow(
-                        label: isFrequencyBased ? "Fewer Trains" : "Delays",
-                        sensitivity: delaySensitivity
-                    )
+                    // Alert types. A timetable-only line never reports a delay or a
+                    // cancellation, so offering the thresholds would promise
+                    // notifications that cannot arrive.
+                    if subscription.supportsRealTimeAlerts {
+                        Text("When there are...")
+                            .font(.subheadline)
+                            .foregroundColor(.white.opacity(0.6))
+                        sensitivityRow(label: "Cancellations", sensitivity: cancellationSensitivity)
+                        sensitivityRow(
+                            label: isFrequencyBased ? "Fewer Trains" : "Delays",
+                            sensitivity: delaySensitivity
+                        )
+                    } else {
+                        Text("This line runs to a published timetable with no live train data, so delay and cancellation alerts aren't available for it.")
+                            .font(.footnote)
+                            .foregroundColor(.white.opacity(0.6))
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
 
                     // Service alerts (MTA + NJT systems)
                     if showPlannedWork {
@@ -400,8 +409,11 @@ struct AlertConfigurationSection: View {
                         .tint(.orange)
                     }
 
-                    // Recovery & daily summary
-                    if subscription.notifyCancellation || subscription.notifyDelay {
+                    // Recovery & daily summary. The flags are cleared on save for a
+                    // schedule-only line, but an older persisted subscription can
+                    // still carry them, so gate on eligibility too.
+                    if subscription.supportsRealTimeAlerts,
+                       subscription.notifyCancellation || subscription.notifyDelay {
                         Text("Also...")
                             .font(.subheadline)
                             .foregroundColor(.white.opacity(0.6))
