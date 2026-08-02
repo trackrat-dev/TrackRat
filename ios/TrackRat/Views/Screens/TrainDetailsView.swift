@@ -443,7 +443,7 @@ struct CombinedDetailsCard: View {
             return false
         }
         
-        // Show predictions only for NY Penn Station and when track is not assigned
+        // Show predictions only for supported stations when track is not assigned
         return StaticTrackDistributionService.shared.shouldShowPredictions(for: train)
     }
     
@@ -516,7 +516,6 @@ struct CombinedDetailsCard: View {
                         isDepartingFromNYPenn: appState.departureStationCode == "NY",
                         prefetchedPredictions: prefetchedTrackPrediction
                     )
-                    .allowsHitTesting(true)  // Ensure predictions card is interactive
                 }
             }
             .padding([.horizontal, .top])
@@ -1632,8 +1631,10 @@ struct SegmentedTrackPredictionView: View {
     let train: TrainV2
     let isDepartingFromNYPenn: Bool
     let prefetchedPredictions: PredictionData?
+    @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var adjustedPredictions: PredictionData?
     @State private var isLoadingPredictions = true
+    @State private var isExpanded = false
     @State private var showWaitingLink = false
     
     private var predictionSegments: [TrackPredictionSegment] {
@@ -1650,18 +1651,30 @@ struct SegmentedTrackPredictionView: View {
 	
         print("✅ [TrackPredictionView] Have \(trackProbabilities.count) track probabilities")
 
-        let platformProbabilities = PredictionData.groupTracksByPlatform(trackProbabilities)
-        print("   Grouped into \(platformProbabilities.count) platforms")
-
-        let sortedPlatforms = platformProbabilities.sorted { first, second in
-            let firstNum = extractPlatformNumber(from: first.key)
-            let secondNum = extractPlatformNumber(from: second.key)
-            return firstNum < secondNum
-        }
-
-        let segments = createSegments(from: sortedPlatforms)
+        let segments = TrackPredictionSegment.makeSegments(
+            from: trackProbabilities,
+            groupTracksAtNYPenn: train.originStationCode == "NY"
+        )
         print("   Created \(segments.count) segments")
         return segments
+    }
+
+    private var rankedPredictionSegments: [TrackPredictionSegment] {
+        predictionSegments.sortedByProbability
+    }
+
+    private var predictionAccessibilitySummary: String {
+        predictionSegments.accessibilitySummary
+    }
+
+    private var predictionTaskID: String {
+        if let inlineProbabilities = train.trackPrediction?.platformProbabilities {
+            return "inline:\(TrackPredictionSegment.probabilityFingerprint(inlineProbabilities))"
+        }
+        if let prefetchedProbabilities = prefetchedPredictions?.trackProbabilities {
+            return "prefetched:\(TrackPredictionSegment.probabilityFingerprint(prefetchedProbabilities))"
+        }
+        return "fallback:\(train.trainId):\(train.track ?? "unassigned")"
     }
     
     private var hasOnlyLowConfidencePredictions: Bool {
@@ -1674,17 +1687,38 @@ struct SegmentedTrackPredictionView: View {
         if isLoadingPredictions || adjustedPredictions != nil {
             VStack(alignment: .leading, spacing: 12) {
                 // Header
-                HStack {
-                    Image(systemName: "tram.circle.fill")
-                        .foregroundColor(.black)
-                        .font(.title2)
+                Button(action: toggleExpansion) {
+                    HStack {
+                        Image(systemName: "tram.circle.fill")
+                            .foregroundColor(.black)
+                            .font(.title2)
+                            .accessibilityHidden(true)
 
-                    Text("Track Predictions")
-                        .font(.headline)
-                        .foregroundColor(.black)
+                        Text("Track Predictions")
+                            .font(.headline)
+                            .foregroundColor(.black)
 
-                    Spacer()
+                        Spacer()
+
+                        if !predictionSegments.isEmpty {
+                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.black.opacity(0.55))
+                                .accessibilityHidden(true)
+                        }
+                    }
+                    .contentShape(Rectangle())
                 }
+                .buttonStyle(.plain)
+                .disabled(isLoadingPredictions || predictionSegments.isEmpty)
+                .accessibilityLabel("Track predictions")
+                .accessibilityValue(isLoadingPredictions ? "Loading" : (isExpanded ? "Expanded" : "Collapsed"))
+                .accessibilityHint(
+                    isExpanded
+                        ? "Hides all predicted tracks and probabilities"
+                        : "Shows all predicted tracks and probabilities"
+                )
 
                 if isLoadingPredictions {
                     ProgressView()
@@ -1707,11 +1741,19 @@ struct SegmentedTrackPredictionView: View {
                         // Main segmented bar
                         segmentedBarView
                             .frame(height: 64)
+                            .accessibilityElement(children: .ignore)
+                            .accessibilityLabel("Track prediction summary")
+                            .accessibilityValue(predictionAccessibilitySummary)
 
                         // Percentages below the bar
                         bottomLabelsView
                     }
                     .padding(.top, 4)
+                }
+
+                if isExpanded && !rankedPredictionSegments.isEmpty {
+                    expandedPredictionsView
+                        .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
                 // Penn Station waiting guide link for NY departures
@@ -1730,19 +1772,71 @@ struct SegmentedTrackPredictionView: View {
                 RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
                     .stroke(Color.orange.opacity(0.3), lineWidth: 1)
             )
-            .task(id: train.trackPrediction?.primaryPrediction) {
-                if let prefetched = prefetchedPredictions, train.track == nil, adjustedPredictions == nil {
+            .task(id: predictionTaskID) {
+                if let inline = train.trackPrediction, train.track == nil {
+                    adjustedPredictions = PredictionData(
+                        trackProbabilities: inline.platformProbabilities
+                    )
+                    isLoadingPredictions = false
+                    revealWaitingLinkIfNeeded()
+                } else if let prefetched = prefetchedPredictions, train.track == nil {
                     adjustedPredictions = prefetched
                     isLoadingPredictions = false
-                    if isDepartingFromNYPenn {
-                        withAnimation(.easeInOut(duration: 0.3).delay(0.2)) {
-                            showWaitingLink = true
-                        }
-                    }
+                    revealWaitingLinkIfNeeded()
                 } else {
                     await loadAdjustedPredictions()
                 }
             }
+        }
+    }
+
+    private func toggleExpansion() {
+        guard !isLoadingPredictions, !predictionSegments.isEmpty else { return }
+
+        if accessibilityReduceMotion {
+            isExpanded.toggle()
+        } else {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                isExpanded.toggle()
+            }
+        }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+    }
+
+    private var expandedPredictionsView: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Divider()
+                .overlay(Color.black.opacity(0.15))
+                .accessibilityHidden(true)
+
+            Text("All predicted tracks")
+                .font(.subheadline)
+                .fontWeight(.semibold)
+                .foregroundColor(.black)
+
+            ForEach(rankedPredictionSegments) { segment in
+                HStack(spacing: 12) {
+                    Text(segment.trackLabel)
+                        .font(.subheadline)
+                        .foregroundColor(.black)
+
+                    Spacer()
+
+                    Text(segment.percentageText)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .monospacedDigit()
+                        .foregroundColor(.black)
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(segment.trackLabel)
+                .accessibilityValue(segment.percentageText)
+            }
+
+            Text("Based on historical or typical assignment patterns. Current track availability is considered when possible. Predictions can change.")
+                .font(.caption)
+                .foregroundColor(.black.opacity(0.65))
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -1754,17 +1848,26 @@ struct SegmentedTrackPredictionView: View {
         isLoadingPredictions = true
 
         // Prefer inline prediction from train details response (refreshes every poll)
+        let loadedPredictions: PredictionData?
         if let inline = train.trackPrediction {
             print("⚡ [TrainDetailsView] Using inline track prediction from train details")
-            adjustedPredictions = PredictionData(trackProbabilities: inline.platformProbabilities)
+            loadedPredictions = PredictionData(
+                trackProbabilities: inline.platformProbabilities
+            )
         } else {
             // Fallback to separate API call (older backend or track already assigned)
-            adjustedPredictions = await StaticTrackDistributionService.shared.getAdjustedPredictionData(for: train)
+            loadedPredictions = await StaticTrackDistributionService.shared
+                .getAdjustedPredictionData(for: train)
         }
 
+        // A changed inline or prefetched distribution restarts this task. The
+        // cancelled fallback must not overwrite that newer data when its API
+        // call unwinds through the service's generic error handler.
+        guard !Task.isCancelled else { return }
+        adjustedPredictions = loadedPredictions
         isLoadingPredictions = false
 
-        if let predictions = adjustedPredictions {
+        if let predictions = loadedPredictions {
             let trackCount = predictions.trackProbabilities?.count ?? 0
             print("✅ [TrainDetailsView] Got predictions with \(trackCount) tracks")
         } else {
@@ -1772,20 +1875,21 @@ struct SegmentedTrackPredictionView: View {
         }
 
         // Show the waiting link with animation after predictions load
+        revealWaitingLinkIfNeeded()
+    }
+
+    private func revealWaitingLinkIfNeeded() {
         if isDepartingFromNYPenn {
-            withAnimation(.easeInOut(duration: 0.3).delay(0.2)) {
+            if accessibilityReduceMotion {
                 showWaitingLink = true
+            } else {
+                withAnimation(.easeInOut(duration: 0.3).delay(0.2)) {
+                    showWaitingLink = true
+                }
             }
         }
     }
 
-    private func extractPlatformNumber(from platformName: String) -> Int {
-        // Extract first number from platform names like "1 & 2", "3 & 4", "17"
-        let components = platformName.components(separatedBy: CharacterSet.decimalDigits.inverted)
-        let firstNumber = components.first { !$0.isEmpty }
-        return Int(firstNumber ?? "999") ?? 999
-    }
-    
     private var segmentedBarView: some View {
         GeometryReader { geometry in
             HStack(spacing: 0) {
@@ -1866,7 +1970,7 @@ struct SegmentedTrackPredictionView: View {
                     
                     VStack {
                         if segment.probability >= 0.15 {
-                            Text("\(Int(segment.probability * 100))%")
+                            Text(segment.percentageText)
                                 .font(.caption2)
                                 .fontWeight(.medium)
                                 .foregroundColor(.black)
@@ -1879,22 +1983,6 @@ struct SegmentedTrackPredictionView: View {
         .frame(height: 16)
     }
     
-    private func createSegments(from platformProbabilities: [(key: String, value: Double)]) -> [TrackPredictionSegment] {
-        var segments: [TrackPredictionSegment] = []
-        
-        for (index, platform) in platformProbabilities.enumerated() {
-            let segment = TrackPredictionSegment(
-                id: platform.key,
-                platformName: platform.key,
-                probability: platform.value,
-                rank: index + 1
-            )
-            
-            segments.append(segment)
-        }
-        
-        return segments
-    }
 }
 
 // MARK: - Track Prediction Segment Model
@@ -1913,6 +2001,55 @@ struct TrackPredictionSegment: Identifiable, Equatable {
         self.rank = rank
         self.isOthersGroup = isOthersGroup
         self.detailText = detailText
+    }
+
+    static func makeSegments(
+        from trackProbabilities: [String: Double],
+        groupTracksAtNYPenn: Bool
+    ) -> [TrackPredictionSegment] {
+        let displayedProbabilities = groupTracksAtNYPenn
+            ? PredictionData.groupTracksByPlatform(trackProbabilities)
+            : trackProbabilities
+        let sortedPlatforms = displayedProbabilities.sorted { first, second in
+            let firstNumber = platformNumber(from: first.key)
+            let secondNumber = platformNumber(from: second.key)
+            if firstNumber == secondNumber {
+                return first.key.localizedStandardCompare(second.key) == .orderedAscending
+            }
+            return firstNumber < secondNumber
+        }
+
+        return sortedPlatforms.enumerated().map { index, platform in
+            TrackPredictionSegment(
+                id: platform.key,
+                platformName: platform.key,
+                probability: platform.value,
+                rank: index + 1
+            )
+        }
+    }
+
+    static func probabilityFingerprint(_ probabilities: [String: Double]) -> String {
+        probabilities
+            .sorted { $0.key < $1.key }
+            .map { "\($0.key)=\(String($0.value.bitPattern, radix: 16))" }
+            .joined(separator: "|")
+    }
+
+    private static func platformNumber(from platformName: String) -> Int {
+        let components = platformName.components(
+            separatedBy: CharacterSet.decimalDigits.inverted
+        )
+        let firstNumber = components.first { !$0.isEmpty }
+        return Int(firstNumber ?? "999") ?? 999
+    }
+
+    var trackLabel: String {
+        platformName.contains("&") ? "Tracks \(platformName)" : "Track \(platformName)"
+    }
+
+    var percentageText: String {
+        "\(Int((probability * 100).rounded()))%"
     }
     
     var displayText: String {
@@ -1958,6 +2095,28 @@ struct TrackPredictionSegment: Identifiable, Equatable {
         }
         // Use size 10 font (between size 9 and caption2) for all segments >= 15%
         return .system(size: 10, weight: .medium)
+    }
+}
+
+extension Array where Element == TrackPredictionSegment {
+    var sortedByProbability: [TrackPredictionSegment] {
+        sorted { first, second in
+            if first.probability == second.probability {
+                return first.rank < second.rank
+            }
+            return first.probability > second.probability
+        }
+    }
+
+    var accessibilitySummary: String {
+        let rankedSegments = sortedByProbability
+        let leadingSummary = rankedSegments
+            .prefix(3)
+            .map { "\($0.trackLabel), \($0.percentageText)" }
+            .joined(separator: ", ")
+        let remainingCount = rankedSegments.count - Swift.min(rankedSegments.count, 3)
+        guard remainingCount > 0 else { return leadingSummary }
+        return "\(leadingSummary), and \(remainingCount) more"
     }
 }
 

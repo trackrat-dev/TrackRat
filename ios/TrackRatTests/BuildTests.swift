@@ -70,6 +70,95 @@ class BuildTests: XCTestCase {
     }
 }
 
+final class TrackPredictionViewTests: XCTestCase {
+    func testNYPennGroupsIndividualTracksIntoPlatforms() {
+        let segments = TrackPredictionSegment.makeSegments(
+            from: ["1": 0.2, "2": 0.3, "3": 0.5],
+            groupTracksAtNYPenn: true
+        )
+
+        XCTAssertEqual(segments.map(\.platformName), ["1 & 2", "3 & 4"])
+        XCTAssertEqual(segments.map(\.probability), [0.5, 0.5])
+    }
+
+    func testNYPennPreservesPregroupedPlatformKeys() {
+        let segments = TrackPredictionSegment.makeSegments(
+            from: ["1 & 2": 0.6, "3 & 4": 0.4],
+            groupTracksAtNYPenn: true
+        )
+
+        XCTAssertEqual(segments.map(\.platformName), ["1 & 2", "3 & 4"])
+        XCTAssertEqual(segments.map(\.probability), [0.6, 0.4])
+    }
+
+    func testNonNYPennTracksRemainSeparate() {
+        let segments = TrackPredictionSegment.makeSegments(
+            from: ["1": 0.4, "2": 0.35, "10": 0.25],
+            groupTracksAtNYPenn: false
+        )
+
+        XCTAssertEqual(segments.map(\.platformName), ["1", "2", "10"])
+    }
+
+    func testExpandedRankingIncludesLowProbabilityCandidates() {
+        let segments = TrackPredictionSegment.makeSegments(
+            from: ["1": 0.12, "2": 0.7, "3": 0.18],
+            groupTracksAtNYPenn: false
+        )
+
+        XCTAssertEqual(
+            segments.sortedByProbability.map(\.platformName),
+            ["2", "3", "1"]
+        )
+        XCTAssertEqual(segments.sortedByProbability.last?.percentageText, "12%")
+    }
+
+    func testProbabilityFingerprintChangesWhenDistributionChangesWithSameLeader() {
+        let original = TrackPredictionSegment.probabilityFingerprint([
+            "7 & 8": 0.6,
+            "9 & 10": 0.4
+        ])
+        let updated = TrackPredictionSegment.probabilityFingerprint([
+            "7 & 8": 0.55,
+            "9 & 10": 0.45
+        ])
+
+        XCTAssertNotEqual(original, updated)
+    }
+
+    func testAccessibilitySummaryLimitsCollapsedAnnouncement() {
+        let segments = TrackPredictionSegment.makeSegments(
+            from: ["1": 0.4, "2": 0.3, "3": 0.2, "4": 0.1],
+            groupTracksAtNYPenn: false
+        )
+
+        XCTAssertEqual(
+            segments.accessibilitySummary,
+            "Track 1, 40%, Track 2, 30%, Track 3, 20%, and 1 more"
+        )
+    }
+
+    func testTrackLabelsAreReadableForAccessibility() {
+        let grouped = TrackPredictionSegment(
+            id: "7 & 8",
+            platformName: "7 & 8",
+            probability: 0.421,
+            rank: 1
+        )
+        let single = TrackPredictionSegment(
+            id: "17",
+            platformName: "17",
+            probability: 0.1,
+            rank: 2
+        )
+
+        XCTAssertEqual(grouped.trackLabel, "Tracks 7 & 8")
+        XCTAssertEqual(grouped.percentageText, "42%")
+        XCTAssertEqual(single.trackLabel, "Track 17")
+        XCTAssertEqual(single.percentageText, "10%")
+    }
+}
+
 /// Regression tests for `StationNameWithBadges`. The component's custom
 /// `StationNameBadgesLayout` once collapsed to zero size when the badge
 /// subview was empty — i.e. on every non-subway stop in TrainDetailsView —
