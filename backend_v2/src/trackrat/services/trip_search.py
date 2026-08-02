@@ -14,6 +14,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
+from trackrat.config.route_topology import is_directionally_reachable
 from trackrat.config.stations import expand_station_codes, get_station_name
 from trackrat.config.stations.common import CROSS_MODAL_HUBS, STATION_EQUIVALENTS
 from trackrat.config.transfer_points import (
@@ -258,6 +259,31 @@ def _has_shared_line(
     return False
 
 
+def _junction_legs_run(
+    system: str,
+    origin: str,
+    alight: str,
+    board: str,
+    dest: str,
+) -> bool:
+    """Whether both legs of an intra-system transfer are physically rideable.
+
+    Sharing a line with the junction is not enough: a train has to actually run
+    origin -> alight and board -> dest.  That is automatic where one station
+    code serves both directions, but SEPTA Metro splits every trolley curb into
+    an inbound and an outbound code, so most of its junctions can only ever
+    fill one of the two legs.  Since same-station junctions all tie on the
+    ranking keys and sort by station code, those one-legged junctions otherwise
+    fill the MAX_TRANSFER_QUERIES budget and crowd out the codes that work —
+    e.g. 63rd-Malvern (T1) -> Elmwood Av & 73rd St (T2) kept six dead tunnel
+    platforms and dropped 13th St, the one junction both directions serve, so
+    the search returned nothing (PR #1708 codex review).
+    """
+    return is_directionally_reachable(system, origin, alight) and (
+        is_directionally_reachable(system, board, dest)
+    )
+
+
 def _find_relevant_transfer_points(
     from_systems: set[str],
     to_systems: set[str],
@@ -304,7 +330,28 @@ def _find_relevant_transfer_points(
                     b_has_origin = bool(tp.lines_b & origin_lines)
                     a_has_dest = bool(tp.lines_a & dest_lines)
                     b_has_dest = bool(tp.lines_b & dest_lines)
-                    if (a_has_origin and b_has_dest) or (b_has_origin and a_has_dest):
+                    usable = (
+                        a_has_origin
+                        and b_has_dest
+                        and _junction_legs_run(
+                            system,
+                            from_station,
+                            tp.station_a,
+                            tp.station_b,
+                            to_station,
+                        )
+                    ) or (
+                        b_has_origin
+                        and a_has_dest
+                        and _junction_legs_run(
+                            system,
+                            from_station,
+                            tp.station_b,
+                            tp.station_a,
+                            to_station,
+                        )
+                    )
+                    if usable:
                         key = frozenset(
                             {
                                 (tp.station_a, tp.system_a),

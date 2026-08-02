@@ -116,7 +116,37 @@ _SUBWAY_STATION_LINES: dict[str, frozenset[str]] = _build_subway_station_lines()
 # Excludes SUBWAY (handled separately via SUBWAY_STATION_COMPLEXES) and
 # hub-and-spoke systems where the hub is already a shared station code
 # (MNR→GCT, AMTRAK→NY, PATCO single line, WMATA shared core).
-_INTRA_TRANSFER_SYSTEMS = ("PATH", "BART", "NJT", "LIRR", "MBTA", "METRA")
+#
+# Both SEPTA systems belong here, and their absence was a real gap (issue
+# #1634). Neither is hub-and-spoke: every Regional Rail line runs through the
+# shared Center City trunk (Suburban / 30th St / Jefferson / Temple), and the
+# Metro trolley routes share the subway-surface tunnel. Without membership, a
+# same-system pair on different lines fails `_has_shared_line`, finds no
+# transfer point, and trip search returns `no_transfer_points` — so
+# Chestnut Hill East → Media/Wawa, the ordinary Regional Rail transfer, yielded
+# no itinerary at all.
+#
+# KNOWN LIMITATION, not fixed by membership: Source 5 only pairs lines that
+# meet at ONE station code. No code carries both Broad St (SEPTA-B1) and
+# Market-Frankford (SEPTA-L1) — they interchange at 15th St/City Hall
+# (SEPM33029/SEPM1281) and 13th St (SEPM2455), adjacent but distinct codes
+# 229 m apart, and SEPTA has no STATION_EQUIVALENCE_GROUPS entries. Source 3
+# (proximity) is cross-system only, so that interchange still produces no
+# transfer point, and every BSL↔MFL trip returns `no_transfer_points`.
+# Connecting it needs SEPTA Metro complex data, the way SUBWAY_STATION_COMPLEXES
+# does for NYC — which is also what would let the trolley tunnel's separate
+# inbound/outbound curb codes serve as one interchange (see
+# `_junction_legs_run` in services/trip_search.py). Tracked as issue #1709.
+_INTRA_TRANSFER_SYSTEMS = (
+    "PATH",
+    "BART",
+    "NJT",
+    "LIRR",
+    "MBTA",
+    "METRA",
+    "SEPTA_RR",
+    "SEPTA_METRO",
+)
 
 _SYSTEM_STATION_LINES: dict[str, dict[str, frozenset[str]]] = {
     system: _build_station_lines_for_system(system)

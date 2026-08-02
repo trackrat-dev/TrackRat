@@ -27,6 +27,7 @@ from trackrat.config.stations.septa_rr import SEPTA_RR_STATION_NAMES
 from trackrat.config.transfer_points import (
     get_station_lines,
     get_systems_serving_station,
+    get_transfer_points,
 )
 
 # Baltimore Av & 42nd St on the Route 34 trolley (T2): SEPM20876 is the
@@ -265,17 +266,39 @@ class TestTransferPointIndexes:
         """
         assert "SEPTA_METRO" in get_systems_serving_station(INBOUND_CURB)
 
-    def test_septa_metro_line_index_is_not_built(self):
-        """Documents a pre-existing limit this change deliberately leaves alone.
+    def test_septa_metro_line_index_is_built_in_both_directions(self):
+        """#1632 left this deferred; #1634 made the decision and added SEPTA to
+        `_INTRA_TRANSFER_SYSTEMS`, so `_SYSTEM_STATION_LINES` now covers Metro.
 
-        `_SYSTEM_STATION_LINES` is only built for `_INTRA_TRANSFER_SYSTEMS`,
-        which has never included SEPTA. So `get_station_lines` is empty for
-        Metro in *both* directions — unchanged by #1632, and not a directional
-        defect. Adding SEPTA there would generate intra-Metro transfer points
-        at every shared curb, which is a separate decision.
+        The directional point #1632 established still holds and is what this
+        asserts: the index is built from `route.all_stations`, so an
+        inbound-only curb resolves exactly like its outbound twin. Reading
+        `route.stations` alone would leave 271 Metro codes with no lines.
+
+        Both curbs are Route 34 (SEPTA-T2) only. That single line is also why
+        the concern recorded here previously — that indexing Metro would emit
+        "transfer points at every shared curb" — did not materialize: a
+        junction needs 2+ distinct line groups at one code, so a one-line curb
+        emits nothing. See `test_septa_metro_junctions_pair_distinct_lines` in
+        test_transfer_points.py for the codes that do qualify.
         """
-        assert get_station_lines(OUTBOUND_CURB, "SEPTA_METRO") == frozenset()
-        assert get_station_lines(INBOUND_CURB, "SEPTA_METRO") == frozenset()
+        expected = frozenset({"SEPTA-T2"})
+        assert get_station_lines(OUTBOUND_CURB, "SEPTA_METRO") == expected
+        assert get_station_lines(INBOUND_CURB, "SEPTA_METRO") == expected
+
+    def test_septa_metro_single_line_curb_emits_no_junction(self):
+        """A curb served by one line is not an interchange, so intra-Metro
+        membership must not manufacture a transfer there."""
+        for curb in (OUTBOUND_CURB, INBOUND_CURB, INBOUND_CURB_NEXT):
+            junctions = [
+                tp
+                for tp in get_transfer_points("SEPTA_METRO", "SEPTA_METRO")
+                if tp.station_a == curb
+            ]
+            assert junctions == [], (
+                f"Single-line curb {curb} should emit no junction transfer, "
+                f"got {len(junctions)}"
+            )
 
     def test_every_metro_station_belongs_to_a_system(self):
         missing = sorted(
