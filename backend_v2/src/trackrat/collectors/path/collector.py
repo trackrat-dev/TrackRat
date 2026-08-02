@@ -33,6 +33,7 @@ from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.locks import with_train_lock
 from trackrat.utils.time import normalize_to_et, now_et
+from trackrat.utils.train import departed_stop_time
 
 logger = get_logger(__name__)
 
@@ -713,6 +714,7 @@ class PathCollector:
             segment_times = {}
 
         if route_stops and len(route_stops) >= 2:
+            now = now_et()
             # Find the index of the discovery station for mid-route handling
             discovered_idx = None
             if discovered_at_station and discovered_at_station in route_stops:
@@ -744,13 +746,31 @@ class PathCollector:
                     updated_departure=stop_time if not is_terminus else None,
                 )
 
-                # Mark stops before discovery as already departed
+                # Mark stops before discovery as already departed.
+                #
+                # `stop_time` descends from the RidePATH *prediction* for the
+                # discovery station, which is routinely in the future, so a
+                # pre-discovery stop can land in the future too. When it does,
+                # the premise is contradicted — the train has not reached the
+                # discovery station yet, so it cannot have passed this one —
+                # and stamping it departed would serve it as a boardable
+                # departure at a station the train has not reached (#1701).
+                # Leave those stops as ordinary upcoming predictions.
                 if is_before_discovery:
-                    stop.has_departed_station = True
-                    stop.actual_arrival = stop.scheduled_arrival
-                    stop.actual_departure = stop.scheduled_departure
-                    stop.departure_source = "inferred_from_discovery"
-                    stop.arrival_source = "scheduled_fallback"
+                    if departed_stop_time(stop_time, now) is not None:
+                        stop.has_departed_station = True
+                        stop.actual_arrival = stop.scheduled_arrival
+                        stop.actual_departure = stop.scheduled_departure
+                        stop.departure_source = "inferred_from_discovery"
+                        stop.arrival_source = "scheduled_fallback"
+                    else:
+                        logger.debug(
+                            "path_discovery_backfill_declined",
+                            train_id=journey.train_id,
+                            station_code=station_code,
+                            stop_sequence=sequence,
+                            stop_time=stop_time.isoformat(),
+                        )
 
                 session.add(stop)
         else:
@@ -1029,7 +1049,8 @@ class PathCollector:
 
         This method ensures all departed stops have times in ascending order.
         If a stop has an arrival time LATER than a subsequent stop's arrival,
-        it's corrected to use the scheduled time.
+        it's corrected to use the scheduled time — or, when that schedule is
+        itself in the future, the following stop's time (#1701).
 
         Args:
             stops: List of journey stops (will be modified in place)
@@ -1049,6 +1070,7 @@ class PathCollector:
         # Find the latest valid arrival time seen so far
         # (the "high water mark" for sequential validation)
         corrections_made = 0
+        now = now_et()
 
         for i in range(len(departed_stops) - 1):
             current = departed_stops[i]
@@ -1065,7 +1087,14 @@ class PathCollector:
                 and normalize_to_et(current_time) > normalize_to_et(next_time)
             ):
                 # Current stop has a later time than next stop - impossible!
-                # Fix by using scheduled time for current stop
+                # Fix by using scheduled time for current stop. On mid-route
+                # discoveries the schedule is back-computed from a future
+                # prediction, so it can itself be in the future (#1701); fall
+                # back to the following stop's time, which is both known to be
+                # past and the bound this ordering fix exists to restore.
+                corrected = departed_stop_time(current.scheduled_arrival, now) or (
+                    next_time
+                )
                 logger.warning(
                     "path_fixing_out_of_order_time",
                     train_id=train_id,
@@ -1074,16 +1103,12 @@ class PathCollector:
                     bad_time=current_time.isoformat() if current_time else None,
                     next_station=next_stop.station_code,
                     next_time=next_time.isoformat() if next_time else None,
-                    using_scheduled=(
-                        current.scheduled_arrival.isoformat()
-                        if current.scheduled_arrival
-                        else None
-                    ),
+                    corrected_to=corrected.isoformat(),
                 )
 
-                # Use scheduled time instead
-                current.actual_arrival = current.scheduled_arrival
-                current.actual_departure = current.scheduled_arrival
+                # Use the corrected time instead
+                current.actual_arrival = corrected
+                current.actual_departure = corrected
                 current.arrival_source = "scheduled_fallback"
                 if current.departure_source not in ("sequential_consistency",):
                     current.departure_source = "time_corrected"
@@ -1166,9 +1191,15 @@ class PathCollector:
                 if not stop.has_departed_station:
                     stop.has_departed_station = True
                     # Use scheduled time - we don't have a reliable actual time
-                    # and actual_arrival might be from a stale/wrong API response
-                    stop.actual_arrival = stop.scheduled_arrival
-                    stop.actual_departure = stop.scheduled_arrival
+                    # and actual_arrival might be from a stale/wrong API response.
+                    # A later stop is confirmed departed, so this one was passed
+                    # too — but the schedule can be back-computed from a future
+                    # prediction (#1701), and a future stamp would resurrect the
+                    # row as boardable. Fall back to now, the tightest bound we
+                    # know to be in the past.
+                    passed_at = departed_stop_time(stop.scheduled_arrival, now) or now
+                    stop.actual_arrival = passed_at
+                    stop.actual_departure = passed_at
                     stop.departure_source = "sequential_inference"
                     stop.arrival_source = "scheduled_fallback"
 
@@ -1224,9 +1255,14 @@ class PathCollector:
                 ):
                     stop.has_departed_station = True
                     # Use scheduled_arrival, not actual_arrival which may be wrong
-                    # (API can return future times for stations already passed)
-                    stop.actual_arrival = stop.scheduled_arrival
-                    stop.actual_departure = stop.scheduled_arrival
+                    # (API can return future times for stations already passed).
+                    # scheduled_arrival is itself back-computed from a future
+                    # prediction on mid-route discoveries, so it can be future
+                    # too — fall back to now rather than write a stamp the
+                    # hide_departed upcoming branch would resurrect (#1701).
+                    passed_at = departed_stop_time(stop.scheduled_arrival, now) or now
+                    stop.actual_arrival = passed_at
+                    stop.actual_departure = passed_at
                     stop.departure_source = "sequential_consistency"
                     stop.arrival_source = "scheduled_fallback"
                     logger.debug(
@@ -1288,6 +1324,17 @@ class PathCollector:
         Closer stops get higher weight (1/cumulative_minutes) since their
         countdown is shorter and thus more precise.
 
+        Only stops whose time came from the API (``arrival_source ==
+        "api_observed"``) count. Every other source is a value this collector
+        synthesized — a back-computed schedule, a sequential-consistency
+        fallback, an out-of-order correction — and feeding those back in lets
+        the collector's own guesses masquerade as observations. That matters
+        most at the origin, which carries weight 10 against ~0.1 for a stop
+        nine minutes down the line: one synthetic origin stamp would otherwise
+        outvote every genuine observation and drag all remaining ETAs with it.
+        Safe against returning None: this is only called when at least one
+        arrival matched, and matching is the sole writer of ``api_observed``.
+
         Args:
             stops: Journey stops with actual times
             route_stops: Ordered station codes for this route
@@ -1301,6 +1348,9 @@ class PathCollector:
         total_weight = 0.0
 
         for stop in stops:
+            if stop.arrival_source != "api_observed":
+                continue
+
             observed_time = stop.actual_arrival or stop.actual_departure
             if not observed_time:
                 continue

@@ -8,6 +8,8 @@ from typing import TYPE_CHECKING
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm.base import NO_VALUE
 
+from trackrat.utils.time import normalize_to_et
+
 if TYPE_CHECKING:
     from trackrat.models.database import JourneyStop, TrainJourney
 
@@ -269,6 +271,47 @@ def njt_cancellation_reason(
         return NJT_CANCELLATION_REASON_ALL_STOPS
     if cancelled[-1] if terminal_cancelled is None else terminal_cancelled:
         return NJT_CANCELLATION_REASON_TERMINATED
+    return None
+
+
+def departed_stop_time(
+    inferred: datetime | None,
+    now: datetime,
+) -> datetime | None:
+    """An inferred pass time admissible as ``actual_*`` on a departed stop.
+
+    ``hide_departed`` does not simply drop rows flagged
+    ``has_departed_station``. It keeps any row whose
+    ``coalesce(actual_departure, scheduled_departure)`` is still upcoming, so
+    that a train dwelling at its origin terminal stays boardable (issue
+    #1422). The consequence is that a stop written as departed but stamped
+    with a *future* time is served as a boardable departure at a station the
+    train has not reached — issue #1689 on the subway, issue #1701 on PATH.
+
+    So an inference that the train already passed a stop is only admissible
+    if the resulting timestamp lies in the past. Callers get ``None`` when it
+    does not and must decide what that means for them: where the future time
+    contradicts the premise of the inference itself, decline to mark the stop
+    departed at all; where departure is evidenced independently (a later stop
+    is confirmed departed) and only the timestamp is unreliable, substitute a
+    time that is known to be in the past rather than writing this one.
+
+    This is the same invariant ``collectors.mta_common.synthetic_origin_departure``
+    enforces for GTFS-RT origin inference, expressed over an already-computed
+    timestamp rather than one derived from ``ORIGIN_TRAVEL_BUFFER``.
+
+    Args:
+        inferred: The candidate pass time, or None if there isn't one.
+        now: Current time, compared in Eastern Time so naive database values
+            and timezone-aware API values compare consistently.
+
+    Returns:
+        ``inferred`` when it is strictly in the past, otherwise None.
+    """
+    if inferred is None:
+        return None
+    if normalize_to_et(inferred) < normalize_to_et(now):
+        return inferred
     return None
 
 
