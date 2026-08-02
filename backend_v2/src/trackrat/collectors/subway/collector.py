@@ -28,6 +28,7 @@ from trackrat.collectors.mta_common import (
     group_candidate_trips_by_overlap,
     infer_subway_origin,
     nyct_trip_begins_at_first_stop,
+    origin_actual_departure,
     select_matching_trip,
     set_stop_track,
     synthetic_origin_departure,
@@ -139,6 +140,11 @@ class SubwayCollector:
             if not arrivals:
                 logger.warning("No subway arrivals found in GTFS-RT feeds")
                 return stats
+
+            # Static GTFS can refresh independently of this long-lived
+            # collector. Rebuild its normalized trip index once per cycle so a
+            # refresh can never leave deleted database IDs cached indefinitely.
+            self._gtfs_service.clear_subway_realtime_trip_cache()
 
             # Group arrivals by trip_id
             trips: dict[str, list[SubwayArrival]] = {}
@@ -331,8 +337,9 @@ class SubwayCollector:
 
         if journey is None:
             # Try GTFS static backfill
+            static_service_date = first_arrival.service_date or journey_date
             static_stops = await self._gtfs_service.get_static_stop_times(
-                session, "SUBWAY", trip_id, journey_date
+                session, "SUBWAY", trip_id, static_service_date
             )
             merged_stops = None
             if static_stops:
@@ -351,12 +358,22 @@ class SubwayCollector:
                 candidate_origin = infer_subway_origin(
                     line_code, terminal_code, first_arrival.station_code
                 )
-                # Two independent conditions, both of which must hold before we
-                # write a stop the feed never sent: the trip must not already
-                # start at its first visible stop (#1704), and the train must
-                # have had time to leave the inferred terminal (#1689).
-                if candidate_origin and not nyct_trip_begins_at_first_stop(
+                # A topology-only origin is the last-resort path when neither
+                # static GTFS nor a decodable NYCT identity can establish the
+                # trip's real extent.
+                trip_begins_at_first_stop = nyct_trip_begins_at_first_stop(
                     first_arrival.trip_origin_time, first_arrival.arrival_time
+                )
+                # Once the trip ID and service date are known, a failed static
+                # match leaves the origin ambiguous: the live time may include
+                # an unpublished delay. Do not turn that uncertainty into a
+                # topology terminal the feed never sent (#1704). The temporal
+                # fallback remains only for feeds without a decodable identity.
+                can_use_temporal_fallback = first_arrival.trip_origin_time is None
+                if (
+                    candidate_origin
+                    and not trip_begins_at_first_stop
+                    and can_use_temporal_fallback
                 ):
                     origin_actual = synthetic_origin_departure(
                         first_arrival.arrival_time, now_et()
@@ -393,7 +410,8 @@ class SubwayCollector:
                 terminal_station_code=terminal_code,
                 scheduled_departure=sched_departure,
                 scheduled_arrival=sched_arrival,
-                actual_departure=first_arrival.arrival_time,
+                # Set from the origin stop once the stops exist, below.
+                actual_departure=None,
                 has_complete_journey=True,
                 stops_count=(
                     len(merged_stops)
@@ -491,6 +509,11 @@ class SubwayCollector:
             await session.flush()
             now = now_et()
             update_stop_departure_status(created_stops, now)
+            # A static backfill can put the origin ahead of the first stop the
+            # feed still lists, so the journey's departure comes from that
+            # origin stop — not from the first visible arrival, which pairs an
+            # origin schedule with a downstream actual and reads as delay.
+            journey.actual_departure = origin_actual_departure(created_stops)
             update_journey_metadata(journey, now, created_stops)
             check_journey_completed(journey, created_stops)
 
@@ -499,7 +522,6 @@ class SubwayCollector:
 
         else:
             # Update existing journey
-            journey.actual_departure = first_arrival.arrival_time
             journey.actual_arrival = last_arrival.arrival_time
 
             # Use in-memory lookup from eagerly-loaded stops (avoids N+1 queries)
@@ -520,6 +542,7 @@ class SubwayCollector:
             now = now_et()
             journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
             update_stop_departure_status(journey_stops, now)
+            journey.actual_departure = origin_actual_departure(journey_stops)
             update_journey_metadata(journey, now, journey_stops)
             check_journey_completed(journey, journey_stops)
 
@@ -571,14 +594,13 @@ class SubwayCollector:
                     stop.updated_departure = arr.departure_time
                 set_stop_track(stop, arr.track, "SUBWAY", journey.train_id, now_et())
 
-        first_stop = min(best_trip, key=lambda a: a.arrival_time)
         last_stop = max(best_trip, key=lambda a: a.arrival_time)
-        journey.actual_departure = first_stop.arrival_time
         journey.actual_arrival = last_stop.arrival_time
 
         now = now_et()
         journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
         update_stop_departure_status(journey_stops, now)
+        journey.actual_departure = origin_actual_departure(journey_stops)
         update_journey_metadata(journey, now, journey_stops)
         check_journey_completed(journey, journey_stops)
 

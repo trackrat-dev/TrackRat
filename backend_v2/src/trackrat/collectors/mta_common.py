@@ -588,6 +588,39 @@ def update_journey_metadata(
         journey.stops_count = len(stops)
 
 
+def origin_actual_departure(stops: list[JourneyStop]) -> datetime | None:
+    """When the journey actually left its origin, or None if never observed.
+
+    The counterpart to the terminal-stop rule in :func:`check_journey_completed`:
+    a journey's ``actual_departure`` belongs to its origin stop, exactly as its
+    final ``actual_arrival`` belongs to its terminal one.
+
+    Returns None while the origin is only a static-schedule backfill. GTFS-RT
+    prunes stops a trip has already passed, so a trip first seen mid-route
+    carries no observation of its own origin — the real departure is unknown,
+    and the first *visible* stop is not a stand-in for it. Substituting that
+    stop pairs an origin ``scheduled_departure`` with a downstream
+    ``actual_departure``, and every consumer that subtracts the two reads the
+    running time from the origin as delay — most consequentially
+    ``alert_evaluator._is_significantly_delayed``, which pushes it to users as a
+    train-specific delay alert.
+
+    Args:
+        stops: Journey stops (must include the origin stop).
+    """
+    origin_stop = min(
+        (s for s in stops if s.stop_sequence is not None),
+        key=lambda s: s.stop_sequence,  # type: ignore[arg-type,return-value]
+        default=None,
+    )
+    if origin_stop is None:
+        return None
+    # An observed stop can carry an arrival without a departure — GTFS-RT often
+    # sends only one. The train was there either way, so the arrival stands in;
+    # a backfilled stop has neither and correctly yields None.
+    return origin_stop.actual_departure or origin_stop.actual_arrival
+
+
 def check_journey_completed(journey: TrainJourney, stops: list[JourneyStop]) -> None:
     """Mark journey as completed if the terminal stop has departed.
 

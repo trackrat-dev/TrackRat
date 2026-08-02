@@ -7,6 +7,7 @@ for displaying train schedules on future days.
 
 import csv
 import io
+import re
 import traceback
 import zipfile
 from collections.abc import Iterator, Sequence
@@ -225,6 +226,20 @@ _FALLBACK_LINE_NAMES = {
 # MNR, BART, MBTA, Metra, PATH, WMATA) mint their own train_ids and would create a
 # *separate* OBSERVED row, orphaning the materialized one (issue #1298 follow-up).
 MATERIALIZE_SCHEDULED_SOURCES = {"NJT", "AMTRAK"}
+
+_NYCT_REALTIME_TRIP_SUFFIX_RE = re.compile(r"(?:^|_)(-?\d+_[^_]+)$")
+
+
+def _subway_realtime_trip_id(gtfs_trip_id: str) -> str | None:
+    """Extract the NYCT real-time trip key from a static or real-time trip ID.
+
+    The supplemented static feed prefixes the real-time key with service data,
+    for example ``L0S2-1-3038-S91_077500_1..N03X053`` while GTFS-RT sends
+    ``077500_1..N03X053``. Matching the normalized suffix lets the Subway
+    collector use the real static trip extent instead of inventing terminals.
+    """
+    match = _NYCT_REALTIME_TRIP_SUFFIX_RE.search(gtfs_trip_id)
+    return match.group(1) if match else None
 
 
 def _lirr_train_id_from_gtfs(train_id_or_trip_id: str) -> str:
@@ -479,6 +494,17 @@ class GTFSService:
             timeout: HTTP request timeout in seconds (GTFS files can be large)
         """
         self.timeout = timeout
+        # Static Subway trip IDs carry a service prefix that GTFS-RT omits.
+        # Build one normalized index per active service set instead of issuing
+        # an unindexed suffix query for every one of ~500 trips each cycle.
+        # None marks an ambiguous normalized ID and must never be selected.
+        self._subway_rt_trip_id_cache: dict[
+            tuple[date, frozenset[str]], dict[str, int | None]
+        ] = {}
+
+    def clear_subway_realtime_trip_cache(self) -> None:
+        """Discard the per-collection Subway static-trip index."""
+        self._subway_rt_trip_id_cache.clear()
 
     async def refresh_feed(
         self,
@@ -571,6 +597,8 @@ class GTFSService:
             GTFSService._empty_service_warned = {
                 k for k in GTFSService._empty_service_warned if k[0] != data_source
             }
+            if data_source == "SUBWAY":
+                self.clear_subway_realtime_trip_cache()
 
             logger.info(
                 "GTFS feed refreshed successfully",
@@ -2524,7 +2552,7 @@ class GTFSService:
 
         Args:
             db: Database session
-            data_source: "LIRR" or "MNR"
+            data_source: "LIRR", "MNR", or "SUBWAY"
             gtfs_trip_id: The GTFS trip_id string from the RT feed
             target_date: Service date for time parsing and service_id lookup
 
@@ -2545,19 +2573,18 @@ class GTFSService:
                 )
             return None
 
-        trip_row = await self._find_trip_in_source(
-            db, gtfs_trip_id, data_source, service_ids, "trip_id"
+        db_trip_id: int | None = None
+        realtime_trip_id = (
+            _subway_realtime_trip_id(gtfs_trip_id) if data_source == "SUBWAY" else None
         )
-        if not trip_row:
-            # LIRR GTFS-RT uses date-suffix trip_ids (e.g., "6817_2026-02-24")
-            # that don't exist in GTFS static. Extract the train number and
-            # try matching by train_id (trip_short_name in GTFS static).
-            train_number = _extract_lirr_train_number(gtfs_trip_id)
-            if train_number:
-                trip_row = await self._find_trip_in_source(
-                    db, train_number, data_source, service_ids, "train_id"
-                )
-            if not trip_row:
+        if realtime_trip_id == gtfs_trip_id:
+            db_trip_id = await self._resolve_subway_static_trip_id(
+                db,
+                realtime_trip_id,
+                target_date,
+                service_ids,
+            )
+            if db_trip_id is None:
                 logger.debug(
                     "gtfs_static_trip_not_found",
                     data_source=data_source,
@@ -2566,8 +2593,29 @@ class GTFSService:
                     service_id_count=len(service_ids),
                 )
                 return None
-
-        db_trip_id = trip_row.id
+        else:
+            trip_row = await self._find_trip_in_source(
+                db, gtfs_trip_id, data_source, service_ids, "trip_id"
+            )
+            if not trip_row:
+                # LIRR GTFS-RT uses date-suffix trip_ids (e.g.,
+                # "6817_2026-02-24") that don't exist in GTFS static. Extract
+                # the train number and try matching trip_short_name.
+                train_number = _extract_lirr_train_number(gtfs_trip_id)
+                if train_number:
+                    trip_row = await self._find_trip_in_source(
+                        db, train_number, data_source, service_ids, "train_id"
+                    )
+                if not trip_row:
+                    logger.debug(
+                        "gtfs_static_trip_not_found",
+                        data_source=data_source,
+                        trip_id=gtfs_trip_id,
+                        target_date=str(target_date),
+                        service_id_count=len(service_ids),
+                    )
+                    return None
+            db_trip_id = trip_row.id
 
         stops_result = await db.execute(
             select(
@@ -2604,3 +2652,52 @@ class GTFSService:
             )
 
         return stops if stops else None
+
+    async def _resolve_subway_static_trip_id(
+        self,
+        db: AsyncSession,
+        realtime_trip_id: str,
+        target_date: date,
+        service_ids: set[str],
+    ) -> int | None:
+        """Resolve one NYCT real-time trip ID through an active-service index."""
+        cache_key = (target_date, frozenset(service_ids))
+        trip_index = self._subway_rt_trip_id_cache.get(cache_key)
+        if trip_index is None:
+            result = await db.execute(
+                select(GTFSTrip.id, GTFSTrip.trip_id).where(
+                    and_(
+                        GTFSTrip.data_source == "SUBWAY",
+                        GTFSTrip.service_id.in_(service_ids),
+                    )
+                )
+            )
+            trip_index = {}
+            ambiguous_ids: set[str] = set()
+            for db_trip_id, static_trip_id in result.all():
+                normalized = _subway_realtime_trip_id(static_trip_id)
+                if normalized is None or normalized in ambiguous_ids:
+                    continue
+                existing = trip_index.get(normalized)
+                if existing is not None and existing != db_trip_id:
+                    trip_index[normalized] = None
+                    ambiguous_ids.add(normalized)
+                else:
+                    trip_index[normalized] = db_trip_id
+
+            self._subway_rt_trip_id_cache[cache_key] = trip_index
+            if ambiguous_ids:
+                logger.warning(
+                    "gtfs_subway_realtime_trip_ids_ambiguous",
+                    target_date=str(target_date),
+                    ambiguous_count=len(ambiguous_ids),
+                )
+
+            cutoff = now_et().date() - timedelta(days=1)
+            stale_keys = [
+                key for key in self._subway_rt_trip_id_cache if key[0] < cutoff
+            ]
+            for key in stale_keys:
+                self._subway_rt_trip_id_cache.pop(key, None)
+
+        return trip_index.get(realtime_trip_id)
