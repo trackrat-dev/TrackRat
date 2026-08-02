@@ -41,6 +41,13 @@ locals {
   domain      = var.environment == "production" ? "apiv2.trackrat.net" : "staging.apiv2.trackrat.net"
   use_spot_vm = var.environment == "staging"
 
+  # TRACKRAT_DISABLED_DATA_SOURCES for THIS workspace only. Resolved from the
+  # per-environment map so a staging soak (e.g. SEPTA, issue #1634) cannot arm
+  # the next production apply to enable the same source. Sorted for a stable
+  # .env line — a set reordering would otherwise rewrite the startup script and
+  # churn the instance template on an unrelated apply.
+  disabled_data_sources = join(",", sort(var.disabled_data_sources[var.environment]))
+
   # Once var.consolidate_api_lb is flipped, production's HTTPS frontend (IP,
   # url map, proxies, forwarding rules) is served by the consolidated webpage
   # load balancer in infra_v2/terraform-webpage (apiv2.trackrat.net is

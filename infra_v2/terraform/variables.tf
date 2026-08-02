@@ -57,6 +57,27 @@ variable "enable_cloudflare_tunnel" {
   default     = true
 }
 
+variable "disabled_data_sources" {
+  description = "Per-environment TRACKRAT_DISABLED_DATA_SOURCES value: data_source codes fully disabled (collection, schedule generation, GTFS refresh, service-alert polling, and API serving). Keyed by environment so staging can carry a source through a soak while production stays dark — previously this was a single hardcoded literal in compute.tf shared by both workspaces, so enabling a source for a staging soak armed the next production apply to enable it too (issue #1634). Set via committed defaults, not -var: infra_v2/cloudbuild-terraform.yaml auto-applies this root on every deploy-branch push and passes only environment/project_id, so an uncommitted -var would be silently reverted by the next push. Codes must match ALL_DATA_SOURCES in the backend; an unknown code is ignored by settings.py rather than erroring, so a typo here silently ENABLES a source. See infra_v2/RUNBOOK-data-source-flags.md."
+  type        = map(list(string))
+  default = {
+    staging    = ["BART", "WMATA", "MBTA", "METRA", "SEPTA_RR", "SEPTA_METRO"]
+    production = ["BART", "WMATA", "MBTA", "METRA", "SEPTA_RR", "SEPTA_METRO"]
+  }
+  validation {
+    condition     = alltrue([for env in ["staging", "production"] : contains(keys(var.disabled_data_sources), env)])
+    error_message = "disabled_data_sources must define both 'staging' and 'production' keys."
+  }
+  validation {
+    condition = alltrue([
+      for env, codes in var.disabled_data_sources : alltrue([
+        for code in codes : can(regex("^[A-Z][A-Z0-9_]*$", code))
+      ])
+    ])
+    error_message = "disabled_data_sources codes must be uppercase data_source identifiers (e.g. SEPTA_RR)."
+  }
+}
+
 variable "disk_size_gb" {
   description = "Persistent disk size in GB"
   type        = number
