@@ -155,8 +155,15 @@ class TestComputeAveragedOriginDeparture:
         actual_arrival: datetime | None = None,
         actual_departure: datetime | None = None,
         has_departed: bool = False,
+        arrival_source: str | None = None,
     ) -> JourneyStop:
-        """Create a JourneyStop for testing."""
+        """Create a JourneyStop for testing.
+
+        A stop carrying an actual time defaults to ``api_observed`` — every
+        test in this class describes the train being *observed* at a station,
+        and only observed stops feed the average. Pass ``arrival_source``
+        explicitly to build a stop the collector synthesized instead.
+        """
         stop = JourneyStop()
         stop.station_code = station_code
         stop.stop_sequence = sequence
@@ -167,7 +174,78 @@ class TestComputeAveragedOriginDeparture:
         stop.scheduled_departure = None
         stop.updated_arrival = None
         stop.updated_departure = None
+        if arrival_source is not None:
+            stop.arrival_source = arrival_source
+        elif actual_arrival is not None or actual_departure is not None:
+            stop.arrival_source = "api_observed"
         return stop
+
+    def test_synthesized_times_are_excluded_from_the_average(self):
+        """Only API observations may vote — issue #1701 / PR #1707 review.
+
+        A stop the collector stamped itself (sequential-consistency fallback,
+        back-computed schedule, out-of-order correction) is a guess, not an
+        observation. At the origin that guess carries weight 10.0 against
+        ~0.25 for a genuine observation four minutes out, so without this
+        exclusion one synthetic origin stamp outvotes the real data and drags
+        every remaining ETA to a fabricated origin.
+        """
+        observed = datetime(2026, 1, 19, 10, 4, 0, tzinfo=ET)
+        synthetic_origin = datetime(2026, 1, 19, 10, 30, 0, tzinfo=ET)
+
+        stops = [
+            # Synthetic origin stamp — weight 10.0 if it were counted
+            self._make_stop(
+                "PNK",
+                1,
+                actual_arrival=synthetic_origin,
+                has_departed=True,
+                arrival_source="scheduled_fallback",
+            ),
+            # The one real observation — weight 1/4
+            self._make_stop("PHR", 2, actual_arrival=observed, has_departed=True),
+            self._make_stop("PJS", 3),
+            self._make_stop("PGR", 4),
+            self._make_stop("PEX", 5),
+            self._make_stop("PWC", 6),
+        ]
+
+        result = self.collector._compute_averaged_origin_departure(
+            stops, NWK_WTC_STOPS, SAMPLE_SEGMENT_TIMES, "862"
+        )
+
+        assert result is not None
+        expected = datetime(2026, 1, 19, 10, 0, 0, tzinfo=ET)
+        assert abs((result - expected).total_seconds()) < 1, (
+            f"the synthetic 10:30 origin stamp dominated the average (got "
+            f"{result}); only PHR's observation should have counted"
+        )
+
+    def test_returns_none_when_only_synthesized_times_exist(self):
+        """No observations means no basis for an average, so no recompute."""
+        stops = [
+            self._make_stop(
+                "PNK",
+                1,
+                actual_arrival=datetime(2026, 1, 19, 10, 0, 0, tzinfo=ET),
+                has_departed=True,
+                arrival_source="scheduled_fallback",
+            ),
+            self._make_stop(
+                "PHR",
+                2,
+                actual_arrival=datetime(2026, 1, 19, 10, 4, 0, tzinfo=ET),
+                has_departed=True,
+                arrival_source="sequential_consistency",
+            ),
+        ]
+
+        assert (
+            self.collector._compute_averaged_origin_departure(
+                stops, NWK_WTC_STOPS, SAMPLE_SEGMENT_TIMES, "862"
+            )
+            is None
+        )
 
     def test_single_observation_returns_implied_origin(self):
         """Single observation should return implied origin based on GTFS times."""

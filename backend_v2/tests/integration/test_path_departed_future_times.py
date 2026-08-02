@@ -205,3 +205,177 @@ class TestPathDepartedStopsNeverFuture:
             "a train that left Newark 9 minutes ago must not be advertised as a "
             f"Newark departure. Returned: {train_ids}"
         )
+
+
+@pytest.mark.asyncio
+class TestPathUpdatePathAgainstRealDatabase:
+    """The update-path sites, driven through a real session and real analyzer.
+
+    The unit tests for these sites use the mock-session pattern this collector's
+    suite is built on, which pins each branch's policy cheaply but cannot show
+    what the written values do once they are persisted and read back. These
+    tests close that gap: real PostgreSQL, real ``TransitAnalyzer``, values read
+    back out of the database, and a second collector pass so the effect of a
+    stamp on the *next* cycle is observable — which is where a fabricated
+    timestamp does its damage.
+    """
+
+    async def _update(
+        self,
+        db_session: AsyncSession,
+        journey: TrainJourney,
+        arrivals: list[PathArrival],
+    ) -> list[JourneyStop]:
+        collector = PathCollector()
+        stops = await collector._get_journey_stops(db_session, journey)
+        await collector._update_stops_from_arrivals(
+            db_session, journey, stops, arrivals
+        )
+        await db_session.commit()
+        return stops
+
+    @staticmethod
+    def _grove_street_observed_now() -> PathArrival:
+        """PGR is scheduled at now+5 and observed at now — a train running ahead.
+
+        Five minutes is exactly the matching tolerance, so this is the widest
+        gap the collector will still accept as the same train, and the one that
+        leaves an earlier stop (PJS at now+2) still future-scheduled while a
+        later one is confirmed passed.
+        """
+        return PathArrival(
+            station_code="PGR",
+            headsign="World Trade Center",
+            direction="ToNY",
+            minutes_away=0,
+            arrival_time=now_et(),
+            line_color=NWK_WTC_COLOR,
+            last_updated=None,
+        )
+
+    async def test_sequential_consistency_persists_no_future_stamp(
+        self, db_session: AsyncSession
+    ):
+        """The post-loop latch must not write PJS's future schedule to the DB."""
+        journey = await _discover(db_session, _grove_street_arrival(minutes_away=5))
+
+        before = await _persisted_stops(db_session, journey.train_id)
+        assert before["PJS"].has_departed_station is False
+        assert normalize_to_et(before["PJS"].scheduled_arrival) > normalize_to_et(
+            now_et()
+        ), "precondition: PJS is still scheduled in the future"
+
+        await self._update(db_session, journey, [self._grove_street_observed_now()])
+
+        after = await _persisted_stops(db_session, journey.train_id)
+        now = now_et()
+
+        assert after["PGR"].has_departed_station is True, "PGR was observed at now"
+        assert (
+            after["PJS"].has_departed_station is True
+        ), "PJS must stay sequentially consistent with PGR"
+        assert after["PJS"].departure_source == "sequential_consistency"
+        assert normalize_to_et(after["PJS"].actual_departure) <= normalize_to_et(now), (
+            f"PJS persisted {after['PJS'].actual_departure}, in the future, while "
+            f"flagged departed — the row hide_departed's upcoming branch revives"
+        )
+
+        violations = {
+            code: stop.actual_departure or stop.scheduled_departure
+            for code, stop in after.items()
+            if stop.has_departed_station
+            and (stop.actual_departure or stop.scheduled_departure) is not None
+            and normalize_to_et(stop.actual_departure or stop.scheduled_departure)
+            > normalize_to_et(now)
+        }
+        assert not violations, f"future-stamped departed stops persisted: {violations}"
+
+    async def test_clamped_stamp_does_not_drag_the_next_passs_predictions(
+        self, db_session: AsyncSession
+    ):
+        """A synthesized stamp must not come back as an observation next cycle.
+
+        ``_compute_averaged_origin_departure`` weights the origin at 10.0
+        against ~0.1 for a stop nine minutes out, so a synthetic stamp that
+        counted as an observation would outvote the real data and shift every
+        remaining ETA. The clamped rows are marked ``scheduled_fallback``, so
+        the second pass below must still predict from PGR's actual observation.
+        """
+        journey = await _discover(db_session, _grove_street_arrival(minutes_away=5))
+        await self._update(db_session, journey, [self._grove_street_observed_now()])
+
+        after_first = await _persisted_stops(db_session, journey.train_id)
+        for code in ("PNK", "PHR", "PJS"):
+            assert after_first[code].arrival_source == "scheduled_fallback", (
+                f"{code} carries a collector-synthesized time and must not be "
+                f"eligible to vote in origin averaging"
+            )
+        assert after_first["PGR"].arrival_source == "api_observed"
+
+        # Second pass: PEX is observed 3 minutes out, the only real observation.
+        pex_observed = now_et() + timedelta(minutes=3)
+        await self._update(
+            db_session,
+            journey,
+            [
+                PathArrival(
+                    station_code="PEX",
+                    headsign="World Trade Center",
+                    direction="ToNY",
+                    minutes_away=3,
+                    arrival_time=pex_observed,
+                    line_color=NWK_WTC_COLOR,
+                    last_updated=None,
+                )
+            ],
+        )
+
+        after_second = await _persisted_stops(db_session, journey.train_id)
+
+        # PEX at now+3 sits 12 minutes from the origin, so the implied origin is
+        # now-9. PWC is 3 minutes further on and must be predicted from that,
+        # i.e. ~now+6 — not dragged toward the clamped now-stamps behind it.
+        pwc_predicted = after_second["PWC"].updated_arrival
+        assert pwc_predicted is not None
+        drift_minutes = (
+            normalize_to_et(pwc_predicted) - normalize_to_et(pex_observed)
+        ).total_seconds() / 60
+        assert 2 <= drift_minutes <= 4, (
+            f"WTC was predicted {drift_minutes:.1f} min after the Exchange Place "
+            f"observation; a 3-minute segment means the average was skewed by the "
+            f"synthesized stamps rather than driven by the observation"
+        )
+
+    async def test_out_of_order_repair_persists_a_past_time(
+        self, db_session: AsyncSession
+    ):
+        """The ordering repair's fallback must also land in the past.
+
+        Two departed stops are forced out of order with the earlier one carrying
+        a future schedule, so the repair cannot use that schedule and has to
+        fall back to the following stop's time.
+        """
+        journey = await _discover(db_session, _grove_street_arrival(minutes_away=0))
+        now = now_et()
+
+        stops = await _persisted_stops(db_session, journey.train_id)
+        phr = stops["PHR"]
+
+        # PHR is departed but stamped later than PJS, and its schedule is future.
+        phr.actual_arrival = now + timedelta(minutes=10)
+        phr.actual_departure = now + timedelta(minutes=10)
+        phr.scheduled_arrival = now + timedelta(minutes=6)
+        await db_session.commit()
+
+        collector = PathCollector()
+        ordered = await collector._get_journey_stops(db_session, journey)
+        collector._validate_and_fix_stop_times(ordered, journey.train_id)
+        await db_session.commit()
+
+        repaired = await _persisted_stops(db_session, journey.train_id)
+        assert normalize_to_et(repaired["PHR"].actual_arrival) <= normalize_to_et(
+            now
+        ), f"PHR was repaired to {repaired['PHR'].actual_arrival}, still in the future"
+        assert normalize_to_et(repaired["PHR"].actual_arrival) <= normalize_to_et(
+            repaired["PJS"].actual_arrival
+        ), "the repair must restore ascending order, which is its whole purpose"

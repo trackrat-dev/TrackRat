@@ -1324,6 +1324,17 @@ class PathCollector:
         Closer stops get higher weight (1/cumulative_minutes) since their
         countdown is shorter and thus more precise.
 
+        Only stops whose time came from the API (``arrival_source ==
+        "api_observed"``) count. Every other source is a value this collector
+        synthesized — a back-computed schedule, a sequential-consistency
+        fallback, an out-of-order correction — and feeding those back in lets
+        the collector's own guesses masquerade as observations. That matters
+        most at the origin, which carries weight 10 against ~0.1 for a stop
+        nine minutes down the line: one synthetic origin stamp would otherwise
+        outvote every genuine observation and drag all remaining ETAs with it.
+        Safe against returning None: this is only called when at least one
+        arrival matched, and matching is the sole writer of ``api_observed``.
+
         Args:
             stops: Journey stops with actual times
             route_stops: Ordered station codes for this route
@@ -1337,6 +1348,9 @@ class PathCollector:
         total_weight = 0.0
 
         for stop in stops:
+            if stop.arrival_source != "api_observed":
+                continue
+
             observed_time = stop.actual_arrival or stop.actual_departure
             if not observed_time:
                 continue
