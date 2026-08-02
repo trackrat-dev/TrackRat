@@ -9,8 +9,9 @@ Runs every 4 minutes for responsive tracking with single API call.
 """
 
 from collections import defaultdict
-from datetime import datetime, timedelta
-from typing import Any
+from dataclasses import dataclass
+from datetime import date, datetime, timedelta
+from typing import Any, NamedTuple
 
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -32,10 +33,107 @@ from trackrat.db.engine import _is_postgresql_concurrency_error, get_session
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.transit_analyzer import TransitAnalyzer
 from trackrat.utils.locks import with_train_lock
-from trackrat.utils.time import normalize_to_et, now_et
+from trackrat.utils.time import normalize_to_et, now_et, safe_datetime_subtract
 from trackrat.utils.train import departed_stop_time
 
 logger = get_logger(__name__)
+
+
+# =============================================================================
+# MATCHING TOLERANCES
+# =============================================================================
+
+# How far apart two times may be and still describe the same train, used by
+# BOTH matching passes (discovery -> existing journey, arrival -> journey stop).
+#
+# RidePATH reports whole-minute countdowns and a journey's origin departure is
+# back-calculated from GTFS segment times, so the same physical train seen at
+# two stations produces origin estimates minutes apart. The window has to
+# absorb that — but on JSQ-33 (2-4 minute headways) a window that wide also
+# spans the neighbouring train, and narrowing it only trades swallowed trains
+# for duplicate journeys. Both passes therefore pair whole runs of trains at
+# once via ``_match_in_order``, so a wide window can no longer collapse N
+# trains onto one row (#1723).
+MATCH_TOLERANCE_MINUTES = 5
+
+# Maximum spread between origin-departure estimates back-calculated from two
+# sightings of the SAME train in one collection cycle, exclusive: sightings must
+# be closer together than two trains on one line ever are. PATH's tightest
+# per-line headway is ~2 minutes (the 2-minute figure quoted for the system as a
+# whole is the shared trunk, which mixes lines that group separately here), so
+# at exactly 2 minutes apart the sightings are two trains, not one.
+#
+# Below that the ambiguity is irreducible: when two trains on the same line,
+# origin and destination run closer together than the back-calculation noise,
+# and each is seen at only one station, no time-based rule separates them —
+# ordering does not help either, since there is only one sighting per station to
+# order. What does hold structurally is that RidePATH never lists one train
+# twice at a station, so multiple sightings there stay separate however close
+# their estimates land.
+SAME_TRAIN_TOLERANCE_MINUTES = 2
+
+
+def _minutes_apart(first: datetime, second: datetime) -> float:
+    """Absolute difference between two datetimes in minutes, timezone-safe."""
+    return abs(safe_datetime_subtract(first, second).total_seconds()) / 60
+
+
+def _match_in_order(
+    left: list[datetime], right: list[datetime], tolerance_minutes: float
+) -> dict[int, int]:
+    """Pair two time-ordered runs of trains one-to-one, without crossing.
+
+    PATH trains on a line do not overtake, so pairings cannot cross: if the i-th
+    time on the left pairs with the j-th on the right, everything after i pairs
+    after j. Within that constraint this maximizes the number of pairs first and
+    minimizes total separation second.
+
+    Ranking every candidate pair by distance and claiming greedily does neither.
+    With existing trains at 10:00 and 10:04 and sightings at 10:03 and 10:08,
+    the closest pair (10:03 -> 10:04) strands both neighbours — 10:00 gets
+    nothing and 10:08 looks new — even though 10:03 -> 10:00 with 10:08 -> 10:04
+    pairs all four inside the same tolerance.
+
+    Args:
+        left: Times to pair, ascending
+        right: Times to pair against, ascending
+        tolerance_minutes: Maximum separation of a pair
+
+    Returns:
+        Mapping of left index -> right index
+    """
+    # best[i][j] = (pairs, -total separation) reachable from left[i:], right[j:].
+    # Maximizing the tuple maximizes pairs, then minimizes separation.
+    best: list[list[tuple[int, float]]] = [
+        [(0, 0.0)] * (len(right) + 1) for _ in range(len(left) + 1)
+    ]
+
+    for i in reversed(range(len(left))):
+        for j in reversed(range(len(right))):
+            options = [best[i + 1][j], best[i][j + 1]]
+            separation = _minutes_apart(left[i], right[j])
+            if separation <= tolerance_minutes:
+                pairs, cost = best[i + 1][j + 1]
+                options.append((pairs + 1, cost - separation))
+            best[i][j] = max(options)
+
+    assignment: dict[int, int] = {}
+    i = j = 0
+    while i < len(left) and j < len(right):
+        separation = _minutes_apart(left[i], right[j])
+        if separation <= tolerance_minutes:
+            pairs, cost = best[i + 1][j + 1]
+            if best[i][j] == (pairs + 1, cost - separation):
+                assignment[i] = j
+                i += 1
+                j += 1
+                continue
+        if best[i][j] == best[i + 1][j]:
+            i += 1
+        else:
+            j += 1
+
+    return assignment
 
 
 # =============================================================================
@@ -339,6 +437,341 @@ def _infer_origin_station(
     return best_route[1][0]
 
 
+@dataclass
+class _TrainCandidate:
+    """A RidePATH arrival resolved onto a PATH route, ready to become a journey."""
+
+    arrival: PathArrival
+    train_id: str
+    journey_date: date
+    line_code: str
+    line_name: str
+    line_color: str
+    destination_headsign: str
+    destination_station: str
+    origin_station: str
+    origin_departure: datetime
+    route_id: str
+    route_stops: list[str]
+    minutes_from_origin: float
+
+    @property
+    def group_key(self) -> tuple[date, str, str, str]:
+        """Key identifying the run of trains this sighting could belong to.
+
+        Consecutive trains on a line share all four values, which is exactly why
+        they need one-to-one matching against each other rather than an
+        independent lookup per sighting.
+        """
+        return (
+            self.journey_date,
+            self.line_code,
+            self.origin_station,
+            _normalize_headsign(self.destination_headsign),
+        )
+
+
+def _build_train_candidate(
+    arrival: PathArrival, segment_times: SegmentTimesMap
+) -> _TrainCandidate | None:
+    """Resolve an arrival into a route, origin station and origin departure.
+
+    Handles both terminus sightings (train starting its journey) and mid-route
+    sightings (train already in progress), for which the origin departure is
+    back-calculated from GTFS segment times.
+
+    Args:
+        arrival: Arrival data from RidePATH
+        segment_times: GTFS-based segment travel times
+
+    Returns:
+        Resolved candidate, or None if the arrival cannot be placed on a route
+    """
+    discovered_at_station = arrival.station_code
+    destination_headsign = arrival.headsign
+    discovered_arrival_time = arrival.arrival_time
+
+    if not discovered_arrival_time:
+        return None
+
+    # Get destination station code from headsign
+    destination_station = _get_destination_station_from_headsign(destination_headsign)
+    if not destination_station:
+        logger.debug(
+            "path_skip_unknown_destination",
+            station=discovered_at_station,
+            headsign=destination_headsign,
+        )
+        return None
+
+    # Override destination for NWK-WTC trains with misleading headsigns.
+    # The RidePATH API shows intermediate stops (e.g., "Harrison" at NWK,
+    # "Journal Square" at WTC) instead of the true final destination.
+    if arrival.line_color:
+        normalized_color = _normalize_line_color(arrival.line_color)
+        terminus = NWK_WTC_TERMINUS.get(arrival.direction)
+        if normalized_color == NWK_WTC_COLOR and terminus:
+            correct_dest, correct_headsign = terminus
+            if destination_station != correct_dest:
+                logger.debug(
+                    "path_nwk_wtc_headsign_override",
+                    station=discovered_at_station,
+                    original_headsign=destination_headsign,
+                    corrected_destination=correct_dest,
+                )
+                destination_station = correct_dest
+                destination_headsign = correct_headsign
+
+    # Infer the true origin station (may be different if discovered mid-route)
+    # Pass line_color to disambiguate overlapping routes (e.g., HOB-33 vs JSQ-33H)
+    origin_station = _infer_origin_station(
+        discovered_at_station, destination_station, line_color=arrival.line_color
+    )
+
+    # Get full route (with route_id) from origin to destination
+    # Pass line_color to ensure consistent route selection
+    route_result = get_path_route_and_stops(
+        origin_station, destination_station, line_color=arrival.line_color
+    )
+
+    if not route_result or len(route_result[1]) < 2:
+        logger.debug(
+            "path_skip_no_route",
+            origin=origin_station,
+            destination=destination_station,
+        )
+        return None
+
+    route_id, route_stops = route_result
+
+    # Calculate origin departure time by working backwards from discovery station.
+    # Without the discovery station on the route there is nothing to work back
+    # from: the origin departure would be the raw prediction for a station the
+    # train reaches minutes later, and that fabricated time feeds both the
+    # train_id and every stop time. Drop the sighting instead.
+    if discovered_at_station not in route_stops:
+        logger.warning(
+            "path_skip_station_not_on_route",
+            station=discovered_at_station,
+            route_id=route_id,
+            origin=origin_station,
+            destination=destination_station,
+        )
+        return None
+
+    minutes_from_origin = get_cumulative_time(
+        segment_times,
+        route_stops,
+        0,
+        route_stops.index(discovered_at_station),
+        route_id,
+    )
+    origin_departure_time = discovered_arrival_time - timedelta(
+        minutes=minutes_from_origin
+    )
+
+    # Get line info from route_id (accurate) with headsign fallback
+    route_info = PATH_ROUTES.get(route_id)
+    if route_info:
+        line_code, line_name, line_color = route_info
+    else:
+        line_code, line_name, line_color = _get_line_info_from_headsign(
+            destination_headsign
+        )
+
+    # Use line color from API if available
+    if arrival.line_color:
+        color = arrival.line_color.split(",")[0]
+        if not color.startswith("#"):
+            color = f"#{color}"
+        line_color = color
+
+    return _TrainCandidate(
+        arrival=arrival,
+        # Generate train_id using ORIGIN station and origin departure time so
+        # deduplication is consistent regardless of where the train was seen
+        train_id=_generate_path_train_id(
+            origin_station, destination_headsign, origin_departure_time
+        ),
+        journey_date=discovered_arrival_time.date(),
+        line_code=line_code,
+        line_name=line_name,
+        line_color=line_color,
+        destination_headsign=destination_headsign,
+        destination_station=destination_station,
+        origin_station=origin_station,
+        origin_departure=origin_departure_time,
+        route_id=route_id,
+        route_stops=route_stops,
+        minutes_from_origin=minutes_from_origin,
+    )
+
+
+def _cluster_sightings(candidates: list[_TrainCandidate]) -> list[_TrainCandidate]:
+    """Collapse repeat sightings of one physical train into a single candidate.
+
+    Candidates share line, origin and destination (see ``group_key``), so the
+    only thing separating consecutive trains is the back-calculated origin
+    departure. Two sightings are the same train when those estimates agree to
+    strictly inside ``SAME_TRAIN_TOLERANCE_MINUTES`` *and* come from different
+    stations — RidePATH never lists one train twice at the same station, so two
+    arrivals there are two trains however close their estimates land.
+
+    The surviving candidate is the one seen closest to the origin: back-
+    calculation error grows with distance, so that sighting carries the most
+    accurate origin departure and needs the least inferred history.
+
+    Args:
+        candidates: Sightings sharing a ``group_key``
+
+    Returns:
+        One candidate per distinct train, ordered by origin departure
+    """
+    clusters: list[list[_TrainCandidate]] = []
+
+    for candidate in sorted(candidates, key=lambda c: c.origin_departure):
+        for cluster in clusters:
+            if any(
+                c.arrival.station_code == candidate.arrival.station_code
+                for c in cluster
+            ):
+                continue
+            if (
+                _minutes_apart(candidate.origin_departure, cluster[0].origin_departure)
+                < SAME_TRAIN_TOLERANCE_MINUTES
+            ):
+                cluster.append(candidate)
+                break
+        else:
+            clusters.append([candidate])
+
+    survivors = [
+        min(
+            cluster,
+            key=lambda c: (
+                c.minutes_from_origin,
+                c.origin_departure,
+                c.arrival.station_code,
+            ),
+        )
+        for cluster in clusters
+    ]
+    # The survivor's own estimate can sit anywhere inside its cluster's spread,
+    # so re-sort: callers pair these against existing journeys in time order.
+    survivors.sort(key=lambda c: c.origin_departure)
+    return survivors
+
+
+class _Listing(NamedTuple):
+    """A train due at a station: either a journey's stop or a RidePATH arrival."""
+
+    station_code: str
+    headsign: str
+    line_color: str
+    time: datetime
+    owner: int  # journey index for a stop, arrival index for an arrival
+
+
+def _run_key(listing: _Listing, by_color: bool) -> tuple[str, ...]:
+    """Key identifying the run of trains a listing belongs to."""
+    if by_color:
+        return (listing.station_code, listing.headsign, listing.line_color)
+    return (listing.station_code, listing.headsign)
+
+
+def _assign_arrivals_to_journeys(
+    journeys: list[tuple[TrainJourney, list[JourneyStop]]],
+    arrivals: list[PathArrival],
+) -> dict[int, list[PathArrival]]:
+    """Assign each arrival to at most one journey.
+
+    Each (station, destination) is a run of trains: journeys ordered by when
+    they are due there, arrivals ordered by when RidePATH says they turn up.
+    Pairing a whole run at once is what stops one arrival being written onto the
+    stops of several consecutive trains — the tolerance that absorbs RidePATH's
+    integer-minute countdowns is wider than the headway, so matching each
+    journey independently let them all claim it (#1723).
+
+    Line color separates lines that share a destination, so color-matched runs
+    are paired first; a second pass sweeps up whatever is left, for journeys
+    whose color came from the route table rather than from the API.
+
+    Args:
+        journeys: Active journeys paired with their ordered stops
+        arrivals: All arrivals from the API
+
+    Returns:
+        Mapping of index into ``journeys`` -> arrivals that belong to that
+        journey (at most one per station, so each stop still has an
+        unambiguous match)
+    """
+    stop_listings = [
+        _Listing(
+            station_code=stop.station_code,
+            headsign=_normalize_headsign(journey.destination or ""),
+            line_color=(journey.line_color or "").lstrip("#").lower(),
+            time=stop.scheduled_arrival,
+            owner=journey_index,
+        )
+        for journey_index, (journey, stops) in enumerate(journeys)
+        for stop in stops
+        if stop.station_code and stop.scheduled_arrival
+    ]
+    arrival_listings = [
+        _Listing(
+            station_code=arrival.station_code,
+            headsign=_normalize_headsign(arrival.headsign),
+            line_color=(arrival.line_color or "").split(",")[0].lstrip("#").lower(),
+            time=arrival.arrival_time,
+            owner=arrival_index,
+        )
+        for arrival_index, arrival in enumerate(arrivals)
+    ]
+
+    assigned: dict[int, list[PathArrival]] = defaultdict(list)
+
+    for by_color in (True, False):
+        runs: dict[tuple[str, ...], tuple[list[_Listing], list[_Listing]]] = (
+            defaultdict(lambda: ([], []))
+        )
+        for listing in stop_listings:
+            runs[_run_key(listing, by_color)][0].append(listing)
+        for listing in arrival_listings:
+            runs[_run_key(listing, by_color)][1].append(listing)
+
+        paired_stops: set[tuple[int, str]] = set()
+        paired_arrivals: set[int] = set()
+
+        for run_stops, run_arrivals in runs.values():
+            run_stops.sort(key=lambda listing: listing.time)
+            run_arrivals.sort(key=lambda listing: listing.time)
+            matches = _match_in_order(
+                [listing.time for listing in run_stops],
+                [listing.time for listing in run_arrivals],
+                MATCH_TOLERANCE_MINUTES,
+            )
+            for stop_index, arrival_index in matches.items():
+                stop_listing = run_stops[stop_index]
+                arrival_listing = run_arrivals[arrival_index]
+                assigned[stop_listing.owner].append(arrivals[arrival_listing.owner])
+                paired_stops.add((stop_listing.owner, stop_listing.station_code))
+                paired_arrivals.add(arrival_listing.owner)
+
+        # Only unclaimed listings reach the color-blind pass.
+        stop_listings = [
+            listing
+            for listing in stop_listings
+            if (listing.owner, listing.station_code) not in paired_stops
+        ]
+        arrival_listings = [
+            listing
+            for listing in arrival_listings
+            if listing.owner not in paired_arrivals
+        ]
+
+    return dict(assigned)
+
+
 # =============================================================================
 # UNIFIED PATH COLLECTOR
 # =============================================================================
@@ -450,6 +883,9 @@ class PathCollector:
         station_results: dict[str, dict[str, Any]] = defaultdict(
             lambda: {"arrivals_found": 0, "new_journeys": 0}
         )
+        groups: dict[tuple[date, str, str, str], list[_TrainCandidate]] = defaultdict(
+            list
+        )
 
         for arrival in arrivals:
             station_results[arrival.station_code]["arrivals_found"] += 1
@@ -464,12 +900,15 @@ class PathCollector:
                 )
                 continue
 
-            # Process this departure (may be at terminus or mid-route)
-            created = await self._process_arrival_for_discovery(
-                session, arrival, segment_times
-            )
-            if created:
-                station_results[arrival.station_code]["new_journeys"] += 1
+            candidate = _build_train_candidate(arrival, segment_times)
+            if candidate:
+                groups[candidate.group_key].append(candidate)
+
+        for candidates in groups.values():
+            for created in await self._discover_group(
+                session, candidates, segment_times
+            ):
+                station_results[created.arrival.station_code]["new_journeys"] += 1
                 new_journeys += 1
 
         return {
@@ -478,129 +917,94 @@ class PathCollector:
             "station_results": station_results,
         }
 
-    async def _process_arrival_for_discovery(
+    async def _discover_group(
         self,
         session: AsyncSession,
-        arrival: PathArrival,
+        candidates: list[_TrainCandidate],
         segment_times: SegmentTimesMap,
-    ) -> bool:
-        """Process a single arrival and create journey record if new.
+    ) -> list[_TrainCandidate]:
+        """Create journeys for the trains in one ``group_key`` that are new.
 
-        Handles both terminus discovery (train starting its journey) and
-        mid-route discovery (train already in progress). For mid-route,
-        infers the true origin and marks earlier stops as departed.
+        Every train in the group shares line, origin and destination, so the
+        only thing telling them apart is the origin departure — and on a
+        short-headway line the tolerance that has to absorb RidePATH's
+        integer-minute countdowns is wider than the gap between trains. Matching
+        each train independently therefore let consecutive trains all resolve to
+        the oldest journey, which was then updated and never created (#1723).
+        Pairing the whole run at once means N trains can never collapse onto
+        fewer than N journeys.
 
         Args:
             session: Database session
-            arrival: Arrival data from RidePATH
+            candidates: Sightings sharing a ``group_key``
             segment_times: GTFS-based segment travel times
 
         Returns:
-            True if a new journey was created, False if existing/skipped
+            Candidates that became new journeys
         """
-        discovered_at_station = arrival.station_code
-        destination_headsign = arrival.headsign
-        discovered_arrival_time = arrival.arrival_time
+        trains = _cluster_sightings(candidates)
+        window = timedelta(minutes=MATCH_TOLERANCE_MINUTES)
+        origin_times = [train.origin_departure for train in trains]
 
-        if not discovered_arrival_time:
-            return False
-
-        journey_date = discovered_arrival_time.date()
-
-        # Get destination station code from headsign
-        destination_station = _get_destination_station_from_headsign(
-            destination_headsign
-        )
-        if not destination_station:
-            logger.debug(
-                "path_skip_unknown_destination",
-                station=discovered_at_station,
-                headsign=destination_headsign,
+        # Paired with their departures so the times passed to the matcher line
+        # up by index. The SQL range predicate already excludes a NULL
+        # scheduled_departure, so nothing is dropped here.
+        existing = [
+            (journey, journey.scheduled_departure)
+            for journey in await self._find_active_journeys(
+                session,
+                journey_date=trains[0].journey_date,
+                line_code=trains[0].line_code,
+                origin_station=trains[0].origin_station,
+                destination=trains[0].destination_headsign,
+                time_min=min(origin_times) - window,
+                time_max=max(origin_times) + window,
             )
-            return False
+            if journey.scheduled_departure is not None
+        ]
 
-        # Override destination for NWK-WTC trains with misleading headsigns.
-        # The RidePATH API shows intermediate stops (e.g., "Harrison" at NWK,
-        # "Journal Square" at WTC) instead of the true final destination.
-        if arrival.line_color:
-            normalized_color = _normalize_line_color(arrival.line_color)
-            terminus = NWK_WTC_TERMINUS.get(arrival.direction)
-            if normalized_color == NWK_WTC_COLOR and terminus:
-                correct_dest, correct_headsign = terminus
-                if destination_station != correct_dest:
-                    logger.debug(
-                        "path_nwk_wtc_headsign_override",
-                        station=discovered_at_station,
-                        original_headsign=destination_headsign,
-                        corrected_destination=correct_dest,
-                    )
-                    destination_station = correct_dest
-                    destination_headsign = correct_headsign
-
-        # Infer the true origin station (may be different if discovered mid-route)
-        # Pass line_color to disambiguate overlapping routes (e.g., HOB-33 vs JSQ-33H)
-        origin_station = _infer_origin_station(
-            discovered_at_station, destination_station, line_color=arrival.line_color
+        assignment = _match_in_order(
+            origin_times,
+            [departure for _, departure in existing],
+            MATCH_TOLERANCE_MINUTES,
         )
 
-        # Get full route (with route_id) from origin to destination
-        # Pass line_color to ensure consistent route selection
-        route_result = get_path_route_and_stops(
-            origin_station, destination_station, line_color=arrival.line_color
-        )
+        created: list[_TrainCandidate] = []
+        for train_index, train in enumerate(trains):
+            matched_index = assignment.get(train_index)
+            if matched_index is not None:
+                existing[matched_index][0].last_updated_at = now_et()
+                continue
+            if await self._create_journey(session, train, segment_times):
+                created.append(train)
 
-        if not route_result or len(route_result[1]) < 2:
-            logger.debug(
-                "path_skip_no_route",
-                origin=origin_station,
-                destination=destination_station,
-            )
-            return False
+        return created
 
-        route_id, route_stops = route_result
+    async def _create_journey(
+        self,
+        session: AsyncSession,
+        candidate: _TrainCandidate,
+        segment_times: SegmentTimesMap,
+    ) -> bool:
+        """Create the journey record and stops for a newly discovered train.
 
-        # Calculate origin departure time by working backwards from discovery station
-        if discovered_at_station in route_stops:
-            stops_from_origin = route_stops.index(discovered_at_station)
-            minutes_from_origin = get_cumulative_time(
-                segment_times, route_stops, 0, stops_from_origin, route_id
-            )
-            origin_departure_time = discovered_arrival_time - timedelta(
-                minutes=minutes_from_origin
-            )
-        else:
-            # Discovery station not in route (shouldn't happen) - use arrival time
-            origin_departure_time = discovered_arrival_time
+        Args:
+            session: Database session
+            candidate: Resolved sighting of a train with no existing journey
+            segment_times: GTFS-based segment travel times
 
-        # Get line info from route_id (accurate) with headsign fallback
-        route_info = PATH_ROUTES.get(route_id)
-        if route_info:
-            line_code, line_name, line_color = route_info
-        else:
-            line_code, line_name, line_color = _get_line_info_from_headsign(
-                destination_headsign
-            )
-
-        # Use line color from API if available
-        if arrival.line_color:
-            color = arrival.line_color.split(",")[0]
-            if not color.startswith("#"):
-                color = f"#{color}"
-            line_color = color
-
-        # Generate train_id using ORIGIN station and origin departure time
-        # This ensures consistent deduplication regardless of where train is discovered
-        train_id = _generate_path_train_id(
-            origin_station, destination_headsign, origin_departure_time
-        )
-
-        # Check if journey already exists by exact train_id
-        # Use FOR UPDATE SKIP LOCKED to prevent duplicate creation during concurrent discovery
+        Returns:
+            True if a new journey was created, False if one already existed
+        """
+        # Guard the unique (train_id, journey_date, data_source) constraint.
+        # Completed and expired journeys are deliberately excluded from the
+        # time-based match above but still occupy their train_id.
+        # FOR UPDATE SKIP LOCKED prevents duplicate creation during concurrent discovery.
         stmt = (
             select(TrainJourney)
             .where(
-                TrainJourney.train_id == train_id,
-                TrainJourney.journey_date == journey_date,
+                TrainJourney.train_id == candidate.train_id,
+                TrainJourney.journey_date == candidate.journey_date,
                 TrainJourney.data_source == "PATH",
             )
             .with_for_update(skip_locked=True)
@@ -611,40 +1015,26 @@ class PathCollector:
             existing.last_updated_at = now_et()
             return False
 
-        # Secondary deduplication: Check for existing journey with same characteristics
-        existing_by_schedule = await self._find_matching_journey(
-            session,
-            journey_date=journey_date,
-            line_code=line_code,
-            origin_station=origin_station,
-            scheduled_departure=origin_departure_time,
-            destination=destination_headsign,
-        )
-
-        if existing_by_schedule:
-            existing_by_schedule.last_updated_at = now_et()
-            return False
+        route_stops = candidate.route_stops
 
         # Calculate terminal arrival time using GTFS segment times
-        terminal_station = route_stops[-1]
         total_travel_minutes = get_cumulative_time(
-            segment_times, route_stops, 0, len(route_stops) - 1, route_id
+            segment_times, route_stops, 0, len(route_stops) - 1, candidate.route_id
         )
-        terminal_arrival = origin_departure_time + timedelta(
+        terminal_arrival = candidate.origin_departure + timedelta(
             minutes=total_travel_minutes
         )
 
-        # Create new journey
         journey = TrainJourney(
-            train_id=train_id,
-            journey_date=journey_date,
-            line_code=line_code,
-            line_name=line_name,
-            line_color=line_color,
-            destination=destination_headsign,
-            origin_station_code=origin_station,
-            terminal_station_code=terminal_station,
-            scheduled_departure=origin_departure_time,
+            train_id=candidate.train_id,
+            journey_date=candidate.journey_date,
+            line_code=candidate.line_code,
+            line_name=candidate.line_name,
+            line_color=candidate.line_color,
+            destination=candidate.destination_headsign,
+            origin_station_code=candidate.origin_station,
+            terminal_station_code=route_stops[-1],
+            scheduled_departure=candidate.origin_departure,
             scheduled_arrival=terminal_arrival,
             data_source="PATH",
             observation_type="OBSERVED",
@@ -658,28 +1048,29 @@ class PathCollector:
         session.add(journey)
         await session.flush()
 
+        discovered_at_station = candidate.arrival.station_code
+
         # Create stops (marking earlier ones as departed if mid-route discovery)
         await self._create_journey_stops(
             session,
             journey,
             route_stops,
-            origin_departure_time,
-            destination_station,
+            candidate.origin_departure,
+            candidate.destination_station,
             discovered_at_station=discovered_at_station,
             segment_times=segment_times,
-            route_id=route_id,
+            route_id=candidate.route_id,
         )
 
-        is_mid_route = origin_station != discovered_at_station
         logger.debug(
             "path_journey_created",
-            train_id=train_id,
-            line=line_code,
-            origin=origin_station,
-            destination=destination_headsign,
+            train_id=candidate.train_id,
+            line=candidate.line_code,
+            origin=candidate.origin_station,
+            destination=candidate.destination_headsign,
             stops=len(route_stops),
             discovered_at=discovered_at_station,
-            mid_route=is_mid_route,
+            mid_route=candidate.origin_station != discovered_at_station,
         )
 
         return True
@@ -803,37 +1194,30 @@ class PathCollector:
                 )
                 session.add(dest_stop)
 
-    async def _find_matching_journey(
+    async def _find_active_journeys(
         self,
         session: AsyncSession,
         journey_date: Any,
         line_code: str,
         origin_station: str,
-        scheduled_departure: Any,
         destination: str,
-        time_tolerance_minutes: int = 5,
-    ) -> TrainJourney | None:
-        """Find an existing journey that matches the given characteristics.
+        time_min: datetime,
+        time_max: datetime,
+    ) -> list[TrainJourney]:
+        """Load the in-flight journeys a group of sightings could match.
 
         Args:
             session: Database session
             journey_date: Date of the journey
             line_code: PATH line code
             origin_station: Origin station code
-            scheduled_departure: Scheduled departure datetime
             destination: Destination headsign
-            time_tolerance_minutes: Max minutes difference for time matching
+            time_min: Earliest scheduled departure to consider
+            time_max: Latest scheduled departure to consider
 
         Returns:
-            Matching TrainJourney if found, None otherwise
+            Matching journeys, oldest scheduled departure first
         """
-        if not scheduled_departure:
-            return None
-
-        time_window = timedelta(minutes=time_tolerance_minutes)
-        time_min = scheduled_departure - time_window
-        time_max = scheduled_departure + time_window
-
         stmt = (
             select(TrainJourney)
             .where(
@@ -848,6 +1232,7 @@ class PathCollector:
                     TrainJourney.is_expired == False,  # noqa: E712
                 )
             )
+            .order_by(TrainJourney.scheduled_departure)
             .with_for_update(skip_locked=True)
         )
 
@@ -855,11 +1240,11 @@ class PathCollector:
 
         # Filter by normalized destination to handle headsign variants
         normalized_dest = _normalize_headsign(destination)
-        for candidate in candidates:
-            if _normalize_headsign(candidate.destination or "") == normalized_dest:
-                return candidate
-
-        return None
+        return [
+            candidate
+            for candidate in candidates
+            if _normalize_headsign(candidate.destination or "") == normalized_dest
+        ]
 
     # =========================================================================
     # PHASE 2: UPDATES
@@ -898,39 +1283,22 @@ class PathCollector:
         if not journeys:
             return {"updated": 0, "completed": 0, "errors": 0}
 
-        # Group arrivals by normalized headsign AND line color
-        # This prevents cross-train matching when multiple lines serve same destination
-        arrivals_by_headsign_color: dict[str, list[PathArrival]] = defaultdict(list)
-        for arrival in arrivals:
-            headsign_key = _normalize_headsign(arrival.headsign)
-            # Normalize line color: remove # prefix and lowercase
-            color = (arrival.line_color or "").split(",")[0].lstrip("#").lower()
-            key = f"{headsign_key}:{color}"
-            arrivals_by_headsign_color[key].append(arrival)
-            # Also add to headsign-only key as fallback
-            arrivals_by_headsign_color[headsign_key].append(arrival)
+        # Claim arrivals across ALL journeys at once so consecutive trains on a
+        # line cannot each write the same arrival onto their own stops (#1723).
+        journeys_with_stops = [
+            (journey, await self._get_journey_stops(session, journey))
+            for journey in journeys
+        ]
+        assigned = _assign_arrivals_to_journeys(journeys_with_stops, arrivals)
 
         updated = 0
         completed = 0
         errors = 0
 
-        for journey in journeys:
+        for index, (journey, stops) in enumerate(journeys_with_stops):
             try:
-                journey_headsign = _normalize_headsign(journey.destination or "")
-                # Normalize journey's line color
-                journey_color = (journey.line_color or "").lstrip("#").lower()
-
-                # Try to match by headsign + line color first (more precise)
-                color_key = f"{journey_headsign}:{journey_color}"
-                matching = arrivals_by_headsign_color.get(color_key, [])
-
-                # Fall back to headsign-only if no color match
-                if not matching:
-                    matching = arrivals_by_headsign_color.get(journey_headsign, [])
-
-                stops = await self._get_journey_stops(session, journey)
                 had_matching_arrivals = await self._update_stops_from_arrivals(
-                    session, journey, stops, matching, segment_times
+                    session, journey, stops, assigned.get(index, []), segment_times
                 )
 
                 journey.last_updated_at = now_et()
@@ -998,16 +1366,18 @@ class PathCollector:
         self,
         stop: JourneyStop,
         station_arrivals: list[PathArrival],
-        tolerance_minutes: int = 5,
+        tolerance_minutes: int = MATCH_TOLERANCE_MINUTES,
     ) -> PathArrival | None:
         """Find the best matching arrival for a stop based on scheduled time.
 
-        Uses a tighter tolerance (5 min) to prevent cross-train matching on
-        PATH's frequent service (trains every 5-10 minutes).
+        Shares ``MATCH_TOLERANCE_MINUTES`` with discovery. The window is wider
+        than a peak PATH headway, so it is only safe because the arrivals
+        reaching this method have already been claimed one-to-one across
+        journeys by ``_assign_arrivals_to_journeys``.
 
         Args:
             stop: The journey stop to match
-            station_arrivals: All arrivals at this stop's station
+            station_arrivals: This journey's claimed arrivals at the stop's station
             tolerance_minutes: Max minutes difference to consider a "good" match
 
         Returns:
@@ -1021,12 +1391,9 @@ class PathCollector:
             best_diff: float = float("inf")
 
             for arrival in station_arrivals:
-                diff = abs(
-                    (arrival.arrival_time - stop.scheduled_arrival).total_seconds()
-                )
-                diff_minutes = diff / 60
+                diff = _minutes_apart(arrival.arrival_time, stop.scheduled_arrival)
 
-                if diff_minutes <= tolerance_minutes and diff < best_diff:
+                if diff <= tolerance_minutes and diff < best_diff:
                     best_diff = diff
                     best_match = arrival
 
@@ -1470,16 +1837,13 @@ class PathCollector:
             # Fetch all arrivals
             all_arrivals = await self.client.get_all_arrivals()
 
-            # Filter to this journey's destination
-            journey_headsign = _normalize_headsign(journey.destination or "")
-            matching = [
-                a
-                for a in all_arrivals
-                if _normalize_headsign(a.headsign) == journey_headsign
-            ]
-
-            # Get journey stops and update
+            # Claim the arrivals that belong to this journey (headsign, line
+            # color and proximity), at most one per station
             stops = await self._get_journey_stops(session, journey)
+            matching = _assign_arrivals_to_journeys(
+                [(journey, stops)], all_arrivals
+            ).get(0, [])
+
             await self._update_stops_from_arrivals(session, journey, stops, matching)
 
             journey.last_updated_at = now_et()
