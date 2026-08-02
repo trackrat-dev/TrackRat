@@ -32,6 +32,20 @@ export const MAPLIBRE_PRECACHE_EXCLUSIONS = [
  */
 export const MAPLIBRE_ASSET_URL_PATTERN = /\/assets\/maplibre-[^/]*\.(?:js|css)$/;
 
+/**
+ * Runtime cache route for the predictions/supported-stations lookup — the only
+ * API response static enough to serve from cache.
+ *
+ * Must track the API hosts baked in by `infra_v2/cloudbuild-webpage*.yaml` as
+ * `VITE_API_BASE_URL`. It previously matched `staging.apiv2.trackrat.net`,
+ * which #1712 renamed to `staging-api.trackrat.net` because Cloudflare's
+ * Universal SSL does not cover two-label subdomains — so the route quietly
+ * stopped matching anything on staging. Exported so `vite.config.test.ts` can
+ * assert it against both deployed base URLs rather than leaving that to review.
+ */
+export const SUPPORTED_STATIONS_URL_PATTERN =
+  /^https:\/\/(apiv2|staging-api)\.trackrat\.net\/api\/v2\/predictions\/supported-stations/i;
+
 export default defineConfig({
   test: {
     environment: 'jsdom',
@@ -102,7 +116,7 @@ export default defineConfig({
             }
           },
           {
-            urlPattern: /^https:\/\/(apiv2|staging\.apiv2)\.trackrat\.net\/api\/v2\/predictions\/supported-stations/i,
+            urlPattern: SUPPORTED_STATIONS_URL_PATTERN,
             handler: 'NetworkFirst',
             options: {
               cacheName: 'trackrat-supported-stations-cache',
