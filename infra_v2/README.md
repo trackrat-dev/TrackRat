@@ -55,6 +55,10 @@ The dedicated per-environment API load balancer above is the original topology a
 - **`enable_cloudflare_tunnel`** (default `false`): master on/off switch for the **`cloudflared` connector itself** (issue #1578). The connector lives in an isolated `backend_v2/docker-compose.tunnel.yml`; the startup script (`compute.tf`) brings `db`/`api` up from `docker-compose.yml` alone, then starts `cloudflared` in a separate, **non-fatal** `up` only when this flag is `true` **and** the `trackrat-cloudflare-tunnel-token-<env>` secret is present. Because the connector is never gated on secret-existence alone and never shares the api/db bring-up, a dormant/invalid token can no longer crash-loop it or abort the API. The on/off state is committed here, not only in Secret Manager IAM.
 - **`frontend_via_cloudflare`** (default `false`): once the connector above is healthy and DNS is cut over, this tears down the dedicated Google API frontend (IP, url map, proxies, forwarding rules), eliminating the "Cloud Load Balancer Forwarding Rule Minimum Global" charge entirely. This is the teardown trigger and is independent of `enable_cloudflare_tunnel` (which only governs whether the connector runs). Runbook: `RUNBOOK-cloudflare-cutover.md`.
 
+### Disabled transit data sources
+
+- **`disabled_data_sources`** (`map(list(string))`, keyed by environment): the `TRACKRAT_DISABLED_DATA_SOURCES` value rendered into each workspace's `.env`. A disabled source is skipped for collection, schedule generation, GTFS refresh, and service-alert polling, and is filtered out of API responses. Keyed by environment (issue #1634) so a source can be soaked in staging while production stays dark; it was previously a single literal in `compute.tf` shared by both workspaces, which made a staging-only soak arm the next production apply. Same committed-default discipline as the switches above. Runbook: `RUNBOOK-data-source-flags.md`.
+
 ## Prerequisites
 
 ### Required Secrets (create manually before terraform apply)
@@ -389,6 +393,7 @@ cat /var/log/startup.log | grep -i disk
 ```
 infra_v2/
 ├── README.md                    # This file
+├── RUNBOOK-data-source-flags.md # Enable/disable a transit data source per environment
 ├── RUNBOOK-lb-consolidation.md  # API + webpage LB consolidation cutover runbook
 ├── RUNBOOK-cloudflare-cutover.md  # Cloudflare Tunnel API-frontend cutover runbook
 ├── cloudbuild.yaml              # Production deployment pipeline
