@@ -67,8 +67,15 @@ provider "google" {
 # 35.190.73.247, cert, proxies, url maps, forwarding rules) was deleted
 # directly in GCP as cost cleanup and is intentionally not managed here —
 # re-adding it would recreate the stack on a new IP with a cert that cannot
-# provision (staging.trackrat.net DNS no longer points at it). The bucket
-# stays: cloudbuild-webpage-staging.yaml still syncs webpage_v2 builds to it.
+# provision (staging.trackrat.net DNS no longer points at it).
+#
+# The bucket is NO LONGER A DEPLOY TARGET: staging.trackrat.net serves from
+# Cloudflare Pages and cloudbuild-webpage-staging.yaml uploads there instead
+# (issue #1713). It is kept for exactly one reason — it holds the last GCS
+# build, so it is the rollback artifact if the Pages cutover has to be undone.
+# DELETE IT (this resource, the IAM member below, and the output) once staging
+# has soaked on Pages; leaving it costs storage and makes it look like a live
+# destination. force_destroy = true, so the apply empties it.
 
 # GCS bucket for staging webpage
 resource "google_storage_bucket" "webpage_staging" {

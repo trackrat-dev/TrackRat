@@ -464,11 +464,13 @@ npm run build        # TypeScript compile + Vite build
 npm run preview      # Preview production build locally
 ```
 
-**Deployment:** Automatic via Cloud Build triggers (defined in `infra_v2/terraform-webpage/`) — push to `main` with `webpage_v2/` (or `infra_v2/cloudbuild-webpage-staging.yaml`) changes → `staging.trackrat.net`, push to `production` with `webpage_v2/` (or `infra_v2/cloudbuild-webpage.yaml`) changes → `trackrat.net`. The cloudbuild files are in the path filters because their `_API_BASE_URL` substitution is baked into the bundle at build time.
+**Deployment:** Automatic via Cloud Build triggers (defined in `infra_v2/terraform-webpage/`) to **Cloudflare Pages** — push to `main` with `webpage_v2/` (or `infra_v2/cloudbuild-webpage-staging.yaml`) changes → `staging.trackrat.net`, push to `production` with `webpage_v2/` (or `infra_v2/cloudbuild-webpage.yaml`) changes → `trackrat.net`. The cloudbuild files are in the path filters because their `_API_BASE_URL` substitution is baked into the bundle at build time.
 
-Manual deploy from the repo root:
+Serving policy (cache headers, HSTS, the AASA `application/json` content type) lives in `webpage_v2/public/_headers`, not in the pipeline. There is deliberately no `_redirects` file — Cloudflare follows redirects even when an asset exists, and the SPA fallback needs no rule. See `webpage_v2/vite.config.test.ts`.
+
+Manual deploy from the repo root (needs `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`):
 ```bash
-./scripts/deploy-webpage.sh [staging|production] [--bucket=<name>] [--dry-run]
+./scripts/deploy-webpage.sh [staging|production] [--project=<name>] [--dry-run]
 ```
 
 ### Infrastructure Management

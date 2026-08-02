@@ -38,9 +38,12 @@ load balancers:
   the private Docker network. The VM needs no public ingress, no origin
   certificate, and no reverse proxy — the origin stays exactly as it is today
   (plain HTTP on `:8000`).
-- **Static site** (`trackrat.net`, `www`) → keep the GCS bucket, front it with
-  Cloudflare (orange-cloud) via host/path transform rules. (Decision: keep the
-  existing GCS deploy pipeline rather than migrating to Pages.)
+- **Static site** (`trackrat.net`, `www`) → **Cloudflare Pages**, replacing the
+  GCS buckets. The original design here — front the bucket with Cloudflare via
+  host/path transform rules — **is not implementable on our plan** and was
+  withdrawn: overriding the `Host` header (required so GCS routes to the right
+  bucket) is Enterprise-only on Origin Rules, and URL Rewrite explicitly
+  "cannot rewrite the hostname". See issue #1713.
 
 End state: no `google_compute_*_forwarding_rule` anywhere → SKU $0. Also sheds
 the webpage backend-bucket/CDN, two managed SSL certs, url maps, and the API's
@@ -133,9 +136,15 @@ via `custom_response_headers`, and the code comment calls it "a standing
 commitment — do not remove it while the domain is on the preload list." That
 header source dies with the LB in Phase 4. `apiv2` is unaffected (FastAPI
 middleware sets the same header — verified in live response headers), but
-**`trackrat.net` and `www` lose it** unless Cloudflare emits it. Confirm the
-domain's status at https://hstspreload.org first; if it is genuinely preloaded,
-the Cloudflare transform rules **must** add this header before P6.
+**`trackrat.net` and `www` lose it** unless Cloudflare emits it.
+
+**Checked 2026-08-02: `trackrat.net` is NOT on the preload list.**
+`https://hstspreload.org/api/v2/status?domain=trackrat.net` returns
+`"status": "unknown"`, so the header was emitted but never submitted. The code
+comment overstates the constraint: there is no live commitment to honour. The
+header is reproduced anyway — browsers that have seen it hold it for a year,
+and `webpage_v2/public/_headers` makes it free — but it is no longer a gate on
+P6.
 
 ### Also corrected
 
@@ -315,25 +324,92 @@ bash scripts/validate-staging.sh
 
 **Rollback:** recreate the grey `A` record pointing at the staging LB IP.
 
-### S8. Rehearse Phase 3 — `staging.trackrat.net` via Cloudflare → GCS
+### S8. Rehearse Phase 3 — `staging.trackrat.net` on Cloudflare Pages
 
-Orange-cloud the record. Transform Rules: rewrite `Host` →
-`storage.googleapis.com` and path → `/trackrat-webpage-staging<path>`; map `/`
-and extensionless paths to `…/index.html` so client-side routing and the SPA
-entrypoint resolve. Preserve the bucket's own `Cache-Control` (keep Cloudflare's
-cache respecting origin).
+Supersedes the withdrawn transform-rule design (issue #1713). Note the ordering
+here is no longer a precondition for S9: S9 already merged (`89b6d94`), so
+`staging.trackrat.net` is **already down** — this step restores it rather than
+pre-empting an outage.
 
-**Add the HSTS response header here** (finding 4) so the production rule is
-already proven:
+**One-time setup, before merging the pipeline change** (a build that runs
+without these fails):
 
+1. Cloudflare → Workers & Pages → create project `trackrat-webpage-staging`,
+   **Direct Upload**, production branch **`main`**. (Direct Upload is a
+   one-way door: a project created this way can never be switched to Git
+   integration.)
+2. Create an API token with the **Cloudflare Pages: Edit** account permission.
+   Note the account ID.
+3. Store both in Secret Manager and grant the Cloud Build service account
+   (`trackrat-staging@trackrat-v2.iam.gserviceaccount.com` — both webpage
+   triggers run as it) `roles/secretmanager.secretAccessor` on each:
+
+```bash
+printf '%s' '<TOKEN>' | gcloud secrets create cloudflare-pages-api-token \
+  --project=trackrat-v2 --replication-policy=automatic --data-file=-
+printf '%s' '<ACCOUNT_ID>' | gcloud secrets create cloudflare-account-id \
+  --project=trackrat-v2 --replication-policy=automatic --data-file=-
+
+for s in cloudflare-pages-api-token cloudflare-account-id; do
+  gcloud secrets add-iam-policy-binding "$s" --project=trackrat-v2 \
+    --member=serviceAccount:trackrat-staging@trackrat-v2.iam.gserviceaccount.com \
+    --role=roles/secretmanager.secretAccessor
+done
 ```
-Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+
+4. Check the zone for Cache Rules or Page Rules covering `*.trackrat.net`.
+   Cloudflare warns that custom-domain caching can serve stale assets past a
+   deploy and can pre-empt Pages routing.
+
+**Then:** merge the pipeline change to `main`. The trigger builds and runs
+`wrangler pages deploy`. Attach `staging.trackrat.net` under the project's
+Custom domains tab — the zone is on Cloudflare, so the DNS record is created
+automatically and there is no old record to remove.
+
+**Verify — this is the P5 rehearsal, so do all of it.** The asset check is the
+one that matters most: it is what proves no catch-all is shadowing real files.
+
+```bash
+BASE=https://staging.trackrat.net
+curl -sS -o /dev/null -w '%{http_code}\n' $BASE/                      # 200
+curl -sS -o /dev/null -w '%{http_code}\n' $BASE/trains/TR/NY          # SPA fallback
+curl -sS -o /dev/null -w '%{http_code}\n' $BASE/train/3515/TR/NY      # shared-link shape
+
+# A hashed asset must be itself, NOT the HTML shell.
+ASSET=$(curl -sS $BASE/ | grep -o '/assets/index-[^"]*\.js' | head -1)
+curl -sSI $BASE$ASSET | grep -iE 'content-type|cache-control'   # text/javascript + immutable
+
+curl -sSI $BASE/ | grep -iE 'strict-transport|cache-control'    # HSTS + no-store
+curl -sSI $BASE/sw.js | grep -i cache-control                   # no-store
+curl -sSI $BASE/.well-known/apple-app-site-association | grep -i content-type
+curl -sS  $BASE/.well-known/apple-app-site-association | python3 -m json.tool >/dev/null \
+  && echo "AASA ok"
 ```
 
-Verify the homepage, a deep link, and `/.well-known/apple-app-site-association`
-(must stay `application/json`).
+Two behaviours are **not** documented by Cloudflare and must be observed here
+rather than assumed:
 
-**Rollback:** grey-cloud back to the staging LB IP.
+- **The SPA fallback's status code.** Pages falls back to the app shell for
+  unmatched paths whenever a deployment has no top-level `404.html`, but does
+  not document whether that is a 200. Today's GCS behaviour is 404-with-body,
+  so anything is at least a tie — but do not claim the improvement without
+  seeing it.
+- **Whether `.well-known/` uploads at all.** It is a dot-directory. There is no
+  documented Pages exclusion for hidden files, but if wrangler skips it,
+  Universal Links break with no error anywhere. The AASA checks above are the
+  only place this surfaces.
+
+Also load the site in a browser: the service worker should register, and API
+calls should go to `https://staging-api.trackrat.net/api/v2` (#1712).
+
+**Rollback:** the GCS bucket `trackrat-webpage-staging` still holds the last
+pre-migration build, but nothing serves it — the staging LB is gone. Rollback
+is therefore forward-only: fix and redeploy to Pages. This is acceptable
+precisely because staging is already dark.
+
+**After a ≥24h soak:** delete `google_storage_bucket.webpage_staging`, its IAM
+member, and the `staging_webpage_bucket` output from
+`infra_v2/terraform-webpage/main.tf`, then apply that root manually.
 
 ### S9. Push #2 — tear down the staging LB
 
@@ -444,17 +520,43 @@ bash scripts/e2e-api-test.sh https://apiv2.trackrat.net --no-random
 **Rollback:** grey `A` → `136.110.151.144` (the webpage LB still host-routes
 `apiv2`).
 
-### P5. Static site behind Cloudflare
+### P5. Static site on Cloudflare Pages
 
-Orange-cloud `trackrat.net` and `www.trackrat.net`; same transform rules as S8
-but against `trackrat-webpage-production`, **including the HSTS header**
-(finding 4). Verify deep links, AASA content-type, and:
+Same shape as S8 against `trackrat-webpage-production`, but production is live,
+so the order below matters. `infra_v2/cloudbuild-webpage.yaml` deploys to
+**both** GCS and Pages on purpose: it removes the window where one destination
+is serving while the other goes stale. Do not delete the GCS steps early.
 
-```bash
-curl -sSI https://trackrat.net | grep -i strict-transport-security
-```
+1. Create the Pages project `trackrat-webpage-production`, **Direct Upload**,
+   production branch **`production`**. Reuses the S8 secrets — no new token.
+2. Populate and inspect it before any DNS moves:
+   ```bash
+   export CLOUDFLARE_API_TOKEN=$(gcloud secrets versions access latest \
+     --secret=cloudflare-pages-api-token --project=trackrat-v2)
+   export CLOUDFLARE_ACCOUNT_ID=$(gcloud secrets versions access latest \
+     --secret=cloudflare-account-id --project=trackrat-v2)
+   ./scripts/deploy-webpage.sh production
+   ```
+   Run the full S8 verification block against the project's `*.pages.dev` URL.
+   `trackrat.net` is untouched at this point.
+3. Merge `main` → `production` so the dual-deploy pipeline is live. Confirm one
+   push writes to both destinations.
+4. Attach `trackrat.net` and `www.trackrat.net` as custom domains on the Pages
+   project. **This is the cutover** — it repoints the apex away from
+   `136.110.151.144`. Re-run the S8 verification block against
+   `https://trackrat.net` and `https://www.trackrat.net`.
+5. **Soak ≥24h.** Then delete the `sync`, `cache-html` and `cache-assets` steps
+   and the `_WEBPAGE_BUCKET` substitution from `cloudbuild-webpage.yaml`.
 
-**Rollback:** grey-cloud back to `136.110.151.144`.
+Universal links are worth a real check here, not just a curl: Apple's CDN
+caches the AASA file, so an installed app may keep working for a while off the
+old copy. Confirm a shared `/train/...` link still opens the app.
+
+**Rollback (before step 5):** remove the custom domains from the Pages project
+and recreate the grey `A` records pointing at `136.110.151.144`. The GCS bucket
+is still receiving every build, so it is current, not stale — that is the whole
+reason for the dual deploy. After step 5 the bucket goes stale immediately and
+rollback means restoring those pipeline steps and pushing.
 
 ### P6. Phase 4 — delete the webpage LB (point of no easy return)
 
@@ -537,11 +639,11 @@ This matches the invariant already stated for the staging rehearsal in S9.
 |---|---|---|
 | S3–S6 | none needed (tunnel is additive) | — |
 | S7 | recreate grey `A` → staging LB IP | seconds |
-| S8 | grey-cloud `staging.trackrat.net` | seconds |
+| S8 | forward-only — fix and redeploy to Pages (staging LB is already gone) | minutes |
 | S9 | `git revert` + re-apply | new IP, DNS update |
 | P1–P3 | none needed (connector additive) | — |
 | P4 | grey `A` `apiv2` → `136.110.151.144` | seconds |
-| P5 | grey-cloud `trackrat.net` + `www` | seconds |
+| P5 | detach Pages custom domains, recreate grey `A` → `136.110.151.144` (GCS stays current while the pipeline dual-deploys) | seconds |
 | **P6** | **re-apply webpage LB Terraform** | **new IP + DNS + cert reprovision** |
 
 ## Verification cheatsheet
@@ -554,9 +656,17 @@ gcloud compute forwarding-rules list --global --project=trackrat-v2
 PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --env staging --search cloudflared
 
 # End-to-end via Cloudflare (expect cf-ray + server: cloudflare)
-curl -sSI https://staging.apiv2.trackrat.net/health/ready
+curl -sSI https://staging-api.trackrat.net/health/ready
 bash scripts/validate-staging.sh
 bash scripts/e2e-api-test.sh https://apiv2.trackrat.net --no-random
+
+# Static site on Pages: the shell, a deep link, and — the one that catches a
+# catch-all redirect shadowing real files — a hashed asset served as itself.
+BASE=https://staging.trackrat.net   # or https://trackrat.net after P5
+curl -sS -o /dev/null -w '%{http_code}\n' $BASE/trains/TR/NY
+ASSET=$(curl -sS $BASE/ | grep -o '/assets/index-[^"]*\.js' | head -1)
+curl -sSI $BASE$ASSET | grep -i content-type          # text/javascript, NOT text/html
+curl -sSI $BASE/.well-known/apple-app-site-association | grep -i content-type
 
 # Confirm the CUD-covered VM size is untouched by any of this
 gcloud compute instances list --project=trackrat-v2 \

@@ -1,9 +1,25 @@
 # TrackRat Webpage Production Deployment
 # Triggered by push to 'production' branch (path filter: webpage_v2/**)
-# Builds the React app pointing at production API, deploys to production GCS bucket
+# Builds the React app pointing at production API, deploys to BOTH the
+# production GCS bucket and Cloudflare Pages.
+#
+# The dual deploy is deliberate and temporary — it exists only for the DNS
+# cutover window (issue #1713, runbook step P5):
+#
+#   - Deploying to Pages only, before trackrat.net DNS points at Pages, would
+#     leave the live GCS site frozen at whatever shipped last.
+#   - Flipping DNS first and switching the pipeline afterwards has the mirror
+#     problem: Pages would be serving the apex while going stale on each push.
+#
+# Writing to both removes the window entirely. Once trackrat.net and
+# www.trackrat.net resolve to Pages and have soaked, delete the `sync`,
+# `cache-html` and `cache-assets` steps below and the `_WEBPAGE_BUCKET`
+# substitution; the `_headers` file already carries everything the three
+# gsutil steps were setting.
 
 substitutions:
   _WEBPAGE_BUCKET: trackrat-webpage-production
+  _CF_PAGES_PROJECT: trackrat-webpage-production
   _API_BASE_URL: 'https://apiv2.trackrat.net/api/v2'
 
 steps:
@@ -31,6 +47,27 @@ steps:
     env:
       - 'VITE_API_BASE_URL=${_API_BASE_URL}'
     waitFor: ['test']
+
+  # --- Cloudflare Pages (the destination) ---------------------------------
+  # See cloudbuild-webpage-staging.yaml for why --branch and --commit-dirty
+  # are mandatory here. --branch must match this project's production branch.
+  - name: 'node:22'
+    id: 'deploy-pages'
+    dir: 'webpage_v2'
+    entrypoint: 'npx'
+    args:
+      - 'wrangler'
+      - 'pages'
+      - 'deploy'
+      - 'dist'
+      - '--project-name=${_CF_PAGES_PROJECT}'
+      - '--branch=production'
+      - '--commit-dirty=true'
+    secretEnv: ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']
+    waitFor: ['build']
+
+  # --- GCS bucket (retained until the DNS cutover) -------------------------
+  # Delete this step and the two below once trackrat.net serves from Pages.
 
   # Sync build output to production GCS bucket
   - name: 'gcr.io/cloud-builders/gsutil'
@@ -62,6 +99,13 @@ steps:
     args: ['-m', 'setmeta', '-h', 'Cache-Control:public, max-age=31536000, immutable',
            'gs://${_WEBPAGE_BUCKET}/assets/**']
     waitFor: ['sync']
+
+availableSecrets:
+  secretManager:
+    - versionName: projects/trackrat-v2/secrets/cloudflare-pages-api-token/versions/latest
+      env: 'CLOUDFLARE_API_TOKEN'
+    - versionName: projects/trackrat-v2/secrets/cloudflare-account-id/versions/latest
+      env: 'CLOUDFLARE_ACCOUNT_ID'
 
 tags:
   - 'trackrat'
