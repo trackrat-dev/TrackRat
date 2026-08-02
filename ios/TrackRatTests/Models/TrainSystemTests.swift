@@ -289,8 +289,6 @@ class TrainSystemTests: XCTestCase {
 
     func testStationAvailability_excludesEveryDisabledOnlySystem() {
         let disabledStations: [(name: String, system: TrainSystem)] = [
-            ("Media", .septaRegionalRail),
-            ("Olney Transit Center - B1", .septaMetro),
             ("West Oakland", .bart),
             ("Metro Center", .wmata),
             ("North Station", .mbta),
@@ -310,6 +308,43 @@ class TrainSystemTests: XCTestCase {
             XCTAssertFalse(
                 Stations.isStationAvailable(code),
                 "\(station.name) should be excluded while \(station.system.displayName) is disabled"
+            )
+        }
+    }
+
+    /// The re-enablement counterpart: these are the exact stations that used to
+    /// sit in the disabled table above, so this asserts the flag flip reaches
+    /// station availability rather than only the constant.
+    func testStationAvailability_includesReEnabledSeptaStations() {
+        let septaStations: [(name: String, system: TrainSystem)] = [
+            ("Media", .septaRegionalRail),
+            ("Olney Transit Center - B1", .septaMetro),
+        ]
+
+        for station in septaStations {
+            guard let code = Stations.getStationCode(station.name) else {
+                XCTFail("Missing station code for \(station.name)")
+                continue
+            }
+            XCTAssertEqual(
+                Stations.systemsForStation(code),
+                Set([station.system]),
+                "\(station.name) must remain attributable to \(station.system.displayName)"
+            )
+            XCTAssertTrue(
+                Stations.isStationAvailable(code),
+                "\(station.name) should be selectable now \(station.system.displayName) is enabled"
+            )
+        }
+    }
+
+    func testSearchGrouped_includesReEnabledSeptaStations() {
+        for (query, system) in [("Media", TrainSystem.septaRegionalRail),
+                                ("Olney Transit Center - B1", TrainSystem.septaMetro)] {
+            let grouped = Stations.searchGrouped(query, selectedSystems: [system])
+            XCTAssertTrue(
+                grouped.primary.contains(query),
+                "'\(query)' should be a primary match for \(system.displayName), got \(grouped)"
             )
         }
     }
@@ -337,8 +372,6 @@ class TrainSystemTests: XCTestCase {
 
     func testSearchGrouped_excludesDisabledOnlyStations() {
         let disabledQueries = [
-            "Media",
-            "Olney Transit Center - B1",
             "West Oakland",
             "Metro Center",
             "North Station",
@@ -370,17 +403,30 @@ class TrainSystemTests: XCTestCase {
     }
 
     func testSearchGrouped_originFilterExcludesManyDisabledMatches() {
-        let query = "Station"
-        let rawMatches = Stations.search(query, limit: Stations.all.count)
-        let disabledMatches = rawMatches.filter { name in
-            guard let code = Stations.getStationCode(name) else { return false }
-            return !Stations.isStationAvailable(code)
+        // The query is derived rather than hardcoded so enabling or disabling a
+        // system cannot quietly leave this asserting against a corpus that no
+        // longer exercises it. "Station" used to match 10 disabled-only stations;
+        // re-enabling SEPTA dropped it to 2, which would have failed a fixed
+        // threshold while the filter itself was working correctly.
+        let candidateQueries = ["station", "north", "center", "park", "west", "union"]
+        let minimumDisabledMatches = 3
+        let disabledMatchCount: (String) -> Int = { candidate in
+            Stations.search(candidate, limit: Stations.all.count).filter { name in
+                guard let code = Stations.getStationCode(name) else { return false }
+                return !Stations.isStationAvailable(code)
+            }.count
         }
-        XCTAssertGreaterThan(
-            disabledMatches.count,
-            5,
-            "Test precondition: '\(query)' must match several disabled-only stations"
-        )
+
+        guard let query = candidateQueries.first(where: {
+            disabledMatchCount($0) >= minimumDisabledMatches
+        }) else {
+            XCTFail(
+                "Test corpus needs a query matching at least \(minimumDisabledMatches) "
+                + "disabled-only stations; none of \(candidateQueries) qualifies"
+            )
+            return
+        }
+        XCTAssertGreaterThanOrEqual(disabledMatchCount(query), minimumDisabledMatches)
 
         let grouped = Stations.searchGrouped(
             query,
