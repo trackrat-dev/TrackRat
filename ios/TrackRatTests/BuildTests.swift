@@ -1,3 +1,4 @@
+import StoreKit
 import XCTest
 import SwiftUI
 @testable import TrackRat
@@ -67,6 +68,16 @@ class BuildTests: XCTestCase {
         // Test that LiveActivityService can be instantiated
         let liveActivityService = LiveActivityService.shared
         XCTAssertNotNil(liveActivityService)
+    }
+}
+
+@MainActor
+final class SettingsViewEnvironmentTests: XCTestCase {
+    func testReleaseDebugSectionsRequireSandboxEnvironment() {
+        XCTAssertTrue(SettingsView.shouldEnableReleaseDebugSections(for: .sandbox))
+        XCTAssertFalse(SettingsView.shouldEnableReleaseDebugSections(for: .production))
+        XCTAssertFalse(SettingsView.shouldEnableReleaseDebugSections(for: .xcode))
+        XCTAssertFalse(SettingsView.shouldEnableReleaseDebugSections(for: nil))
     }
 }
 
