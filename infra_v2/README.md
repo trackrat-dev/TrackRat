@@ -131,8 +131,10 @@ gcloud builds submit --config=cloudbuild.yaml .
 ### Webpage Deployment
 
 The React webpage (`webpage_v2/`) deploys separately from the API via its own Cloud Build triggers (defined in `terraform-webpage/`):
-- **Push to `main`** (with `webpage_v2/` changes) → `trackrat-webpage-staging` trigger → `gs://trackrat-webpage-staging` (`staging.trackrat.net`)
-- **Push to `production`** (with `webpage_v2/` changes) → `trackrat-webpage-production` trigger → `gs://trackrat-webpage-production` (`trackrat.net` / `www.trackrat.net`)
+- **Push to `main`** (with `webpage_v2/` or `cloudbuild-webpage-staging.yaml` changes) → `trackrat-webpage-staging` trigger → `gs://trackrat-webpage-staging` (`staging.trackrat.net`)
+- **Push to `production`** (with `webpage_v2/` or `cloudbuild-webpage.yaml` changes) → `trackrat-webpage-production` trigger → `gs://trackrat-webpage-production` (`trackrat.net` / `www.trackrat.net`)
+
+Each cloudbuild file is in its own trigger's path filter because it bakes `_API_BASE_URL` into the bundle as `VITE_API_BASE_URL` at build time — editing that substitution alone must redeploy, or the live site keeps calling the previous API host.
 
 Manual deploy from the repo root:
 ```bash

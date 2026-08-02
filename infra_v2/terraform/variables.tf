@@ -28,9 +28,9 @@ variable "environment" {
 }
 
 variable "domain" {
-  description = "Domain for the API - defaults based on environment (staging.apiv2.trackrat.net or apiv2.trackrat.net)"
+  description = "Override for the API domain. When set it becomes BOTH the managed cert's domain and the advertised api_url, collapsing the staging split between local.domain (cert) and local.public_api_domain (public hostname). Leave empty to use the per-environment defaults."
   type        = string
-  default     = "" # Empty means use local.domain
+  default     = "" # Empty means use local.domain / local.public_api_domain
 }
 
 variable "machine_type" {

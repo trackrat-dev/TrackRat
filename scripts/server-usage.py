@@ -56,6 +56,15 @@ API_URLS = {
     "staging": "https://staging-api.trackrat.net",
 }
 
+# Environments whose API is fronted by the Cloudflare Tunnel instead of a Google
+# load balancer. Tunnel requests reach the API container directly, so the
+# http_load_balancer entries fetch_lb_logs reads are empty for them no matter how
+# much real traffic there is — and an empty window renders as a confident "0
+# requests" that reads as fact. Add "production" here when it cuts over, and
+# remove an entry if an environment moves back to the LB
+# (infra_v2/RUNBOOK-cloudflare-cutover.md).
+TUNNEL_FRONTED_ENVS = {"staging"}
+
 
 # ---------------------------------------------------------------------------
 # GCP Auth (mirrors gcp-logs.py pattern)
@@ -227,6 +236,29 @@ def fetch_lb_logs(token, env, hours):
     )
     max_pages = min(60, max(20, round(hours * 2)))
     return query_logs(token, log_filter, limit=1000, max_pages=max_pages)
+
+
+def lb_traffic_source_note(env, lb_entry_count):
+    """Explain an empty load-balancer window, or return None when the counts are real.
+
+    The API traffic section is derived entirely from load balancer logs. When
+    that window comes back empty the report cannot tell "nobody used the server"
+    from "the traffic never touched the load balancer", and silently rendering
+    zeros asserts the first. Returns a caveat to print alongside those zeros;
+    returns None whenever any LB entry was seen, so a normal report is unchanged.
+    """
+    if lb_entry_count:
+        return None
+    if env in TUNNEL_FRONTED_ENVS:
+        return (
+            f"No load balancer logs: {env} is fronted by the Cloudflare Tunnel, so its "
+            "requests bypass the load balancer these numbers come from. The API traffic "
+            "and business activity counts below are NOT a measure of real traffic."
+        )
+    return (
+        "No load balancer log entries in this window — the counts below are empty "
+        "because nothing was recorded, not because it was filtered out."
+    )
 
 
 def fetch_app_logs(token, instance_id, hours, level=None, search=None):
@@ -509,7 +541,8 @@ def fmt_latency(lats):
     return f"avg={avg:.2f}s  p50={p50:.2f}s  p95={p95:.2f}s  max={max(lats_sorted):.2f}s"
 
 
-def format_report(env, hours, health, scheduler, lb_analysis, app_analysis, use_color=True):
+def format_report(env, hours, health, scheduler, lb_analysis, app_analysis, use_color=True,
+                  traffic_note=None):
     """Format the full report as a string."""
     lines = []
     b = BOLD if use_color else ""
@@ -558,6 +591,10 @@ def format_report(env, hours, health, scheduler, lb_analysis, app_analysis, use_
     lines.append(f"{b}{'=' * 60}{nc}")
     lines.append(f"{b}API TRAFFIC{nc}")
     lines.append(f"{b}{'=' * 60}{nc}")
+
+    if traffic_note:
+        lines.append(f"  {y}WARNING: {traffic_note}{nc}")
+        lines.append("")
 
     rate = la["total_api"] / hours if hours > 0 else 0
     lines.append(f"  API requests:     {la['total_api']}  ({rate:.1f}/hour)")
@@ -719,7 +756,8 @@ def format_report(env, hours, health, scheduler, lb_analysis, app_analysis, use_
     return "\n".join(lines)
 
 
-def build_json_report(env, hours, health, scheduler, lb_analysis, app_analysis):
+def build_json_report(env, hours, health, scheduler, lb_analysis, app_analysis,
+                      traffic_note=None):
     """Build a JSON-serializable report dict."""
     la = lb_analysis
     aa = app_analysis
@@ -727,6 +765,10 @@ def build_json_report(env, hours, health, scheduler, lb_analysis, app_analysis):
         "environment": env,
         "window_hours": hours,
         "generated_utc": datetime.now(timezone.utc).isoformat(),
+        # Present only when the load-balancer traffic counts cannot be taken at
+        # face value; consumers (e.g. the daily usage Routine) must surface it
+        # instead of reporting the zeros below as real traffic.
+        "traffic_source_warning": traffic_note,
         "server_state": {
             "health": health,
             "scheduler_running": scheduler.get("running"),
@@ -810,6 +852,9 @@ def main():
     print("Fetching LB logs...", file=sys.stderr)
     lb_entries = fetch_lb_logs(token, args.env, args.hours)
     print(f"  {len(lb_entries)} LB log entries", file=sys.stderr)
+    traffic_note = lb_traffic_source_note(args.env, len(lb_entries))
+    if traffic_note:
+        print(f"  WARNING: {traffic_note}", file=sys.stderr)
 
     task_entries = []
     error_entries = []
@@ -840,14 +885,15 @@ def main():
     # Output
     if args.json_output:
         report = build_json_report(
-            args.env, args.hours, health, scheduler, lb_analysis, app_analysis
+            args.env, args.hours, health, scheduler, lb_analysis, app_analysis,
+            traffic_note=traffic_note,
         )
         output = json.dumps(report, indent=2, default=str)
     else:
         use_color = not args.output and sys.stdout.isatty()
         output = format_report(
             args.env, args.hours, health, scheduler, lb_analysis, app_analysis,
-            use_color=use_color,
+            use_color=use_color, traffic_note=traffic_note,
         )
 
     if args.output:

@@ -106,8 +106,11 @@ class EnvironmentManager @Inject constructor(
         
         return if (json != null) {
             try {
-                // Load from stored preferences
-                serverEnvironmentAdapter.fromJson(json) ?: getDefaultFromBuildConfig()
+                // Load from stored preferences, re-resolving the stored baseURL
+                // against this build's definitions so a URL that changed since the
+                // environment was selected is picked up (ServerEnvironment.canonicalize).
+                serverEnvironmentAdapter.fromJson(json)?.let { ServerEnvironment.canonicalize(it) }
+                    ?: getDefaultFromBuildConfig()
             } catch (e: Exception) {
                 // If parsing fails, fall back to build config
                 getDefaultFromBuildConfig()

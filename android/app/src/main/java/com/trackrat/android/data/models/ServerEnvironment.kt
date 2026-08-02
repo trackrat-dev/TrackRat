@@ -43,6 +43,21 @@ data class ServerEnvironment(
             baseURL = "http://10.0.2.2:8000/api/v2/",
             isProduction = false
         )
+
+        /**
+         * Re-resolve a persisted environment against this build's definitions.
+         *
+         * EnvironmentManager persists the whole object, baseURL included, so an
+         * install that selected an environment before its URL changed would keep
+         * calling the old host forever — as debug installs on Staging would have
+         * after the API moved to staging-api.trackrat.net. [name] is the stable
+         * identity (iOS persists only the ServerEnvironment enum case and derives
+         * baseURL from it), so a stored entry whose name matches a known
+         * environment is replaced by the current definition. An unrecognized name
+         * — e.g. one built from BuildConfig — is returned unchanged.
+         */
+        fun canonicalize(stored: ServerEnvironment): ServerEnvironment =
+            getAvailableEnvironments().firstOrNull { it.name == stored.name } ?: stored
     }
     
     /**
