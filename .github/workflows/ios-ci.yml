@@ -82,6 +82,27 @@ jobs:
             exit 1
           fi
 
+      # Simulator metadata is not the artifact used for App Store/device
+      # eligibility. Build an unsigned Release device bundle and verify that
+      # its processed plist is sourced from the same deployment target.
+      - name: Build and verify unsigned device artifact
+        working-directory: ios
+        run: |
+          xcodebuild build \
+            -scheme TrackRat \
+            -configuration Release \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath DeviceDerivedData \
+            CODE_SIGNING_ALLOWED=NO
+
+          PLIST=DeviceDerivedData/Build/Products/Release-iphoneos/TrackRat.app/Info.plist
+          MIN=$(plutil -extract MinimumOSVersion raw "$PLIST")
+          echo "Device MinimumOSVersion: $MIN"
+          if [ "$MIN" != "18.0" ]; then
+            echo "::error::Device MinimumOSVersion is '$MIN', expected '18.0'"
+            exit 1
+          fi
+
       - name: Upload test results
         uses: actions/upload-artifact@v7
         if: failure()
