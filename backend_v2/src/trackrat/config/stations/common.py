@@ -114,6 +114,51 @@ CROSS_MODAL_HUBS: list[tuple[str, frozenset[str]]] = [
     ("PWC", frozenset({"S138", "S228", "SA36", "SE01", "SR25"})),  # WTC / Oculus
 ]
 
+# SEPTA Metro station complexes: one physical station that SEPTA's GTFS splits
+# into several stop codes. Two splits leave trip search unable to connect codes
+# a rider walks between inside the station (issue #1709):
+#   - Broad St local (SEPTA-B1), Broad St express (SEPTA-B2) and
+#     Market-Frankford (SEPTA-L1) each get their own code at the City Hall /
+#     15th St concourse, so no single code carries both B1 and L1 and the
+#     intra-system junction source emits nothing for Philadelphia's busiest
+#     interchange.
+#   - Every subway-surface tunnel platform is a separate code per direction —
+#     SEPTA_METRO is the only data source whose routes carry directional
+#     `reverse_stations` — so a rider changing direction mid-tunnel had no
+#     modeled interchange outside the shared terminals.
+#
+# Modeled as TRANSFERS ONLY: deliberately NOT spread into
+# STATION_EQUIVALENCE_GROUPS the way SUBWAY_STATION_COMPLEXES is. Equivalence
+# pools departure boards, alerts and route-alert subscriptions across every
+# code in a group; for the directional platform pairs that would put outbound
+# trolleys on the inbound board, which is not what a rider standing on one
+# platform asked for. transfer_points.py consumes this to emit walk-0
+# `same_station` transfer points, which is what trip search actually needs.
+SEPTA_METRO_STATION_COMPLEXES: list[set[str]] = [
+    # 15th St/City Hall — BSL local, BSL express, MFL and both trolley tunnel
+    # platforms, all joined by one fare-paid concourse.
+    {"SEPM33029", "SEPM1281", "SEPM1392", "SEPM31140", "SEPM20659"},
+    # 13th St — MFL over the trolley tunnel (one shared trolley code: the
+    # tunnel's east terminal loop serves both directions from it).
+    {"SEPM2455", "SEPM283"},
+    # Drexel Station at 30th St — MFL over the trolley tunnel.
+    {"SEPM21532", "SEPM20643", "SEPM20662"},
+    # 40th St — MFL over the trolley tunnel's 40th-Market platform.
+    {"SEPM2452", "SEPM21248"},
+    # Olney Transit Center — BSL local platform vs. express / Ridge Spur.
+    {"SEPM33027", "SEPM82"},
+    # 69th St Transit Center — MFL / Norristown HSL vs. Media-Sharon Hill.
+    {"SEPM416", "SEPM15497"},
+    # Trolley tunnel platforms, split inbound / outbound.
+    {"SEPM20646", "SEPM20660"},  # 19th St
+    {"SEPM20645", "SEPM20661"},  # 22nd St
+    {"SEPM20642", "SEPM20658"},  # 33rd St
+    {"SEPM20732", "SEPM20733"},  # 36th-Sansom
+    {"SEPM20731", "SEPM20734"},  # 37th-Spruce
+    {"SEPM20641", "SEPM287"},  # 36th St Portal
+    {"SEPM20804", "SEPM301"},  # 40th St Portal
+]
+
 # Station code equivalence groups for physically identical stations.
 # Each set contains all codes for the same physical station across systems.
 # Cross-system: Amtrak / Metro-North shared stations.

@@ -48,6 +48,7 @@ from trackrat.config.route_topology import (
     get_route_by_line_code,
     get_routes_for_data_source,
     is_directionally_reachable,
+    models_directions_separately,
 )
 
 
@@ -1959,6 +1960,16 @@ class TestDirectionalReachability:
         provider ships `reverse_stations`, this fails and forces a look at the
         junction filtering in trip search that depends on it."""
         assert _DIRECTIONAL_DATA_SOURCES == frozenset({"SEPTA_METRO"})
+
+    def test_models_directions_separately_answers_for_every_source(self):
+        """The public predicate transfer_points uses to decide whether two codes
+        at one station can differ by direction rather than by lines (#1709)."""
+        assert models_directions_separately("SEPTA_METRO")
+        for data_source in ("NJT", "AMTRAK", "SUBWAY", "SEPTA_RR", "PATH", "LIRR"):
+            assert not models_directions_separately(
+                data_source
+            ), f"{data_source} unexpectedly models directions as separate codes"
+        assert not models_directions_separately("NOT_A_DATA_SOURCE")
 
     def test_non_directional_system_is_never_gated(self):
         """NJT reuses one code per station and runs it both ways, so order

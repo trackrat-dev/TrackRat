@@ -16,7 +16,11 @@ from structlog import get_logger
 
 from trackrat.config.route_topology import is_directionally_reachable
 from trackrat.config.stations import expand_station_codes, get_station_name
-from trackrat.config.stations.common import CROSS_MODAL_HUBS, STATION_EQUIVALENTS
+from trackrat.config.stations.common import (
+    CROSS_MODAL_HUBS,
+    SEPTA_METRO_STATION_COMPLEXES,
+    STATION_EQUIVALENTS,
+)
 from trackrat.config.transfer_points import (
     TransferPoint,
     get_intra_system_transfers,
@@ -50,12 +54,30 @@ CONNECTION_BUFFER_MINUTES = 2
 # Maximum connection wait time at the transfer station (minutes)
 MAX_CONNECTION_WAIT_MINUTES = 60
 
-# Cross-modal mega-hub rail/PATH code -> its in-building subway complex codes
-# (Penn, Grand Central, WTC). A rider whose trip *ends or starts* at one of
-# these rail/PATH codes reaches the subway by walking within the building, so
-# the subway portion is a single direct SUBWAY leg between the other endpoint
-# and one of these platform codes (#1587).
-_CROSS_MODAL_HUB_SUBWAY: dict[str, frozenset[str]] = dict(CROSS_MODAL_HUBS)
+
+def _build_station_complex_siblings() -> dict[str, tuple[frozenset[str], str]]:
+    """Endpoint code -> (its other codes at the same station, their system).
+
+    Both sources here are modeled as transfers rather than equivalences, so
+    ``expand_station_codes`` never reaches the sibling and a search anchored on
+    one code sees only its own platform. That is fine mid-trip — the transfer
+    point carries it — but at an *endpoint* it leaves the transfer with a
+    zero-length first leg, which yields no departures and drops the trip
+    (#1587 for the mega-hubs, #1709 for SEPTA Metro).
+    """
+    siblings: dict[str, tuple[frozenset[str], str]] = {
+        rail_code: (subway_codes, "SUBWAY")
+        for rail_code, subway_codes in CROSS_MODAL_HUBS
+    }
+    for group in SEPTA_METRO_STATION_COMPLEXES:
+        for code in group:
+            siblings[code] = (frozenset(group - {code}), "SEPTA_METRO")
+    return siblings
+
+
+_STATION_COMPLEX_SIBLINGS: dict[str, tuple[frozenset[str], str]] = (
+    _build_station_complex_siblings()
+)
 
 # Conservative transit-time estimate used when a subway departure's arrival
 # prediction is missing. Subway GTFS-RT feeds only reliably publish next-stop
@@ -278,6 +300,12 @@ def _junction_legs_run(
     e.g. 63rd-Malvern (T1) -> Elmwood Av & 73rd St (T2) kept six dead tunnel
     platforms and dropped 13th St, the one junction both directions serve, so
     the search returned nothing (PR #1708 codex review).
+
+    Still needed once SEPTA_METRO_STATION_COMPLEXES joins the directional codes
+    (#1709): a complex transfer alights at one code and boards the other, so
+    ``alight`` and ``board`` differ and each side has to be checked against the
+    leg it actually serves.  ``_orient_transfer`` uses this for the same reason
+    — line overlap alone cannot tell the two platforms of one station apart.
     """
     return is_directionally_reachable(system, origin, alight) and (
         is_directionally_reachable(system, board, dest)
@@ -423,7 +451,17 @@ def _orient_transfer(
     # Intra-system transfer: orient by line overlap with origin/destination
     if tp.system_a == tp.system_b and tp.lines_a and tp.lines_b and from_station:
         origin_lines = _get_station_lines_expanded(from_station, tp.system_a)
-        if tp.lines_a & origin_lines:
+        a_first = bool(tp.lines_a & origin_lines)
+        # Both sides carry the origin's lines at a same-station junction and at
+        # a SEPTA Metro platform pair, so line overlap alone cannot say which
+        # code the rider actually reaches. Fall back to which orientation runs;
+        # for systems that reuse one code per direction this is always the
+        # a-side, leaving them on the original behaviour (#1709).
+        if a_first and tp.lines_b & origin_lines and to_station:
+            a_first = _junction_legs_run(
+                tp.system_a, from_station, tp.station_a, tp.station_b, to_station
+            )
+        if a_first:
             return tp.station_a, tp.system_a, tp.station_b, tp.system_b
         return tp.station_b, tp.system_b, tp.station_a, tp.system_a
 
@@ -438,7 +476,7 @@ def _orient_transfer(
     return tp.station_b, tp.system_b, tp.station_a, tp.system_a
 
 
-async def _cross_modal_hub_direct_trips(
+async def _station_complex_direct_trips(
     departure_service: DepartureService,
     from_station: str,
     to_station: str,
@@ -449,39 +487,47 @@ async def _cross_modal_hub_direct_trips(
     data_sources: list[str] | None,
     limit: int,
 ) -> list[TripOption]:
-    """Resolve a cross-modal-hub endpoint as a single SUBWAY leg (#1587).
+    """Resolve an endpoint's other platform as a single leg (#1587, #1709).
 
-    PWC/NY/GCT are rail/PATH codes modeled as ``CROSS_MODAL_HUBS`` and are
-    deliberately kept out of the subway equivalence group, so ``PWC`` resolves
-    only to ``{"PATH"}``.  When such a hub is a trip *endpoint*, direct search
-    sees only the rail/PATH side (nothing) and transfer search anchors a
-    degenerate ``HUB -> HUB`` [PATH] leg with no departures — 0 trips in both
-    directions.  But the real journey is a single subway ride between the other
-    endpoint and the hub's in-building subway complex (the PATH<->subway walk is
-    the transfer).  Query direct SUBWAY departures between the other endpoint and
-    each of the hub's paired subway codes and return them as single-leg trips.
+    Some codes at one physical station are modeled as transfers rather than
+    equivalences, so they never expand into each other: the rail/PATH side of a
+    ``CROSS_MODAL_HUBS`` mega-hub (``PWC`` resolves only to ``{"PATH"}``), and
+    every ``SEPTA_METRO_STATION_COMPLEXES`` member.  Mid-trip the transfer point
+    carries that walk, but when such a code is a trip *endpoint* direct search
+    sees only its own platform (nothing) and transfer search anchors a
+    degenerate ``X -> X`` leg with no departures — 0 trips in both directions.
+    The real journey is a single ride between the other endpoint and one of the
+    endpoint's sibling codes, with the in-station walk at the near end: ``PWC``
+    to a subway stop, or 15th St/City Hall's Broad St platform to a
+    Market-Frankford stop.  Query those pairs directly.
 
-    Fires only when at least one endpoint is a hub rail code.  Pairs that don't
-    share subway service simply return no departures, so this can never fabricate
-    a connection — a genuinely non-adjacent pair (e.g. ``PWC`` to a far subway
+    Fires only when at least one endpoint has siblings.  Pairs with no service
+    between them simply return no departures, so this can never fabricate a
+    connection — a genuinely non-adjacent pair (e.g. ``PWC`` to a far subway
     stop needing its own transfer) yields nothing and the caller falls through to
     transfer search.
     """
-    from_codes = _CROSS_MODAL_HUB_SUBWAY.get(from_station)
-    to_codes = _CROSS_MODAL_HUB_SUBWAY.get(to_station)
-    if not from_codes and not to_codes:
+    from_entry = _STATION_COMPLEX_SIBLINGS.get(from_station)
+    to_entry = _STATION_COMPLEX_SIBLINGS.get(to_station)
+    if not from_entry and not to_entry:
         return []
 
-    # The subway portion only exists if SUBWAY is enabled for the search.
-    if data_sources is not None and "SUBWAY" not in data_sources:
+    # A single leg only exists if both endpoints resolve into the same system;
+    # a mega-hub on one side and a SEPTA complex on the other is a genuine
+    # multi-system trip for transfer search to handle.
+    systems = {entry[1] for entry in (from_entry, to_entry) if entry}
+    if len(systems) > 1:
+        return []
+    system = systems.pop()
+    if data_sources is not None and system not in data_sources:
         return []
 
-    leg_from_codes = sorted(from_codes) if from_codes else [from_station]
-    leg_to_codes = sorted(to_codes) if to_codes else [to_station]
+    leg_from_codes = sorted(from_entry[0]) if from_entry else [from_station]
+    leg_to_codes = sorted(to_entry[0]) if to_entry else [to_station]
 
-    # One direct SUBWAY query per (from, to) subway-code pair, capped so a
-    # hub<->hub search can't fan out unbounded. Separate DB sessions because the
-    # queries run concurrently and AsyncSession is not concurrency-safe.
+    # One direct query per (from, to) code pair, capped so a complex<->complex
+    # search can't fan out unbounded. Separate DB sessions because the queries
+    # run concurrently and AsyncSession is not concurrency-safe.
     pairs = [(f, t) for f in leg_from_codes for t in leg_to_codes if f != t][
         :MAX_TRANSFER_QUERIES
     ]
@@ -497,7 +543,7 @@ async def _cross_modal_hub_direct_trips(
                 time_to=time_to,
                 limit=limit,
                 hide_departed=hide_departed,
-                data_sources=["SUBWAY"],
+                data_sources=[system],
                 skip_individual_refresh=True,
                 # Every hub subway code expands to the whole in-building
                 # complex, so a query for one platform code (e.g. S138) can
@@ -516,10 +562,12 @@ async def _cross_modal_hub_direct_trips(
     seen: set[tuple[str, date | None]] = set()
     for result in results:
         if isinstance(result, BaseException):
-            logger.warning("cross_modal_hub_leg_failed", error=str(result))
+            logger.warning(
+                "station_complex_leg_failed", system=system, error=str(result)
+            )
             continue
         for dep in result.departures:
-            if dep.data_source != "SUBWAY":
+            if dep.data_source != system:
                 continue
             key = (dep.train_id, dep.journey_date)
             if key in seen:
@@ -615,12 +663,13 @@ async def search_trips(
             },
         )
 
-    # --- Step 1b: Cross-modal hub endpoint (#1587) ---
-    # When PWC/NY/GCT is an endpoint, direct search only saw the rail/PATH side
-    # (nothing) and transfer search would anchor a degenerate HUB->HUB leg with
-    # no departures. Resolve the subway portion as a single direct SUBWAY leg
-    # between the other endpoint and the hub's in-building subway complex.
-    cross_modal_trips = await _cross_modal_hub_direct_trips(
+    # --- Step 1b: Station-complex endpoint (#1587, #1709) ---
+    # When PWC/NY/GCT or a SEPTA Metro complex code is an endpoint, direct
+    # search only saw that one platform (nothing) and transfer search would
+    # anchor a degenerate X->X leg with no departures. Resolve the ride as a
+    # single direct leg between the other endpoint and the endpoint's sibling
+    # codes at the same physical station.
+    complex_trips = await _station_complex_direct_trips(
         departure_service,
         from_station,
         to_station,
@@ -631,10 +680,10 @@ async def search_trips(
         data_sources,
         limit,
     )
-    if cross_modal_trips:
-        logger.info("trip_search_cross_modal_hub", count=len(cross_modal_trips))
+    if complex_trips:
+        logger.info("trip_search_station_complex", count=len(complex_trips))
         return TripSearchResponse(
-            trips=cross_modal_trips,
+            trips=complex_trips,
             metadata={
                 "from_station": {
                     "code": from_station,
@@ -644,8 +693,8 @@ async def search_trips(
                     "code": to_station,
                     "name": get_station_name(to_station),
                 },
-                "count": len(cross_modal_trips),
-                "search_type": "cross_modal",
+                "count": len(complex_trips),
+                "search_type": "station_complex",
                 "generated_at": now_et().isoformat(),
             },
         )
