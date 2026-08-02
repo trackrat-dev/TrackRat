@@ -8,6 +8,7 @@ import pytest
 from trackrat.collectors.mta_common import (
     LIRR_ORIGIN_TERMINALS,
     MNR_ORIGIN_TERMINALS,
+    NYCT_ORIGIN_LEAD_TOLERANCE,
     ORIGIN_TRAVEL_BUFFER,
     build_complete_stops,
     check_journey_completed,
@@ -15,6 +16,7 @@ from trackrat.collectors.mta_common import (
     infer_direction_from_terminals,
     infer_missing_origin,
     infer_subway_origin,
+    nyct_trip_begins_at_first_stop,
     select_matching_trip,
     set_stop_track,
     synthetic_origin_departure,
@@ -22,6 +24,7 @@ from trackrat.collectors.mta_common import (
     update_stop_departure_status,
 )
 from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.utils.time import ET
 
 
 def _make_stop(
@@ -1059,6 +1062,68 @@ class TestInferSubwayOrigin:
         assert (
             result_a == "SH11"
         ), f"A line: expected SH11 (Far Rockaway), got {result_a}"
+
+
+class TestNyctTripBeginsAtFirstStop:
+    """Tests for nyct_trip_begins_at_first_stop().
+
+    Guards issue #1704. The temporal guard cannot tell a trip whose origin the
+    feed dropped from a short-turn trip that genuinely starts mid-route — both
+    put the synthesized departure in the past. The NYCT trip_id carries the
+    trip's own origin departure, which does separate them. Validated against a
+    captured feed sample in
+    tests/unit/collectors/subway/test_trip_id_encoding.py.
+    """
+
+    FIRST_STOP = datetime(2026, 8, 2, 12, 55, 0, tzinfo=timezone.utc)
+
+    def test_origin_coinciding_with_first_stop_means_the_trip_starts_there(self):
+        """The captured-sample signature of a mid-route origin: the encoded
+        time and the first visible stop's time are the same."""
+        assert (
+            nyct_trip_begins_at_first_stop(self.FIRST_STOP, self.FIRST_STOP) is True
+        ), "A trip whose encoded origin is its first visible stop starts there"
+
+    def test_origin_a_travel_segment_earlier_means_a_stop_was_dropped(self):
+        """The inference this feature exists for: the trip started somewhere
+        the feed no longer shows."""
+        origin = self.FIRST_STOP - timedelta(minutes=8)
+        assert nyct_trip_begins_at_first_stop(origin, self.FIRST_STOP) is False
+
+    def test_missing_encoding_defers_to_the_caller(self):
+        """No id, no opinion — the caller's temporal guard decides alone, which
+        is the pre-#1704 behaviour."""
+        assert nyct_trip_begins_at_first_stop(None, self.FIRST_STOP) is False
+
+    def test_boundary_is_the_lead_tolerance(self):
+        """Exactly at the tolerance the trip still counts as starting there;
+        one second past it does not. Pins a real comparison rather than
+        anything that happens to be near a minute."""
+        at_tolerance = self.FIRST_STOP - NYCT_ORIGIN_LEAD_TOLERANCE
+        past_tolerance = at_tolerance - timedelta(seconds=1)
+
+        assert nyct_trip_begins_at_first_stop(at_tolerance, self.FIRST_STOP) is True
+        assert nyct_trip_begins_at_first_stop(past_tolerance, self.FIRST_STOP) is False
+
+    def test_origin_after_the_first_stop_still_declines(self):
+        """The comparison is one-sided. An encoded origin *later* than the
+        first visible stop is even further from the dropped-stop premise, and
+        the captured sample contains such trips (feed and schedule disagreeing
+        on a mid-route origin), so an absolute-difference check would wrongly
+        accept them."""
+        origin = self.FIRST_STOP + timedelta(minutes=3)
+        assert nyct_trip_begins_at_first_stop(origin, self.FIRST_STOP) is True
+
+    def test_tolerance_is_one_minute(self):
+        """The constant is load-bearing: the captured sample separates the two
+        populations at exactly-0 versus 1.5-minutes-and-up."""
+        assert NYCT_ORIGIN_LEAD_TOLERANCE == timedelta(minutes=1)
+
+    def test_compares_across_timezones(self):
+        """The decoded origin is Eastern and feed arrivals are UTC, so the two
+        arguments routinely carry different tzinfo."""
+        origin_et = self.FIRST_STOP.astimezone(ET)
+        assert nyct_trip_begins_at_first_stop(origin_et, self.FIRST_STOP) is True
 
 
 class TestSyntheticOriginDeparture:

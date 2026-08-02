@@ -7,7 +7,8 @@ the NYCT protobuf extensions for train_id, is_assigned, and direction.
 
 import asyncio
 import logging
-from datetime import UTC, datetime
+import re
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -23,6 +24,7 @@ from trackrat.config.stations import (
     map_subway_gtfs_stop,
 )
 from trackrat.utils.sanitize import validate_track
+from trackrat.utils.time import ET
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +67,49 @@ _ROUTE_TO_FEED: dict[str, str] = {
 }
 
 
+# NYCT real-time trip_ids lead with the trip's own origin departure, expressed
+# as hundredths of a minute past midnight on the service day, followed by a
+# three-character route field: "091150_1..N03R" and "077400_GS.S04R".
+_NYCT_TRIP_ORIGIN_RE = re.compile(r"^(-?\d+)_")
+
+
+def parse_nyct_trip_origin_time(
+    trip_id: str, start_date: str | None
+) -> datetime | None:
+    """Decode the trip's own origin departure from its NYCT trip_id.
+
+    ``091150_1..N03R`` encodes 911.5 minutes past midnight — 15:11:30 — on the
+    service day named by ``start_date``. Whenever a trip's own origin stop is
+    still present in the feed, this decodes to that stop's time exactly, which
+    is what lets the collector tell a trip that genuinely starts mid-route from
+    one whose origin the feed dropped (issue #1704). Validated against a
+    captured feed sample in
+    ``tests/unit/collectors/subway/test_trip_id_encoding.py``.
+
+    Args:
+        trip_id: GTFS-RT trip_id.
+        start_date: GTFS-RT ``TripDescriptor.start_date`` (``YYYYMMDD``).
+
+    Returns:
+        The origin departure in Eastern time, or None if either field is
+        missing or malformed — callers then fall back to their own guards.
+    """
+    match = _NYCT_TRIP_ORIGIN_RE.match(trip_id)
+    if not match or not start_date:
+        return None
+    try:
+        midnight = datetime.strptime(start_date, "%Y%m%d")
+        # Wall-clock arithmetic before localizing: the encoded value is minutes
+        # past local midnight, not an elapsed-time offset. The regex bounds the
+        # prefix to digits but not its magnitude, and an absurd one overflows
+        # rather than raising ValueError — contain it here, because the caller's
+        # only handler wraps the whole feed and would drop every other trip in
+        # it over one malformed id.
+        return ET.localize(midnight + timedelta(minutes=int(match.group(1)) / 100))
+    except (ValueError, OverflowError):
+        return None
+
+
 class SubwayArrival(BaseModel):
     """A single arrival/stop time from the NYC Subway GTFS-RT feed."""
 
@@ -80,6 +125,9 @@ class SubwayArrival(BaseModel):
     track: str | None  # From NYCT StopTimeUpdate extension
     nyct_train_id: str | None  # From NYCT TripDescriptor extension
     is_assigned: bool  # Whether a physical train is assigned
+    # The trip's own origin departure, decoded from the trip_id. None when the
+    # feed omits start_date or the id doesn't carry the encoding.
+    trip_origin_time: datetime | None = None
 
     class Config:
         """Pydantic config."""
@@ -185,6 +233,8 @@ class SubwayClient:
 
                 trip_id = trip.trip_id if trip.HasField("trip_id") else ""
                 route_id = trip.route_id if trip.HasField("route_id") else ""
+                start_date = trip.start_date if trip.HasField("start_date") else None
+                trip_origin_time = parse_nyct_trip_origin_time(trip_id, start_date)
 
                 # Extract NYCT trip descriptor extension
                 nyct_desc = extract_nyct_trip_descriptor(trip_update)
@@ -255,6 +305,7 @@ class SubwayClient:
                             track=track,
                             nyct_train_id=nyct_train_id,
                             is_assigned=is_assigned,
+                            trip_origin_time=trip_origin_time,
                         )
                     )
 

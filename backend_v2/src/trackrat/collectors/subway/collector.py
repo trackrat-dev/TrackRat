@@ -27,6 +27,7 @@ from trackrat.collectors.mta_common import (
     check_journey_completed,
     group_candidate_trips_by_overlap,
     infer_subway_origin,
+    nyct_trip_begins_at_first_stop,
     select_matching_trip,
     set_stop_track,
     synthetic_origin_departure,
@@ -350,10 +351,13 @@ class SubwayCollector:
                 candidate_origin = infer_subway_origin(
                     line_code, terminal_code, first_arrival.station_code
                 )
-                if candidate_origin:
-                    # Only accept the inference if the train could already have
-                    # left that terminal; otherwise the feed is truncated by a
-                    # service change and the terminal is not served (#1689).
+                # Two independent conditions, both of which must hold before we
+                # write a stop the feed never sent: the trip must not already
+                # start at its first visible stop (#1704), and the train must
+                # have had time to leave the inferred terminal (#1689).
+                if candidate_origin and not nyct_trip_begins_at_first_stop(
+                    first_arrival.trip_origin_time, first_arrival.arrival_time
+                ):
                     origin_actual = synthetic_origin_departure(
                         first_arrival.arrival_time, now_et()
                     )
