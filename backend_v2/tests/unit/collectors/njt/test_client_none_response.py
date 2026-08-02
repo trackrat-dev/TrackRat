@@ -15,9 +15,15 @@ async def test_get_train_stop_list_all_fields_none_raises_null_data_error():
     """Test that all-fields-null raises NJTransitNullDataError (NOT TrainNotFoundError).
 
     This is the key behavior change: when the NJT API returns a response with all
-    key fields null, it's a transient API issue, not a genuine "train not found".
-    The departure board (getTrainSchedule) often still shows these trains.
-    Using a distinct exception prevents the 3-strike expiry from triggering.
+    key fields null, NJT simply has no detail for that train — it is not a genuine
+    "train not found". The departure board (getTrainSchedule) often still shows
+    these trains. Using a distinct exception prevents the 3-strike expiry from
+    triggering.
+
+    The message must NOT call this transient (issue #1725). It reads as an
+    invitation to retry, and production evidence says a retry cannot help: the
+    same train numbers return null every night, and individual trains return
+    null 113-162 times in a single day.
     """
     client = NJTransitClient()
 
@@ -40,8 +46,15 @@ async def test_get_train_stop_list_all_fields_none_raises_null_data_error():
         async with client:
             await client.get_train_stop_list("3840")
 
-    assert "transient" in str(exc_info.value).lower()
-    assert "3840" in str(exc_info.value)
+    message = str(exc_info.value)
+    assert "3840" in message, f"message must name the train, got: {message!r}"
+    assert (
+        "null data" in message.lower()
+    ), f"message must say what happened upstream, got: {message!r}"
+    assert "transient" not in message.lower(), (
+        "the null-data condition is persistent, not transient — a message "
+        f"claiming otherwise invites a retry that cannot help: {message!r}"
+    )
 
 
 @pytest.mark.asyncio

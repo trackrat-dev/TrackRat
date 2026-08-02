@@ -12,8 +12,13 @@ from structlog import get_logger
 from trackrat.models.api import NJTransitTrainData
 from trackrat.settings import Settings, get_settings
 from trackrat.utils.metrics import track_api_call
+from trackrat.utils.sanitize import bounded_text
 
 logger = get_logger(__name__)
+
+# NJT returns HTML error pages (Cloudflare-style 409s) on some failures, and
+# the body was previously interpolated whole into the raised error message.
+NJT_ERROR_BODY_MAX_CHARS = 500
 
 
 class NJTransitAPIError(Exception):
@@ -31,9 +36,24 @@ class TrainNotFoundError(NJTransitAPIError):
 class NJTransitNullDataError(NJTransitAPIError):
     """Exception raised when NJ Transit API returns a response with all key fields null.
 
-    This is a transient API issue — the train still appears on departure boards
-    but the detail API returns null data. Unlike TrainNotFoundError, this should
-    NOT count toward the expiry threshold since the train is still running.
+    The train still appears on departure boards but the detail API has no data
+    for it. Unlike TrainNotFoundError, this must NOT count toward the expiry
+    threshold — the train is still running, so expiring it would erase a live
+    journey over a gap in NJT's detail coverage.
+
+    Not transient, despite how this read until issue #1725. Production evidence
+    over seven nightly runs: the set of train numbers that fail is identical
+    from one night to the next (116 trains failed on all five nights of
+    2026-07-27..07-31), and individual trains return null 113-162 times in a
+    single day. A retry — immediate or after a backoff — re-asks a question
+    NJT has no answer to. The observed pattern is coverage, not flakiness:
+    NJT publishes stop lists for a subset of train numbers, and the subset
+    turns over wholesale at a timetable change (2026-08-01 shared exactly one
+    failing train with the night before, and failed 80% of its trains).
+
+    Callers should therefore treat this as "upstream has no detail for this
+    train right now" and account for it separately from a genuine failure,
+    rather than retrying or counting it as an error.
     """
 
     pass
@@ -140,24 +160,36 @@ class NJTransitClient:
             return result  # type: ignore[no-any-return]
 
         except httpx.HTTPStatusError as e:
+            # NJT answers some failures with a Cloudflare-style HTML page
+            # rather than JSON. Interpolating the body whole put tens of KB
+            # into the exception message, which then reached the logs once per
+            # train via the nightly stop-list sweep (issue #1725).
+            body = bounded_text(e.response.text, NJT_ERROR_BODY_MAX_CHARS)
             logger.error(
                 "njt_api_http_error",
                 endpoint=endpoint,
                 status_code=e.response.status_code,
-                error=str(e),
+                error=str(e) or repr(e),
+                error_type=type(e).__name__,
+                body_preview=body,
             )
             raise NJTransitAPIError(
-                f"HTTP {e.response.status_code} from {endpoint}: {e.response.text}"
+                f"HTTP {e.response.status_code} from {endpoint}: {body}"
             ) from e
 
         except Exception as e:
+            # str(e) is empty for an argless exception — httpx.ReadTimeout() is
+            # the common one here — which produced a bare `error=` in the logs
+            # and a message ending in a colon that propagated to every
+            # downstream `error=str(e)` (issue #1725).
+            detail = str(e) or repr(e)
             logger.error(
                 "njt_api_request_failed",
                 endpoint=endpoint,
-                error=str(e),
+                error=detail,
                 error_type=type(e).__name__,
             )
-            raise NJTransitAPIError(f"Failed to call {endpoint}: {str(e)}") from e
+            raise NJTransitAPIError(f"Failed to call {endpoint}: {detail}") from e
 
     @track_api_call(api_name="njtransit", endpoint="train_schedule_with_stops")
     async def get_train_schedule_with_stops(self, station_code: str) -> dict[str, Any]:
@@ -276,10 +308,11 @@ class NJTransitClient:
                 f"Train {train_id} not found - API returned empty response"
             )
 
-        # Check if all required fields are None — transient NJT API issue.
-        # The train may still appear on departure boards (getTrainSchedule)
-        # even though getTrainStopList returns null data. This is distinct from
-        # a genuine TrainNotFoundError and should NOT count toward expiry.
+        # Check if all required fields are None — NJT has no detail for this
+        # train. The train may still appear on departure boards
+        # (getTrainSchedule) even though getTrainStopList returns null data.
+        # Distinct from a genuine TrainNotFoundError and must NOT count toward
+        # expiry. Persistent rather than transient — see NJTransitNullDataError.
         required_fields = ["TRAIN_ID", "LINECODE", "BACKCOLOR", "DESTINATION"]
         if all(response.get(field) is None for field in required_fields):
             logger.info(
@@ -288,7 +321,8 @@ class NJTransitClient:
                 response_keys=list(response.keys()),
             )
             raise NJTransitNullDataError(
-                f"Train {train_id} - API returned null data (transient)"
+                f"Train {train_id} - API returned null data "
+                "(no upstream detail for this train)"
             )
 
         # Validate and parse response
@@ -306,10 +340,11 @@ class NJTransitClient:
             return train_data
 
         except Exception as e:
+            detail = str(e) or repr(e)
             logger.error(
                 "failed_to_parse_train_data",
                 train_id=train_id,
-                error=str(e),
+                error=detail,
                 error_type=type(e).__name__,
                 response_keys=(
                     list(response.keys()) if isinstance(response, dict) else None
@@ -320,7 +355,7 @@ class NJTransitClient:
                     else str(response)[:200]
                 ),
             )
-            raise NJTransitAPIError(f"Invalid train data format: {str(e)}") from e
+            raise NJTransitAPIError(f"Invalid train data format: {detail}") from e
 
     @track_api_call(api_name="njtransit", endpoint="station_messages")
     async def get_station_messages(

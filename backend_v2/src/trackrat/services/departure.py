@@ -796,7 +796,8 @@ class DepartureService:
                     "gtfs_merge_failed",
                     from_station=from_station,
                     to_station=to_station,
-                    error=str(e),
+                    error=str(e) or repr(e),
+                    error_type=type(e).__name__,
                 )
 
             # Filter out SCHEDULED trains that are close to departure but weren't

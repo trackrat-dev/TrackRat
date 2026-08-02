@@ -60,6 +60,7 @@ from trackrat.models.database import (
     JourneyStop,
     TrainJourney,
 )
+from trackrat.utils.sanitize import bounded_text
 from trackrat.utils.time import DATETIME_MAX_ET, ET, PROVIDER_TIMEZONE, now_et
 
 logger = get_logger(__name__)
@@ -396,13 +397,6 @@ class GTFSFeedStatus:
         return self.age_hours is None or self.age_hours > GTFS_STALE_FEED_HOURS
 
 
-def _bounded(text: str, limit: int) -> str:
-    """Truncate text to ``limit`` chars, annotating how much was dropped."""
-    if len(text) <= limit:
-        return text
-    return f"{text[:limit]}... [truncated {len(text) - limit} chars]"
-
-
 def _gtfs_csv_rows(f: Any) -> Iterator[dict[str, str]]:
     """Iterate a GTFS CSV file as dicts with whitespace-stripped keys/values.
 
@@ -574,7 +568,7 @@ class GTFSService:
             if stage == "download"
             else GTFSRefreshOutcome.FAILED_PROCESS
         )
-        error_msg = _bounded(str(exc), GTFS_ERROR_MESSAGE_MAX_CHARS)
+        error_msg = bounded_text(str(exc), GTFS_ERROR_MESSAGE_MAX_CHARS)
         tb = "".join(traceback.format_exception(type(exc), exc, exc.__traceback__))
         logger.error(
             "gtfs_refresh_failed",
@@ -582,7 +576,7 @@ class GTFSService:
             stage=stage,
             error_type=type(exc).__name__,
             error=error_msg,
-            traceback=_bounded(tb, GTFS_TRACEBACK_MAX_CHARS),
+            traceback=bounded_text(tb, GTFS_TRACEBACK_MAX_CHARS),
         )
         await db.rollback()
         feed_info = await self._get_or_create_feed_info(db, data_source)

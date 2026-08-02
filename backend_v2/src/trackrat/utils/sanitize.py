@@ -13,6 +13,20 @@ from trackrat.config.station_configs import get_valid_tracks
 logger = get_logger(__name__)
 
 
+def bounded_text(text: str, limit: int) -> str:
+    """Truncate text to ``limit`` chars, annotating how much was dropped.
+
+    Upstream providers do not always answer with the content type they
+    advertise — NJT serves Cloudflare-style HTML error pages on some failures
+    — and an untruncated body interpolated into a log line or an exception
+    message can be tens of kilobytes, repeated once per train (issue #1725).
+    Annotating the dropped length keeps the entry honest about being partial.
+    """
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}... [truncated {len(text) - limit} chars]"
+
+
 def sanitize_track(track_value: str | None) -> str | None:
     """
     Sanitize track values to fit database constraints (5 char max).
