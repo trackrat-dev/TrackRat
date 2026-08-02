@@ -1,0 +1,68 @@
+/**
+ * Cloudflare Workers Static Assets configuration for the TrackRat webpage.
+ *
+ * The site is assets-only: there is no `main` entry point, so no Worker script
+ * runs and every request is served straight from the asset store. That is what
+ * keeps this free — Worker invocations are billable, static asset requests are
+ * not.
+ *
+ * Response headers (cache policy, HSTS, the AASA content type) are NOT set
+ * here. They live in `public/_headers`, which Vite copies to the dist root and
+ * Cloudflare parses on upload — see the comments in that file, and
+ * `vite.config.test.ts`, which pins them against a real build. Note the
+ * `_headers` / `_redirects` files are consumed as configuration and are never
+ * served as assets, so they need no `.assetsignore` entry.
+ *
+ * Deployed with `wrangler deploy --env staging|production`; there is no
+ * top-level environment on purpose, so a bare `wrangler deploy` cannot
+ * accidentally publish to an unnamed Worker.
+ */
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "trackrat-webpage",
+  "compatibility_date": "2026-08-02",
+
+  "assets": {
+    "directory": "./dist/",
+
+    // Serves /index.html with an explicit 200 for any request that does not
+    // match a file. This is what makes deep links work — /trains/TR/NY,
+    // /station/NY and shared /train/... links are all client-side routes with
+    // no corresponding file. It improves on the GCS load balancer, which
+    // returned 404 with the shell as the body.
+    //
+    // This is also why there is no `_redirects` file: the usual SPA catch-all
+    // `/* /index.html 200` would shadow every hashed asset, because Cloudflare
+    // follows redirects even when an asset matches the request.
+    "not_found_handling": "single-page-application"
+  },
+
+  "env": {
+    "staging": {
+      "name": "trackrat-webpage-staging",
+      "routes": [
+        {
+          "pattern": "staging.trackrat.net",
+          "custom_domain": true
+        }
+      ]
+    },
+
+    // production deliberately has no `routes` yet. Adding the two custom
+    // domains below IS the production cutover — it repoints trackrat.net away
+    // from the Google load balancer at 136.110.151.144 — so it is a separate,
+    // deliberate commit at runbook step P5.4 rather than something that ships
+    // with the pipeline change:
+    //
+    //   "routes": [
+    //     { "pattern": "trackrat.net",     "custom_domain": true },
+    //     { "pattern": "www.trackrat.net", "custom_domain": true }
+    //   ]
+    //
+    // Until then this env deploys to its workers.dev URL only, which is where
+    // P5 verifies the build before any DNS moves.
+    "production": {
+      "name": "trackrat-webpage-production"
+    }
+  }
+}
