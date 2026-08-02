@@ -24,6 +24,7 @@ from trackrat.collectors.path.collector import (
 from trackrat.config.stations.path import get_path_route_and_stops
 from trackrat.collectors.path.ridepath_client import PathArrival
 from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.utils.time import normalize_to_et, now_et
 
 # =============================================================================
 # HELPER FUNCTION TESTS
@@ -867,13 +868,18 @@ class TestPathCollectorDiscovery:
     async def test_process_arrival_mid_route_marks_earlier_stops_departed(
         self, collector, mock_session
     ):
-        """Test mid-route discovery marks stops before discovery station as departed."""
+        """Test mid-route discovery marks stops before discovery station as departed.
+
+        The train is AT the discovery station (minutes_away=0), so the whole
+        back-computed run-up lies in the past and every pre-discovery stop is a
+        legitimate departed-stop inference.
+        """
         arrival = PathArrival(
             station_code="PGR",  # Grove Street - index 3 in NWK-WTC route
             headsign="World Trade Center",
             direction="ToNY",
-            minutes_away=5,
-            arrival_time=datetime.now() + timedelta(minutes=5),
+            minutes_away=0,
+            arrival_time=now_et(),
             line_color="D93A30",
             last_updated=None,
         )
@@ -902,6 +908,71 @@ class TestPathCollectorDiscovery:
         assert "PGR" in not_departed_stations, "Grove Street should NOT be departed"
         assert "PWC" in not_departed_stations, "WTC should NOT be departed"
 
+        # Every departed stop must carry a strictly past stamp (issue #1701)
+        now = now_et()
+        for stop in stops:
+            if stop.has_departed_station:
+                assert normalize_to_et(stop.actual_departure) < normalize_to_et(now), (
+                    f"{stop.station_code} was marked departed with a future "
+                    f"actual_departure ({stop.actual_departure})"
+                )
+
+    @pytest.mark.asyncio
+    async def test_process_arrival_mid_route_declines_future_pre_discovery_stops(
+        self, collector, mock_session
+    ):
+        """Pre-discovery stops the train has NOT reached yet stay upcoming (#1701).
+
+        RidePATH returns *predicted* arrivals, so a train discovered 5 minutes
+        out from Grove Street has an origin departure back-computed to now-4
+        (9 min of cumulative GTFS segment time from Newark). PNK and PHR land in
+        the past and are genuinely passed, but PJS lands at now+2 — the train is
+        still two minutes away from it. Marking PJS departed with that future
+        stamp made ``hide_departed``'s upcoming branch (#1422) serve it as a
+        boardable departure at a station the train had not reached.
+        """
+        arrival = PathArrival(
+            station_code="PGR",  # Grove Street - index 3 in NWK-WTC route
+            headsign="World Trade Center",
+            direction="ToNY",
+            minutes_away=5,
+            arrival_time=now_et() + timedelta(minutes=5),
+            line_color="D93A30",
+            last_updated=None,
+        )
+
+        await collector._process_arrival_for_discovery(mock_session, arrival, {})
+
+        stops = {
+            call[0][0].station_code: call[0][0]
+            for call in mock_session.add.call_args_list
+            if isinstance(call[0][0], JourneyStop)
+        }
+
+        # Origin departure = (now + 5) - 9 = now - 4
+        assert stops["PNK"].has_departed_station, "PNK (now-4) is genuinely passed"
+        assert stops["PHR"].has_departed_station, "PHR (now-1) is genuinely passed"
+
+        # PJS is back-computed to now+2 — the train has not reached it
+        assert not stops["PJS"].has_departed_station, (
+            "PJS is 2 minutes in the future; marking it departed makes it a "
+            "boardable departure at a station the train has not reached"
+        )
+        assert stops["PJS"].actual_departure is None
+        assert stops["PJS"].actual_arrival is None
+        assert stops["PJS"].departure_source is None
+
+        # It remains an ordinary upcoming prediction, not a dropped stop
+        assert stops["PJS"].scheduled_arrival is not None
+        assert stops["PJS"].updated_arrival is not None
+
+        now = now_et()
+        for code, stop in stops.items():
+            if stop.has_departed_station:
+                assert normalize_to_et(stop.actual_departure) < normalize_to_et(
+                    now
+                ), f"{code} was marked departed with a future actual_departure"
+
     @pytest.mark.asyncio
     async def test_process_arrival_mid_route_sets_departure_source(
         self, collector, mock_session
@@ -911,8 +982,8 @@ class TestPathCollectorDiscovery:
             station_code="PJS",  # Journal Square - mid-route on NWK-WTC
             headsign="World Trade Center",
             direction="ToNY",
-            minutes_away=3,
-            arrival_time=datetime.now() + timedelta(minutes=3),
+            minutes_away=0,
+            arrival_time=now_et(),
             line_color="D93A30",
             last_updated=None,
         )
@@ -927,6 +998,7 @@ class TestPathCollectorDiscovery:
 
         # Earlier stops should have departure_source set
         earlier_stops = [s for s in stops if s.has_departed_station]
+        assert earlier_stops, "mid-route discovery must backfill some departed stops"
         for stop in earlier_stops:
             assert stop.departure_source == "inferred_from_discovery"
 
@@ -2455,7 +2527,7 @@ class TestTimeValidation:
 
     def test_validates_sequential_times_no_correction_needed(self, collector):
         """Test that correctly ordered times pass validation without changes."""
-        base_time = datetime.now() - timedelta(minutes=20)
+        base_time = now_et() - timedelta(minutes=20)
 
         stops = [
             self._create_departed_stop("PNK", 1, base_time, base_time),
@@ -2484,7 +2556,7 @@ class TestTimeValidation:
 
     def test_fixes_out_of_order_times(self, collector):
         """Test that out-of-order times are corrected using scheduled times."""
-        base_time = datetime.now() - timedelta(minutes=20)
+        base_time = now_et() - timedelta(minutes=20)
 
         # Stop 2 has a LATER time than stop 3 (impossible!)
         stops = [
@@ -2512,7 +2584,7 @@ class TestTimeValidation:
 
     def test_fixes_multiple_out_of_order_times(self, collector):
         """Test that multiple out-of-order times are all corrected."""
-        base_time = datetime.now() - timedelta(minutes=20)
+        base_time = now_et() - timedelta(minutes=20)
 
         # Multiple stops have times out of order
         stops = [
@@ -2554,7 +2626,7 @@ class TestTimeValidation:
 
     def test_handles_single_stop(self, collector):
         """Test that single stop doesn't cause errors."""
-        base_time = datetime.now() - timedelta(minutes=20)
+        base_time = now_et() - timedelta(minutes=20)
         stops = [self._create_departed_stop("PNK", 1, base_time, base_time)]
 
         # Should not raise
@@ -2562,7 +2634,7 @@ class TestTimeValidation:
 
     def test_handles_non_departed_stops(self, collector):
         """Test that non-departed stops are excluded from validation."""
-        base_time = datetime.now() - timedelta(minutes=20)
+        base_time = now_et() - timedelta(minutes=20)
 
         departed_stop = self._create_departed_stop("PNK", 1, base_time, base_time)
 
@@ -2579,7 +2651,7 @@ class TestTimeValidation:
 
     def test_preserves_sequential_consistency_source(self, collector):
         """Test that stops fixed via sequential_consistency keep that source."""
-        base_time = datetime.now() - timedelta(minutes=20)
+        base_time = now_et() - timedelta(minutes=20)
 
         stop1 = self._create_departed_stop(
             "PNK", 1, base_time, base_time + timedelta(minutes=10)
@@ -2952,3 +3024,294 @@ class TestCollectJourneyDetailsFlushHandling:
 
         # Should NOT raise — error is caught and logged
         await collector._collect_journey_details_impl(session, journey)
+
+
+# =============================================================================
+# FUTURE-TIMESTAMP GUARD ON DEPARTED STOPS (issue #1701)
+# =============================================================================
+
+
+class TestDepartedStopsNeverCarryFutureTimes:
+    """Every site that latches ``has_departed_station`` must stamp a past time.
+
+    ``hide_departed`` keeps a row whose
+    ``coalesce(actual_departure, scheduled_departure)`` is still upcoming, even
+    when the departed flag is set (issue #1422). So a stop written as departed
+    with a *future* stamp is served as a boardable departure at a station the
+    train has not reached — issue #1701.
+
+    On PATH the schedule itself is unreliable for this purpose: mid-route
+    discoveries back-compute every stop time from a RidePATH *prediction*, so
+    ``scheduled_arrival`` can be in the future on a journey whose later stops
+    are genuinely departed. Each site below therefore has to check, not assume.
+    """
+
+    @pytest.fixture
+    def collector(self):
+        client = AsyncMock()
+        client.close = AsyncMock()
+        return PathCollector(client=client)
+
+    @pytest.fixture
+    def mock_session(self):
+        session = AsyncMock()
+        session.execute = AsyncMock()
+        session.add = MagicMock()
+        session.flush = AsyncMock()
+        scalars_result = MagicMock()
+        scalars_result.all.return_value = []
+        session.scalars = AsyncMock(return_value=scalars_result)
+        return session
+
+    @pytest.fixture
+    def mock_transit_analyzer(self):
+        analyzer = MagicMock()
+        analyzer.analyze_new_segments = AsyncMock(return_value=0)
+        analyzer.analyze_journey = AsyncMock()
+        return analyzer
+
+    @pytest.fixture
+    def journey(self):
+        journey = MagicMock(spec=TrainJourney)
+        journey.id = 1
+        journey.train_id = "PATH_PNK_wtc_1701"
+        journey.destination = "World Trade Center"
+        journey.origin_station_code = "PNK"
+        journey.terminal_station_code = "PWC"
+        journey.line_color = "D93A30"
+        journey.is_completed = False
+        journey.stops_count = 6
+        return journey
+
+    @staticmethod
+    def _stop(code: str, sequence: int, scheduled_arrival: datetime) -> MagicMock:
+        stop = MagicMock(spec=JourneyStop)
+        stop.station_code = code
+        stop.station_name = code
+        stop.stop_sequence = sequence
+        stop.scheduled_arrival = scheduled_arrival
+        stop.scheduled_departure = scheduled_arrival
+        stop.actual_arrival = None
+        stop.actual_departure = None
+        stop.updated_arrival = None
+        stop.updated_departure = None
+        stop.has_departed_station = False
+        stop.departure_source = None
+        stop.arrival_source = None
+        stop.updated_at = None
+        return stop
+
+    async def _run_update(
+        self, collector, mock_session, journey, stops, arrivals, now, analyzer
+    ):
+        with patch("trackrat.collectors.path.collector.now_et", return_value=now):
+            with patch(
+                "trackrat.collectors.path.collector.TransitAnalyzer",
+                return_value=analyzer,
+            ):
+                await collector._update_stops_from_arrivals(
+                    mock_session, journey, stops, arrivals
+                )
+
+    # -- Site: post-loop sequential consistency -------------------------------
+
+    @pytest.mark.asyncio
+    async def test_sequential_consistency_does_not_stamp_future_schedule(
+        self, collector, mock_session, journey, mock_transit_analyzer
+    ):
+        """A later stop is confirmed departed while earlier schedules are future.
+
+        This is the exact shape a mid-route discovery leaves behind: PNK/PHR
+        were laid out from a prediction and sit in the future, then a real
+        RidePATH observation confirms PGR was passed a minute ago. Sequential
+        consistency must latch PNK/PHR departed — the train cannot have skipped
+        them — without copying their future schedule into ``actual_departure``.
+        """
+        now = datetime.now()
+        phr_scheduled = now - timedelta(minutes=1)
+        stops = [
+            self._stop("PNK", 1, now - timedelta(minutes=4)),
+            self._stop("PHR", 2, phr_scheduled),
+            self._stop("PJS", 3, now + timedelta(minutes=2)),
+            self._stop("PGR", 4, now + timedelta(minutes=4, seconds=50)),
+        ]
+        # The train is running ~5 minutes ahead of its back-computed schedule:
+        # RidePATH puts it at PGR now, while PJS is still scheduled at now+2.
+        arrivals = [
+            PathArrival(
+                station_code="PGR",
+                headsign="World Trade Center",
+                direction="ToNY",
+                minutes_away=0,
+                arrival_time=now,
+                line_color="D93A30",
+                last_updated=now,
+            )
+        ]
+
+        await self._run_update(
+            collector,
+            mock_session,
+            journey,
+            stops,
+            arrivals,
+            now,
+            mock_transit_analyzer,
+        )
+
+        pnk, phr, pjs, pgr = stops
+        assert pgr.has_departed_station is True, "PGR was observed as passed"
+        assert pnk.has_departed_station is True, "PNK is 4 minutes past its schedule"
+
+        # PJS is latched by the post-loop pass and its schedule is in the future,
+        # so the stamp must come from wall clock instead.
+        assert (
+            pjs.has_departed_station is True
+        ), "PJS must stay sequentially consistent with PGR"
+        assert pjs.departure_source == "sequential_consistency"
+        assert pjs.actual_departure == now, (
+            f"PJS was stamped {pjs.actual_departure}; a future stamp would be "
+            f"served as a boardable departure at a station already passed"
+        )
+        assert pjs.actual_arrival == now
+
+        # PHR is latched by the same pass but its schedule is admissible, so it
+        # must be preserved rather than clamped.
+        assert phr.has_departed_station is True
+        assert phr.departure_source == "sequential_consistency"
+        assert phr.actual_departure == phr_scheduled
+
+        for stop in stops:
+            assert stop.actual_departure <= now, (
+                f"{stop.station_code} carries a future actual_departure "
+                f"({stop.actual_departure}) while flagged departed"
+            )
+
+    @pytest.mark.asyncio
+    async def test_sequential_consistency_preserves_admissible_schedule(
+        self, collector, mock_session, journey, mock_transit_analyzer
+    ):
+        """The legitimate case must keep using the schedule, not clamp to now.
+
+        PHR is scheduled one minute ago — inside the 2-minute grace period that
+        makes the tier-3 time inference decline it — so the post-loop pass is
+        what latches it. Its schedule is in the past, so it is admissible and
+        must be preserved rather than replaced with wall clock.
+        """
+        now = datetime.now()
+        phr_scheduled = now - timedelta(minutes=1)
+        stops = [
+            self._stop("PHR", 1, phr_scheduled),
+            self._stop("PGR", 2, now + timedelta(seconds=30)),
+        ]
+        arrivals = [
+            PathArrival(
+                station_code="PGR",
+                headsign="World Trade Center",
+                direction="ToNY",
+                minutes_away=0,
+                arrival_time=now - timedelta(seconds=30),
+                line_color="D93A30",
+                last_updated=now,
+            )
+        ]
+
+        await self._run_update(
+            collector,
+            mock_session,
+            journey,
+            stops,
+            arrivals,
+            now,
+            mock_transit_analyzer,
+        )
+
+        assert stops[0].has_departed_station is True
+        assert stops[0].departure_source == "sequential_consistency"
+        assert (
+            stops[0].actual_departure == phr_scheduled
+        ), "an admissible past schedule must be preserved, not clamped to now"
+
+    # -- Site: in-loop sequential inference -----------------------------------
+
+    @pytest.mark.asyncio
+    async def test_sequential_inference_does_not_stamp_future_schedule(
+        self, collector, mock_session, journey, mock_transit_analyzer
+    ):
+        """The in-loop twin of the pass above carries the same guard.
+
+        Reaching this branch needs a stop whose sequence is lower than one
+        already visited, so the list has to arrive out of order.
+        ``_get_journey_stops`` orders by ``stop_sequence`` and never does, which
+        is why the post-loop pass exists — this test pins the guard on the
+        branch rather than a live code path.
+        """
+        now = datetime.now()
+        passed = self._stop("PGR", 3, now + timedelta(minutes=4, seconds=50))
+        earlier = self._stop("PHR", 2, now + timedelta(minutes=6))
+        stops = [passed, earlier]  # deliberately out of sequence order
+
+        arrivals = [
+            PathArrival(
+                station_code="PGR",
+                headsign="World Trade Center",
+                direction="ToNY",
+                minutes_away=0,
+                arrival_time=now,
+                line_color="D93A30",
+                last_updated=now,
+            )
+        ]
+
+        await self._run_update(
+            collector,
+            mock_session,
+            journey,
+            stops,
+            arrivals,
+            now,
+            mock_transit_analyzer,
+        )
+
+        assert passed.has_departed_station is True, "PGR was observed as passed"
+        assert earlier.has_departed_station is True
+        assert earlier.departure_source == "sequential_inference"
+        assert (
+            earlier.actual_departure <= now
+        ), f"PHR was stamped {earlier.actual_departure}, in the future"
+
+    # -- Site: out-of-order time correction -----------------------------------
+
+    def test_out_of_order_fix_does_not_fall_back_to_a_future_schedule(self, collector):
+        """The ordering repair must not swap a bad time for a future one.
+
+        ``_validate_and_fix_stop_times`` normally rewrites an out-of-order stop
+        to its scheduled time. On a back-computed PATH journey that schedule can
+        itself be in the future, which would trade an ordering bug for a
+        rider-visible one. The following stop's time is both in the past and the
+        bound the repair exists to restore.
+        """
+        now = datetime.now()
+
+        current = self._stop("PHR", 1, now + timedelta(minutes=6))  # future schedule
+        current.has_departed_station = True
+        current.actual_arrival = now + timedelta(minutes=10)  # out of order
+        current.actual_departure = now + timedelta(minutes=10)
+
+        following = self._stop("PJS", 2, now - timedelta(minutes=2))
+        following.has_departed_station = True
+        following.actual_arrival = now - timedelta(minutes=2)
+        following.actual_departure = now - timedelta(minutes=2)
+
+        with patch("trackrat.collectors.path.collector.now_et", return_value=now):
+            collector._validate_and_fix_stop_times([current, following], "PATH_test")
+
+        assert (
+            current.actual_arrival == following.actual_arrival
+        ), "the repair should fall back to the following stop's time"
+        assert (
+            current.actual_departure <= now
+        ), f"PHR was corrected to {current.actual_departure}, still in the future"
+        assert (
+            current.actual_arrival <= following.actual_arrival
+        ), "ordering must be restored, which is the point of the repair"
