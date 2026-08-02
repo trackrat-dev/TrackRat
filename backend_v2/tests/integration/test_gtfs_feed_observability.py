@@ -947,24 +947,26 @@ class TestHealthExposesFeedFreshness:
         would, and SEPTA Metro would keep serving a dead schedule indefinitely
         with a healthy status page above it (issue #1634).
         """
-        for source in ("NJT", "PATH", "PATCO", "LIRR"):
-            await _seed_feed(db_session, source, parsed_hours_ago=1)
-        await _seed_feed(
-            db_session,
-            "SEPTA_METRO",
-            parsed_hours_ago=3,
-            trip_count=14203,
-            feed_ends_in_days=-5,
-        )
+        # Every source seeded current, so the deployment is unambiguously
+        # healthy apart from the one lapsed bundle. Without this the check
+        # would already be warning over unseeded sources and the test would
+        # prove nothing about the lapse.
+        for source in GTFS_FEED_URLS:
+            await _seed_feed(
+                db_session,
+                source,
+                parsed_hours_ago=3 if source == "SEPTA_METRO" else 1,
+                trip_count=14203 if source == "SEPTA_METRO" else None,
+                feed_ends_in_days=-5 if source == "SEPTA_METRO" else 45,
+            )
 
         health = await self._gtfs_check(db_session)
         check = health["checks"]["gtfs_feeds"]
 
+        # Nothing is stale, so the lapse is the sole cause of the degrade.
+        assert check["stale_sources"] == []
         assert check["status"] == "warning"
         assert check["lapsed_sources"] == ["SEPTA_METRO"]
-        # Reported as lapsed, NOT as stale — conflating them would send an
-        # operator to the download path, which is working fine.
-        assert "SEPTA_METRO" not in check["stale_sources"]
         assert check["feeds"]["SEPTA_METRO"]["days_until_feed_end"] == -5
         assert check["feeds"]["SEPTA_METRO"]["feed_end_date"] == (
             now_et().date() - timedelta(days=5)
@@ -974,16 +976,43 @@ class TestHealthExposesFeedFreshness:
     async def test_current_feeds_report_their_end_date_without_alarming(
         self, db_session: AsyncSession
     ):
-        for source in ("NJT", "PATH", "PATCO", "LIRR"):
+        """The companion baseline: identical setup, valid end dates, healthy.
+
+        Pins that the lapse check does not alarm on ordinary operation — the
+        way a check earns being trusted when it does fire.
+        """
+        for source in GTFS_FEED_URLS:
             await _seed_feed(
                 db_session, source, parsed_hours_ago=1, feed_ends_in_days=45
             )
 
-        check = (await self._gtfs_check(db_session))["checks"]["gtfs_feeds"]
+        health = await self._gtfs_check(db_session)
+        check = health["checks"]["gtfs_feeds"]
 
         assert check["status"] == "healthy"
         assert check["lapsed_sources"] == []
+        assert check["stale_sources"] == []
         assert check["feeds"]["PATCO"]["days_until_feed_end"] == 45
+        assert health["status"] != "degraded"
+
+    async def test_a_bundle_expiring_today_does_not_alarm(
+        self, db_session: AsyncSession
+    ):
+        """GTFS end dates are inclusive, so the last valid day must stay
+        healthy. Off-by-one here would fire on every bundle's final day."""
+        for source in GTFS_FEED_URLS:
+            await _seed_feed(
+                db_session,
+                source,
+                parsed_hours_ago=1,
+                feed_ends_in_days=0 if source == "PATCO" else 45,
+            )
+
+        check = (await self._gtfs_check(db_session))["checks"]["gtfs_feeds"]
+
+        assert check["lapsed_sources"] == []
+        assert check["status"] == "healthy"
+        assert check["feeds"]["PATCO"]["days_until_feed_end"] == 0
 
     async def test_disabled_sources_are_excluded(self, db_session: AsyncSession):
         """BART and friends are off by design and have no feed to be stale."""
