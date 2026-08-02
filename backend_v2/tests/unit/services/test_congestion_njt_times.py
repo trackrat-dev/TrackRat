@@ -10,10 +10,10 @@ it hadn't traversed yet — factor 2-3x "severe" congestion for segments the
 train would run at normal speed, continuously re-warmed by the cache
 precompute whenever anything ran late.
 
-Both consumption paths are covered here:
-- the shared stop_pairs SQL CTE (used by all three optimized queries),
-  exercised against real PostgreSQL, and
-- the Python fallback path (_calculate_segments_from_journeys).
+Covered here: the shared stop_pairs SQL CTE (used by all the optimized
+queries), exercised against real PostgreSQL. This is the only consumption
+path — the divergent Python fallback that carried a second copy of this
+correction was removed in issue #1603.
 
 The from-stop of a segment pair is never the journey terminal (every
 consumer discards rows without a to_station), so the intermediate-stop
@@ -27,7 +27,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.models.database import JourneyStop, TrainJourney
-from trackrat.services.congestion import CongestionAnalyzer, _stop_pairs_cte
+from trackrat.services.congestion import _stop_pairs_cte
 from trackrat.utils.time import now_et
 
 
@@ -169,131 +169,3 @@ class TestStopPairsCteNjtCorrection:
         assert (
             row.from_updated_departure == departure_estimate
         ), "Non-NJT updated_departure must pass through unmodified"
-
-
-class TestPythonPathNjtCorrection:
-    """_calculate_segments_from_journeys must apply the same correction."""
-
-    def test_delayed_njt_segment_uses_live_departure_estimate(self):
-        """A 25-min-late NJT train's completed segment (live estimates only,
-        no recorded actuals) must compute its real ~10-min transit time from
-        the live departure, not schedule-to-live (35 min → 'severe'). Times
-        are anchored so the downstream arrival is already in the past — the
-        #1603 filter drops not-yet-completed segments, so this exercises the
-        NJT inversion correction on a segment that is actually counted.
-        """
-        analyzer = CongestionAnalyzer()
-        cutoff = now_et() - timedelta(hours=3)
-
-        schedule = now_et().replace(microsecond=0) - timedelta(minutes=40)
-        live_estimate = schedule + timedelta(minutes=25)
-
-        journey = _journey("3855", "NJT")
-        journey.id = 1
-        journey.stops = [
-            JourneyStop(
-                station_code="NP",
-                station_name="Newark Penn Station",
-                stop_sequence=1,
-                scheduled_departure=schedule,
-                updated_departure=schedule,  # raw DEP_TIME = schedule
-                updated_arrival=live_estimate,  # raw TIME = live estimate
-                has_departed_station=False,
-            ),
-            JourneyStop(
-                station_code="TR",
-                station_name="Trenton",
-                stop_sequence=2,
-                scheduled_arrival=schedule + timedelta(minutes=10),
-                updated_arrival=live_estimate + timedelta(minutes=10),
-                has_departed_station=False,
-            ),
-        ]
-
-        segment_groups, _ = analyzer._calculate_segments_from_journeys(
-            [journey], cutoff
-        )
-
-        key = ("NP", "TR", "NJT")
-        assert key in segment_groups, f"Segment missing; got {list(segment_groups)}"
-        actual_minutes = segment_groups[key][0]["actual_minutes"]
-        assert actual_minutes == pytest.approx(10.0, abs=0.01), (
-            "Segment time must be live-to-live (~10 min); schedule-to-live "
-            f"would report the full delay as transit time (got {actual_minutes})"
-        )
-
-    def test_actual_departure_still_preferred_over_estimates(self):
-        """A recorded actual departure always wins over any estimate."""
-        analyzer = CongestionAnalyzer()
-        cutoff = now_et() - timedelta(hours=3)
-
-        schedule = now_et().replace(microsecond=0) - timedelta(minutes=30)
-        actual = schedule + timedelta(minutes=3)
-
-        journey = _journey("3861", "NJT")
-        journey.id = 2
-        journey.stops = [
-            JourneyStop(
-                station_code="NP",
-                station_name="Newark Penn Station",
-                stop_sequence=1,
-                scheduled_departure=schedule,
-                updated_departure=schedule,
-                updated_arrival=schedule + timedelta(minutes=25),
-                actual_departure=actual,
-                has_departed_station=True,
-            ),
-            JourneyStop(
-                station_code="TR",
-                station_name="Trenton",
-                stop_sequence=2,
-                scheduled_arrival=schedule + timedelta(minutes=10),
-                actual_arrival=actual + timedelta(minutes=11),
-                has_departed_station=False,
-            ),
-        ]
-
-        segment_groups, _ = analyzer._calculate_segments_from_journeys(
-            [journey], cutoff
-        )
-
-        actual_minutes = segment_groups[("NP", "TR", "NJT")][0]["actual_minutes"]
-        assert actual_minutes == pytest.approx(11.0, abs=0.01)
-
-    def test_non_njt_segment_uses_raw_departure_estimate(self):
-        """Non-NJT providers keep their genuine updated_departure."""
-        analyzer = CongestionAnalyzer()
-        cutoff = now_et() - timedelta(hours=3)
-
-        departure_estimate = now_et().replace(microsecond=0) - timedelta(minutes=20)
-
-        journey = _journey("LIRR_123", "LIRR")
-        journey.id = 3
-        journey.stops = [
-            JourneyStop(
-                station_code="ST1",
-                station_name="Stop One",
-                stop_sequence=0,
-                updated_departure=departure_estimate,
-                # Later arrival estimate — a max() would wrongly pick this.
-                updated_arrival=departure_estimate + timedelta(minutes=5),
-                has_departed_station=False,
-            ),
-            JourneyStop(
-                station_code="ST2",
-                station_name="Stop Two",
-                stop_sequence=1,
-                updated_arrival=departure_estimate + timedelta(minutes=12),
-                has_departed_station=False,
-            ),
-        ]
-
-        segment_groups, _ = analyzer._calculate_segments_from_journeys(
-            [journey], cutoff
-        )
-
-        actual_minutes = segment_groups[("ST1", "ST2", "LIRR")][0]["actual_minutes"]
-        assert actual_minutes == pytest.approx(12.0, abs=0.01), (
-            "Non-NJT segment must use the raw departure estimate (12 min), "
-            f"not a max()-corrected one (7 min); got {actual_minutes}"
-        )

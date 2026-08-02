@@ -21,10 +21,10 @@ required to be after departure, this also bounds the departure to the past, so
 one predicate closes both the fully-future phantom segments and the in-progress
 segment whose downstream stop carries a future passthrough arrival.
 
-Both consumption paths are covered:
-- the SQL segment queries (``get_individual_segments_optimized`` and
-  ``get_network_congestion_optimized``), exercised against real PostgreSQL, and
-- the Python fallback path (``_calculate_segments_from_journeys``).
+Covered here: the SQL segment queries (``get_individual_segments_optimized``
+and ``get_network_congestion_optimized``), exercised against real PostgreSQL.
+This is the only consumption path — the divergent Python fallback that carried
+a second copy of this bound was removed in issue #1603.
 
 Stations WI -> ABE -> BL -> BA are consecutive on the Amtrak NEC topology, so
 every segment survives ``normalize_*_segments`` (AMTRAK requires a route match)
@@ -186,37 +186,4 @@ class TestSqlSegmentWindowUpperBound:
         )
         assert ("BL", "BA") not in by_pair, (
             "BL->BA (fully in the future) must not be counted (issue #1603)."
-        )
-
-
-class TestPythonPathWindowUpperBound:
-    """_calculate_segments_from_journeys must apply the same upper bound."""
-
-    def test_excludes_future_and_in_progress_segments(self):
-        analyzer = CongestionAnalyzer()
-        cutoff = now_et() - timedelta(hours=3)
-
-        journey = _mid_journey_amtrak()
-        journey.id = 1
-
-        segment_groups, _ = analyzer._calculate_segments_from_journeys(
-            [journey], cutoff
-        )
-
-        assert ("WI", "ABE", "AMTRAK") in segment_groups, (
-            f"Completed WI->ABE segment missing; got {list(segment_groups)}"
-        )
-        actual_minutes = segment_groups[("WI", "ABE", "AMTRAK")][0]["actual_minutes"]
-        assert actual_minutes == pytest.approx(20.0, abs=0.01), (
-            "WI->ABE transit time should be ~20 min (dep -60 to arr -40); "
-            f"got {actual_minutes}"
-        )
-
-        assert ("ABE", "BL", "AMTRAK") not in segment_groups, (
-            "ABE->BL has a future arrival at BL (not yet traversed) and must "
-            "be excluded; without the upper bound it reports a bogus ~59-min "
-            "transit time (issue #1603)."
-        )
-        assert ("BL", "BA", "AMTRAK") not in segment_groups, (
-            "BL->BA is fully in the future and must be excluded (issue #1603)."
         )
