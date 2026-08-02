@@ -51,11 +51,15 @@ and production diverge deliberately and visibly in version control.
 `infra_v2/terraform/variables.tf`, `variable "disabled_data_sources"`. Change
 **only the environment you intend to move**:
 
+Illustrated with MBTA, to keep the example distinct from the committed state —
+SEPTA's staging soak is live, so copying the current value would look like a
+no-op edit:
+
 ```hcl
 default = {
-  # SEPTA soak: enabled in staging only (issue #1634). Production stays dark
-  # until the staging gates pass.
-  staging    = ["BART", "WMATA", "MBTA", "METRA"]
+  # MBTA soak: enabled in staging only. Production stays dark until the
+  # staging gates pass.
+  staging    = ["BART", "WMATA", "METRA"]
   production = ["BART", "WMATA", "MBTA", "METRA", "SEPTA_RR", "SEPTA_METRO"]
 }
 ```
@@ -98,7 +102,7 @@ wait for the MIG to report the new instance healthy before validating.
 codes parsed as intended:
 
 ```bash
-curl -s https://staging.apiv2.trackrat.net/health \
+curl -s https://staging-api.trackrat.net/health \
   | python3 -c "import sys,json; print(json.load(sys.stdin)['data_sources'])"
 ```
 
@@ -106,13 +110,57 @@ curl -s https://staging.apiv2.trackrat.net/health \
 still in `disabled`, the code did not match `ALL_DATA_SOURCES` — check spelling
 against `backend_v2/src/trackrat/services/departure.py`.
 
-Then run the validation suite for the environment:
+### 5. Wait for the GTFS bundle before judging anything
+
+**A newly enabled source serves nothing until its static GTFS bundle loads.**
+The flag gates the GTFS refresh, so a source that has never been enabled in an
+environment has no bundle there at all — not a stale one, none. Every source
+needs it for future-date schedules, and some cannot produce a departure at all
+without it: SEPTA Metro is schedule-first, and the SEPTA Regional Rail collector
+joins its delay-only GTFS-RT feed to the static schedule by
+`(trip_id, stop_sequence)`.
+
+The load is part of startup, not of the 3:00 AM cron. `Scheduler.start()`
+launches `check_and_initialize_gtfs_feeds()`, which calls
+`refresh_feed(..., force=True)` for every enabled source that has never recorded
+a successful parse — `force` bypasses the 20-hour download rate limit. Because
+the apply replaces the instance, that runs within minutes of the new instance
+coming up. The daily 3:00 AM ET `gtfs_feed_refresh` job is the *ongoing* refresh;
+it is not what bootstraps a newly enabled source. **Do not schedule the apply
+around it** — waiting for 3:00 AM burns soak hours for nothing.
+
+Between the instance coming up and the parse finishing, `/health` shows the
+source with `last_successful_parse_at: null`, lists it in
+`checks.gtfs_feeds.stale_sources`, and reports `checks.gtfs_feeds.status:
+"warning"` — the freshness check is driven by the enabled-source list, not by
+what is in the table, so a source with no row at all still appears. That warning
+is the expected pre-load state and clears itself once the parse lands.
+
+**Start the soak clock at the first successful parse, not at the apply.** Confirm
+a recent `last_successful_parse_at`, a non-zero `trip_count`, and a null
+`error_message`:
+
+```bash
+curl -s https://staging-api.trackrat.net/health \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['checks']['gtfs_feeds']['feeds'])"
+```
+
+A validation run before that parse reports every line of the new source dark.
+That is expected and means nothing — do not record it as a gate result.
+
+If `error_message` is set, the startup refresh failed and the text says at which
+stage. A failure does not wedge the source: the failure path rolls back the
+uncommitted `last_downloaded_at`, so the rate limit is never armed and the 3:00
+AM job retries normally. To retry sooner, restart the instance — the startup
+path force-refreshes again.
+
+### 6. Validate
 
 ```bash
 bash scripts/validate-staging.sh --ground-truth --coverage
 ```
 
-### 5. Rollback
+### 7. Rollback
 
 Re-add the code to that environment's list, commit, and apply. Rollback is
 symmetric and takes effect on the next instance replacement.
@@ -128,8 +176,11 @@ empty history and lose the analytics baseline the soak built up.
 
 | Environment | Disabled sources |
 |---|---|
-| staging | BART, WMATA, MBTA, METRA, SEPTA_RR, SEPTA_METRO |
+| staging | BART, WMATA, MBTA, METRA |
 | production | BART, WMATA, MBTA, METRA, SEPTA_RR, SEPTA_METRO |
 
-Both match the pre-#1634 literal exactly; this change is mechanism-only, with
-no behavior change on the first apply beyond the instance replacement.
+The environments diverge deliberately: `SEPTA_RR` and `SEPTA_METRO` are running
+their staging soak (issue #1634). Production stays dark until the soak gates
+pass, and moves in one coordinated release with the iOS
+(`TrainSystem.disabledSystems`) and web (`DISABLED_SYSTEMS`) mirrors — backend
+first, clients after.
