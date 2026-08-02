@@ -37,7 +37,6 @@ from trackrat.models.api import (
 from trackrat.services.trip_search import (
     FALLBACK_TRANSIT_MINUTES,
     MAX_TRANSFER_QUERIES,
-    _cross_modal_hub_direct_trips,
     _departure_to_leg,
     _empty_response,
     _filter_cross_system_direct_trips,
@@ -50,6 +49,7 @@ from trackrat.services.trip_search import (
     _orient_transfer,
     _rank_transfer_points,
     _resolve_arrival_time,
+    _station_complex_direct_trips,
     _synthesize_alighting,
     _systems_for_station,
     search_trips,
@@ -2256,7 +2256,7 @@ class TestCrossModalHubEndpoint:
             to_station="S635",
         )
 
-        assert result.metadata["search_type"] == "cross_modal", result.metadata
+        assert result.metadata["search_type"] == "station_complex", result.metadata
         assert len(result.trips) == 1
         leg = result.trips[0].legs[0]
         assert leg.data_source == "SUBWAY"
@@ -2275,7 +2275,7 @@ class TestCrossModalHubEndpoint:
             to_station="PWC",
         )
 
-        assert result.metadata["search_type"] == "cross_modal", result.metadata
+        assert result.metadata["search_type"] == "station_complex", result.metadata
         assert len(result.trips) == 1
         leg = result.trips[0].legs[0]
         assert leg.data_source == "SUBWAY"
@@ -2286,7 +2286,7 @@ class TestCrossModalHubEndpoint:
     async def test_helper_noop_when_neither_endpoint_is_hub(self):
         """Non-hub pairs return [] without issuing any departure query."""
         stub = self._StubDepartureService()
-        trips = await _cross_modal_hub_direct_trips(
+        trips = await _station_complex_direct_trips(
             stub, "S635", "SR20", None, None, None, False, None, 10
         )
         assert trips == []
@@ -2296,7 +2296,7 @@ class TestCrossModalHubEndpoint:
     async def test_helper_noop_when_subway_disabled(self):
         """A hub endpoint with SUBWAY filtered out returns [] and never queries."""
         stub = self._StubDepartureService()
-        trips = await _cross_modal_hub_direct_trips(
+        trips = await _station_complex_direct_trips(
             stub, "PWC", "S635", None, None, None, False, ["PATH"], 10
         )
         assert trips == []
@@ -2311,9 +2311,161 @@ class TestCrossModalHubEndpoint:
         stub = self._StubDepartureService()  # only serves S635<->SR25
         monkeypatch.setattr(ts_mod, "get_session", lambda: self._StubSession())
 
-        trips = await _cross_modal_hub_direct_trips(
+        trips = await _station_complex_direct_trips(
             stub, "PWC", "S601", None, None, None, False, None, 10
         )
         assert trips == []
         # It did attempt subway queries (one per PWC subway code), all empty.
         assert stub.calls and all(c["data_sources"] == ["SUBWAY"] for c in stub.calls)
+
+
+class TestSeptaMetroComplexEndpoint:
+    """Issue #1709 follow-up: a SEPTA Metro complex code as a trip *endpoint*.
+
+    The complexes are modeled as transfers, not equivalences, so a search
+    anchored on 15th St/City Hall's Broad St platform (``SEPM33029``) sees only
+    Broad St service. Direct search finds nothing and the City Hall transfer
+    would anchor a zero-length ``SEPM33029 -> SEPM33029`` first leg, which
+    yields no departures — so the trip that motivated the issue, City Hall to a
+    Market-Frankford stop, still returned nothing. The real journey is one MFL
+    ride from the complex's ``SEPM1392`` platform, the concourse walk being the
+    implicit transfer.
+    """
+
+    CITY_HALL_B1 = "SEPM33029"
+    CITY_HALL_MFL = "SEPM1392"
+    INDEPENDENCE_HALL = "SEPM2458"
+
+    class _StubSession:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, *exc):
+            return False
+
+    class _StubResponse:
+        def __init__(self, deps: list[TrainDeparture]):
+            self.departures = deps
+
+    class _StubDepartureService:
+        """Serves the one real MFL ride, SEPM1392 <-> SEPM2458, and nothing else.
+
+        Any query still anchored on a Broad St platform therefore comes back
+        empty, so a test only passes if the endpoint was actually substituted.
+        """
+
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        async def get_departures(self, **kwargs):  # noqa: ANN003 - test stub
+            self.calls.append(kwargs)
+            frm = kwargs.get("from_station")
+            to = kwargs.get("to_station")
+            served = {"SEPM1392", "SEPM2458"}
+            if {frm, to} != served:
+                return TestSeptaMetroComplexEndpoint._StubResponse([])
+            return TestSeptaMetroComplexEndpoint._StubResponse(
+                [
+                    _make_departure(
+                        train_id="L900",
+                        from_code=frm,
+                        from_name="from",
+                        to_code=to,
+                        to_name="to",
+                        data_source="SEPTA_METRO",
+                        line_code="SEPTA-L1",
+                    )
+                ]
+            )
+
+    def _patch(self, monkeypatch, stub):
+        from trackrat.services import trip_search as ts_mod
+
+        monkeypatch.setattr(ts_mod, "DepartureService", lambda: stub)
+        monkeypatch.setattr(ts_mod, "get_session", lambda: self._StubSession())
+
+    @pytest.mark.asyncio
+    async def test_broad_street_platform_to_mfl_stop(self, monkeypatch):
+        """The issue's headline trip, anchored at the interchange itself."""
+        stub = self._StubDepartureService()
+        self._patch(monkeypatch, stub)
+
+        result = await search_trips(
+            db=None,  # type: ignore[arg-type]
+            from_station=self.CITY_HALL_B1,
+            to_station=self.INDEPENDENCE_HALL,
+        )
+
+        assert result.metadata["search_type"] == "station_complex", result.metadata
+        assert len(result.trips) == 1
+        leg = result.trips[0].legs[0]
+        assert leg.data_source == "SEPTA_METRO"
+        assert leg.boarding.code == self.CITY_HALL_MFL
+        assert result.trips[0].is_direct is True
+
+    @pytest.mark.asyncio
+    async def test_mfl_stop_to_broad_street_platform(self, monkeypatch):
+        """Symmetric in the other direction."""
+        stub = self._StubDepartureService()
+        self._patch(monkeypatch, stub)
+
+        result = await search_trips(
+            db=None,  # type: ignore[arg-type]
+            from_station=self.INDEPENDENCE_HALL,
+            to_station=self.CITY_HALL_B1,
+        )
+
+        assert result.metadata["search_type"] == "station_complex", result.metadata
+        assert len(result.trips) == 1
+        leg = result.trips[0].legs[0]
+        assert leg.alighting.code == self.CITY_HALL_MFL
+
+    @pytest.mark.asyncio
+    async def test_queries_are_scoped_to_septa_metro(self, monkeypatch):
+        """Substituted legs must not widen the search to other systems."""
+        from trackrat.services import trip_search as ts_mod
+
+        stub = self._StubDepartureService()
+        monkeypatch.setattr(ts_mod, "get_session", lambda: self._StubSession())
+        await _station_complex_direct_trips(
+            stub,
+            self.CITY_HALL_B1,
+            self.INDEPENDENCE_HALL,
+            None,
+            None,
+            None,
+            False,
+            None,
+            10,
+        )
+        assert stub.calls
+        assert all(c["data_sources"] == ["SEPTA_METRO"] for c in stub.calls)
+
+    @pytest.mark.asyncio
+    async def test_noop_when_septa_metro_disabled(self):
+        """A disabled SEPTA Metro returns [] without issuing a query."""
+        stub = self._StubDepartureService()
+        trips = await _station_complex_direct_trips(
+            stub,
+            self.CITY_HALL_B1,
+            self.INDEPENDENCE_HALL,
+            None,
+            None,
+            None,
+            False,
+            ["SUBWAY"],
+            10,
+        )
+        assert trips == []
+        assert stub.calls == []
+
+    @pytest.mark.asyncio
+    async def test_noop_when_endpoints_belong_to_different_complexes(self):
+        """A mega-hub on one side and a SEPTA complex on the other is a real
+        multi-system trip; substituting either side cannot make it one leg."""
+        stub = self._StubDepartureService()
+        trips = await _station_complex_direct_trips(
+            stub, "PWC", self.CITY_HALL_B1, None, None, None, False, None, 10
+        )
+        assert trips == []
+        assert stub.calls == []
