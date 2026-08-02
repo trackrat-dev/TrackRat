@@ -28,6 +28,7 @@ find_stop_order_inversions = gtv.find_stop_order_inversions
 check_njt_stop_order = gtv.check_njt_stop_order
 fetch_trackrat_train_stop_order = gtv.fetch_trackrat_train_stop_order
 compare_by_train_number = gtv.compare_by_train_number
+pair_by_train_id = gtv.pair_by_train_id
 _norm_train_number = gtv._norm_train_number
 _septa_rr_arrival_from_entry = gtv._septa_rr_arrival_from_entry
 _parse_septa_status_minutes = gtv._parse_septa_status_minutes
@@ -550,6 +551,183 @@ class TestCompareRouteToleranceBoundary:
 
         assert len(result.matches) == 0
         assert len(result.missing) == 1
+
+
+# --- Issue #1703: exact trip-ID pairs must not lose a race to arrival order ---
+
+
+class TestCompareRouteIdMatchOrdering:
+    """An exact train_id match must never be consumed by an earlier GT arrival.
+
+    The greedy matcher scans GT sorted ascending by expected_time and marks each
+    consumed TrackRat record used. Its ID-match preference is scoped to a single
+    GT iteration, so before #1703 an earlier arrival with no ID match could take
+    the record that was a later arrival's exact trip-ID match, pushing that later
+    arrival into `missing` while the report path still printed it at delta 0s.
+    """
+
+    def test_id_match_survives_earlier_gt_arrival(self):
+        """The reported SUBWAY case: exact-ID pair at delta 0s, reported missing.
+
+        GT A (10 min out, no trip id) sorts first and sits 60s from the only
+        TrackRat record. GT B (11 min out) is that record's exact trip-ID match
+        at delta 0. Greedy order hands the record to A; B must still win it.
+        """
+        gt_a = _gt(minutes_offset=10)  # no train_id — sorts first
+        gt_b = _gt(minutes_offset=11, train_id="056800_7..N")
+        tr_x = _tr(minutes_offset=11, train_id="056800_7..N")
+
+        result = compare_route([gt_a, gt_b], [tr_x], "NWK", "WTC", tolerance_minutes=2.0)
+
+        assert len(result.matches) == 1, (
+            f"expected exactly one match, got {len(result.matches)}: "
+            f"{[(m.gt.train_id, m.tr.train_id, m.delta_seconds) for m in result.matches]}"
+        )
+        match = result.matches[0]
+        assert match.gt.train_id == "056800_7..N", (
+            f"the exact trip-ID pair must win; matched GT was {match.gt.train_id!r}"
+        )
+        assert match.tr.train_id == "056800_7..N"
+        assert match.delta_seconds == 0, f"expected delta 0s, got {match.delta_seconds}"
+
+        # The ID-less arrival is the one left unmatched, not the ID-matched one.
+        assert len(result.missing) == 1
+        assert result.missing[0].train_id == ""
+        assert result.missing[0].expected_time == NOW + timedelta(minutes=10)
+        assert len(result.phantoms) == 0
+
+    def test_id_match_wins_even_when_earlier_gt_is_closer(self):
+        """Same race, but the earlier arrival is strictly closer to the record.
+
+        Proximity must lose to an exact trip-ID match regardless of ordering.
+        """
+        gt_a = _gt(minutes_offset=11)  # 30s from tr_x — closer than gt_b
+        gt_b = _gt(minutes_offset=12, train_id="T-B")
+        tr_x = _tr(minutes_offset=12, train_id="T-B")
+        # Nudge gt_a to 11:30 so it is 30s away while gt_b is 0s away.
+        gt_a.expected_time += timedelta(seconds=30)
+
+        result = compare_route([gt_a, gt_b], [tr_x], "NWK", "WTC", tolerance_minutes=2.0)
+
+        assert len(result.matches) == 1
+        assert result.matches[0].gt.train_id == "T-B"
+        assert result.matches[0].delta_seconds == 0
+        assert len(result.missing) == 1
+        assert result.missing[0].train_id == ""
+
+    def test_id_pair_outside_tolerance_stays_a_failure(self):
+        """An exact-ID pair beyond tolerance is genuine drift, not a match.
+
+        TrackRat has the train but at the wrong time. Pairing it would fabricate
+        a PASS and hide real drift, so it must stay missing + phantom — which is
+        what the verbose report already surfaces as "Same-trip TR ... outside
+        tolerance".
+        """
+        gt = [_gt(minutes_offset=10, train_id="T-DRIFT")]
+        tr = [_tr(minutes_offset=15, train_id="T-DRIFT")]  # 5 min off, tolerance 2
+
+        result = compare_route(gt, tr, "NWK", "WTC", tolerance_minutes=2.0)
+
+        assert len(result.matches) == 0, "an out-of-tolerance ID pair must not match"
+        assert len(result.missing) == 1
+        assert result.missing[0].train_id == "T-DRIFT"
+        assert len(result.phantoms) == 1
+        assert result.phantoms[0].train_id == "T-DRIFT"
+
+    def test_duplicate_tr_train_id_pairs_closest_only(self):
+        """When one train_id appears twice in TrackRat, only the closest pairs."""
+        gt = [_gt(minutes_offset=11, train_id="T-DUP")]
+        tr = [
+            _tr(minutes_offset=12, train_id="T-DUP"),  # 60s away
+            _tr(minutes_offset=11, train_id="T-DUP"),  # 0s away — should win
+        ]
+
+        result = compare_route(gt, tr, "NWK", "WTC", tolerance_minutes=2.0)
+
+        assert len(result.matches) == 1
+        assert result.matches[0].delta_seconds == 0
+        # The other same-id record is left over, not double-counted.
+        assert len(result.phantoms) == 1
+        assert result.phantoms[0].departure_time == NOW + timedelta(minutes=12)
+
+    def test_providers_without_gt_train_id_are_unchanged(self):
+        """PATH/NJT/AMTRAK match by headsign with no GT train_id — pure greedy.
+
+        With no ID on the GT side the reservation pass is a no-op, so the
+        earlier arrival still claims the single nearby record.
+        """
+        gt = [_gt(minutes_offset=10), _gt(minutes_offset=11)]
+        tr = [_tr(minutes_offset=10, train_id="T1")]
+
+        result = compare_route(gt, tr, "NWK", "WTC", tolerance_minutes=3)
+
+        assert len(result.matches) == 1
+        assert result.matches[0].gt.expected_time == NOW + timedelta(minutes=10)
+        assert len(result.missing) == 1
+        assert result.missing[0].expected_time == NOW + timedelta(minutes=11)
+
+    def test_two_id_pairs_do_not_cross_match(self):
+        """Two interleaved ID pairs must each take their own record."""
+        gt = [
+            _gt(minutes_offset=10, train_id="T-A"),
+            _gt(minutes_offset=11, train_id="T-B"),
+        ]
+        tr = [
+            _tr(minutes_offset=11, train_id="T-B"),
+            _tr(minutes_offset=10, train_id="T-A"),
+        ]
+
+        result = compare_route(gt, tr, "NWK", "WTC", tolerance_minutes=3)
+
+        assert len(result.matches) == 2
+        pairs = {(m.gt.train_id, m.tr.train_id) for m in result.matches}
+        assert pairs == {("T-A", "T-A"), ("T-B", "T-B")}, f"cross-matched: {pairs}"
+        assert all(m.delta_seconds == 0 for m in result.matches)
+        assert len(result.missing) == 0
+        assert len(result.phantoms) == 0
+
+
+class TestPairByTrainId:
+    """Direct tests for the exact-ID reservation pass."""
+
+    def test_empty_inputs_return_empty(self):
+        assert pair_by_train_id([], [], 120) == {}
+        assert pair_by_train_id([_gt(minutes_offset=10, train_id="A")], [], 120) == {}
+        assert pair_by_train_id([], [_tr(minutes_offset=10, train_id="A")], 120) == {}
+
+    def test_blank_train_ids_are_ignored(self):
+        """A GT or TR record with no train_id can never form a pair."""
+        gt = [_gt(minutes_offset=10)]  # train_id=""
+        tr = [_tr(minutes_offset=10, train_id="")]
+
+        assert pair_by_train_id(gt, tr, 120) == {}
+
+    def test_pairs_matching_ids_by_index(self):
+        gt = [_gt(minutes_offset=10, train_id="A"), _gt(minutes_offset=20, train_id="B")]
+        tr = [_tr(minutes_offset=20, train_id="B"), _tr(minutes_offset=10, train_id="A")]
+
+        assert pair_by_train_id(gt, tr, 120) == {0: 1, 1: 0}
+
+    def test_respects_tolerance(self):
+        """Pairs beyond tolerance are not reserved."""
+        gt = [_gt(minutes_offset=10, train_id="A")]
+        tr = [_tr(minutes_offset=13, train_id="A")]  # 180s
+
+        assert pair_by_train_id(gt, tr, 120) == {}
+        assert pair_by_train_id(gt, tr, 180) == {0: 0}, "boundary is inclusive (<=)"
+
+    def test_one_to_one_when_gt_side_repeats_an_id(self):
+        """Two GT arrivals sharing a train_id cannot both claim one record."""
+        gt = [
+            _gt(minutes_offset=10, train_id="DUP"),
+            _gt(minutes_offset=11, train_id="DUP"),
+        ]
+        tr = [_tr(minutes_offset=11, train_id="DUP")]
+
+        paired = pair_by_train_id(gt, tr, 120)
+
+        assert paired == {1: 0}, f"closest GT should claim the record, got {paired}"
+        assert len(set(paired.values())) == len(paired), "a record was claimed twice"
 
 
 class TestParseArrivalSeconds:

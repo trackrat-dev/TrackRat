@@ -871,6 +871,54 @@ def format_delta(seconds: int) -> str:
     return f"{minutes}m {secs}s"
 
 
+def pair_by_train_id(
+    gt_arrivals: list[GroundTruthArrival],
+    tr_departures: list[TrackRatDeparture],
+    tolerance_secs: float,
+) -> dict[int, int]:
+    """Claim exact train_id pairs one-to-one, independent of arrival ordering.
+
+    Returns ``{gt_index: tr_index}`` for GT arrivals whose ``train_id`` matches a
+    TrackRat departure's exactly, restricted to pairs already inside tolerance.
+
+    The greedy time-ordered pass in ``compare_route`` scopes its ID-match
+    preference to a single GT iteration over records not yet consumed, so an
+    earlier GT arrival with no ID match can take the record that is a later
+    arrival's exact trip-ID match. The later arrival then finds nothing free and
+    is reported missing (issue #1703). Reserving ID pairs up front makes that
+    preference global rather than per-iteration.
+
+    Ties are broken by smallest delta, so when one train_id appears more than
+    once on either side the closest pairing wins and each record is claimed at
+    most once. Pairs outside tolerance are deliberately left alone: those are
+    genuine drift (TrackRat has the train, at the wrong time) and must stay a
+    FAIL rather than become a match. ``run_validation_loop``'s missing-report
+    path already surfaces those as "Same-trip TR", by design.
+    """
+    candidates: list[tuple[int, int, int]] = []  # (delta, gt_index, tr_index)
+    for gt_idx, gt in enumerate(gt_arrivals):
+        if not gt.train_id:
+            continue
+        for tr_idx, tr in enumerate(tr_departures):
+            if not tr.train_id or tr.train_id != gt.train_id:
+                continue
+            delta = abs(int((tr.departure_time - gt.expected_time).total_seconds()))
+            if delta <= tolerance_secs:
+                candidates.append((delta, gt_idx, tr_idx))
+
+    # Closest pairs claim first; gt_index/tr_index keep ordering deterministic.
+    candidates.sort()
+
+    paired: dict[int, int] = {}
+    claimed_tr: set[int] = set()
+    for _delta, gt_idx, tr_idx in candidates:
+        if gt_idx in paired or tr_idx in claimed_tr:
+            continue
+        paired[gt_idx] = tr_idx
+        claimed_tr.add(tr_idx)
+    return paired
+
+
 def compare_route(
     gt_arrivals: list[GroundTruthArrival],
     tr_departures: list[TrackRatDeparture],
@@ -896,25 +944,43 @@ def compare_route(
     # Sort GT by expected time for greedy closest-first matching
     relevant_gt.sort(key=lambda a: a.expected_time)
 
-    for gt in relevant_gt:
+    # Pass 1: reserve exact train_id pairs globally, so an ID match can never
+    # lose its record to an earlier GT arrival that merely sits closer in time
+    # (issue #1703). Pass 2 below is the original greedy matcher, running over
+    # whatever is left.
+    id_paired = pair_by_train_id(relevant_gt, tr_departures, tolerance_secs)
+    used_tr_indices.update(id_paired.values())
+
+    for gt_index, gt in enumerate(relevant_gt):
         best_idx: int | None = None
         best_delta = tolerance_secs + 1
         best_id_match = False
 
-        for i, tr in enumerate(tr_departures):
-            if i in used_tr_indices:
-                continue
-            delta = abs(int((tr.departure_time - gt.expected_time).total_seconds()))
-            # Train ID match is a strong signal: prefer ID-matched candidates
-            id_match = bool(gt.train_id and gt.train_id == tr.train_id)
-            if delta <= tolerance_secs:
-                # Prefer: (1) ID match over non-match, (2) smaller delta as tiebreaker
-                if (id_match and not best_id_match) or (
-                    id_match == best_id_match and delta < best_delta
-                ):
-                    best_delta = delta
-                    best_idx = i
-                    best_id_match = id_match
+        reserved_idx = id_paired.get(gt_index)
+        if reserved_idx is not None:
+            best_idx = reserved_idx
+            best_delta = abs(
+                int(
+                    (
+                        tr_departures[reserved_idx].departure_time - gt.expected_time
+                    ).total_seconds()
+                )
+            )
+        else:
+            for i, tr in enumerate(tr_departures):
+                if i in used_tr_indices:
+                    continue
+                delta = abs(int((tr.departure_time - gt.expected_time).total_seconds()))
+                # Train ID match is a strong signal: prefer ID-matched candidates
+                id_match = bool(gt.train_id and gt.train_id == tr.train_id)
+                if delta <= tolerance_secs:
+                    # Prefer: (1) ID match over non-match, (2) smaller delta as tiebreaker
+                    if (id_match and not best_id_match) or (
+                        id_match == best_id_match and delta < best_delta
+                    ):
+                        best_delta = delta
+                        best_idx = i
+                        best_id_match = id_match
 
         if best_idx is not None and best_delta <= tolerance_secs:
             used_tr_indices.add(best_idx)
