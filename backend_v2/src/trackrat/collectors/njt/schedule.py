@@ -509,31 +509,48 @@ class NJTScheduleCollector:
         )
 
         result = await session.execute(stmt)
-        scheduled_journeys = result.scalars().all()
+        # Snapshot ids, not ORM instances: the loop below commits (and on
+        # failure rolls back) per train, and a rollback expires every
+        # instance in the session — reading an expired attribute from the
+        # async session raises MissingGreenlet.
+        journey_ids = [journey.id for journey in result.scalars().all()]
 
         logger.info(
             "collecting_stop_lists_for_scheduled_trains",
-            journey_count=len(scheduled_journeys),
+            journey_count=len(journey_ids),
         )
 
-        for journey in scheduled_journeys:
+        for journey_id in journey_ids:
             stats["stop_collections_attempted"] += 1
-            # Snapshot before the try: a savepoint rollback below expires
-            # journey's ORM attributes, and re-reading them from the async
-            # session in the except handler raises MissingGreenlet.
-            train_id = journey.train_id
+            train_id: str | None = None
 
             try:
+                journey = await session.get(TrainJourney, journey_id)
+                if journey is None:
+                    raise RuntimeError(
+                        f"scheduled journey {journey_id} disappeared before collection"
+                    )
+                train_id = journey.train_id
+
                 # Small delay to be nice to the API
                 await asyncio.sleep(0.25)
 
                 # Fetch the train stop list
                 train_data = await self.client.get_train_stop_list(train_id)
 
-                # Use savepoint so a single train failure doesn't poison the
-                # session for all subsequent trains in this batch.
-                async with session.begin_nested():
-                    await self._update_journey_with_stops(session, journey, train_data)
+                await self._update_journey_with_stops(session, journey, train_data)
+
+                # Commit per train, not once for the whole batch. The advisory
+                # lock _update_journey_with_stops takes is transaction-scoped,
+                # so a single batch transaction held the lock for every journey
+                # it had already processed until the final commit — 3-5 minutes
+                # across ~530-760 trains. JIT and station-board refreshes then
+                # blocked on pg_advisory_xact_lock until the 55s statement
+                # timeout killed them, every night in the 04:30-04:35 window
+                # (issue #1672). Committing here also releases each journey's
+                # row locks and bounds a failure's blast radius to one train,
+                # which is what the old begin_nested() savepoint was for.
+                await session.commit()
 
                 stats["stop_collections_successful"] += 1
 
@@ -544,19 +561,19 @@ class NJTScheduleCollector:
                 )
 
             except Exception as e:
+                # Clear the failed transaction so the next train starts clean.
+                await session.rollback()
                 stats["stop_collections_failed"] += 1
                 logger.warning(
                     "failed_to_collect_stops_for_scheduled_train",
                     train_id=train_id,
+                    journey_id=journey_id,
                     error=str(e),
                     error_type=type(e).__name__,
                     exc_info=True,
                 )
                 # Continue with next train instead of failing entire collection
                 continue
-
-        # Commit all the stop updates
-        await session.commit()
 
         logger.info(
             "stop_collection_completed",
