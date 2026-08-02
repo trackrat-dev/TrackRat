@@ -431,10 +431,17 @@ enum CongestionColors {
         return Int((clamped * Double(congestionRampSteps)).rounded())
     }
 
+    /// The ramp's anchor colors, ascending. These are the four tier colors the
+    /// ramp interpolates between, so a legend drawing them evenly spaced is a
+    /// *color key* — every color the map can paint appears on the bar exactly
+    /// once, under the right tier name. (Deliberately not a factor axis: the
+    /// factor spans are uneven, so an axis would need positioned labels to stay
+    /// honest, and the bar's job is "which tier is this hue".)
+    static var rampAnchorColors: [UIColor] { rampStops.map(\.color) }
+
     /// Factor at a normalised position `0...1` along the ramp — the inverse of
-    /// `rampStep(forFactor:)`. The map legend walks this to draw the exact
-    /// gradient the overlays are painted with.
-    static func rampFactor(atPosition position: Double) -> Double {
+    /// `rampStep(forFactor:)`.
+    private static func rampFactor(atPosition position: Double) -> Double {
         let first = rampStops[0].factor
         let last = rampStops[rampStops.count - 1].factor
         return first + (last - first) * min(max(position, 0), 1)

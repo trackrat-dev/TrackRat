@@ -449,29 +449,31 @@ struct LegendItem: View {
     }
 }
 
-/// The delay scale, drawn as the ramp the map actually paints.
+/// The delay scale, drawn as a continuous bar rather than four chips (#1715),
+/// because a segment's color now routinely falls between two tiers.
 ///
-/// Samples `CongestionColors.color(forCongestionFactor:)` at every quantised
-/// step rather than hardcoding a gradient, so the legend cannot drift from the
-/// map: change the ramp and this follows. Tier names sit under the factors they
-/// anchor, which is what lets a rider read an in-between color as
-/// "between Heavy and Severe" (#1715).
+/// The bar is a **color key, not a factor axis**: the ramp's anchor colors are
+/// spaced evenly and the tier names sit under them, so every color the map can
+/// paint appears on the bar exactly once with the right name, and an in-between
+/// hue reads as "between Heavy and Severe". Spacing the anchors by *factor*
+/// instead would put Moderate at 17% and Heavy at 44% of the bar, which needs
+/// individually positioned labels to stay honest — more machinery for a scale
+/// whose only job is naming a hue. Mirrors the web legend exactly.
+///
+/// Colors come from `CongestionColors.rampAnchorColors`, the ramp's own control
+/// points, so the legend cannot drift from the map.
 struct DelayRampLegend: View {
     private static let tierLabels = ["Normal", "Moderate", "Heavy", "Severe"]
 
-    private var rampColors: [Color] {
-        (0...CongestionColors.congestionRampSteps).map { step in
-            let position = Double(step) / Double(CongestionColors.congestionRampSteps)
-            let factor = CongestionColors.rampFactor(atPosition: position)
-            return Color(CongestionColors.color(forCongestionFactor: factor))
-        }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            LinearGradient(colors: rampColors, startPoint: .leading, endPoint: .trailing)
-                .frame(height: 8)
-                .clipShape(Capsule())
+            LinearGradient(
+                colors: CongestionColors.rampAnchorColors.map(Color.init),
+                startPoint: .leading,
+                endPoint: .trailing
+            )
+            .frame(height: 8)
+            .clipShape(Capsule())
             HStack(spacing: 0) {
                 ForEach(Array(Self.tierLabels.enumerated()), id: \.offset) { index, label in
                     Text(label)

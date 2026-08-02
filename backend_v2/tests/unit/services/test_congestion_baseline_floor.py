@@ -16,6 +16,7 @@ import pytest
 
 from trackrat.services.congestion_types import (
     CONGESTION_BASELINE_FLOOR_MINUTES,
+    SegmentCongestion,
     congestion_factor_from_delay,
     get_congestion_level,
 )
@@ -121,3 +122,53 @@ class TestBaselineFloorEdgeCases:
         just_below = congestion_factor_from_delay(3.0, floor - 0.001)
         just_above = congestion_factor_from_delay(3.0, floor + 0.001)
         assert just_below == pytest.approx(just_above, abs=1e-3)
+
+
+class TestForecastingKeepsTheRawMultiplier:
+    """The baseline floor is a *display* scale and must not reach forecasting.
+
+    `DelayForecaster._get_congestion_multiplier` averages a segment's slowdown
+    and multiplies expected delay by it. Feeding it the floored factor would
+    understate exactly the short segments where trains bunch: a 2-minute hop
+    taking 4 minutes is physically 2x slower, but only 2 minutes lost, so the
+    floored factor reports 1.2. Raised in review of #1715.
+    """
+
+    def _segment(self, avg_transit: float, baseline: float) -> SegmentCongestion:
+        delay = avg_transit - baseline
+        return SegmentCongestion(
+            from_station="NY",
+            to_station="NP",
+            data_source="NJT",
+            congestion_factor=congestion_factor_from_delay(delay, baseline),
+            congestion_level="normal",
+            avg_transit_minutes=avg_transit,
+            baseline_minutes=baseline,
+            sample_count=5,
+            average_delay_minutes=delay,
+        )
+
+    def test_short_hop_keeps_its_true_slowdown(self):
+        """The exact case from review: 2-minute hop taking 4 minutes."""
+        seg = self._segment(avg_transit=4.0, baseline=2.0)
+        assert seg.transit_time_multiplier == pytest.approx(2.0)
+        # ...while the colour scale deliberately reports it as 2 minutes lost.
+        assert seg.congestion_factor == pytest.approx(1.2)
+
+    def test_long_hop_agrees_with_the_display_factor(self):
+        """Above the floor the two are the same number, by construction."""
+        seg = self._segment(avg_transit=24.0, baseline=20.0)
+        assert seg.transit_time_multiplier == pytest.approx(1.2)
+        assert seg.transit_time_multiplier == pytest.approx(seg.congestion_factor)
+
+    def test_sub_minute_noise_is_still_suppressed(self):
+        """The multiplier keeps the noise floor: a 45-second trolley hop running
+        20 seconds long is not a 1.4x slowdown, it is feed rounding. Without
+        this the forecaster would inherit the jitter the map refuses to show."""
+        seg = self._segment(avg_transit=1.05, baseline=0.75)
+        assert seg.average_delay_minutes < 1.0
+        assert seg.transit_time_multiplier == pytest.approx(1.0)
+
+    def test_missing_baseline_reports_nominal(self):
+        seg = self._segment(avg_transit=5.0, baseline=0.0)
+        assert seg.transit_time_multiplier == 1.0

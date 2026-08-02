@@ -648,10 +648,14 @@ class DelayForecaster:
             if not relevant_segments:
                 return 1.0
 
-            # Average congestion factor across relevant segments
-            avg_factor = sum(s.congestion_factor for s in relevant_segments) / len(
-                relevant_segments
-            )
+            # Average physical slowdown across relevant segments. Deliberately
+            # transit_time_multiplier, not congestion_factor: the latter's
+            # denominator is floored so the map's colour tracks minutes lost
+            # rather than hop length (#1715), which would understate the
+            # slowdown on exactly the short segments where trains bunch.
+            avg_factor = sum(
+                s.transit_time_multiplier for s in relevant_segments
+            ) / len(relevant_segments)
 
             # Cap the multiplier to prevent extreme values
             return min(2.0, max(1.0, avg_factor))

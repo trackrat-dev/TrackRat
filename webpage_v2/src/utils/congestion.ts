@@ -157,12 +157,23 @@ export function congestionRampColor(factor: number): string {
 }
 
 /**
- * The factor a segment's colour should be ramped from. Falls back to the
- * delay-only factor when the backend predates `effective_congestion_factor`
- * (issue #1715), which only loses the cancellation shading, never the tier.
+ * Map-line colour for a segment.
+ *
+ * Ramps the cancellation-blended factor when the backend supplies it. When it
+ * does not — an older backend, or a pre-computed congestion cache entry minted
+ * before the field existed and still inside its TTL — it falls back to the
+ * discrete tier colour rather than ramping `congestion_factor`.
+ *
+ * That fallback matters: a segment escalated purely by cancellations carries
+ * `congestion_level: 'severe'` with `congestion_factor: 1.0`, because the delay
+ * component really is nominal. Ramping the delay-only factor would paint it
+ * green while the status list beside it still reads "Severe cancellations" —
+ * the #1638 contradiction, reintroduced for as long as the cache took to drain.
  */
-export function segmentColorFactor(segment: SegmentCongestion): number {
-  return segment.effective_congestion_factor ?? segment.congestion_factor;
+export function segmentRampColor(segment: SegmentCongestion): string {
+  const blended = segment.effective_congestion_factor;
+  if (blended === undefined) return CONGESTION_HEX[segment.congestion_level];
+  return congestionRampColor(blended);
 }
 
 /**
@@ -291,7 +302,7 @@ export function buildSegmentFeatureCollection(
           average_delay_minutes: segment.average_delay_minutes,
           congestion_cause: segmentCause(segment),
           cancellation_count: segment.cancellation_count,
-          color: congestionRampColor(segmentColorFactor(segment)),
+          color: segmentRampColor(segment),
         },
         geometry: {
           type: 'LineString',

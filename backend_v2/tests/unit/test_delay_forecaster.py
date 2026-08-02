@@ -5,18 +5,16 @@ Tests the DelayForecaster which predicts delays and cancellations
 using hierarchical historical data, including stop-level predictions.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from trackrat.services.congestion_types import SegmentCongestion
 from trackrat.services.delay_forecaster import (
     DelayForecaster,
     DelayStats,
-    MIN_TRAIN_ID_SAMPLES,
-    MIN_LINE_CODE_SAMPLES,
-    MIN_DATA_SOURCE_SAMPLES,
 )
 
 
@@ -493,23 +491,34 @@ class TestDelayStatsQueries:
         """Test congestion multiplier calculation."""
         mock_db = AsyncMock(spec=AsyncSession)
 
-        # Create mock congestion segments
-        mock_segment_1 = MagicMock()
-        mock_segment_1.from_station = "NY"
-        mock_segment_1.congestion_factor = 1.3
+        # Real SegmentCongestion objects, not MagicMocks: the forecaster reads a
+        # *derived* slowdown (transit_time_multiplier), so a stand-in that
+        # accepts any attribute would keep passing even if the forecaster were
+        # silently switched to a different, wrongly-scaled input — which is the
+        # regression this test exists to catch (review of #1715).
+        def segment(station: str, avg_transit: float, baseline: float):
+            return SegmentCongestion(
+                from_station=station,
+                to_station="XX",
+                data_source="NJT",
+                congestion_factor=1.0,  # display scale; not what this path reads
+                congestion_level="normal",
+                avg_transit_minutes=avg_transit,
+                baseline_minutes=baseline,
+                sample_count=5,
+                average_delay_minutes=avg_transit - baseline,
+            )
 
-        mock_segment_2 = MagicMock()
-        mock_segment_2.from_station = "NY"
-        mock_segment_2.congestion_factor = 1.5
-
-        mock_segment_3 = MagicMock()
-        mock_segment_3.from_station = "NP"  # Different station
-        mock_segment_3.congestion_factor = 2.0
+        segments = [
+            segment("NY", avg_transit=13.0, baseline=10.0),  # 1.3x
+            segment("NY", avg_transit=15.0, baseline=10.0),  # 1.5x
+            segment("NP", avg_transit=20.0, baseline=10.0),  # different station
+        ]
 
         with patch.object(
             forecaster.congestion_analyzer,
             "get_network_congestion_optimized",
-            return_value=[mock_segment_1, mock_segment_2, mock_segment_3],
+            return_value=segments,
         ):
             multiplier = await forecaster._get_congestion_multiplier(
                 mock_db, "NY", "NJT"
@@ -517,6 +526,41 @@ class TestDelayStatsQueries:
 
             # Should average only NY segments (1.3 + 1.5) / 2 = 1.4
             assert multiplier == pytest.approx(1.4, rel=0.01)
+
+    @pytest.mark.asyncio
+    async def test_congestion_multiplier_keeps_true_slowdown_on_short_hops(
+        self, forecaster
+    ):
+        """A short hop's real slowdown must survive the #1715 display floor.
+
+        A 2-minute segment taking 4 minutes is physically 2x slower. The map
+        deliberately reports it as 1.2 (two minutes lost), but forecasting must
+        not inherit that scale or it under-predicts the short, bunching-prone
+        segments most.
+        """
+        mock_db = AsyncMock(spec=AsyncSession)
+        short_hop = SegmentCongestion(
+            from_station="NY",
+            to_station="XX",
+            data_source="NJT",
+            congestion_factor=1.2,  # what the map shows
+            congestion_level="moderate",
+            avg_transit_minutes=4.0,
+            baseline_minutes=2.0,
+            sample_count=5,
+            average_delay_minutes=2.0,
+        )
+
+        with patch.object(
+            forecaster.congestion_analyzer,
+            "get_network_congestion_optimized",
+            return_value=[short_hop],
+        ):
+            multiplier = await forecaster._get_congestion_multiplier(
+                mock_db, "NY", "NJT"
+            )
+
+        assert multiplier == pytest.approx(2.0)
 
 
 class TestEdgeCases:

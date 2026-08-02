@@ -16,7 +16,7 @@ import {
   computeSegmentBounds,
   averageRouteDelay,
   congestionRampColor,
-  segmentColorFactor,
+  segmentRampColor,
   RenderableSegment,
 } from './congestion';
 
@@ -526,8 +526,8 @@ describe('congestionRampColor', () => {
   });
 });
 
-describe('segmentColorFactor', () => {
-  it('prefers the cancellation-blended factor the backend bucketed from', () => {
+describe('segmentRampColor', () => {
+  it('ramps the cancellation-blended factor the backend bucketed from', () => {
     // A segment whose trains ran on time but were heavily cancelled is coloured
     // by the blended factor (#1638). Ramping the delay-only factor would drop
     // that escalation and paint it green.
@@ -536,17 +536,42 @@ describe('segmentColorFactor', () => {
       effective_congestion_factor: 1.75,
       congestion_level: 'severe',
     });
-    expect(segmentColorFactor(segment)).toBe(1.75);
-    expect(congestionRampColor(segmentColorFactor(segment))).not.toBe(
-      CONGESTION_HEX.normal,
-    );
+    expect(segmentRampColor(segment)).toBe(congestionRampColor(1.75));
+    expect(segmentRampColor(segment)).not.toBe(CONGESTION_HEX.normal);
   });
 
-  it('falls back to the delay factor when the backend omits the blended one', () => {
-    // Older backend, or a cached response predating the field: the tier is
-    // still right, only the cancellation shading is lost.
-    const segment = makeSegment({ congestion_factor: 1.4 });
+  it('falls back to the tier colour, not the delay factor, when the blended one is absent', () => {
+    // Regression guard for the pre-deployment cache window: a congestion cache
+    // entry minted before effective_congestion_factor existed is still served
+    // until its TTL expires. A cancellation-escalated segment in that payload
+    // has congestion_level 'severe' with congestion_factor 1.0 — ramping the
+    // factor would paint it green beside a status list reading "Severe
+    // cancellations", which is exactly the #1638 contradiction.
+    const segment = makeSegment({
+      congestion_factor: 1.0,
+      congestion_level: 'severe',
+      congestion_cause: 'cancellations',
+    });
     delete segment.effective_congestion_factor;
-    expect(segmentColorFactor(segment)).toBe(1.4);
+    expect(segmentRampColor(segment)).toBe(CONGESTION_HEX.severe);
+  });
+
+  it('falls back to each tier colour exactly', () => {
+    for (const level of CONGESTION_LEVELS) {
+      const segment = makeSegment({ congestion_level: level });
+      delete segment.effective_congestion_factor;
+      expect(segmentRampColor(segment)).toBe(CONGESTION_HEX[level]);
+    }
+  });
+
+  it('prefers the blended factor even when it is lower than the tier suggests', () => {
+    // The served field is authoritative: it is what the backend bucketed, so it
+    // cannot disagree with the level on a fresh response.
+    const segment = makeSegment({
+      congestion_factor: 2.0,
+      effective_congestion_factor: 1.0,
+      congestion_level: 'normal',
+    });
+    expect(segmentRampColor(segment)).toBe(CONGESTION_HEX.normal);
   });
 });

@@ -339,6 +339,29 @@ class SegmentCongestion:
         self.dominant_real_pair = dominant_real_pair
 
     @property
+    def transit_time_multiplier(self) -> float:
+        """How much slower than baseline this segment physically ran.
+
+        The literal ``avg_transit / baseline`` ratio, with the same sub-minute
+        noise floor ``congestion_factor`` gets. Deliberately NOT floored by
+        ``CONGESTION_BASELINE_FLOOR_MINUTES``: that floor exists so *colour*
+        tracks minutes lost rather than hop length (#1715), which is the right
+        scale for a map and the wrong one for arithmetic. A 2-minute hop taking
+        4 minutes really is 2x slower, and a forecaster multiplying expected
+        delay by 1.2 instead of 2.0 would quietly under-predict exactly the
+        short segments where trains bunch.
+
+        Kept separate rather than reusing ``congestion_factor`` so the display
+        scale can be retuned without silently moving forecasts.
+        """
+        if self.baseline_minutes <= 0:
+            return 1.0
+        return reliable_congestion_factor(
+            self.avg_transit_minutes / self.baseline_minutes,
+            self.average_delay_minutes,
+        )
+
+    @property
     def effective_congestion_factor(self) -> float:
         """The factor ``congestion_level`` was bucketed from.
 
