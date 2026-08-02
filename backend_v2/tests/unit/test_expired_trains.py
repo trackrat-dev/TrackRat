@@ -144,7 +144,17 @@ async def test_api_error_count_reset_on_success():
         s.raw_njt_departed_flag = None
         return s
 
-    session.scalar = AsyncMock(side_effect=lambda stmt: _make_mock_stop())
+    # The journey lock polls pg_try_advisory_xact_lock through session.scalar
+    # too (the dialect is faked as postgresql above, so it is not skipped), and
+    # passes bind params as a second positional argument. Return True for that
+    # statement — a stop mock would read as "lock acquired" by accident, and a
+    # single-argument stub would raise TypeError.
+    def _scalar(stmt, params=None, *args, **kwargs):
+        if "pg_try_advisory_xact_lock" in str(stmt):
+            return True
+        return _make_mock_stop()
+
+    session.scalar = AsyncMock(side_effect=_scalar)
 
     # Mock successful API response
     from trackrat.models.api import NJTransitTrainData, NJTransitStopData

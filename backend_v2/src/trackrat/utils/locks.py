@@ -140,8 +140,30 @@ async def with_train_lock(
             )
 
 
+# How long a writer waits for another writer's journey lock before giving up.
+# Well under the engine's 55s statement_timeout, so contention surfaces as a
+# retryable JourneyLockTimeout rather than a query cancellation.
+JOURNEY_LOCK_TIMEOUT_SECONDS = 5.0
+
+# Gap between attempts. Short enough that an uncontended handoff (the common
+# case) is not perceptibly slower than a blocking acquire.
+_JOURNEY_LOCK_POLL_SECONDS = 0.05
+
+
+class JourneyLockTimeout(Exception):
+    """A journey's advisory lock was still held after the wait budget.
+
+    Distinct from every other failure mode on these paths, so callers can
+    retry contention specifically instead of pattern-matching Postgres error
+    text. See `db/engine.retry_on_deadlock`.
+    """
+
+
 async def acquire_njt_journey_lock(
-    session: AsyncSession, train_id: str | None, journey_date: date | None
+    session: AsyncSession,
+    train_id: str | None,
+    journey_date: date | None,
+    timeout_seconds: float = JOURNEY_LOCK_TIMEOUT_SECONDS,
 ) -> None:
     """Take a transaction-scoped Postgres advisory lock for one NJT journey.
 
@@ -150,6 +172,23 @@ async def acquire_njt_journey_lock(
     the nightly schedule rebuild) across replicas, not just within one
     process. It is released automatically when the current transaction
     commits or rolls back.
+
+    Bounded with `pg_try_advisory_xact_lock` in a polling loop rather than a
+    blocking `pg_advisory_xact_lock`. Blocking meant a contended journey sat
+    on the lock until the engine's 55s `statement_timeout` cancelled it, and
+    the resulting QueryCanceledError is indistinguishable from a genuinely
+    slow query -- so it could not be retried without also retrying every
+    runaway statement in the app (issue #1672). Giving up after
+    `timeout_seconds` with a dedicated `JourneyLockTimeout` costs one train
+    instead of a whole station board, and `retry_on_deadlock` can act on it.
+
+    The trade-off is that pollers are not queued fairly the way blocked
+    waiters are, so a permanently contended key could starve one. Acceptable
+    because the writer that used to hold this lock for minutes at a time --
+    the nightly schedule rebuild -- now commits per train.
+
+    Raises:
+        JourneyLockTimeout: the lock was still held after `timeout_seconds`.
 
     No-op on non-PostgreSQL dialects (e.g. the SQLite engine some unit tests
     use): advisory locks are PostgreSQL-specific, and those tests run
@@ -169,7 +208,26 @@ async def acquire_njt_journey_lock(
     if dialect_name != "postgresql":
         return
 
-    await session.execute(
-        text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
-        {"key": f"NJT_{train_id}_{journey_date.isoformat()}"},
-    )
+    key = f"NJT_{train_id}_{journey_date.isoformat()}"
+    deadline = asyncio.get_running_loop().time() + timeout_seconds
+
+    while True:
+        acquired = await session.scalar(
+            text("SELECT pg_try_advisory_xact_lock(hashtext(:key))"), {"key": key}
+        )
+        if acquired:
+            return
+
+        if asyncio.get_running_loop().time() >= deadline:
+            logger.warning(
+                "journey_lock_timeout",
+                train_id=train_id,
+                journey_date=journey_date,
+                timeout_seconds=timeout_seconds,
+            )
+            raise JourneyLockTimeout(
+                f"could not acquire journey lock for {key} "
+                f"within {timeout_seconds}s"
+            )
+
+        await asyncio.sleep(_JOURNEY_LOCK_POLL_SECONDS)

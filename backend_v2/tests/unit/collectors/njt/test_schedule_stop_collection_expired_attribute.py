@@ -143,7 +143,7 @@ class TestStopCollectionSurvivesFlushFailure:
         (reading the now-expired journey.train_id), aborting the entire
         collection loop instead of being recorded as a single failure."""
         _create_scheduled_journey(sqlite_session, train_id="1234")
-        await sqlite_session.flush()
+        await sqlite_session.commit()
 
         schedule_collector.client.get_train_stop_list.return_value = (
             _make_train_data_with_invalid_stop()
@@ -165,7 +165,12 @@ class TestStopCollectionSurvivesFlushFailure:
         in the same batch from being collected successfully."""
         _create_scheduled_journey(sqlite_session, train_id="1234")
         _create_scheduled_journey(sqlite_session, train_id="5678")
-        await sqlite_session.flush()
+        # Commit, not flush: the loop now rolls back the whole transaction when
+        # a train fails, so merely-flushed seeds would be discarded along with
+        # the failure and the later trains would vanish before their turn. The
+        # production caller runs this pass in its own session over schedule
+        # rows a previous session already committed (`collect_all_schedules`).
+        await sqlite_session.commit()
 
         from tests.fixtures.njt_api_responses import NJT_TIME_FORMAT, StopBuilder
 

@@ -6,7 +6,14 @@ import asyncio
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from trackrat.db.engine import retry_on_deadlock, _is_postgresql_concurrency_error
+from sqlalchemy.orm.exc import StaleDataError
+
+from trackrat.db.engine import (
+    retry_on_deadlock,
+    _is_postgresql_concurrency_error,
+    _is_retryable_after_reread,
+)
+from trackrat.utils.locks import JourneyLockTimeout
 
 
 class TestIsPostgresqlConcurrencyError:
@@ -43,8 +50,109 @@ class TestIsPostgresqlConcurrencyError:
         assert _is_postgresql_concurrency_error(error) is False
 
 
+class TestIsRetryableAfterReread:
+    """Tests for the broader predicate that gates retry_on_deadlock.
+
+    Kept separate from `_is_postgresql_concurrency_error` because that one
+    also gates `with_db_retry`, whose callers do not all re-query between
+    attempts (issue #1672).
+    """
+
+    def test_retries_journey_lock_timeout(self):
+        """Contention on the NJT journey advisory lock is retryable: nothing
+        is wrong with our state, another writer just had the lock."""
+        assert _is_retryable_after_reread(JourneyLockTimeout("held")) is True
+
+    def test_retries_stale_data_error(self):
+        """The 'expected to update 1 row(s); 0 were matched' failure.
+
+        Raised when the NJT schedule rebuild deletes and recreates a journey's
+        stops underneath an in-flight refresh. A rollback plus re-read fixes
+        it, so it is worth retrying.
+        """
+        error = StaleDataError(
+            "UPDATE statement on table 'journey_stops' expected to update "
+            "1 row(s); 0 were matched."
+        )
+        assert _is_retryable_after_reread(error) is True
+
+    def test_stale_data_error_is_invisible_to_the_string_predicate(self):
+        """Guards the reason this predicate exists.
+
+        StaleDataError is a SQLAlchemy ORM error, not a Postgres one, so no
+        amount of message matching in `_is_postgresql_concurrency_error` would
+        ever have caught it.
+        """
+        error = StaleDataError(
+            "UPDATE statement on table 'journey_stops' expected to update "
+            "1 row(s); 0 were matched."
+        )
+        assert _is_postgresql_concurrency_error(error) is False
+
+    def test_still_covers_postgres_concurrency_errors(self):
+        """Must be strictly broader than the predicate it wraps."""
+        assert _is_retryable_after_reread(Exception("deadlock detected")) is True
+
+    def test_ignores_unrelated_errors(self):
+        """A genuine bug must still fail fast rather than be retried 3x."""
+        assert _is_retryable_after_reread(ValueError("bad station code")) is False
+
+    def test_does_not_retry_statement_timeouts_generally(self):
+        """Deliberate: a slow query is not contention.
+
+        Adding "canceling statement due to statement timeout" to the shared
+        predicate was the obvious fix for the #1672 lock stalls, but it would
+        make every runaway query in the app retry three times with backoff.
+        Bounding the lock wait instead (JourneyLockTimeout) keeps this narrow.
+        """
+        error = Exception("canceling statement due to statement timeout")
+        assert _is_retryable_after_reread(error) is False
+
+
 class TestRetryOnDeadlock:
     """Tests for retry_on_deadlock function."""
+
+    @pytest.mark.asyncio
+    async def test_retries_on_journey_lock_timeout(self):
+        """A journey lock held by another writer should be retried, not
+        surfaced as a failed station refresh."""
+        session = AsyncMock()
+        call_count = 0
+
+        async def operation():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise JourneyLockTimeout("could not acquire journey lock for NJT_4105")
+            return "acquired on retry"
+
+        result = await retry_on_deadlock(session, operation, base_delay=0.01)
+
+        assert result == "acquired on retry"
+        assert call_count == 2
+        session.rollback.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_retries_on_stale_data_error(self):
+        """The stop rows moved underneath us; re-read and try again."""
+        session = AsyncMock()
+        call_count = 0
+
+        async def operation():
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise StaleDataError(
+                    "UPDATE statement on table 'journey_stops' expected to "
+                    "update 1 row(s); 0 were matched."
+                )
+            return "refreshed against the new rows"
+
+        result = await retry_on_deadlock(session, operation, base_delay=0.01)
+
+        assert result == "refreshed against the new rows"
+        assert call_count == 2
+        session.rollback.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_success_without_retry(self):
