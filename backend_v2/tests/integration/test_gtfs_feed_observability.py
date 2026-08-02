@@ -42,11 +42,17 @@ async def _seed_feed(
     parsed_hours_ago: float | None,
     trip_count: int | None = None,
     error_message: str | None = None,
+    feed_ends_in_days: int | None = None,
 ) -> None:
     """Insert a gtfs_feed_info row in a given freshness state.
 
     ``parsed_hours_ago=None`` models a source that has a row but has never
     completed a parse — the state SUBWAY was actually in.
+
+    ``feed_ends_in_days`` sets ``feed_end_date`` relative to today; negative
+    values model a bundle whose calendar has already expired. Left ``None``
+    (the default) the column stays NULL, which is what a feed publishing only
+    ``calendar_dates.txt`` produces.
     """
     db.add(
         GTFSFeedInfo(
@@ -60,6 +66,11 @@ async def _seed_feed(
             ),
             trip_count=trip_count,
             error_message=error_message,
+            feed_end_date=(
+                now_et().date() + timedelta(days=feed_ends_in_days)
+                if feed_ends_in_days is not None
+                else None
+            ),
         )
     )
     await db.commit()
@@ -323,6 +334,62 @@ class TestFeedStatusesAgainstRealPostgres:
 
         assert status.is_stale is False
         assert GTFS_STALE_FEED_HOURS > 23
+
+    async def test_a_nightly_refreshed_feed_with_an_expired_calendar_is_lapsed(
+        self, db_session: AsyncSession
+    ):
+        """`feed_end_date` round-trips from Postgres into the lapse signal.
+
+        The column has been written by every successful parse since the table
+        was created and read by nothing, so this is the first test that proves
+        the value survives the trip back out (issue #1634).
+
+        SEPTA_METRO is the motivating source: served schedule-first, so an
+        expired bundle is not a degraded fallback, it is the entire departure
+        board being generated from a timetable that no longer applies.
+        """
+        await _seed_feed(
+            db_session,
+            "SEPTA_METRO",
+            parsed_hours_ago=6,
+            trip_count=14203,
+            feed_ends_in_days=-7,
+        )
+
+        (status,) = await GTFSService().get_feed_statuses(db_session, ["SEPTA_METRO"])
+
+        assert status.is_lapsed is True
+        assert status.days_until_feed_end == -7
+        assert status.feed_end_date == (now_et().date() - timedelta(days=7))
+        # The point of the check: every pre-existing signal reads healthy.
+        assert status.is_stale is False
+        assert status.error_message is None
+        assert status.trip_count == 14203
+
+    async def test_a_current_bundle_reports_its_remaining_life(
+        self, db_session: AsyncSession
+    ):
+        """Operators need the runway, not just a boolean — a bundle expiring in
+        two days is actionable, one expiring in six months is not."""
+        await _seed_feed(db_session, "PATCO", parsed_hours_ago=3, feed_ends_in_days=2)
+
+        (status,) = await GTFSService().get_feed_statuses(db_session, ["PATCO"])
+
+        assert status.is_lapsed is False
+        assert status.days_until_feed_end == 2
+
+    async def test_a_feed_with_no_calendar_end_date_reports_unknown(
+        self, db_session: AsyncSession
+    ):
+        """calendar_dates-only feeds leave the column NULL. That must read as
+        unknown, not expired, or the source carries a warning forever."""
+        await _seed_feed(db_session, "NJT", parsed_hours_ago=3)
+
+        (status,) = await GTFSService().get_feed_statuses(db_session, ["NJT"])
+
+        assert status.feed_end_date is None
+        assert status.days_until_feed_end is None
+        assert status.is_lapsed is False
 
 
 @pytest.mark.asyncio
@@ -870,6 +937,54 @@ class TestHealthExposesFeedFreshness:
         # unservable, and the container probes must not start failing over it.
         assert health["status"] == "degraded"
 
+    async def test_lapsed_feed_degrades_health_even_though_it_is_not_stale(
+        self, db_session: AsyncSession
+    ):
+        """An expired timetable has to reach `/health` on its own merits.
+
+        Every other signal on this source is green — parsed three hours ago, no
+        error, trips loaded — so if the lapse did not degrade health nothing
+        would, and SEPTA Metro would keep serving a dead schedule indefinitely
+        with a healthy status page above it (issue #1634).
+        """
+        for source in ("NJT", "PATH", "PATCO", "LIRR"):
+            await _seed_feed(db_session, source, parsed_hours_ago=1)
+        await _seed_feed(
+            db_session,
+            "SEPTA_METRO",
+            parsed_hours_ago=3,
+            trip_count=14203,
+            feed_ends_in_days=-5,
+        )
+
+        health = await self._gtfs_check(db_session)
+        check = health["checks"]["gtfs_feeds"]
+
+        assert check["status"] == "warning"
+        assert check["lapsed_sources"] == ["SEPTA_METRO"]
+        # Reported as lapsed, NOT as stale — conflating them would send an
+        # operator to the download path, which is working fine.
+        assert "SEPTA_METRO" not in check["stale_sources"]
+        assert check["feeds"]["SEPTA_METRO"]["days_until_feed_end"] == -5
+        assert check["feeds"]["SEPTA_METRO"]["feed_end_date"] == (
+            now_et().date() - timedelta(days=5)
+        ).isoformat()
+        assert health["status"] == "degraded"
+
+    async def test_current_feeds_report_their_end_date_without_alarming(
+        self, db_session: AsyncSession
+    ):
+        for source in ("NJT", "PATH", "PATCO", "LIRR"):
+            await _seed_feed(
+                db_session, source, parsed_hours_ago=1, feed_ends_in_days=45
+            )
+
+        check = (await self._gtfs_check(db_session))["checks"]["gtfs_feeds"]
+
+        assert check["status"] == "healthy"
+        assert check["lapsed_sources"] == []
+        assert check["feeds"]["PATCO"]["days_until_feed_end"] == 45
+
     async def test_disabled_sources_are_excluded(self, db_session: AsyncSession):
         """BART and friends are off by design and have no feed to be stale."""
         for source in (
@@ -888,4 +1003,5 @@ class TestHealthExposesFeedFreshness:
 
         assert check["status"] == "healthy"
         assert check["stale_sources"] == []
+        assert check["lapsed_sources"] == []
         assert not disabled & set(check["feeds"])

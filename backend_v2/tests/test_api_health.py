@@ -113,3 +113,9 @@ def test_health_reports_gtfs_feed_freshness(client):
     # database has no feed rows, so every source reads as never-parsed.
     assert set(check["stale_sources"]) == set(GTFS_FEED_URLS)
     assert check["status"] == "warning"
+
+    # A source with no row has no calendar end date either, so it is stale but
+    # not lapsed — the two are reported separately because neither implies the
+    # other (issue #1634).
+    assert check["lapsed_sources"] == []
+    assert all(f["feed_end_date"] is None for f in check["feeds"].values())

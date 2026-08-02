@@ -571,6 +571,98 @@ class TestGTFSFeedStatusStaleness:
         assert self._status(13 * 24).is_stale is True
 
 
+class TestGTFSFeedStatusLapse:
+    """`is_lapsed` catches the failure `is_stale` structurally cannot see: a
+    bundle that downloads perfectly every night but whose calendar has expired.
+
+    For a schedule-first source (PATCO, SEPTA Metro) the static bundle is not a
+    backstop behind real-time data, it is the entire product — so an expired
+    timetable is served as if it were fact, and every other signal stays green.
+    Departures keep appearing, so line-coverage sweeps pass; the download keeps
+    succeeding, so `is_stale` stays False (issue #1634).
+    """
+
+    @staticmethod
+    def _status(
+        days_until_feed_end: int | None, age_hours: float | None = 6.0
+    ) -> GTFSFeedStatus:
+        """Build a status with an explicit lapse offset and, by default, a
+        thoroughly fresh download — the combination that isolates lapse from
+        staleness."""
+        return GTFSFeedStatus(
+            data_source="SEPTA_METRO",
+            last_successful_parse_at=(
+                datetime.now(ET) - timedelta(hours=age_hours) if age_hours else None
+            ),
+            age_hours=age_hours,
+            trip_count=14203,
+            error_message=None,
+            feed_end_date=(
+                date.today() + timedelta(days=days_until_feed_end)
+                if days_until_feed_end is not None
+                else None
+            ),
+            days_until_feed_end=days_until_feed_end,
+        )
+
+    def test_a_perfectly_fresh_feed_can_still_be_lapsed(self):
+        """The whole reason this property exists.
+
+        Downloaded six hours ago, no error, tens of thousands of trips parsed —
+        `is_stale` is False and always will be. The calendar inside ended a week
+        ago, so every departure served from it is fabricated. If this assertion
+        ever flips, the lapse check has stopped covering the gap it was added
+        for and the staleness check will not cover it either.
+        """
+        status = self._status(-7, age_hours=6.0)
+        assert status.is_stale is False, "precondition: the download is healthy"
+        assert status.is_lapsed is True
+
+    def test_bundle_ending_today_is_still_valid(self):
+        """GTFS defines calendar.end_date as inclusive — service runs through
+        that date. Treating it as lapsed would alarm on the last legitimate day
+        of every bundle, i.e. routinely, which is how a real signal gets tuned
+        out."""
+        assert self._status(0).is_lapsed is False
+
+    def test_bundle_that_ended_yesterday_is_lapsed(self):
+        """One day past inclusive end is the earliest true positive."""
+        assert self._status(-1).is_lapsed is True
+
+    def test_future_bundle_is_not_lapsed(self):
+        assert self._status(30).is_lapsed is False
+
+    def test_absent_end_date_is_unknown_not_lapsed(self):
+        """Feeds publishing only calendar_dates.txt have no calendar.end_date,
+        so `_load_feed_stats` records None. Unknown must not be reported as
+        expired — that would put a permanently un-clearable warning on any such
+        source and train operators to ignore the field."""
+        status = self._status(None)
+        assert status.feed_end_date is None
+        assert status.is_lapsed is False
+
+    def test_lapse_and_staleness_are_independent_in_both_directions(self):
+        """Neither property implies the other, so `/health` has to report both.
+
+        A source can be stale with a valid future timetable (download broke,
+        the bundle we hold is still good), or fresh with an expired one.
+        """
+        stale_but_valid = self._status(30, age_hours=13 * 24)
+        assert stale_but_valid.is_stale is True
+        assert stale_but_valid.is_lapsed is False
+
+        fresh_but_expired = self._status(-3, age_hours=2.0)
+        assert fresh_but_expired.is_stale is False
+        assert fresh_but_expired.is_lapsed is True
+
+    def test_never_parsed_source_reports_stale_without_claiming_lapse(self):
+        """No row at all means no end date either. It is already covered by
+        `is_stale`; asserting lapse on top would double-count one failure."""
+        status = self._status(None, age_hours=None)
+        assert status.is_stale is True
+        assert status.is_lapsed is False
+
+
 class TestGTFSTripIdentifiers:
     """Tests verifying GTFS trip identifier behavior.
 
