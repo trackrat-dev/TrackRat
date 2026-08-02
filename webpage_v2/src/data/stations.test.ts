@@ -178,13 +178,25 @@ describe('searchStationsPartitioned', () => {
     ['B03', 'WMATA'],
     ['BNST', 'MBTA'],
     ['NCSGRAYSLK', 'METRA'],
-    ['SEPR90302', 'SEPTA_RR'],
-    ['SEPM1392', 'SEPTA_METRO'],
   ] as const)('excludes disabled-only station %s from %s', (query, disabledSystem) => {
     const { matched, other } = searchStationsPartitioned(query, ['NJT', disabledSystem], 100);
     const results = [...matched, ...other];
 
     expect(results.some(station => station.system === disabledSystem)).toBe(false);
+  });
+
+  // SEPTA was re-enabled for the issue #1634 rollout. These are the same station
+  // codes that used to sit in the disabled-exclusion table above, so this asserts
+  // the flag flip actually reaches the picker rather than just the constant.
+  it.each([
+    ['SEPR90302', 'SEPTA_RR'],
+    ['SEPM1392', 'SEPTA_METRO'],
+  ] as const)('surfaces re-enabled station %s for %s', (query, system) => {
+    const { matched, other } = searchStationsPartitioned(query, ['NJT', system], 100);
+    const results = [...matched, ...other];
+
+    expect(results.some(station => station.code === query)).toBe(true);
+    expect(matched.some(station => station.system === system)).toBe(true);
   });
 
   it('keeps available but unselected systems in the other partition', () => {
@@ -265,8 +277,10 @@ describe('AVAILABLE_SYSTEMS', () => {
     expect(AVAILABLE_SYSTEMS.length).toBe(SYSTEM_ORDER.length - DISABLED_SYSTEMS.size);
   });
 
-  it('currently hides BART, WMATA, MBTA, Metra, and SEPTA (RR + Metro)', () => {
-    expect([...DISABLED_SYSTEMS].sort()).toEqual(['BART', 'MBTA', 'METRA', 'SEPTA_METRO', 'SEPTA_RR', 'WMATA']);
+  it('currently hides BART, WMATA, MBTA, and Metra', () => {
+    // SEPTA (RR + Metro) was re-enabled for the issue #1634 rollout; the four
+    // remaining systems have no backend collection running.
+    expect([...DISABLED_SYSTEMS].sort()).toEqual(['BART', 'MBTA', 'METRA', 'WMATA']);
   });
 
   it('keeps disabled systems in SYSTEM_ORDER and SYSTEM_NAMES for code lookups', () => {
@@ -289,9 +303,11 @@ describe('AVAILABLE_SYSTEMS', () => {
 });
 
 describe('ALERT_CAPABLE_SYSTEMS', () => {
-  it('is the MTA systems plus NJT, with disabled systems (SEPTA) filtered out', () => {
+  it('is the MTA systems plus NJT and both SEPTA systems', () => {
+    // SEPTA is no longer filtered out by DISABLED_SYSTEMS, so the banner now
+    // fetches its alerts (backend SERVICE_ALERT_SOURCES covers both).
     expect([...ALERT_CAPABLE_SYSTEMS].sort()).toEqual([
-      'LIRR', 'MNR', 'NJT', 'SUBWAY',
+      'LIRR', 'MNR', 'NJT', 'SEPTA_METRO', 'SEPTA_RR', 'SUBWAY',
     ]);
   });
 

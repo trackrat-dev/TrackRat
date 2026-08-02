@@ -146,7 +146,7 @@ Physical device recommended for:
 
 - All timestamps use Eastern Time zone
 - Train lookup supports both IDs and train numbers
-- `TrainSystem.disabledSystems` (BART, WMATA, MBTA, Metra, SEPTA RR + Metro) hides systems app-wide; use `TrainSystem.availableCases` for any user-facing system list (mirrors backend `TRACKRAT_DISABLED_DATA_SOURCES`). Persisted selections are sanitized on load.
+- `TrainSystem.disabledSystems` (BART, WMATA, MBTA, Metra) hides systems app-wide; use `TrainSystem.availableCases` for any user-facing system list (mirrors backend `TRACKRAT_DISABLED_DATA_SOURCES`). Persisted selections are sanitized on load. SEPTA (RR + Metro) was re-enabled for the issue #1634 rollout and is currently served by staging only, so point TestFlight builds at the staging API to exercise it.
 - Pro subscription offers 1-week free trial via Apple introductory offer
 - `debugOverrideEnabled` in SubscriptionService controls Pro feature override (defaults to `false`)
 

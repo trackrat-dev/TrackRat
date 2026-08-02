@@ -21,7 +21,7 @@ struct StationDetailsView: View {
     private var displayName: String { Stations.displayName(for: stationCode) }
     private var fullName: String { Stations.stationName(forCode: stationCode) ?? displayName }
     private var stationSystems: Set<TrainSystem> { Stations.systemsForStation(stationCode) }
-    private var hasAlertSupport: Bool { stationSystems.contains { Self.alertSupportedSystems.contains($0) } }
+    private var hasAlertSupport: Bool { stationSystems.contains(where: \.hasServiceAlertFeed) }
     private var coordinate: CLLocationCoordinate2D? { Stations.getCoordinates(for: stationCode) }
 
     private var routesServingStation: [RouteLine] {
@@ -51,10 +51,10 @@ struct StationDetailsView: View {
         .navigationTitle(displayName)
         .navigationBarTitleDisplayMode(.inline)
         .task {
-            await viewModel.load(alertSupportedSystems: Self.alertSupportedSystems)
+            await viewModel.load()
         }
         .refreshable {
-            await viewModel.load(alertSupportedSystems: Self.alertSupportedSystems)
+            await viewModel.load()
         }
         .sheet(item: $viewModel.selectedTrain) { train in
             NavigationStack {
@@ -393,10 +393,6 @@ struct StationDetailsView: View {
         .padding(.horizontal, 10)
         .background(RoundedRectangle(cornerRadius: 8).fill(Color(.secondarySystemGroupedBackground)))
     }
-
-    /// Data sources that publish service alerts. Mirrors the constant in
-    /// `RouteStatusViewModel`; kept local to avoid coupling the two views.
-    private static let alertSupportedSystems: Set<TrainSystem> = [.subway, .lirr, .mnr, .njt]
 }
 
 // MARK: - View Model
@@ -421,10 +417,10 @@ final class StationDetailsViewModel: ObservableObject {
         self.stationCode = stationCode
     }
 
-    func load(alertSupportedSystems: Set<TrainSystem>) async {
+    func load() async {
         let systems = Stations.systemsForStation(stationCode)
         async let departuresAndRecent: () = loadDepartures(systems: systems)
-        async let alertsResult: () = loadAlerts(systems: systems, alertSupportedSystems: alertSupportedSystems)
+        async let alertsResult: () = loadAlerts(systems: systems)
         _ = await (departuresAndRecent, alertsResult)
     }
 
@@ -469,11 +465,11 @@ final class StationDetailsViewModel: ObservableObject {
 
     // MARK: Alerts
 
-    private func loadAlerts(systems: Set<TrainSystem>, alertSupportedSystems: Set<TrainSystem>) async {
+    private func loadAlerts(systems: Set<TrainSystem>) async {
         isLoadingAlerts = true
         defer { isLoadingAlerts = false }
 
-        let systemsToFetch = systems.intersection(alertSupportedSystems)
+        let systemsToFetch = systems.filter(\.hasServiceAlertFeed)
         guard !systemsToFetch.isEmpty else {
             alerts = []
             return

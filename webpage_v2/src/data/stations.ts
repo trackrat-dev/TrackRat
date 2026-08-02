@@ -2470,7 +2470,7 @@ export const SYSTEM_ORDER: TransitSystem[] = ['NJT', 'PATH', 'LIRR', 'MNR', 'SUB
 // TRACKRAT_DISABLED_DATA_SOURCES flag and the iOS app's TrainSystem.disabledSystems).
 // SYSTEM_ORDER / SYSTEM_NAMES are intentionally left intact so lookup-by-code of a
 // user's persisted or historical data on a disabled system still resolves its name.
-export const DISABLED_SYSTEMS: ReadonlySet<TransitSystem> = new Set<TransitSystem>(['BART', 'WMATA', 'MBTA', 'METRA', 'SEPTA_RR', 'SEPTA_METRO']);
+export const DISABLED_SYSTEMS: ReadonlySet<TransitSystem> = new Set<TransitSystem>(['BART', 'WMATA', 'MBTA', 'METRA']);
 
 // User-facing systems in display order: SYSTEM_ORDER minus DISABLED_SYSTEMS.
 // Use this anywhere systems are presented to the user for selection or display.
