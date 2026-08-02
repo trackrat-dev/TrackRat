@@ -986,14 +986,15 @@ class TestHealthExposesFeedFreshness:
                 db_session, source, parsed_hours_ago=1, feed_ends_in_days=45
             )
 
-        health = await self._gtfs_check(db_session)
-        check = health["checks"]["gtfs_feeds"]
+        check = (await self._gtfs_check(db_session))["checks"]["gtfs_feeds"]
 
+        # Scoped to the gtfs_feeds check, not overall health: this fixture has
+        # no discovery runs, so the deployment reports degraded for reasons
+        # that have nothing to do with feeds.
         assert check["status"] == "healthy"
         assert check["lapsed_sources"] == []
         assert check["stale_sources"] == []
         assert check["feeds"]["PATCO"]["days_until_feed_end"] == 45
-        assert health["status"] != "degraded"
 
     async def test_a_bundle_expiring_today_does_not_alarm(
         self, db_session: AsyncSession
