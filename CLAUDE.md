@@ -470,8 +470,9 @@ Worker names, custom domains and the SPA fallback live in `webpage_v2/wrangler.j
 
 Manual deploy from the repo root (needs `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`):
 ```bash
-./scripts/deploy-webpage.sh [staging|production] [--dry-run]
+./scripts/deploy-webpage.sh [staging|production] [--cloudflare-only] [--dry-run]
 ```
+A bare `production` run is refused while `trackrat.net` is still served from GCS (the `production` Worker has no routes yet, so it would update an unserved target) — pass `--cloudflare-only` to acknowledge, or push to the `production` branch to ship to the live site.
 
 ### Infrastructure Management
 ```bash
@@ -584,7 +585,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Backend API endpoints: `backend_v2/src/trackrat/api/`
 - Backend models: `backend_v2/src/trackrat/models/`
 - Backend entrypoint: `backend_v2/src/trackrat/main.py`, `backend_v2/src/trackrat/settings.py`
-- Backend collectors: `backend_v2/src/trackrat/collectors/` (base.py, mta_common.py, mta_extensions.py, service_alerts.py at root; njt/, amtrak/, path/, lirr/, mnr/, subway/, bart/, mbta/, metra/, wmata/, septa_rr/, septa_metro/ as packages)
+- Backend collectors: `backend_v2/src/trackrat/collectors/` (base.py, mta_common.py, mta_extensions.py, septa_common.py, service_alerts.py at root; njt/, amtrak/, path/, lirr/, mnr/, subway/, bart/, mbta/, metra/, wmata/, septa_rr/, septa_metro/ as packages)
 - Backend config: `backend_v2/src/trackrat/config/` (stations/ package, route_topology, station_configs, platform_mappings, transfer_points)
 - Backend utilities: `backend_v2/src/trackrat/utils/` (logging, metrics, request_stats, locks, time, train, sanitize, scheduler_utils, system_stats)
 - Backend database: `backend_v2/src/trackrat/db/` (database.py, engine.py, migrations_runner.py, partitioning.py, migrations/)

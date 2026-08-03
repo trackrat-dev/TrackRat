@@ -1,6 +1,6 @@
 # TrackRat Web
 
-A mobile-first web application for tracking trains across 13 transit systems (NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA, SEPTA Regional Rail, SEPTA Metro) in real-time. BART, WMATA, MBTA, Metra, and SEPTA (Regional Rail + Metro) are currently disabled app-wide via `DISABLED_SYSTEMS` in `src/data/stations.ts` (mirroring the backend's `TRACKRAT_DISABLED_DATA_SOURCES` flag).
+A mobile-first web application for tracking trains across 13 transit systems (NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA, SEPTA Regional Rail, SEPTA Metro) in real-time. BART, WMATA, MBTA, and Metra are currently disabled app-wide via `DISABLED_SYSTEMS` in `src/data/stations.ts` (mirroring the backend's `TRACKRAT_DISABLED_DATA_SOURCES` flag).
 
 ## Features
 
@@ -114,10 +114,12 @@ when `webpage_v2/` or the branch's own cloudbuild config changes: `main` → sta
 To deploy manually from the repo root:
 
 ```bash
-./scripts/deploy-webpage.sh [staging|production] [--dry-run]
+./scripts/deploy-webpage.sh [staging|production] [--cloudflare-only] [--dry-run]
 ```
 
 Defaults to production. The script builds `dist/` and uploads it as the Worker's static assets; it needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the environment.
+
+Until the production DNS cutover, `trackrat.net` is still served from GCS and the `production` Worker has no routes, so a bare `production` run would update an unserved target. The script refuses it in that window and requires `--cloudflare-only` to acknowledge; to ship to the live site, push to the `production` branch. Both the guard and the flag retire automatically when the pipeline's gsutil `sync` step is deleted.
 
 Cache headers (`no-cache` for `index.html` and the service worker, `max-age=1yr` for hashed assets), HSTS, and the `application/json` content type for `/.well-known/apple-app-site-association` come from `public/_headers`, which Vite copies into `dist/`. Deep links are served by `assets.not_found_handling: "single-page-application"` in `wrangler.jsonc`.
 

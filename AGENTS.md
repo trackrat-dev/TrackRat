@@ -376,7 +376,7 @@ bash scripts/create-and-restore-db-then-train-model.sh
 **Disabled Train Systems (feature flag):**
 - `TRACKRAT_DISABLED_DATA_SOURCES` (comma-separated) fully disables a data source: collection, schedule generation, GTFS refresh, service-alert polling, and API serving
 - iOS mirrors the set in `TrainSystem.disabledSystems` (use `TrainSystem.availableCases` for user-facing lists); web mirrors it in `DISABLED_SYSTEMS` in `webpage_v2/src/data/stations.ts`
-- Currently `BART,WMATA,MBTA,METRA` are disabled in staging and `BART,WMATA,MBTA,METRA,SEPTA_RR,SEPTA_METRO` in production — the environments diverge because both SEPTA systems are running their staging soak (issue #1634); production stays dark, and the iOS/web mirrors move with it only after the gates pass. Set per environment via `var.disabled_data_sources` in `infra_v2/terraform/variables.tf` (resolved by `local.disabled_data_sources` in `main.tf`), so a staging soak cannot arm the next production apply — see `infra_v2/RUNBOOK-data-source-flags.md`
+- Currently `BART,WMATA,MBTA,METRA` are disabled in both environments; SEPTA (RR + Metro) is enabled in both after its staging soak (issue #1634), matching the iOS and web mirrors. **The next promotion of `main` to the `production` branch is therefore the SEPTA production cutover**: production has never held a SEPTA GTFS bundle, so expect a short API restart and a few minutes of SEPTA serving nothing while it downloads and parses. Promote outside peak hours and confirm with `/health` `data_sources`. Set per environment via `infra_v2/terraform/variables.tf` (resolved by `local.disabled_data_sources` in `main.tf`), so a staging soak cannot arm the next production apply — see `infra_v2/RUNBOOK-data-source-flags.md`
 
 **iOS Architecture:**
 - MVVM embedded within view files (no separate ViewModel files)
@@ -470,8 +470,9 @@ Worker names, custom domains and the SPA fallback live in `webpage_v2/wrangler.j
 
 Manual deploy from the repo root (needs `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID`):
 ```bash
-./scripts/deploy-webpage.sh [staging|production] [--dry-run]
+./scripts/deploy-webpage.sh [staging|production] [--cloudflare-only] [--dry-run]
 ```
+A bare `production` run is refused while `trackrat.net` is still served from GCS (the `production` Worker has no routes yet, so it would update an unserved target) — pass `--cloudflare-only` to acknowledge, or push to the `production` branch to ship to the live site.
 
 ### Infrastructure Management
 ```bash
@@ -584,7 +585,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Backend API endpoints: `backend_v2/src/trackrat/api/`
 - Backend models: `backend_v2/src/trackrat/models/`
 - Backend entrypoint: `backend_v2/src/trackrat/main.py`, `backend_v2/src/trackrat/settings.py`
-- Backend collectors: `backend_v2/src/trackrat/collectors/` (base.py, mta_common.py, mta_extensions.py, service_alerts.py at root; njt/, amtrak/, path/, lirr/, mnr/, subway/, bart/, mbta/, metra/, wmata/, septa_rr/, septa_metro/ as packages)
+- Backend collectors: `backend_v2/src/trackrat/collectors/` (base.py, mta_common.py, mta_extensions.py, septa_common.py, service_alerts.py at root; njt/, amtrak/, path/, lirr/, mnr/, subway/, bart/, mbta/, metra/, wmata/, septa_rr/, septa_metro/ as packages)
 - Backend config: `backend_v2/src/trackrat/config/` (stations/ package, route_topology, station_configs, platform_mappings, transfer_points)
 - Backend utilities: `backend_v2/src/trackrat/utils/` (logging, metrics, request_stats, locks, time, train, sanitize, scheduler_utils, system_stats)
 - Backend database: `backend_v2/src/trackrat/db/` (database.py, engine.py, migrations_runner.py, partitioning.py, migrations/)
@@ -604,7 +605,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Web services: `webpage_v2/src/services/`
 - Web store: `webpage_v2/src/store/appStore.ts`
 - Web data: `webpage_v2/src/data/` (routeTopology, stations, subwayLines)
-- Web utilities: `webpage_v2/src/utils/` (date, share, formatting, routes, ratsense, trainSearch, congestion, stationSelection, trips, usePolling, useBackNavigation)
+- Web utilities: `webpage_v2/src/utils/` (date, share, formatting, routes, ratsense, trainSearch, congestion, maplibre, stationSelection, trips, usePolling, useBackNavigation)
 - Web types: `webpage_v2/src/types/`
 - Web tests: `webpage_v2/src/` (colocated `*.test.ts` and `*.test.tsx` files, Vitest + React Testing Library)
 - Test fixtures: `backend_v2/tests/fixtures/` (mock API responses)

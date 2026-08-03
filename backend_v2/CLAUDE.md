@@ -2,7 +2,7 @@
 
 This guide provides comprehensive information for Claude Code when working with the TrackRat Backend V2, a radical simplification of the train tracking system that reduces API calls by ~95% while maintaining production robustness.
 
-**Last Updated:** July 2026
+**Last Updated:** August 2026
 **Database:** PostgreSQL with asyncpg (production-ready)
 **Key Features:** Multi-transit support (NJT, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA, SEPTA Regional Rail, SEPTA Metro), track/delay predictions, route alerts, API caching, schedule generation, GTFS integration
 
@@ -439,11 +439,21 @@ The system now includes comprehensive transit time analysis:
 - `/scheduler/status` - Detailed scheduler job status
 - `/metrics` - Prometheus metrics endpoint
 
-**Congestion Levels:**
-- **Normal** (≤10% slower): Green (`#00ff00`)
-- **Moderate** (10-25% slower): Yellow (`#ffff00`) 
-- **Heavy** (25-50% slower): Orange (`#ff8800`)
-- **Severe** (>50% slower): Red (`#ff0000`)
+**Congestion Levels** (`services/congestion_types.py`; the API serves the level, not a colour — clients pick their own):
+- **Normal** (factor ≤ 1.1) · **Moderate** (≤ 1.25) · **Heavy** (≤ 1.5) · **Severe** (> 1.5)
+
+The factor is `1 + delay / max(baseline, CONGESTION_BASELINE_FLOOR_MINUTES)`, i.e. a
+ratio against the segment's scheduled time with the denominator floored at 10 minutes
+(issue #1715). Most inter-station hops are shorter than that, so in practice the tiers
+track **lost minutes** — 1, 2.5 and 5 — rather than a percentage; without the floor two
+minutes lost on a 3-minute hop read severe while the same two minutes on a 20-minute hop
+read normal, which is what made the map jump green→red→green. `MIN_CONGESTION_DELAY_MINUTES`
+suppresses sub-minute jitter below the first tier.
+
+Cancellations are folded in separately (`effective_congestion_factor`, ~1 tier per 10% of
+scheduled trains cancelled, gated by `CANCELLATION_MIN_JOURNEYS`), and the response carries
+`congestion_cause` (`delays` / `cancellations` / `both`) so a segment escalated purely by
+cancellations isn't captioned "Severe delays" beside a zero average delay (issue #1638).
 
 ## Development Workflow
 
@@ -480,6 +490,7 @@ The system now includes comprehensive transit time analysis:
    - SEPTA Metro collector in `collectors/septa_metro/` (collector.py, client.py) — subway + trolley, route-filtered GTFS-RT, schedule-first serving
    - Service alerts collector in `collectors/service_alerts.py`
    - MTA shared logic in `collectors/mta_common.py` and `collectors/mta_extensions.py`
+   - SEPTA shared lifecycle policy (feed-omission expiry / recovery) in `collectors/septa_common.py`
    - Base classes in `collectors/base.py`
    - Test with data in `tests/unit/collectors/`
 
@@ -880,7 +891,7 @@ The backend is organized into service classes for better maintainability:
   - **NJT maintenance sweeps re-homed** (#1497): the two database sweeps stranded in the never-called `JourneyCollector.collect()` pipeline — `_reconcile_unobserved_trains` (the only mechanism that flags trains NJT silently drops from the feed as cancelled) and `_expire_old_journeys` — now run as the `njt_journey_maintenance` scheduler task every 15 minutes. Set-based idempotent UPDATEs, so re-runs are safe; the old single-transaction batch with accumulating advisory locks was not wired up as-is.
   - **NJT `is_cancelled` is no longer a one-way door** (#1498): discovery's exact-match reactivation clears `is_cancelled`/`cancellation_reason` when the train reappears and its embedded `STOPS` don't indicate cancellation (`njt_stops_indicate_cancellation`), so a transient terminal-CANCELLED glitch no longer pins a running train to "Cancelled" for its lifetime (`collectors/njt/discovery.py`).
 - ✅ Closed a disabled-source serving leak: `active_data_sources()` was only wired into the departure / recent-departure / trip-search paths, so the **analytics and train_id-scoped endpoints still served residual rows** from a disabled feed (present until they age out of the retention window). `/routes/congestion` was the standout — `CONGESTION_PROVIDERS` hard-listed the disabled sources, so the 15-min precompute kept re-warming their caches and the all-systems merge kept serving their `train_positions`. Fixes: precompute + merge now iterate `active_data_sources(CONGESTION_PROVIDERS)` and the congestion endpoint normalizes `requested_systems` to the active set (empty ⇒ empty map); `get_network_congestion_with_trains`, `_query_line_stats_sql`/route-summary, and `/routes/segments/.../trains` constrain `data_source` to the active set even when unscoped; a shared `api/utils.ensure_source_enabled()` 404s the train_id/source-scoped endpoints (`/trains/{id}`, `/trains/{id}/history`, `/predictions/track|delay`, `/routes/history`). (`api/utils.py`, `api/routes.py`, `api/trains.py`, `api/predictions.py`, `services/api_cache.py`, `services/congestion.py`, `services/summary.py`)
-- ✅ Added `TRACKRAT_DISABLED_DATA_SOURCES` feature flag to fully disable train systems — a disabled source is skipped for real-time collection, schedule generation, GTFS refresh, and service-alert polling, and is filtered out of departure / trip-search API responses (`DepartureService.active_data_sources()`) so no stale data is served. Currently `BART,WMATA,MBTA,METRA,SEPTA_RR,SEPTA_METRO` in staging/production, set per environment via `var.disabled_data_sources` in `infra_v2/terraform/variables.tf` (issue #1634; previously a single shared literal in `compute.tf`, which made a staging-only soak unsafe — see `infra_v2/RUNBOOK-data-source-flags.md`); iOS mirrors the set in `TrainSystem.disabledSystems`, web in `DISABLED_SYSTEMS` (`webpage_v2/src/data/stations.ts`) (PR #1401, `settings.py`, `services/scheduler.py`, `services/departure.py`, `collectors/service_alerts.py`)
+- ✅ Added `TRACKRAT_DISABLED_DATA_SOURCES` feature flag to fully disable train systems — a disabled source is skipped for real-time collection, schedule generation, GTFS refresh, and service-alert polling, and is filtered out of departure / trip-search API responses (`DepartureService.active_data_sources()`) so no stale data is served. Currently `BART,WMATA,MBTA,METRA` in staging/production — SEPTA (RR + Metro) was cleared in both after its staging soak (issue #1634) — set per environment via `var.disabled_data_sources` in `infra_v2/terraform/variables.tf` (previously a single shared literal in `compute.tf`, which made a staging-only soak unsafe — see `infra_v2/RUNBOOK-data-source-flags.md`); iOS mirrors the set in `TrainSystem.disabledSystems`, web in `DISABLED_SYSTEMS` (`webpage_v2/src/data/stations.ts`) (PR #1401, `settings.py`, `services/scheduler.py`, `services/departure.py`, `collectors/service_alerts.py`)
 - ✅ Partitioned `journey_stops` (RANGE on `journey_date`) and `segment_transit_times` (RANGE on `departure_time`) by month so retention can `DROP TABLE` an aged-out partition instead of relying on `DELETE` + autovacuum, which never returned space to the filesystem (`journey_stops` alone was ~33 GB / ~70% of journey storage on production). Existing rows are not rewritten in place: the prior tables are renamed to `*_legacy`, an idempotent background task (`SchedulerService.backfill_legacy_partitions`) copies the last `retention_days` of rows into the new partitions, and each `*_legacy` table is dropped once its backfill completes — so recent history stays readable and the reclaimed space comes back in one shot instead of over a 60-day drain. See "Partitioning" in the Database Schema section above for the full design. (issue #1343, `db/partitioning.py`, `models/database.py`, `services/scheduler.py`, migration `03db10760b28`)
 - ✅ Added per-table vacuum/analyze health logging (`SchedulerService.check_resource_usage`) for the high-churn tables (`journey_stops`, `train_journeys`, `segment_transit_times`), feeding a new Terraform alert policy on dead-tuple ratio. Added after `journey_stops` (35M+ rows) went its entire lifetime with zero completed vacuum/analyze passes — the resulting stale visibility map surfaced only as a production `TimeoutError` on route-history precompute rather than as an alert. Now aggregates across child partitions so the partitioned parent's zero-row stats don't mask real bloat (issue #1359, `services/scheduler.py`, `infra_v2/terraform/metrics.tf`, `infra_v2/terraform/monitoring.tf`).
 - ✅ Added a `statement_timeout=55000` (ms), below the asyncpg `command_timeout=60s`, scoped to the app's async engine `server_settings` (not a global Postgres default) so Postgres cancels runaway *request* queries itself instead of relying solely on the client-side cancel — while leaving Alembic migrations (a separate connection with no such setting) free to run long index builds without risk of a self-inflicted timeout crash-loop. Also fixed `get_operations_summary`'s `last_stops` subquery, which had no time-window filter and was sorting the entire `journey_stops` table on every request instead of just the journeys in the summary's cutoff window (issue #1366, `db/engine.py`, `services/summary.py`). `max_parallel_workers_per_gather` was deliberately left at `1` rather than `0` — that query genuinely needs parallelism for large scans until further query-level fixes land.
