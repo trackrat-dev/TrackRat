@@ -14,12 +14,12 @@ the upstream API itself — the collector, the assignment logic and the database
 are all genuine, because the defect lives in the interaction between them.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
+from unittest.mock import AsyncMock
 
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from unittest.mock import AsyncMock
 
 from trackrat.collectors.path.collector import PathCollector
 from trackrat.collectors.path.ridepath_client import PathArrival
@@ -27,49 +27,63 @@ from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.time import now_et
 
 # Journeys are only struck once their origin departure has passed — a train that
-# has not left yet legitimately matches nothing. Every journey below is therefore
-# placed in the past so it is eligible for a strike; otherwise these tests would
-# pass for the wrong reason.
+# has not left yet legitimately matches nothing. Every journey below therefore
+# departed its origin in the past; otherwise these tests would pass for the
+# wrong reason.
 DEPARTED_MINUTES_AGO = 10
+
+# Remaining stops must stay in the *future*. A stop whose scheduled time is
+# more than the grace period in the past is inferred as departed, and once the
+# terminal stop is departed the journey is marked complete and drops out of
+# _update_journeys' candidate query — so a journey built entirely in the past
+# can only ever take one strike, no matter how many cycles run.
+NWK_WTC_STOPS = {"PGR": 3, "PEX": 6}
+JSQ_33_STOPS = {"PCH": 8, "P14": 11}
 
 
 async def _make_journey(
     session: AsyncSession,
     *,
     train_id: str,
+    line_code: str,
+    line_color: str,
+    origin_station_code: str,
     destination: str,
     terminal_station_code: str,
-    stop_station_codes: list[str],
+    stop_minutes_from_now: dict[str, int],
     api_error_count: int = 0,
 ) -> TrainJourney:
-    """Insert an in-flight PATH journey with ordered stops.
+    """Insert a mid-journey PATH train: origin departed, stops still ahead.
 
     Args:
         session: Test database session
         train_id: Unique train identifier
+        line_code: PATH line code
+        line_color: Line color, matched against arrival colors
+        origin_station_code: Station the train started from
         destination: Headsign, matched against arrival headsigns
         terminal_station_code: Terminal station for the journey
-        stop_station_codes: Station codes in stop order
+        stop_minutes_from_now: Station code -> minutes until scheduled arrival
         api_error_count: Starting strike count
 
     Returns:
         The persisted journey
     """
-    today = now_et().date()
-    departure = now_et() - timedelta(minutes=DEPARTED_MINUTES_AGO)
+    now = now_et()
+    today = now.date()
 
     journey = TrainJourney(
         train_id=train_id,
         journey_date=today,
-        line_code="JSQ-33",
-        line_name="Journal Square-33rd Street",
-        line_color="#D93A30",
+        line_code=line_code,
+        line_name=line_code,
+        line_color=line_color,
         destination=destination,
-        origin_station_code="PJS",
+        origin_station_code=origin_station_code,
         terminal_station_code=terminal_station_code,
         data_source="PATH",
         observation_type="OBSERVED",
-        scheduled_departure=departure,
+        scheduled_departure=now - timedelta(minutes=DEPARTED_MINUTES_AGO),
         has_complete_journey=True,
         is_cancelled=False,
         is_completed=False,
@@ -79,7 +93,9 @@ async def _make_journey(
     session.add(journey)
     await session.flush()
 
-    for sequence, station_code in enumerate(stop_station_codes, start=1):
+    for sequence, (station_code, minutes) in enumerate(
+        stop_minutes_from_now.items(), start=1
+    ):
         session.add(
             JourneyStop(
                 journey_id=journey.id,
@@ -87,13 +103,77 @@ async def _make_journey(
                 station_code=station_code,
                 station_name=station_code,
                 stop_sequence=sequence,
-                scheduled_arrival=departure + timedelta(minutes=3 * sequence),
-                scheduled_departure=departure + timedelta(minutes=3 * sequence),
+                scheduled_arrival=now + timedelta(minutes=minutes),
+                scheduled_departure=now + timedelta(minutes=minutes),
             )
         )
 
     await session.flush()
     return journey
+
+
+async def _make_wtc_journey(
+    session: AsyncSession, *, train_id: str, api_error_count: int = 0
+) -> TrainJourney:
+    """Insert a Newark -> World Trade Center journey.
+
+    Args:
+        session: Test database session
+        train_id: Unique train identifier
+        api_error_count: Starting strike count
+
+    Returns:
+        The persisted journey
+    """
+    return await _make_journey(
+        session,
+        train_id=train_id,
+        line_code="NWK-WTC",
+        line_color="#D93A30",
+        origin_station_code="PNK",
+        destination="World Trade Center",
+        terminal_station_code="PWC",
+        stop_minutes_from_now=NWK_WTC_STOPS,
+        api_error_count=api_error_count,
+    )
+
+
+async def _make_33rd_journey(
+    session: AsyncSession, *, train_id: str, api_error_count: int = 0
+) -> TrainJourney:
+    """Insert a Journal Square -> 33rd Street journey.
+
+    Args:
+        session: Test database session
+        train_id: Unique train identifier
+        api_error_count: Starting strike count
+
+    Returns:
+        The persisted journey
+    """
+    return await _make_journey(
+        session,
+        train_id=train_id,
+        line_code="JSQ-33",
+        line_color="#FF9900",
+        origin_station_code="PJS",
+        destination="33rd Street",
+        terminal_station_code="P33",
+        stop_minutes_from_now=JSQ_33_STOPS,
+        api_error_count=api_error_count,
+    )
+
+
+def _wtc_feed() -> list[PathArrival]:
+    """Build a populated feed covering the WTC run only.
+
+    Returns:
+        Arrivals matching the stops of a WTC-bound journey
+    """
+    return [
+        _arrival(station_code, "World Trade Center", minutes)
+        for station_code, minutes in NWK_WTC_STOPS.items()
+    ]
 
 
 def _arrival(station_code: str, headsign: str, minutes_away: int) -> PathArrival:
@@ -147,20 +227,9 @@ class TestEmptyArrivalsGuard:
         sitting at 2 strikes for legitimate reasons was expired outright by one
         empty body, without ever reaching three genuine no-show cycles.
         """
-        fresh = await _make_journey(
-            db_session,
-            train_id="PATH_PJS_wtc_fresh",
-            destination="World Trade Center",
-            terminal_station_code="PWC",
-            stop_station_codes=["PGR", "PEN"],
-        )
-        nearly_expired = await _make_journey(
-            db_session,
-            train_id="PATH_PJS_wtc_nearly_expired",
-            destination="World Trade Center",
-            terminal_station_code="PWC",
-            stop_station_codes=["PHW", "PCH"],
-            api_error_count=2,
+        fresh = await _make_wtc_journey(db_session, train_id="PATH_PNK_wtc_fresh")
+        nearly_expired = await _make_33rd_journey(
+            db_session, train_id="PATH_PJS_33s_nearly_expired", api_error_count=2
         )
 
         collector = _collector_returning([[]])
@@ -202,13 +271,7 @@ class TestEmptyArrivalsGuard:
         would have had ``is_expired=True`` and dropped off the departure board.
         """
         journeys = [
-            await _make_journey(
-                db_session,
-                train_id=f"PATH_PJS_wtc_{index}",
-                destination="World Trade Center",
-                terminal_station_code="PWC",
-                stop_station_codes=["PGR", "PEN"],
-            )
+            await _make_wtc_journey(db_session, train_id=f"PATH_PNK_wtc_{index}")
             for index in range(3)
         ]
 
@@ -262,9 +325,9 @@ class TestEmptyArrivalsGuard:
                 select(TrainJourney).where(TrainJourney.data_source == "PATH")
             )
         ).all()
-        assert created == [], (
-            f"An empty cycle wrote {len(created)} PATH journeys to the database"
-        )
+        assert (
+            created == []
+        ), f"An empty cycle wrote {len(created)} PATH journeys to the database"
 
     @pytest.mark.asyncio
     async def test_empty_arrivals_return_the_documented_shape(
@@ -302,33 +365,16 @@ class TestGenuineNoShowStillStrikes:
         particular train was not in it. Guarding on ``arrivals`` at the top of
         ``collect()`` must leave this path exactly as it was.
         """
-        served = await _make_journey(
-            db_session,
-            train_id="PATH_PJS_wtc_served",
-            destination="World Trade Center",
-            terminal_station_code="PWC",
-            stop_station_codes=["PGR", "PEN"],
-        )
-        omitted = await _make_journey(
-            db_session,
-            train_id="PATH_PJS_33s_omitted",
-            destination="33rd Street",
-            terminal_station_code="P33",
-            stop_station_codes=["PHW", "PCH"],
-        )
+        served = await _make_wtc_journey(db_session, train_id="PATH_PNK_wtc_served")
+        omitted = await _make_33rd_journey(db_session, train_id="PATH_PJS_33s_omitted")
 
         # The feed covers the WTC run only; nothing on the 33rd Street run.
-        feed = [
-            _arrival("PGR", "World Trade Center", 3),
-            _arrival("PEN", "World Trade Center", 6),
-        ]
-
-        collector = _collector_returning([feed])
+        collector = _collector_returning([_wtc_feed()])
         result = await collector.collect(db_session)
 
-        assert result["arrivals_fetched"] == 2, (
-            f"Expected the 2-arrival feed to be processed, got {result}"
-        )
+        assert result["arrivals_fetched"] == len(
+            NWK_WTC_STOPS
+        ), f"Expected the populated feed to be processed, got {result}"
 
         await db_session.refresh(served)
         await db_session.refresh(omitted)
@@ -341,25 +387,18 @@ class TestGenuineNoShowStillStrikes:
             "A train absent from a populated feed must take a strike, "
             f"got api_error_count={omitted.api_error_count}"
         )
-        assert omitted.is_expired is False, (
-            "One strike is below the 3-strike threshold and must not expire"
-        )
+        assert (
+            omitted.is_expired is False
+        ), "One strike is below the 3-strike threshold and must not expire"
 
     @pytest.mark.asyncio
     async def test_three_non_empty_cycles_omitting_a_train_expire_it(
         self, db_session: AsyncSession
     ):
         """Three genuine no-show cycles still reach expiry."""
-        omitted = await _make_journey(
-            db_session,
-            train_id="PATH_PJS_33s_vanished",
-            destination="33rd Street",
-            terminal_station_code="P33",
-            stop_station_codes=["PHW", "PCH"],
-        )
+        omitted = await _make_33rd_journey(db_session, train_id="PATH_PJS_33s_vanished")
 
-        feed = [_arrival("PGR", "World Trade Center", 3)]
-        collector = _collector_returning([list(feed), list(feed), list(feed)])
+        collector = _collector_returning([_wtc_feed() for _ in range(3)])
 
         for cycle in range(3):
             await collector.collect(db_session)
@@ -384,17 +423,12 @@ class TestGenuineNoShowStillStrikes:
         not see this train". An empty cycle is not evidence either way, so it
         must leave the count exactly where the previous real cycle left it.
         """
-        omitted = await _make_journey(
-            db_session,
-            train_id="PATH_PJS_33s_interleaved",
-            destination="33rd Street",
-            terminal_station_code="P33",
-            stop_station_codes=["PHW", "PCH"],
+        omitted = await _make_33rd_journey(
+            db_session, train_id="PATH_PJS_33s_interleaved"
         )
 
-        populated = [_arrival("PGR", "World Trade Center", 3)]
         collector = _collector_returning(
-            [list(populated), [], list(populated), [], list(populated)]
+            [_wtc_feed(), [], _wtc_feed(), [], _wtc_feed()]
         )
 
         expected_after_each = [1, 1, 2, 2, 3]
