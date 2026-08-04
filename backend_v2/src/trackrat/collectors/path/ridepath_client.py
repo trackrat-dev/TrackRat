@@ -107,8 +107,9 @@ class RidePathClient:
 
             # The RidePATH API occasionally returns HTTP 200 with an empty
             # body. Treat that as a transient no-data cycle rather than a
-            # JSON parse failure: the caller already handles an empty
-            # arrival list as a normal no-op pass.
+            # JSON parse failure. PathCollector.collect() guards on the empty
+            # list and skips both collection phases, so this cycle is a no-op
+            # rather than a cycle in which every train appears to have vanished.
             if not response.content or not response.content.strip():
                 logger.warning("ridepath_empty_body", url=self.base_url)
                 return []
