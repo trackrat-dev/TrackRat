@@ -7,6 +7,7 @@ or when train frequency drops significantly below normal levels.
 """
 
 import hashlib
+import json
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
@@ -48,7 +49,14 @@ DELAY_THRESHOLD_MINUTES = 15
 DELAY_PERCENT_THRESHOLD = 0.50
 COOLDOWN_MINUTES = 30
 BASELINE_LOOKBACK_DAYS = 30
+
 MIN_BASELINE_DAYS = 3  # Need at least 3 comparable days for a reliable baseline
+
+# APNS rejects an alert push whose JSON payload exceeds 4 KB. A service-alert
+# push carries one id per bundled alert, so a large matched set (SUBWAY runs
+# well over 100 active alerts) can cross the limit on its own. Alerts that do
+# not fit are not dropped — they stay un-notified and go out next cycle.
+APNS_PAYLOAD_LIMIT_BYTES = 4096
 
 # Data sources with real-time data (frequency alerts only apply to these)
 REALTIME_SOURCES = {
@@ -1264,10 +1272,20 @@ async def evaluate_service_alerts(
     )
     all_alerts = list(alert_result.scalars().all())
 
-    if not all_alerts:
-        return 0
+    # No early return on an empty feed: subscriptions still need their notified
+    # sets pruned, or ids for alerts that have all gone would be retained and
+    # would suppress those alerts if they came back.
 
     alerts_sent = 0
+
+    # Live alert ids per source, used to prune each subscription's notified set
+    # to alerts that still exist. all_alerts is already the active set, so this
+    # needs no extra query.
+    active_alert_ids_by_source: dict[str, set[str]] = {}
+    for alert in all_alerts:
+        active_alert_ids_by_source.setdefault(str(alert.data_source), set()).add(
+            str(alert.alert_id)
+        )
 
     # Track (apns_token, alert_id) pairs already sent this cycle to prevent
     # duplicate notifications when multiple subscriptions on the same device
@@ -1294,6 +1312,15 @@ async def evaluate_service_alerts(
             if sub.data_source not in SERVICE_ALERT_SOURCES:
                 continue
 
+            # Drop ids for alerts that have left the feed, before anything reads
+            # the notified set. This bounds its size, and it has to happen even
+            # on cycles where this subscription matches nothing — otherwise a
+            # dead id lingers and suppresses that alert if it ever comes back.
+            active_alert_ids = active_alert_ids_by_source.get(
+                str(sub.data_source), set()
+            )
+            _record_notified_alert_ids(sub, set(), active_alert_ids)
+
             # System-wide subs match ALL alerts for the data source
             is_sw = _is_system_wide(sub)
 
@@ -1317,9 +1344,9 @@ async def evaluate_service_alerts(
                 continue
 
             # Check which alerts are new (not already notified)
-            already_notified = set(sub.last_service_alert_ids or [])
+            already_notified = {str(i) for i in (sub.last_service_alert_ids or [])}
             new_alerts = [
-                a for a in matching_alerts if a.alert_id not in already_notified
+                a for a in matching_alerts if str(a.alert_id) not in already_notified
             ]
 
             if not new_alerts:
@@ -1333,16 +1360,10 @@ async def evaluate_service_alerts(
                 if (device.apns_token, str(a.alert_id)) not in sent_device_alerts
             ]
 
-            # Always mark these alerts as notified on this subscription,
-            # even if we skip sending (another subscription already sent them).
-            # This prevents the subscription from retrying on the next cycle.
-            notified_ids = list(sub.last_service_alert_ids or [])
-            for a in new_alerts:
-                if a.alert_id not in already_notified:
-                    notified_ids.append(a.alert_id)
-            sub.last_service_alert_ids = notified_ids[-50:]
-
             if not unsent_alerts:
+                # Another subscription on this device already delivered these,
+                # so they genuinely reached the user. Mark them notified here
+                # too, or this subscription retries them every cycle.
                 logger.info(
                     "service_alert_deduplicated",
                     device_id=device.device_id,
@@ -1350,32 +1371,43 @@ async def evaluate_service_alerts(
                     from_station=sub.from_station_code,
                     to_station=sub.to_station_code,
                     skipped_alert_count=len(new_alerts),
-                    alert_ids=[a.alert_id for a in new_alerts],
+                    alert_ids=[str(a.alert_id) for a in new_alerts],
+                )
+                _record_notified_alert_ids(
+                    sub, {str(a.alert_id) for a in new_alerts}, active_alert_ids
                 )
                 continue
 
-            # Build and send notification for unsent alerts only
-            title, body = _build_service_alert_message(sub, unsent_alerts)
+            # Bundle only as many alerts as fit in one push; the rest keep their
+            # un-notified state and go out on the next cycle.
+            batch = _service_alert_batch_for_payload(sub, unsent_alerts)
+            deferred_count = len(unsent_alerts) - len(batch)
+            if deferred_count:
+                logger.info(
+                    "service_alert_payload_capped",
+                    device_id=device.device_id,
+                    data_source=sub.data_source,
+                    sent_alert_count=len(batch),
+                    deferred_alert_count=deferred_count,
+                )
 
-            alert_payload: dict[str, object] = {
-                "data_source": sub.data_source,
-                "alert_count": len(unsent_alerts),
-                "alert_ids": [a.alert_id for a in unsent_alerts],
-            }
-            if sub.line_id:
-                alert_payload["line_id"] = sub.line_id
-            if sub.from_station_code:
-                alert_payload["from_station_code"] = sub.from_station_code
-                alert_payload["to_station_code"] = sub.to_station_code
-            custom_data = {"service_alert": alert_payload}
+            title, body = _build_service_alert_message(sub, batch)
+            custom_data = {"service_alert": _build_service_alert_payload(sub, batch)}
             sent = await apns_service.send_alert_notification(
                 device.apns_token, title, body, custom_data=custom_data
             )
 
             if sent:
-                for a in unsent_alerts:
+                for a in batch:
                     sent_device_alerts.add((device.apns_token, str(a.alert_id)))
                 alerts_sent += 1
+
+                # Only now are these alerts genuinely notified. Marking them
+                # before the send meant a rejected push (a dead token, or a
+                # payload over the 4 KB limit) lost them permanently.
+                _record_notified_alert_ids(
+                    sub, {str(a.alert_id) for a in batch}, active_alert_ids
+                )
 
                 logger.info(
                     "service_alert_sent",
@@ -1384,12 +1416,21 @@ async def evaluate_service_alerts(
                     line_id=sub.line_id,
                     from_station=sub.from_station_code,
                     to_station=sub.to_station_code,
-                    new_alert_count=len(unsent_alerts),
-                    alert_ids=[a.alert_id for a in unsent_alerts],
+                    new_alert_count=len(batch),
+                    alert_ids=[str(a.alert_id) for a in batch],
+                )
+            else:
+                logger.warning(
+                    "service_alert_send_failed",
+                    device_id=device.device_id,
+                    data_source=sub.data_source,
+                    alert_count=len(batch),
                 )
 
-    if alerts_sent > 0:
-        await db.commit()
+    # Commit unconditionally: a cycle that sends nothing can still have pruned
+    # dead ids out of a subscription's notified set, and gating the commit on
+    # alerts_sent would throw that away.
+    await db.commit()
 
     logger.info("service_alert_evaluation_complete", alerts_sent=alerts_sent)
     return alerts_sent
@@ -1457,6 +1498,121 @@ def _get_route_name_for_subscription(sub: RouteAlertSubscription) -> str:
             ):
                 return route.name
     return sub.data_source or "Unknown"
+
+
+def _build_service_alert_payload(
+    sub: RouteAlertSubscription,
+    alerts: list[ServiceAlert],
+) -> dict[str, object]:
+    """Build the ``service_alert`` custom-data block for a push.
+
+    Args:
+        sub: Subscription the push is for
+        alerts: Alerts bundled into this push
+
+    Returns:
+        The custom-data block sent under the ``service_alert`` key
+    """
+    payload: dict[str, object] = {
+        "data_source": sub.data_source,
+        "alert_count": len(alerts),
+        "alert_ids": [str(a.alert_id) for a in alerts],
+    }
+    if sub.line_id:
+        payload["line_id"] = sub.line_id
+    if sub.from_station_code:
+        payload["from_station_code"] = sub.from_station_code
+        payload["to_station_code"] = sub.to_station_code
+    return payload
+
+
+def _service_alert_payload_size(
+    sub: RouteAlertSubscription,
+    alerts: list[ServiceAlert],
+) -> int:
+    """Measure the APNS document that bundling these alerts would produce.
+
+    Mirrors the envelope ``SimpleAPNSService.send_alert_notification`` posts,
+    so the budget is checked against the real thing rather than an estimate.
+    Serialized with the default separators, which are never more compact than
+    what the HTTP client emits — so this can overestimate but never under.
+
+    Args:
+        sub: Subscription the push is for
+        alerts: Alerts bundled into this push
+
+    Returns:
+        Size of the encoded payload in bytes
+    """
+    title, body = _build_service_alert_message(sub, alerts)
+    document = {
+        "aps": {"alert": {"title": title, "body": body}, "sound": "default"},
+        "service_alert": _build_service_alert_payload(sub, alerts),
+    }
+    return len(json.dumps(document).encode("utf-8"))
+
+
+def _service_alert_batch_for_payload(
+    sub: RouteAlertSubscription,
+    alerts: list[ServiceAlert],
+) -> list[ServiceAlert]:
+    """Return the longest leading run of alerts whose push stays under the limit.
+
+    Payload size grows monotonically with the number of bundled alerts (one id
+    each; the body is already summarized as "+N more"), so the largest fitting
+    prefix is found by bisection. At least one alert is always returned: a
+    single alert too large on its own must still be attempted rather than
+    silently wedging every later alert behind it.
+
+    Args:
+        sub: Subscription the push is for
+        alerts: Candidate alerts, in the order they should be delivered
+
+    Returns:
+        The prefix of ``alerts`` to send this cycle
+    """
+    if (
+        not alerts
+        or _service_alert_payload_size(sub, alerts) <= APNS_PAYLOAD_LIMIT_BYTES
+    ):
+        return alerts
+
+    low, high = 1, len(alerts)
+    while low < high:
+        mid = (low + high + 1) // 2
+        if _service_alert_payload_size(sub, alerts[:mid]) <= APNS_PAYLOAD_LIMIT_BYTES:
+            low = mid
+        else:
+            high = mid - 1
+    return alerts[:low]
+
+
+def _record_notified_alert_ids(
+    sub: RouteAlertSubscription,
+    newly_notified: set[str],
+    active_alert_ids: set[str],
+) -> None:
+    """Remember which alerts this subscription has been told about.
+
+    The stored set is pruned to alerts still active in the feed. Retaining ids
+    for alerts that have since disappeared is what forced the old fixed 50-id
+    cap, and that cap could not cover a matched set larger than itself: ids
+    fell off the tail while still active and were re-pushed every cycle,
+    forever. Pruning against the live set bounds the list by the feed instead,
+    so it can never outgrow the alerts it exists to dedupe.
+
+    Writes only on a real change, to avoid dirtying every subscription on
+    every one of the 5-minute evaluation cycles.
+
+    Args:
+        sub: Subscription to update in place
+        newly_notified: Alert ids delivered (or covered by a sibling) this cycle
+        active_alert_ids: Alert ids currently active for the subscription's source
+    """
+    previously_notified = {str(i) for i in (sub.last_service_alert_ids or [])}
+    retained = sorted((previously_notified | newly_notified) & active_alert_ids)
+    if list(sub.last_service_alert_ids or []) != retained:
+        sub.last_service_alert_ids = retained
 
 
 def _build_service_alert_message(
