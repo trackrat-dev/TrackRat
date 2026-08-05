@@ -17,12 +17,13 @@ are all genuine, because the defect lives in the interaction between them.
 from datetime import timedelta
 from unittest.mock import AsyncMock
 
+import httpx
 import pytest
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.collectors.path.collector import PathCollector
-from trackrat.collectors.path.ridepath_client import PathArrival
+from trackrat.collectors.path.ridepath_client import PathArrival, RidePathClient
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.time import now_et
 
@@ -214,6 +215,27 @@ def _collector_returning(arrivals_per_cycle: list[list[PathArrival]]) -> PathCol
     return PathCollector(client=client)
 
 
+def _collector_over_http(body: bytes) -> PathCollector:
+    """Build a collector whose real RidePATH client sees the given HTTP 200 body.
+
+    Nothing about the client is replaced: ``get_all_arrivals`` runs its own
+    empty-body check, caching and JSON parsing against a genuine
+    ``httpx.Response``. Only the socket is stubbed, because the upstream PATH
+    API is the one boundary these tests cannot reach.
+
+    Args:
+        body: Raw response body the RidePATH endpoint returns
+
+    Returns:
+        A collector wired to a real client over a stubbed transport
+    """
+    client = RidePathClient()
+    client._session = httpx.AsyncClient(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, content=body))
+    )
+    return PathCollector(client=client)
+
+
 class TestEmptyArrivalsGuard:
     """An empty-but-successful RidePATH response must be a no-op cycle."""
 
@@ -350,6 +372,52 @@ class TestEmptyArrivalsGuard:
             "updated": 0,
             "completed": 0,
         }, f"Unexpected skip result shape: {result}"
+
+    @pytest.mark.asyncio
+    async def test_real_client_turns_an_empty_http_200_into_a_skipped_cycle(
+        self, db_session: AsyncSession
+    ):
+        """The whole chain runs for real: HTTP 200 empty body -> [] -> guard.
+
+        The other tests in this class hand the collector an arrival list
+        directly. That proves the guard reacts to ``[]``, but takes the
+        client's empty-body handling on trust — the two halves are only ever
+        exercised apart (the client half in
+        ``test_get_all_arrivals_empty_body_returns_empty_list``). Here the
+        client is the real one and only the socket is stubbed, so a regression
+        that made ``get_all_arrivals`` raise on an empty body, or return
+        anything other than ``[]``, fails here even with the guard intact.
+        """
+        nearly_expired = await _make_33rd_journey(
+            db_session, train_id="PATH_PJS_33s_http_empty", api_error_count=2
+        )
+
+        collector = _collector_over_http(b"")
+        try:
+            result = await collector.collect(db_session)
+        finally:
+            await collector.client.close()
+
+        assert result["arrivals_fetched"] == 0, (
+            "A real empty HTTP 200 must reach the guard as zero arrivals, got "
+            f"{result['arrivals_fetched']}"
+        )
+        assert result["updated"] == 0, (
+            "A real empty HTTP 200 must update no journeys, got "
+            f"updated={result['updated']}"
+        )
+
+        await db_session.refresh(nearly_expired)
+
+        assert nearly_expired.api_error_count == 2, (
+            "A journey at 2 strikes must stay at 2 when the upstream API "
+            "returns an empty body over real HTTP, got "
+            f"api_error_count={nearly_expired.api_error_count}"
+        )
+        assert nearly_expired.is_expired is False, (
+            "An empty HTTP 200 must never be the third strike that expires a "
+            "journey that was one short of the threshold"
+        )
 
 
 class TestGenuineNoShowStillStrikes:
