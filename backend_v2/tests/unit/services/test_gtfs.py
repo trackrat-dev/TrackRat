@@ -30,7 +30,7 @@ from trackrat.services.gtfs import (
     _subway_realtime_trip_id,
 )
 from trackrat.utils.sanitize import bounded_text
-from trackrat.utils.time import ET
+from trackrat.utils.time import ET, now_et
 
 
 class TestGTFSTimeParsing:
@@ -1335,7 +1335,12 @@ class TestGetStaticStopTimes:
             (13, "SVC_B_091100_1..N03R"),
         ]
         mock_db.execute = AsyncMock(return_value=result)
-        target_date = date(2026, 8, 2)
+        # Must be a date the index actually retains. _resolve_subway_static_trip_id
+        # sweeps out keys older than yesterday on every build, so a hardcoded past
+        # date evicts the entry the instant it is written and every lookup
+        # re-queries — the assertions below would then fail for a reason that has
+        # nothing to do with the caching they exist to protect.
+        target_date = now_et().date()
         services = {"SUNDAY"}
 
         resolved = await self.service._resolve_subway_static_trip_id(
@@ -1370,6 +1375,60 @@ class TestGetStaticStopTimes:
             services,
         )
         assert mock_db.execute.await_count == 2
+
+    @pytest.mark.asyncio
+    async def test_index_build_evicts_only_pre_yesterday_entries(self):
+        """Building the index sweeps stale dates but keeps yesterday and today.
+
+        Subway collection resolves trips for today and for yesterday (overnight
+        runs that cross midnight), so both must survive the sweep. Anything
+        older is dead weight and must be dropped, otherwise the cache grows
+        without bound across a long-lived process.
+
+        This is the sweep that silently broke the caching assertions in
+        ``test_active_index_is_built_once_and_marks_duplicates_ambiguous`` when
+        that test pinned a fixed calendar date, so it is asserted directly here
+        rather than left as an implicit side effect.
+        """
+        result = MagicMock()
+        result.all.return_value = [(11, "SVC_A_077500_1..N03X053")]
+        mock_db = AsyncMock()
+        mock_db.execute = AsyncMock(return_value=result)
+
+        today = now_et().date()
+        yesterday = today - timedelta(days=1)
+        stale = today - timedelta(days=5)
+        services = frozenset({"SUNDAY"})
+
+        # Seed entries the sweep has to judge. Values are irrelevant; only the
+        # date component of the key drives retention.
+        self.service._subway_rt_trip_id_cache[(stale, services)] = {"stale": 1}
+        self.service._subway_rt_trip_id_cache[(yesterday, services)] = {"kept": 2}
+
+        await self.service._resolve_subway_static_trip_id(
+            mock_db,
+            "077500_1..N03X053",
+            today,
+            set(services),
+        )
+
+        cache = self.service._subway_rt_trip_id_cache
+        assert (stale, services) not in cache, (
+            f"An entry from {stale} is older than yesterday and must be swept, "
+            f"but the cache still holds keys {sorted(k[0] for k in cache)}"
+        )
+        assert (yesterday, services) in cache, (
+            "Yesterday's index serves overnight runs and must survive the "
+            f"sweep, but the cache holds keys {sorted(k[0] for k in cache)}"
+        )
+        assert cache[(yesterday, services)] == {"kept": 2}, (
+            "The surviving yesterday entry must keep its contents, got "
+            f"{cache[(yesterday, services)]}"
+        )
+        assert (today, services) in cache, (
+            "The index just built for today must be retained, but the cache "
+            f"holds keys {sorted(k[0] for k in cache)}"
+        )
 
     @pytest.mark.asyncio
     async def test_subway_index_filters_inactive_duplicates(self, db_session):
