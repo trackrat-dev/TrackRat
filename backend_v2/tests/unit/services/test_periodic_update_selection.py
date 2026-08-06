@@ -19,11 +19,13 @@ can plausibly be in flight, and within it the stalest trains are served first.
 """
 
 from datetime import timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
 import trackrat.services.scheduler as scheduler_module
+from trackrat.collectors.njt.client import NJTransitNullDataError
+from trackrat.collectors.njt.journey import JourneyCollector
 from trackrat.models.database import TrainJourney
 from trackrat.services.scheduler import (
     ACTIVE_JOURNEY_LOOKBACK_HOURS,
@@ -230,6 +232,73 @@ async def test_fresh_and_finished_journeys_are_excluded(db_session):
     await service.schedule_periodic_updates(db_session)
 
     assert _scheduled_train_ids(service) == ["stale"]
+
+
+@pytest.mark.asyncio
+async def test_null_data_train_yields_the_batch_head_on_the_next_tick(db_session):
+    """A train NJT has no stop list for must not monopolize the batch (#1748).
+
+    The ``ORDER BY last_updated_at ASC`` that makes selection fair is only fair
+    if every refresh outcome advances that column. ``NJTransitNullDataError``
+    used to return without writing anything, so the same train sorted first on
+    every subsequent tick — re-selected forever, consuming a batch slot and an
+    NJT API call while making no progress. This reopened the #1670 starvation
+    through a different door, and it is not hypothetical: the same ~116 train
+    numbers return null every night, enough to fill the default batch of 100.
+
+    Runs the real ``JourneyCollector`` against real Postgres between the two
+    ticks, so the assertion covers the actual handler rather than a stand-in for
+    it. Only the NJT API itself is stubbed.
+    """
+    now = now_et()
+
+    # The null-data train is the stalest thing in the pool, so it legitimately
+    # heads the first batch.
+    null_data_journey = await _add_journey(
+        db_session,
+        train_id="nullData",
+        scheduled_departure=now - timedelta(minutes=40),
+        last_updated_at=now - timedelta(minutes=90),
+    )
+    await _add_journey(
+        db_session,
+        train_id="genuinelyStale",
+        scheduled_departure=now - timedelta(minutes=40),
+        last_updated_at=now - timedelta(minutes=60),
+    )
+
+    first_tick = _make_scheduler(batch_size=1)
+    await first_tick.schedule_periodic_updates(db_session)
+    assert _scheduled_train_ids(first_tick) == [
+        "nullData"
+    ], "precondition: the stalest train should head the first batch"
+
+    # The refresh happens: NJT answers, but has no stop list for this train.
+    njt_client = AsyncMock()
+    njt_client.get_train_stop_list = AsyncMock(
+        side_effect=NJTransitNullDataError("Train nullData - API returned null data")
+    )
+    await JourneyCollector(njt_client).collect_journey_details(
+        db_session, null_data_journey
+    )
+    await db_session.flush()
+
+    # Next tick: the slot must go to the train that is now stalest.
+    second_tick = _make_scheduler(batch_size=1)
+    await second_tick.schedule_periodic_updates(db_session)
+
+    assert _scheduled_train_ids(second_tick) == ["genuinelyStale"], (
+        "the null-data train re-occupied the batch head — it never advanced "
+        "last_updated_at, so 'genuinelyStale' is starved for as long as the "
+        "null-data train stays in the in-flight window"
+    )
+    assert null_data_journey.api_error_count in (0, None), (
+        "yielding the batch head must not come at the cost of a strike; null "
+        "data is missing upstream coverage, not a failing train"
+    )
+    assert (
+        null_data_journey.is_expired is not True
+    ), "a null-data train must never be expired by the 3-strike threshold"
 
 
 @pytest.mark.asyncio

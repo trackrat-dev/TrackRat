@@ -404,36 +404,36 @@ class TestCollectNJTJourneysBatch:
         ]
         assert len(skip_calls) == 2
 
-
     @pytest.mark.asyncio
-    async def test_skipped_results_not_counted_as_errors(self, scheduler_service):
-        """Skipped results (expired/not-found/disappeared) should not
-        increment error_count in batch collection.
+    async def test_null_data_results_are_skipped_not_errors(self, scheduler_service):
+        """A train NJT has no stop list for is missing upstream coverage, not a
+        collection failure (issues #1725, #1748).
 
-        Addresses chatgpt-codex-connector review on PR #1130: the new
-        {"success": False, "skipped": True} return value must be handled
-        by collect_njt_journeys_batch, not classified as an error.
+        The null-data return used to carry only `error: "Transient null data"`
+        with no `skipped` key, so it fell into the generic `else` branch:
+        error_count incremented and a `njt_journey_collection_error` warning
+        emitted. Production ran at a ~20% "failure" rate every night and 80% on
+        2026-08-01 purely from this, which reads as a broken job and buries the
+        real failures.
         """
-        train_ids = ["47", "49", "3737"]
+        train_ids = ["744", "738", "3737"]
 
         results = [
             {
-                "train_id": "47",
+                "train_id": "744",
                 "success": False,
                 "skipped": True,
-                "reason": "already_expired",
+                "reason": "no_upstream_data",
+                "expired": False,
             },
             {
-                "train_id": "49",
+                "train_id": "738",
                 "success": False,
                 "skipped": True,
-                "reason": "journey_not_found",
+                "reason": "no_upstream_data",
+                "expired": False,
             },
-            {
-                "train_id": "3737",
-                "success": True,
-                "stops_count": 10,
-            },
+            {"train_id": "3737", "success": True, "stops_count": 10},
         ]
 
         call_idx = 0
@@ -450,12 +450,9 @@ class TestCollectNJTJourneysBatch:
             side_effect=mock_collect,
         ):
             with patch.object(scheduler_service, "_running_tasks", {}):
-                with patch(
-                    "trackrat.services.scheduler.logger"
-                ) as mock_logger:
+                with patch("trackrat.services.scheduler.logger") as mock_logger:
                     await scheduler_service.collect_njt_journeys_batch(train_ids)
 
-        # Verify batch completion log shows 1 success, 0 errors
         batch_complete_calls = [
             c
             for c in mock_logger.info.call_args_list
@@ -464,15 +461,31 @@ class TestCollectNJTJourneysBatch:
         assert len(batch_complete_calls) == 1
         kwargs = batch_complete_calls[0][1]
         assert kwargs["success_count"] == 1
-        assert kwargs["error_count"] == 0
+        assert kwargs["error_count"] == 0, (
+            "null data must not count as a collection error — it is NJT's "
+            "missing coverage, not our failure"
+        )
 
-        # Verify skipped results were logged at debug level
+        error_logs = [
+            c
+            for c in mock_logger.warning.call_args_list
+            if c[0][0] == "njt_journey_collection_error"
+        ]
+        assert error_logs == [], (
+            f"null data emitted {len(error_logs)} spurious error warning(s); "
+            "these are what buried the real failures in the nightly logs"
+        )
+
         skip_calls = [
             c
             for c in mock_logger.debug.call_args_list
             if c[0][0] == "njt_journey_batch_skipped"
         ]
         assert len(skip_calls) == 2
+        assert all(c[1]["reason"] == "no_upstream_data" for c in skip_calls), (
+            "the skip reason must name the upstream condition so the log is "
+            "actionable"
+        )
 
 
 class TestNJTBatchCollectionIntegration:
