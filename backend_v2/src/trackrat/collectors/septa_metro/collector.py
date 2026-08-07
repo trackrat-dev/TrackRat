@@ -55,12 +55,14 @@ def _generate_train_id(trip_id: str) -> str:
     return trip_id
 
 
-def _service_date(arrivals: list[SeptaMetroArrival]) -> date:
-    """Service day of a Metro trip: the ET date of its earliest fed arrival.
+def _feed_service_date(arrivals: list[SeptaMetroArrival]) -> date:
+    """The ET date of a trip's earliest arrival *currently in the feed*.
 
-    Single-sourced because presence reconciliation and journey lookup must agree
-    on the date, or a trip in the feed would be reconciled under a key no journey
-    row uses and then struck as omitted.
+    This is a starting guess, not the trip's service day. GTFS-RT prunes stops a
+    trip has already passed, so for a trip that crosses midnight this value rolls
+    forward to the next calendar day partway through the run. Always pass it
+    through :meth:`SeptaMetroCollector._resolve_service_dates` before using it to
+    key a journey — see that method and issue #1749.
     """
     return min(a.arrival_time for a in arrivals).astimezone(ET).date()
 
@@ -80,6 +82,76 @@ class SeptaMetroCollector:
         finally:
             if self._owns_client:
                 await self.client.close()
+
+    async def _resolve_service_dates(
+        self, session: AsyncSession, feed_dates: dict[str, date]
+    ) -> dict[str, date]:
+        """Pin each trip to the service day its journey row is already filed under.
+
+        ``_feed_service_date`` reads the earliest arrival still present in the
+        feed, and GTFS-RT drops stops a trip has passed, so partway through a
+        trip running 23:50 -> 00:20 that date rolls from Monday to Tuesday.
+        Taking it at face value breaks three things at once (issue #1749): the
+        journey lookup misses and mints a **duplicate** row, the static join
+        resolves against the wrong day so every reconstructed stop lands ~24h in
+        the future, and the Monday key drops out of ``present_journey_keys`` so
+        ``reconcile_journey_omissions`` strikes the **real, still-running**
+        journey out of existence three cycles later.
+
+        So a trip keeps the feed's date unless a *live* journey for the same
+        train number is sitting on the previous day, in which case it belongs to
+        that day. "Live" means not completed, not cancelled and not expired.
+
+        That predicate is what makes this safe without a rollover hour, and it is
+        deliberately not ``septa_rr``'s approach: SEPTA runs all-night Night Owl
+        service on Broad Street and Market-Frankford, so Metro has no
+        network-wide gap in which to anchor a ``_SERVICE_DAY_ROLLOVER_HOUR`` the
+        way Regional Rail does inside its 01:33-03:49 dead zone. The risk a
+        rollover hour would otherwise guard against is the mirror image of the
+        bug: mistaking *tomorrow's* run of a recurring trip id for a continuation
+        of today's, merging two days of history into one row. The liveness check
+        rules that out, because by the time the same trip id comes round again a
+        day later the earlier run has necessarily either reached its terminal
+        (``check_journey_completed`` -> ``is_completed``) or stopped appearing in
+        the feed and been struck within ~12 minutes (three 4-minute cycles ->
+        ``is_expired``). Neither state is live, so next-day runs always get their
+        own row.
+        """
+        if not feed_dates:
+            return {}
+
+        earliest = min(feed_dates.values()) - timedelta(days=1)
+        latest = max(feed_dates.values())
+        result = await session.execute(
+            select(
+                TrainJourney.train_id,
+                TrainJourney.journey_date,
+            ).where(
+                TrainJourney.data_source == DATA_SOURCE,
+                TrainJourney.train_id.in_(feed_dates.keys()),
+                TrainJourney.journey_date >= earliest,
+                TrainJourney.journey_date <= latest,
+                TrainJourney.is_completed.is_not(True),
+                TrainJourney.is_cancelled.is_not(True),
+                TrainJourney.is_expired.is_not(True),
+            )
+        )
+        live_dates: dict[str, set[date]] = {}
+        for train_id, journey_date in result.all():
+            live_dates.setdefault(train_id, set()).add(journey_date)
+
+        resolved: dict[str, date] = {}
+        for train_id, feed_date in feed_dates.items():
+            known: set[date] = live_dates.get(train_id, set())
+            # An exact hit wins outright: the trip has not rolled over, so there
+            # is nothing to correct. Only when the feed's day has no live row of
+            # its own does a live row on the previous day mean "this is that
+            # trip, still running".
+            if feed_date not in known and feed_date - timedelta(days=1) in known:
+                resolved[train_id] = feed_date - timedelta(days=1)
+            else:
+                resolved[train_id] = feed_date
+        return resolved
 
     async def collect(self, session: AsyncSession) -> dict[str, Any]:
         stats = {
@@ -112,10 +184,18 @@ class SeptaMetroCollector:
             trips: dict[str, list[SeptaMetroArrival]] = {}
             for arrival in arrivals:
                 trips.setdefault(arrival.trip_id, []).append(arrival)
-            present_journey_keys = {
-                (_generate_train_id(trip_id), _service_date(trip_arrivals))
-                for trip_id, trip_arrivals in trips.items()
-            }
+            # Resolved once, up front, and then used for both the presence key and
+            # the journey lookup. The two must agree on the date or a trip that is
+            # in the feed gets reconciled under a key no journey row uses and is
+            # struck as omitted (#1749).
+            service_dates = await self._resolve_service_dates(
+                session,
+                {
+                    _generate_train_id(trip_id): _feed_service_date(trip_arrivals)
+                    for trip_id, trip_arrivals in trips.items()
+                },
+            )
+            present_journey_keys = set(service_dates.items())
             logger.info(f"Found {len(trips)} SEPTA Metro trips in GTFS-RT feed")
 
             batch_size = 50
@@ -125,7 +205,10 @@ class SeptaMetroCollector:
                 try:
                     async with session.begin_nested():
                         result, journey = await self._process_trip(
-                            session, trip_id, trip_arrivals
+                            session,
+                            trip_id,
+                            trip_arrivals,
+                            service_dates[_generate_train_id(trip_id)],
                         )
                         if result == "discovered":
                             stats["discovered"] += 1
@@ -179,8 +262,18 @@ class SeptaMetroCollector:
         return stats
 
     async def _process_trip(
-        self, session: AsyncSession, trip_id: str, arrivals: list[SeptaMetroArrival]
+        self,
+        session: AsyncSession,
+        trip_id: str,
+        arrivals: list[SeptaMetroArrival],
+        journey_date: date,
     ) -> tuple[str | None, TrainJourney | None]:
+        """Upsert one trip's journey under ``journey_date``.
+
+        The service day is passed in rather than derived here so that it is the
+        same value ``collect`` filed under ``present_journey_keys`` — see
+        :meth:`_resolve_service_dates` for why it cannot be read off the feed.
+        """
         if not arrivals:
             return None, None
 
@@ -200,7 +293,6 @@ class SeptaMetroCollector:
         origin_code = first_arrival.station_code
         terminal_code = last_arrival.station_code
         train_id = _generate_train_id(trip_id)
-        journey_date = _service_date(arrivals)
 
         existing = await session.execute(
             select(TrainJourney)

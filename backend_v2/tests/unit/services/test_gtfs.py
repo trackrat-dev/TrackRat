@@ -30,7 +30,7 @@ from trackrat.services.gtfs import (
     _subway_realtime_trip_id,
 )
 from trackrat.utils.sanitize import bounded_text
-from trackrat.utils.time import ET
+from trackrat.utils.time import ET, now_et
 
 
 class TestGTFSTimeParsing:
@@ -1335,7 +1335,12 @@ class TestGetStaticStopTimes:
             (13, "SVC_B_091100_1..N03R"),
         ]
         mock_db.execute = AsyncMock(return_value=result)
-        target_date = date(2026, 8, 2)
+        # Must be a date the index actually retains. _resolve_subway_static_trip_id
+        # sweeps out keys older than yesterday on every build, so a hardcoded past
+        # date evicts the entry the instant it is written and every lookup
+        # re-queries — the assertions below would then fail for a reason that has
+        # nothing to do with the caching they exist to protect.
+        target_date = now_et().date()
         services = {"SUNDAY"}
 
         resolved = await self.service._resolve_subway_static_trip_id(
