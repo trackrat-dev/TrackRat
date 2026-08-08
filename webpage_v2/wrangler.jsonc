@@ -48,21 +48,26 @@
       ]
     },
 
-    // production deliberately has no `routes` yet. Adding the two custom
-    // domains below IS the production cutover — it repoints trackrat.net away
-    // from the Google load balancer at 136.110.151.144 — so it is a separate,
-    // deliberate commit at runbook step P5.4 rather than something that ships
-    // with the pipeline change:
+    // These two custom domains are what serve trackrat.net and www.trackrat.net
+    // (runbook step P5.4). They are not merely the cutover any more — they are
+    // the only thing serving the apex at all. The Google load balancer that used
+    // to serve it (backend bucket + url maps + target proxies + both forwarding
+    // rules) was deleted on 2026-08-08, ahead of this step, so the apex is dark
+    // until this deploys. Removing these routes takes the site down; it no
+    // longer falls back to GCS.
     //
-    //   "routes": [
-    //     { "pattern": "trackrat.net",     "custom_domain": true },
-    //     { "pattern": "www.trackrat.net", "custom_domain": true }
-    //   ]
-    //
-    // Until then this env deploys to its workers.dev URL only, which is where
-    // P5 verifies the build before any DNS moves.
+    // `wrangler deploy --env production` creates both Custom Domains, their DNS
+    // records and their certificates. Cloud Build is not a TTY, so wrangler
+    // takes the pre-existing apex `A` records over without prompting
+    // (override_existing_dns_record). Run locally, stdout IS a TTY and it stops
+    // to ask — which is why this cutover is done by merging to `production`,
+    // not from a laptop.
     "production": {
-      "name": "trackrat-webpage-production"
+      "name": "trackrat-webpage-production",
+      "routes": [
+        { "pattern": "trackrat.net", "custom_domain": true },
+        { "pattern": "www.trackrat.net", "custom_domain": true }
+      ]
     }
   }
 }
