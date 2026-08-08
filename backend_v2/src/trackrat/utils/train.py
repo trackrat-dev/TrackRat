@@ -2,6 +2,7 @@
 Train-related utility functions for TrackRat V2.
 """
 
+from collections.abc import Container
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -167,6 +168,42 @@ def terminal_stop_index(
     if sorted_stops[last_index].station_code != terminal_station_code:
         return None
     return last_index
+
+
+def journey_terminates_at_station(
+    sorted_stops: "list[JourneyStop]",
+    terminal_station_code: str | None,
+    station_codes: Container[str],
+) -> bool:
+    """Whether the journey *ends* at one of ``station_codes`` rather than
+    departing from it.
+
+    A train that terminates at a station never boards there, so anything framed
+    around its departure — most notably a track/platform prediction — is
+    meaningless for that stop. Worse than meaningless, in the track-prediction
+    case: providers publish tracks for departures, so a terminal stop carries no
+    track of its own (verified across NJT arrivals into NY Penn, including
+    completed runs), the train-id level of
+    :class:`~trackrat.services.historical_track_predictor.HistoricalTrackPredictor`
+    can never reach its record threshold, and the hierarchy falls through to a
+    distribution built entirely from *other, departing* trains. Issue #1773: a
+    rider whose selected route started at NY Penn opened NJT 7832 — a Trenton →
+    NY Penn run terminating at Penn — and was shown Penn departure platforms.
+
+    Positional detection is delegated to :func:`terminal_stop_index`, so this
+    returns ``False`` on a journey that isn't fully sequenced yet (NJT discovery
+    and schedule rows carry ``stop_sequence = NULL`` and a placeholder
+    ``terminal_station_code``). That is the deliberate direction to fail: a
+    just-discovered train sitting at its origin should keep its prediction, and
+    only a journey whose shape is known can prove the stop is an arrival.
+
+    ``station_codes`` is a container so callers can pass an equivalence-expanded
+    set (``expand_station_codes``) and match whichever code the journey stored.
+    """
+    terminal_index = terminal_stop_index(sorted_stops, terminal_station_code)
+    if terminal_index is None:
+        return False
+    return sorted_stops[terminal_index].station_code in station_codes
 
 
 def effective_njt_updated_times(

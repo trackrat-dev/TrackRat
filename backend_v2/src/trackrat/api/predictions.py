@@ -10,6 +10,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from trackrat.api.utils import ensure_source_enabled, handle_errors
@@ -18,11 +19,13 @@ from trackrat.config.station_configs import (
     get_tracks_for_station,
     station_has_predictions,
 )
+from trackrat.config.stations import expand_station_codes
 from trackrat.db.engine import get_db
 from trackrat.models.api import DelayBreakdownProbabilities, DelayForecastResponse
-from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.models.database import TrainJourney
 from trackrat.services.delay_forecaster import delay_forecaster
 from trackrat.services.historical_track_predictor import historical_track_predictor
+from trackrat.utils.train import journey_terminates_at_station, stop_sequence_sort_key
 
 logger = get_logger()
 
@@ -87,11 +90,14 @@ async def predict_track(
             detail=f"Track predictions not available for station {station_code}",
         )
 
-    # Look up the train to get line code and data source
+    # Look up the train to get line code, data source, and route shape. Stops
+    # are eager-loaded: this runs in an async session, where touching the lazy
+    # relationship would raise MissingGreenlet.
     from sqlalchemy import and_, select
 
     query = (
         select(TrainJourney)
+        .options(selectinload(TrainJourney.stops))
         .where(
             and_(
                 TrainJourney.train_id == train_id,
@@ -106,7 +112,12 @@ async def predict_track(
 
     if not train_journey:
         # Try to find any journey for this train ID to get metadata
-        query = select(TrainJourney).where(TrainJourney.train_id == train_id).limit(1)
+        query = (
+            select(TrainJourney)
+            .options(selectinload(TrainJourney.stops))
+            .where(TrainJourney.train_id == train_id)
+            .limit(1)
+        )
 
         result = await db.execute(query)
         train_journey = result.scalar_one_or_none()
@@ -120,6 +131,30 @@ async def predict_track(
     # Don't serve predictions for a residual journey from a disabled source.
     ensure_source_enabled(train_journey.data_source)
 
+    sorted_stops = sorted(train_journey.stops, key=stop_sequence_sort_key)
+    station_codes = set(expand_station_codes(station_code))
+
+    # The train terminates here: it arrives and never departs, so there is no
+    # boarding track to predict. Without this the hierarchy falls through to a
+    # distribution built from the station's *departing* trains and presents it
+    # as this train's platform (#1773).
+    if journey_terminates_at_station(
+        sorted_stops, train_journey.terminal_station_code, station_codes
+    ):
+        logger.info(
+            "track_prediction_unavailable",
+            station_code=station_code,
+            train_id=train_id,
+            reason="terminal_arrival",
+        )
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Train {train_id} terminates at station {station_code}; "
+                "no departure track to predict"
+            ),
+        )
+
     # Generate prediction with timing
     import time
     from datetime import datetime
@@ -128,19 +163,15 @@ async def predict_track(
 
     # Look up stop-level departure at the target station for better time-of-day matching.
     # Falls back to journey-level scheduled_departure (origin time) if stop not found.
-    stop_query = (
-        select(JourneyStop.scheduled_departure)
-        .where(
-            and_(
-                JourneyStop.journey_id == train_journey.id,
-                JourneyStop.station_code == station_code,
-                JourneyStop.scheduled_departure.is_not(None),
-            )
-        )
-        .limit(1)
+    stop_departure = next(
+        (
+            stop.scheduled_departure
+            for stop in sorted_stops
+            if stop.station_code in station_codes
+            and stop.scheduled_departure is not None
+        ),
+        None,
     )
-    stop_result = await db.execute(stop_query)
-    stop_departure = stop_result.scalar_one_or_none()
 
     scheduled_departure = (
         stop_departure or train_journey.scheduled_departure or datetime.now(UTC)
