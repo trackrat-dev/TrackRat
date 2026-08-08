@@ -15,8 +15,8 @@ from trackrat.collectors.septa_common import SeptaFeedFetchError
 from trackrat.collectors.septa_metro.client import SeptaMetroArrival, SeptaMetroClient
 from trackrat.collectors.septa_metro.collector import (
     SeptaMetroCollector,
+    _feed_service_date,
     _generate_train_id,
-    _service_date,
 )
 from trackrat.utils.time import ET
 
@@ -59,12 +59,13 @@ class TestGenerateTrainId:
         assert _generate_train_id("") == ""
 
 
-class TestServiceDate:
-    """Presence reconciliation and journey lookup must derive the same day.
+class TestFeedServiceDate:
+    """The feed-derived day is only a starting guess.
 
-    The presence key is built from the raw feed while ``_process_trip`` builds the
-    journey lookup key; if the two ever disagreed, a trip sitting in the feed would
-    be reconciled under a key no row uses and then struck as omitted.
+    It reads the earliest arrival *still in the feed*, so it is stable only while
+    no stop has been pruned. ``_resolve_service_dates`` is what turns it into the
+    day a journey is actually filed under (issue #1749); these cases pin the
+    reading itself.
     """
 
     def test_uses_earliest_arrival_regardless_of_input_order(self):
@@ -73,22 +74,36 @@ class TestServiceDate:
             _arrival("SEPM1273", "trip_A", "M1", late),
             _arrival("SEPM1272", "trip_A", "M1", _T),
         ]
-        assert _service_date(arrivals) == _T.astimezone(ET).date()
+        assert _feed_service_date(arrivals) == _T.astimezone(ET).date()
 
     def test_uses_eastern_calendar_day_not_utc(self):
         """03:30 UTC is still the previous day in ET — the day the trip belongs to."""
         after_utc_midnight = datetime(2026, 7, 19, 3, 30, 0, tzinfo=UTC)
         arrivals = [_arrival("SEPM1272", "trip_A", "M1", after_utc_midnight)]
-        assert _service_date(arrivals) == date(2026, 7, 18)
+        assert _feed_service_date(arrivals) == date(2026, 7, 18)
 
-    def test_matches_the_journey_date_process_trip_would_look_up(self):
-        arrivals = [
-            _arrival("SEPM1272", "trip_A", "M1", _T + timedelta(minutes=30)),
-            _arrival("SEPM1273", "trip_A", "M1", _T),
+    def test_drifts_forward_when_the_feed_prunes_pre_midnight_stops(self):
+        """The defect this whole mechanism exists to absorb.
+
+        Same physical trip, two successive snapshots. The second is what the feed
+        looks like after midnight once the 23:5x stops have been served and
+        dropped — and the raw reading flips to the next calendar day, which is
+        why nothing may key a journey off it directly.
+        """
+        before_midnight = ET.localize(datetime(2026, 7, 20, 23, 50, 0))
+        after_midnight = ET.localize(datetime(2026, 7, 21, 0, 20, 0))
+
+        full = [
+            _arrival("SEPM1272", "trip_A", "M1", before_midnight),
+            _arrival("SEPM1273", "trip_A", "M1", after_midnight),
         ]
-        # _process_trip sorts in place before deriving its journey_date.
-        by_time = sorted(arrivals, key=lambda a: a.arrival_time)
-        assert _service_date(arrivals) == by_time[0].arrival_time.astimezone(ET).date()
+        pruned = [_arrival("SEPM1273", "trip_A", "M1", after_midnight)]
+
+        assert _feed_service_date(full) == date(2026, 7, 20)
+        assert _feed_service_date(pruned) == date(2026, 7, 21), (
+            "the raw feed reading is expected to drift across midnight — if this "
+            "ever stops being true the resolver's reason for existing changed"
+        )
 
 
 class TestCollectorInit:
@@ -134,6 +149,12 @@ class TestCollect:
         session.begin_nested = MagicMock()
         session.begin_nested.return_value.__aenter__ = AsyncMock()
         session.begin_nested.return_value.__aexit__ = AsyncMock(return_value=False)
+        # Default: no journey rows on record, so _resolve_service_dates keeps
+        # every trip on the day its feed reading gives.
+        empty = MagicMock()
+        empty.all.return_value = []
+        empty.scalars.return_value = []
+        session.execute.return_value = empty
         return session
 
     @pytest.mark.asyncio
@@ -159,6 +180,7 @@ class TestCollect:
         collector._process_trip = AsyncMock(return_value=("discovered", None))
 
         mock_stale = MagicMock()
+        mock_stale.all.return_value = []
         mock_stale.scalars.return_value = []
         mock_session.execute.return_value = mock_stale
 
@@ -247,6 +269,202 @@ class TestCollect:
         reconcile.assert_not_awaited()
 
 
+class TestResolveServiceDates:
+    """The service-day rollover guard (issue #1749).
+
+    ``_feed_service_date`` rolls forward mid-trip once GTFS-RT prunes the stops a
+    train has passed. Left uncorrected that duplicates the journey, resolves the
+    static schedule ~24h into the future, and — because the original key drops
+    out of ``present_journey_keys`` — lets ``reconcile_journey_omissions`` expire
+    the real, still-running train. These cases pin the correction and, just as
+    importantly, its limits: it must not swallow the *next* day's run of a
+    recurring trip id into yesterday's row.
+    """
+
+    _MON = date(2026, 7, 20)
+    _TUE = date(2026, 7, 21)
+
+    @pytest.fixture
+    def collector(self):
+        return SeptaMetroCollector(client=AsyncMock(spec=SeptaMetroClient))
+
+    def _session_with_live(self, rows):
+        """A session whose live-journey query returns ``rows`` of (train_id, date)."""
+        result = MagicMock()
+        result.all.return_value = rows
+        session = AsyncMock()
+        session.execute.return_value = result
+        return session
+
+    @pytest.mark.asyncio
+    async def test_rolled_over_trip_is_pinned_to_the_running_journeys_day(
+        self, collector
+    ):
+        """The bug, directly: feed says Tuesday, the live row says Monday."""
+        session = self._session_with_live([("trip_A", self._MON)])
+
+        resolved = await collector._resolve_service_dates(
+            session, {"trip_A": self._TUE}
+        )
+
+        assert resolved == {"trip_A": self._MON}, (
+            "a trip whose feed date rolled past midnight must stay on the service "
+            "day its in-flight journey already uses, or the lookup misses and "
+            "mints a duplicate while the real row is struck as omitted"
+        )
+
+    @pytest.mark.asyncio
+    async def test_exact_match_wins_over_the_previous_day(self, collector):
+        """A live row on both days must not drag the trip backwards.
+
+        Two consecutive days of the same recurring trip id can legitimately both
+        be live for a few minutes around the rollover. The feed's own day is the
+        truth whenever it has a row.
+        """
+        session = self._session_with_live(
+            [("trip_A", self._MON), ("trip_A", self._TUE)]
+        )
+
+        resolved = await collector._resolve_service_dates(
+            session, {"trip_A": self._TUE}
+        )
+
+        assert resolved == {"trip_A": self._TUE}
+
+    @pytest.mark.asyncio
+    async def test_unknown_trip_keeps_its_feed_date(self, collector):
+        """A brand-new trip has nothing to be pinned to."""
+        session = self._session_with_live([])
+
+        resolved = await collector._resolve_service_dates(
+            session, {"trip_A": self._TUE}
+        )
+
+        assert resolved == {"trip_A": self._TUE}
+
+    @pytest.mark.asyncio
+    async def test_only_the_immediately_preceding_day_is_considered(self, collector):
+        """A two-day-old live row is not a continuation of anything.
+
+        Guards against a stuck row silently adopting every future run of its trip
+        id. Only ``feed_date - 1`` can be a midnight continuation.
+        """
+        session = self._session_with_live([("trip_A", self._MON - timedelta(days=1))])
+
+        resolved = await collector._resolve_service_dates(
+            session, {"trip_A": self._TUE}
+        )
+
+        assert resolved == {"trip_A": self._TUE}
+
+    @pytest.mark.asyncio
+    async def test_finished_and_struck_runs_are_excluded_by_the_query(self, collector):
+        """Liveness is enforced in SQL, so assert the SQL actually says so.
+
+        This is what replaces ``septa_rr``'s rollover hour: the next day's run of
+        a recurring trip id cannot be mistaken for a continuation because the
+        earlier run is by then completed or expired. If these predicates were
+        ever dropped, that protection would vanish silently — the happy-path
+        tests above would all still pass.
+        """
+        session = self._session_with_live([])
+
+        await collector._resolve_service_dates(session, {"trip_A": self._TUE})
+
+        rendered = str(session.execute.await_args.args[0]).lower()
+        for column in ("is_completed", "is_cancelled", "is_expired"):
+            assert f"{column} is not true" in rendered, (
+                f"{column} must be excluded from the live-journey lookup, "
+                f"otherwise tomorrow's run of trip_A merges into today's row; "
+                f"query was: {rendered}"
+            )
+
+    @pytest.mark.asyncio
+    async def test_no_trips_issues_no_query(self, collector):
+        session = self._session_with_live([])
+        assert await collector._resolve_service_dates(session, {}) == {}
+        session.execute.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_trips_are_resolved_independently(self, collector):
+        """One trip rolling over must not move a different trip's day."""
+        session = self._session_with_live([("trip_A", self._MON)])
+
+        resolved = await collector._resolve_service_dates(
+            session, {"trip_A": self._TUE, "trip_B": self._TUE}
+        )
+
+        assert resolved == {"trip_A": self._MON, "trip_B": self._TUE}
+
+
+class TestCrossMidnightCollection:
+    """End-to-end over two successive snapshots, which is what #1749 asks for.
+
+    The first snapshot is the trip before midnight; the second is the same trip
+    after midnight with its pre-midnight stops pruned, exactly as GTFS-RT serves
+    it. The collector must file both under one service day.
+    """
+
+    _MON = date(2026, 7, 20)
+
+    @pytest.fixture
+    def collector(self):
+        return SeptaMetroCollector(client=AsyncMock(spec=SeptaMetroClient))
+
+    @pytest.mark.asyncio
+    async def test_pruned_second_snapshot_keeps_one_journey_and_one_key(
+        self, collector
+    ):
+        before_midnight = ET.localize(datetime(2026, 7, 20, 23, 50, 0))
+        after_midnight = ET.localize(datetime(2026, 7, 21, 0, 20, 0))
+
+        collector.client.get_all_arrivals = AsyncMock(
+            return_value=[_arrival("SEPM1273", "trip_A", "M1", after_midnight)]
+        )
+        collector._process_trip = AsyncMock(return_value=("updated", None))
+
+        # The row the first (pre-midnight) snapshot created: still running, so
+        # still live.
+        live_row = MagicMock()
+        live_row.all.return_value = [("trip_A", self._MON)]
+        session = AsyncMock()
+        session.begin_nested = MagicMock()
+        session.begin_nested.return_value.__aenter__ = AsyncMock()
+        session.begin_nested.return_value.__aexit__ = AsyncMock(return_value=False)
+        session.execute.return_value = live_row
+
+        with (
+            patch(
+                "trackrat.collectors.septa_metro.collector."
+                "TransitAnalyzer.analyze_new_segments_bulk",
+                new_callable=AsyncMock,
+            ),
+            patch(
+                "trackrat.collectors.septa_metro.collector."
+                "reconcile_journey_omissions",
+                new_callable=AsyncMock,
+                return_value=0,
+            ) as reconcile,
+        ):
+            stats = await collector.collect(session)
+
+        assert _feed_service_date(
+            [_arrival("SEPM1273", "trip_A", "M1", after_midnight)]
+        ) == date(2026, 7, 21), "precondition: the raw feed reading has drifted"
+
+        assert collector._process_trip.await_args.args[3] == self._MON, (
+            "the journey lookup must use Monday, or _process_trip finds no row "
+            "and creates a duplicate whose static schedule resolves ~24h out"
+        )
+        assert reconcile.await_args.args[3] == {("trip_A", self._MON)}, (
+            "the presence key must be Monday too — under the Tuesday key the "
+            "Monday row counts as omitted and is expired mid-journey"
+        )
+        assert stats["updated"] == 1
+        assert stats["discovered"] == 0, "no second journey may be created"
+        assert before_midnight.date() == self._MON
+
+
 class TestProcessTrip:
     @pytest.fixture
     def collector(self):
@@ -255,7 +473,9 @@ class TestProcessTrip:
     @pytest.mark.asyncio
     async def test_empty_arrivals_returns_none(self, collector):
         session = AsyncMock()
-        result, journey = await collector._process_trip(session, "trip_1", [])
+        result, journey = await collector._process_trip(
+            session, "trip_1", [], _T.date()
+        )
         assert result is None
         assert journey is None
 
@@ -281,7 +501,9 @@ class TestProcessTrip:
             _arrival("SEPM1392", "trip_1", "M1", _T + timedelta(minutes=10)),
         ]
 
-        result, journey = await collector._process_trip(session, "trip_1", arrivals)
+        result, journey = await collector._process_trip(
+            session, "trip_1", arrivals, _T.date()
+        )
 
         assert result == "discovered"
         assert journey is not None
@@ -316,7 +538,9 @@ class TestProcessTrip:
             _arrival("SEPM1273", "trip_1", "M1", _T + timedelta(minutes=5)),
         ]
 
-        result, journey = await collector._process_trip(session, "trip_1", arrivals)
+        result, journey = await collector._process_trip(
+            session, "trip_1", arrivals, _T.date()
+        )
 
         assert result == "updated"
         assert journey is existing_journey
