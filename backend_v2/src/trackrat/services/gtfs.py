@@ -364,6 +364,7 @@ class GTFSRefreshOutcome(Enum):
     REFRESHED = "refreshed"
     SKIPPED_RATE_LIMITED = "skipped_rate_limited"
     SKIPPED_NO_API_KEY = "skipped_no_api_key"
+    SKIPPED_NOT_YET_ACTIVE = "skipped_not_yet_active"
     FAILED_UNKNOWN_SOURCE = "failed_unknown_source"
     FAILED_DOWNLOAD = "failed_download"
     FAILED_PROCESS = "failed_process"
@@ -382,8 +383,9 @@ class GTFSRefreshOutcome(Enum):
     def is_failure(self) -> bool:
         """True when the refresh did not happen *because something broke*.
 
-        The deliberate skips are excluded: being rate limited, or having no
-        WMATA key configured, is expected operation and must not raise an alarm.
+        The deliberate skips are excluded: being rate limited, having no WMATA
+        key configured, or declining a bundle that has not taken effect yet, is
+        expected operation and must not raise an alarm.
         """
         return self in (
             GTFSRefreshOutcome.FAILED_UNKNOWN_SOURCE,
@@ -573,6 +575,56 @@ class GTFSService:
             feed_info.last_downloaded_at = now_et()
             await db.flush()
 
+            # Decline a bundle whose service period has not started yet, when a
+            # bundle that *has* started is already stored.
+            #
+            # Agencies publish the next bundle before it takes effect, and
+            # storing one is destructive: `_parse_and_store_gtfs` clears the
+            # source's existing rows first. Adopting an early publication
+            # therefore deletes the timetable currently in force and replaces it
+            # with one describing no service for today, so the source serves
+            # nothing until the start date arrives — while looking freshly
+            # parsed and weeks from expiry.
+            #
+            # SEPTA published `v202608090` (every calendar row starting
+            # 20260809) on 2026-08-08. Production had no prior SEPTA bundle so
+            # nothing was lost, but any deployment already holding one would
+            # have gone dark; SEPTA publishes weekly, so this recurs whenever
+            # they publish early (issue #1769).
+            #
+            # Declining is safe to repeat: `last_downloaded_at` is still stamped
+            # above, so the rate limit holds and the daily refresh simply tries
+            # again — adopting the bundle once it is in force. The stored feed's
+            # `age_hours` keeps climbing in the meantime, which is accurate: the
+            # deployment *is* serving an older bundle, and that is the honest
+            # signal to surface rather than suppress.
+            prospective_start = self._bundle_service_start_date(zip_data)
+            today = now_et().date()
+            if prospective_start is not None and prospective_start > today:
+                days_until_start = (prospective_start - today).days
+                if feed_info.last_successful_parse_at is not None:
+                    logger.warning(
+                        "gtfs_refresh_declined_not_yet_active",
+                        data_source=data_source,
+                        feed_starts_on=prospective_start.isoformat(),
+                        days_until_start=days_until_start,
+                    )
+                    await db.commit()
+                    return GTFSRefreshOutcome.SKIPPED_NOT_YET_ACTIVE
+
+                # Nothing stored to fall back on — a first-ever download for
+                # this source. Take it, because an unusable bundle still beats
+                # no bundle once its start date arrives, but say so loudly: the
+                # source serves nothing until then, and this is the one path
+                # that reaches the dark state the guard above prevents. The
+                # detection side of it is issue #1770.
+                logger.error(
+                    "gtfs_first_bundle_not_yet_active",
+                    data_source=data_source,
+                    feed_starts_on=prospective_start.isoformat(),
+                    days_until_start=days_until_start,
+                )
+
             # Parse and store the data
             stats = await self._parse_and_store_gtfs(db, data_source, zip_data)
 
@@ -674,6 +726,42 @@ class GTFSService:
             await db.flush()
 
         return feed_info
+
+    def _bundle_service_start_date(self, zip_data: bytes) -> date | None:
+        """Earliest ``calendar.txt`` start date in a bundle, read without storing.
+
+        The read-only counterpart to the ``start_date`` stat that
+        :meth:`_parse_and_store_gtfs` derives, and it has to be read-only: that
+        method's first act is ``_clear_existing_data``, so by the time those
+        stats exist the bundle currently in force has already been deleted.
+        Anything wanting to *decline* a bundle must decide before then.
+
+        Returns ``None`` when the bundle publishes no ``calendar.txt`` (NJT does
+        not) or when nothing in it yields a date — unknown, never treated as
+        future-dated. That direction is deliberate. The only thing the caller
+        can do with this value is refuse an update, so an unknown reading as
+        "future" would pin the source to its current bundle indefinitely,
+        turning a conservative guard into the outage it exists to prevent.
+
+        Malformed rows are absorbed for the same reason: a genuinely corrupt
+        archive still fails inside :meth:`_parse_and_store_gtfs` and reports
+        ``FAILED_PROCESS``, and the guard must not be what surfaces it.
+        """
+        try:
+            with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
+                if "calendar.txt" not in zf.namelist():
+                    return None
+                with zf.open("calendar.txt") as f:
+                    start_dates = [
+                        self._parse_gtfs_date(row["start_date"])
+                        for row in _gtfs_csv_rows(f)
+                        if row.get("start_date")
+                    ]
+        except Exception as e:
+            logger.warning("gtfs_bundle_start_date_unreadable", error=str(e))
+            return None
+
+        return min(start_dates) if start_dates else None
 
     async def _parse_and_store_gtfs(
         self, db: AsyncSession, data_source: str, zip_data: bytes

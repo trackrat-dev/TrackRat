@@ -102,13 +102,27 @@ async def _passthrough_freshness(
     return True
 
 
-def _gtfs_zip(*, trips: int = 2, service_id: str = "WKDY") -> bytes:
+def _gtfs_zip(
+    *,
+    trips: int = 2,
+    service_id: str = "WKDY",
+    start_date: str = "20260101",
+    end_date: str = "20261231",
+    include_calendar: bool = True,
+) -> bytes:
     """Build a small but genuinely valid GTFS static feed.
 
     Real enough that `_parse_and_store_gtfs` walks its whole pipeline —
     routes → calendar → stops → trips → stop_times — and reports non-zero
     counts, so a test can assert on what the parse actually persisted rather
     than on a stubbed stats dict.
+
+    ``start_date`` / ``end_date`` set the calendar's service window in GTFS's
+    own ``YYYYMMDD`` form; a start date in the future models an agency
+    publishing next week's bundle early (issue #1769).
+
+    ``include_calendar=False`` drops ``calendar.txt`` entirely, as NJT's real
+    feed does — the bundle then declares no service window at all.
     """
     trip_rows = "\n".join(
         f"T{n},{service_id},R1,Test Terminal,{n % 2}" for n in range(1, trips + 1)
@@ -126,7 +140,7 @@ def _gtfs_zip(*, trips: int = 2, service_id: str = "WKDY") -> bytes:
         "calendar.txt": (
             "service_id,monday,tuesday,wednesday,thursday,friday,"
             "saturday,sunday,start_date,end_date\n"
-            f"{service_id},1,1,1,1,1,0,0,20260101,20261231\n"
+            f"{service_id},1,1,1,1,1,0,0,{start_date},{end_date}\n"
         ),
         "stops.txt": (
             "stop_id,stop_name,stop_lat,stop_lon\n"
@@ -144,6 +158,9 @@ def _gtfs_zip(*, trips: int = 2, service_id: str = "WKDY") -> bytes:
             + "\n"
         ),
     }
+
+    if not include_calendar:
+        del files["calendar.txt"]
 
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -452,6 +469,235 @@ class TestRefreshOutcomesAgainstRealPostgres:
 
         assert outcome is GTFSRefreshOutcome.FAILED_UNKNOWN_SOURCE
         assert outcome.is_failure is True
+
+
+def _gtfs_date(days_from_today: int) -> str:
+    """A GTFS `YYYYMMDD` date relative to today."""
+    return (now_et().date() + timedelta(days=days_from_today)).strftime("%Y%m%d")
+
+
+async def _stored_trip_ids(db: AsyncSession, data_source: str) -> set[str]:
+    """The trip ids currently persisted for a source.
+
+    The load-bearing assertion for issue #1769: `_parse_and_store_gtfs` clears
+    a source's rows before writing, so "did we adopt this bundle" is really
+    "did the previously stored timetable survive". A test that only checked the
+    returned outcome would pass against an implementation that declined the
+    bundle *after* deleting the old one — the exact outage being prevented.
+    """
+    rows = await db.execute(
+        select(GTFSTrip.trip_id).where(GTFSTrip.data_source == data_source)
+    )
+    return set(rows.scalars().all())
+
+
+@pytest.mark.asyncio
+class TestFutureDatedBundlesAreDeclined:
+    """Issue #1769: adopting a bundle that has not taken effect takes the
+    source dark, because storing one destroys the bundle still in force."""
+
+    async def test_a_bundle_starting_tomorrow_is_declined_and_the_stored_one_survives(
+        self, db_session: AsyncSession
+    ):
+        """The core guard, reproducing SEPTA's 2026-08-08 publication.
+
+        A bundle in force is stored, then the agency publishes next week's
+        early. Adopting it would delete today's timetable and replace it with
+        one describing no service until tomorrow.
+        """
+        service = GTFSService()
+
+        with _stub_download(
+            _gtfs_zip(trips=3, start_date=_gtfs_date(-7), end_date=_gtfs_date(7))
+        ):
+            first = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+        assert first is GTFSRefreshOutcome.REFRESHED
+        in_force = await _stored_trip_ids(db_session, "SEPTA_RR")
+        assert in_force == {"T1", "T2", "T3"}
+
+        feed_info = await service._get_or_create_feed_info(db_session, "SEPTA_RR")
+        parsed_at_before = feed_info.last_successful_parse_at
+
+        with _stub_download(
+            _gtfs_zip(
+                trips=5,
+                service_id="NEXTWK",
+                start_date=_gtfs_date(1),
+                end_date=_gtfs_date(21),
+            )
+        ):
+            second = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        assert second is GTFSRefreshOutcome.SKIPPED_NOT_YET_ACTIVE
+        # The whole point: the timetable serving today is still there.
+        assert await _stored_trip_ids(db_session, "SEPTA_RR") == in_force
+
+        await db_session.refresh(feed_info)
+        # Not a parse, so the parse timestamp must not move — `age_hours` has to
+        # keep climbing, because the deployment really is on an older bundle.
+        assert feed_info.last_successful_parse_at == parsed_at_before
+        # The download did happen, so the rate limit holds and this does not
+        # re-download in a tight loop.
+        assert feed_info.last_downloaded_at is not None
+
+    async def test_declining_is_a_skip_not_a_failure(self, db_session: AsyncSession):
+        """An agency publishing early is expected operation, not a fault.
+
+        Classifying it as a failure would page on a normal weekly changeover
+        and, worse, teach readers to ignore `failed_sources`.
+        """
+        outcome = GTFSRefreshOutcome.SKIPPED_NOT_YET_ACTIVE
+
+        assert outcome.is_failure is False
+        assert outcome.refreshed is False
+
+    async def test_a_future_bundle_is_adopted_when_nothing_is_stored(
+        self, db_session: AsyncSession
+    ):
+        """Production's actual situation on 2026-08-08: SEPTA's first-ever
+        download. There is no bundle to protect, and refusing would leave the
+        source with nothing at all — including after the start date arrives."""
+        service = GTFSService()
+
+        with _stub_download(
+            _gtfs_zip(trips=4, start_date=_gtfs_date(1), end_date=_gtfs_date(21))
+        ):
+            outcome = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+        assert await _stored_trip_ids(db_session, "SEPTA_RR") == {
+            "T1",
+            "T2",
+            "T3",
+            "T4",
+        }
+
+    async def test_a_bundle_starting_today_is_adopted(self, db_session: AsyncSession):
+        """GTFS start dates are inclusive. Declining on the changeover morning
+        would freeze every source on the previous week's timetable for a day."""
+        service = GTFSService()
+
+        with _stub_download(_gtfs_zip(trips=2, start_date=_gtfs_date(-7))):
+            await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        with _stub_download(
+            _gtfs_zip(
+                trips=6,
+                service_id="TODAY",
+                start_date=_gtfs_date(0),
+                end_date=_gtfs_date(14),
+            )
+        ):
+            outcome = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+        assert len(await _stored_trip_ids(db_session, "SEPTA_RR")) == 6
+
+    async def test_an_ordinary_in_force_bundle_is_adopted(
+        self, db_session: AsyncSession
+    ):
+        """The baseline that keeps the guard honest: normal weekly refreshes
+        must still replace the stored bundle, or the feed never updates."""
+        service = GTFSService()
+
+        with _stub_download(_gtfs_zip(trips=2, start_date=_gtfs_date(-14))):
+            await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        with _stub_download(
+            _gtfs_zip(trips=7, service_id="CURRENT", start_date=_gtfs_date(-1))
+        ):
+            outcome = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+        assert len(await _stored_trip_ids(db_session, "SEPTA_RR")) == 7
+
+    async def test_a_bundle_without_calendar_txt_is_adopted(
+        self, db_session: AsyncSession
+    ):
+        """NJT publishes no calendar.txt, so its start date is unknowable.
+
+        Unknown must fail *open*. The guard can only decline, so treating an
+        unreadable window as future-dated would pin such a source to its first
+        bundle permanently — a worse outage than the one being prevented.
+        """
+        service = GTFSService()
+
+        with _stub_download(_gtfs_zip(trips=2, start_date=_gtfs_date(-14))):
+            await service.refresh_feed(db_session, "NJT", force=True)
+
+        with _stub_download(
+            _gtfs_zip(trips=9, service_id="NOCAL", include_calendar=False)
+        ):
+            outcome = await service.refresh_feed(db_session, "NJT", force=True)
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+        assert len(await _stored_trip_ids(db_session, "NJT")) == 9
+
+    async def test_start_date_is_read_without_touching_stored_data(
+        self, db_session: AsyncSession
+    ):
+        """The helper must be genuinely read-only.
+
+        It runs before `_parse_and_store_gtfs`, whose first act is deleting the
+        source's rows — so if reading the start date had any storage side
+        effect, the guard would destroy the bundle it exists to protect.
+        """
+        service = GTFSService()
+
+        with _stub_download(_gtfs_zip(trips=3, start_date=_gtfs_date(-7))):
+            await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+        before = await _stored_trip_ids(db_session, "SEPTA_RR")
+
+        probed = service._bundle_service_start_date(
+            _gtfs_zip(trips=5, service_id="OTHER", start_date=_gtfs_date(3))
+        )
+
+        assert probed == now_et().date() + timedelta(days=3)
+        assert await _stored_trip_ids(db_session, "SEPTA_RR") == before
+
+    async def test_an_unreadable_archive_reports_an_unknown_start_date(self):
+        """A corrupt download must not be surfaced *by the guard*.
+
+        It still fails in `_parse_and_store_gtfs` and reports FAILED_PROCESS,
+        which is the outcome that carries the stage and the error text. Raising
+        here would relabel a download problem as a calendar problem.
+        """
+        assert GTFSService()._bundle_service_start_date(b"not a zip file") is None
+
+    async def test_a_calendar_with_no_usable_start_dates_is_adopted(
+        self, db_session: AsyncSession
+    ):
+        """`calendar.txt` present but yielding nothing is still unknown.
+
+        Distinct from the missing-file case above: the file exists and parses,
+        it just carries no start date (header only, or every row blank). Both
+        have to fail open for the same reason — the guard can only decline, so
+        an unknown read as future-dated would pin the source permanently.
+        """
+        service = GTFSService()
+
+        header_only = _gtfs_zip(trips=2, start_date=_gtfs_date(-14))
+        rebuilt = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(header_only)) as src:
+            with zipfile.ZipFile(rebuilt, "w", zipfile.ZIP_DEFLATED) as dst:
+                for name in src.namelist():
+                    body = src.read(name)
+                    if name == "calendar.txt":
+                        body = (
+                            b"service_id,monday,tuesday,wednesday,thursday,"
+                            b"friday,saturday,sunday,start_date,end_date\n"
+                        )
+                    dst.writestr(name, body)
+        no_dates = rebuilt.getvalue()
+
+        assert service._bundle_service_start_date(no_dates) is None
+
+        with _stub_download(_gtfs_zip(trips=2, start_date=_gtfs_date(-14))):
+            await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+        with _stub_download(no_dates):
+            outcome = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
 
     async def test_rate_limited_skip_is_not_a_failure(self, db_session: AsyncSession):
         """The routine nightly skip must stay distinguishable from breakage.

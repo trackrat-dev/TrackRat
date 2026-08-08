@@ -199,6 +199,21 @@ and is served anyway per #1419) is excluded from `lapsed_sources`: for those an
 expired calendar is the accepted steady state, and reporting it would fail every
 deploy forever. Their `feed_end_date` / `days_until_feed_end` are still reported.
 
+**Future-dated GTFS bundles are declined, not adopted (#1769).** Agencies publish the
+next bundle before it takes effect, and storing one is destructive — `_parse_and_store_gtfs`
+clears the source's rows first. So `refresh_feed` reads the prospective bundle's
+`min(calendar.start_date)` *before* parsing and returns
+`GTFSRefreshOutcome.SKIPPED_NOT_YET_ACTIVE` when that date is in the future and a bundle
+already in force is stored; the daily refresh retries and adopts it once it applies.
+Start dates are inclusive, so a bundle starting today is adopted. An unknown start date
+(no `calendar.txt`, as with NJT) fails **open** and is adopted — the guard can only
+decline, so treating unknown as future-dated would pin a source to its current bundle
+forever. The one case that still adopts a future-dated bundle is a first-ever download
+with nothing stored to fall back on; that logs `gtfs_first_bundle_not_yet_active` at
+error level and is exactly how SEPTA went dark on 2026-08-08. A decline is a skip, not a
+failure — it stays out of `failed_sources` but is named in `declined_sources` on
+`gtfs_feed_refresh_complete` so it cannot be mistaken for a routine rate-limited skip.
+
 **Server Usage Report:**
 
 Shows how the server is being used: API traffic breakdown, route searches, train follows,
