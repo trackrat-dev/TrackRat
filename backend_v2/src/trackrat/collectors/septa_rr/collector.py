@@ -18,6 +18,7 @@ from trackrat.collectors.mta_common import (
     JOURNEY_UPDATE_LOAD_OPTIONS,
     build_complete_stops,
     check_journey_completed,
+    origin_actual_departure,
     update_journey_metadata,
     update_stop_departure_status,
 )
@@ -363,7 +364,8 @@ class SeptaRailCollector:
                 terminal_station_code=terminal_code,
                 scheduled_departure=merged_stops[0]["scheduled_departure"],
                 scheduled_arrival=merged_stops[-1]["scheduled_arrival"],
-                actual_departure=first_arrival.arrival_time,
+                # Set from the origin stop once the stops exist, below.
+                actual_departure=None,
                 has_complete_journey=True,
                 stops_count=len(merged_stops),
                 is_cancelled=False,
@@ -401,13 +403,17 @@ class SeptaRailCollector:
             await session.flush()
             now = now_et()
             update_stop_departure_status(created_stops, now)
+            # A static backfill can put the origin ahead of the first stop the
+            # feed still lists, so the journey's departure comes from that
+            # origin stop — not from the first visible arrival, which pairs an
+            # origin schedule with a downstream actual and reads as delay.
+            journey.actual_departure = origin_actual_departure(created_stops)
             update_journey_metadata(journey, now, created_stops)
             check_journey_completed(journey, created_stops)
             logger.debug(f"Discovered SEPTA RR train {train_id}")
             return "discovered", journey
 
         # Update existing journey with fresh predictions.
-        journey.actual_departure = first_arrival.arrival_time
         journey.actual_arrival = max(
             arrivals, key=lambda a: a.arrival_time
         ).arrival_time
@@ -425,6 +431,7 @@ class SeptaRailCollector:
         now = now_et()
         journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
         update_stop_departure_status(journey_stops, now)
+        journey.actual_departure = origin_actual_departure(journey_stops)
         update_journey_metadata(journey, now, journey_stops)
         mark_journey_present(journey)
         check_journey_completed(journey, journey_stops)
@@ -477,15 +484,13 @@ class SeptaRailCollector:
                     stop.actual_departure = arr.departure_time
                     stop.updated_departure = arr.departure_time
 
-        journey.actual_departure = min(
-            arrivals, key=lambda a: a.arrival_time
-        ).arrival_time
         journey.actual_arrival = max(
             arrivals, key=lambda a: a.arrival_time
         ).arrival_time
 
         now = now_et()
         update_stop_departure_status(journey_stops, now)
+        journey.actual_departure = origin_actual_departure(journey_stops)
         update_journey_metadata(journey, now, journey_stops)
         mark_journey_present(journey)
         check_journey_completed(journey, journey_stops)
