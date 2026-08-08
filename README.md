@@ -26,7 +26,7 @@ TrackRat tracks trains across thirteen transit systems in real time, predicts pl
 | SEPTA Metro | Broad St, Market-Frankford, Norristown HSL, trolleys | SEPTA GTFS-RT | Partial (schedule-first) |
 | PATCO | Lindenwold–15-16th & Locust | GTFS Static | Schedule only |
 
-> **Note:** Any system can be disabled deployment-wide via the `TRACKRAT_DISABLED_DATA_SOURCES` env var (skips collection and filters API responses). The hosted TrackRat apps currently have BART, WMATA, MBTA, Metra, and SEPTA (Regional Rail + Metro) disabled; self-hosted deployments can enable them.
+> **Note:** Any system can be disabled deployment-wide via the `TRACKRAT_DISABLED_DATA_SOURCES` env var (skips collection and filters API responses). The hosted TrackRat apps have BART, WMATA, MBTA, and Metra disabled; SEPTA (Regional Rail + Metro) is live in staging and reaches production at the next deploy. Self-hosted deployments can enable any of them.
 
 ## What It Does
 
