@@ -44,6 +44,7 @@ async def _seed_feed(
     trip_count: int | None = None,
     error_message: str | None = None,
     feed_ends_in_days: int | None = None,
+    feed_starts_in_days: int | None = None,
 ) -> None:
     """Insert a gtfs_feed_info row in a given freshness state.
 
@@ -54,6 +55,11 @@ async def _seed_feed(
     values model a bundle whose calendar has already expired. Left ``None``
     (the default) the column stays NULL, which is what a feed publishing only
     ``calendar_dates.txt`` produces.
+
+    ``feed_starts_in_days`` does the same for ``feed_start_date``; *positive*
+    values model the mirror-image failure — a bundle published early and
+    adopted before it takes effect, so the source serves nothing at all
+    (issue #1770).
     """
     db.add(
         GTFSFeedInfo(
@@ -70,6 +76,11 @@ async def _seed_feed(
             feed_end_date=(
                 now_et().date() + timedelta(days=feed_ends_in_days)
                 if feed_ends_in_days is not None
+                else None
+            ),
+            feed_start_date=(
+                now_et().date() + timedelta(days=feed_starts_in_days)
+                if feed_starts_in_days is not None
                 else None
             ),
         )
@@ -391,6 +402,111 @@ class TestFeedStatusesAgainstRealPostgres:
         assert status.feed_end_date is None
         assert status.days_until_feed_end is None
         assert status.is_lapsed is False
+
+    async def test_a_freshly_parsed_bundle_starting_tomorrow_is_not_yet_active(
+        self, db_session: AsyncSession
+    ):
+        """The production state of SEPTA_RR on 2026-08-08 (issue #1770).
+
+        Reproduces the real bundle: `v202608090`, downloaded and parsed
+        successfully, 1340 trips loaded, three weeks from expiry — and every
+        `calendar.txt` row starting tomorrow, so there is no schedule for today
+        and the source serves nothing.
+
+        The assertions on the *other* signals are the substance of the test.
+        Each one reads green, which is precisely why this went unnoticed for a
+        day and a half behind a `healthy` status page.
+        """
+        await _seed_feed(
+            db_session,
+            "SEPTA_RR",
+            parsed_hours_ago=1,
+            trip_count=1340,
+            feed_starts_in_days=1,
+            feed_ends_in_days=21,
+        )
+
+        (status,) = await GTFSService().get_feed_statuses(db_session, ["SEPTA_RR"])
+
+        assert status.is_not_yet_active is True
+        assert status.days_until_feed_start == 1
+        assert status.feed_start_date == (now_et().date() + timedelta(days=1))
+        # Every pre-existing signal reads healthy — the whole point of #1770.
+        assert status.is_stale is False
+        assert status.is_lapsed is False
+        assert status.error_message is None
+        assert status.trip_count == 1340
+        assert status.days_until_feed_end == 21
+
+    async def test_a_bundle_starting_today_is_active(self, db_session: AsyncSession):
+        """GTFS start dates are inclusive, so the first valid day must be
+        active. Off-by-one here would fire on every bundle's opening day —
+        including the morning SEPTA's feed finally takes effect."""
+        await _seed_feed(
+            db_session, "SEPTA_RR", parsed_hours_ago=1, feed_starts_in_days=0
+        )
+
+        (status,) = await GTFSService().get_feed_statuses(db_session, ["SEPTA_RR"])
+
+        assert status.is_not_yet_active is False
+        assert status.days_until_feed_start == 0
+
+    async def test_a_bundle_that_started_in_the_past_is_active(
+        self, db_session: AsyncSession
+    ):
+        """Ordinary operation: a bundle in force for a fortnight. Negative
+        `days_until_feed_start` must not read as pending."""
+        await _seed_feed(
+            db_session, "PATCO", parsed_hours_ago=3, feed_starts_in_days=-14
+        )
+
+        (status,) = await GTFSService().get_feed_statuses(db_session, ["PATCO"])
+
+        assert status.is_not_yet_active is False
+        assert status.days_until_feed_start == -14
+
+    async def test_a_feed_with_no_calendar_start_date_reports_unknown(
+        self, db_session: AsyncSession
+    ):
+        """calendar_dates-only feeds leave the column NULL, exactly as they do
+        for the end date. Unknown is not pending — treating it as pending would
+        park a permanent warning on NJT, which publishes no calendar.txt."""
+        await _seed_feed(db_session, "NJT", parsed_hours_ago=3)
+
+        (status,) = await GTFSService().get_feed_statuses(db_session, ["NJT"])
+
+        assert status.feed_start_date is None
+        assert status.days_until_feed_start is None
+        assert status.is_not_yet_active is False
+
+    async def test_an_expiry_exempt_source_is_still_checked_for_a_future_start(
+        self, db_session: AsyncSession
+    ):
+        """`GTFS_EXPIRY_EXEMPT_SOURCES` must not carry over to this check.
+
+        PATH is exempt from the *lapse* verdict because its Trillium feed
+        expired in 2026 and is knowingly still served (issue #1419). That
+        carve-out says nothing about start dates, and extending it would mean a
+        future-dated PATH bundle — a genuine regression — could never be seen.
+        In practice PATH's start date is far in the past, so this asserts the
+        exemption is scoped rather than describing a live state.
+        """
+        assert "PATH" in GTFS_EXPIRY_EXEMPT_SOURCES
+        await _seed_feed(
+            db_session,
+            "PATH",
+            parsed_hours_ago=1,
+            feed_starts_in_days=3,
+            feed_ends_in_days=-60,
+        )
+
+        (status,) = await GTFSService().get_feed_statuses(db_session, ["PATH"])
+
+        # Exempt from the lapse verdict, as designed...
+        assert status.is_lapsed is False
+        # ...but a future start date is still reported.
+        assert status.is_not_yet_active is True
+        assert status.days_until_feed_start == 3
 
 
 @pytest.mark.asyncio
@@ -997,6 +1113,84 @@ class TestHealthExposesFeedFreshness:
         assert check["lapsed_sources"] == []
         assert check["stale_sources"] == []
         assert check["feeds"]["PATCO"]["days_until_feed_end"] == 45
+
+    async def test_not_yet_active_feed_degrades_health_though_nothing_else_is_wrong(
+        self, db_session: AsyncSession
+    ):
+        """The #1770 regression test, end to end through `/health`.
+
+        Models production on 2026-08-08: SEPTA_RR freshly parsed, trips loaded,
+        three weeks of runway, and a calendar that starts tomorrow. Before this
+        check the endpoint returned `healthy` with empty `stale_sources` and
+        `lapsed_sources` while the source served zero departures at every
+        station — the reading that was quoted as evidence SEPTA was fine.
+        """
+        for source in GTFS_FEED_URLS:
+            await _seed_feed(
+                db_session,
+                source,
+                parsed_hours_ago=1,
+                trip_count=1340 if source == "SEPTA_RR" else None,
+                feed_starts_in_days=1 if source == "SEPTA_RR" else -14,
+                feed_ends_in_days=21 if source == "SEPTA_RR" else 45,
+            )
+
+        health = await self._gtfs_check(db_session)
+        check = health["checks"]["gtfs_feeds"]
+
+        # Neither pre-existing signal fires, so the future start date is the
+        # sole cause of the degrade — that is the regression being pinned.
+        assert check["stale_sources"] == []
+        assert check["lapsed_sources"] == []
+        assert check["not_yet_active_sources"] == ["SEPTA_RR"]
+        assert check["status"] == "warning"
+        assert check["feeds"]["SEPTA_RR"]["days_until_feed_start"] == 1
+        assert (
+            check["feeds"]["SEPTA_RR"]["feed_start_date"]
+            == (now_et().date() + timedelta(days=1)).isoformat()
+        )
+        assert health["status"] == "degraded"
+
+    async def test_in_force_feeds_report_their_start_date_without_alarming(
+        self, db_session: AsyncSession
+    ):
+        """The companion baseline: identical setup, bundles already in force,
+        healthy. Pins that the new check does not alarm on ordinary
+        operation — the way a check earns being trusted when it does fire."""
+        for source in GTFS_FEED_URLS:
+            await _seed_feed(
+                db_session,
+                source,
+                parsed_hours_ago=1,
+                feed_starts_in_days=-14,
+                feed_ends_in_days=45,
+            )
+
+        check = (await self._gtfs_check(db_session))["checks"]["gtfs_feeds"]
+
+        assert check["status"] == "healthy"
+        assert check["not_yet_active_sources"] == []
+        assert check["feeds"]["PATCO"]["days_until_feed_start"] == -14
+
+    async def test_a_bundle_starting_today_does_not_alarm_through_health(
+        self, db_session: AsyncSession
+    ):
+        """GTFS start dates are inclusive. The morning a correctly-timed bundle
+        takes effect must be healthy, or every agency's changeover day fires."""
+        for source in GTFS_FEED_URLS:
+            await _seed_feed(
+                db_session,
+                source,
+                parsed_hours_ago=1,
+                feed_starts_in_days=0 if source == "SEPTA_RR" else -14,
+                feed_ends_in_days=45,
+            )
+
+        check = (await self._gtfs_check(db_session))["checks"]["gtfs_feeds"]
+
+        assert check["not_yet_active_sources"] == []
+        assert check["status"] == "healthy"
+        assert check["feeds"]["SEPTA_RR"]["days_until_feed_start"] == 0
 
     async def test_a_bundle_expiring_today_does_not_alarm(
         self, db_session: AsyncSession

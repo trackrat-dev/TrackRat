@@ -199,6 +199,16 @@ and is served anyway per #1419) is excluded from `lapsed_sources`: for those an
 expired calendar is the accepted steady state, and reporting it would fail every
 deploy forever. Their `feed_end_date` / `days_until_feed_end` are still reported.
 
+The mirror image is `not_yet_active_sources`, with per-feed `feed_start_date` /
+`days_until_feed_start`. An agency publishes next week's bundle early, the refresh job
+adopts it, and the source serves *nothing* until its start date — freshly downloaded,
+weeks from expiry, and completely dark, so neither `stale_sources` nor `lapsed_sources`
+can see it. SEPTA Regional Rail served zero departures for a day and a half this way
+while `/health` reported `healthy` (#1770). `verify-deployment.sh` asserts on this list
+too. Unlike the lapse check, `GTFS_EXPIRY_EXEMPT_SOURCES` is *not* excluded here: an
+exempt feed's calendar has already expired, so its start date is firmly in the past and
+it cannot trip this check anyway — carving it out would only mask a future regression.
+
 **Server Usage Report:**
 
 Shows how the server is being used: API traffic breakdown, route searches, train follows,

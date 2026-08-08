@@ -73,22 +73,30 @@ for i in $(seq 1 $MAX_RETRIES); do
     fi
 done
 
-# GTFS calendar lapse check
+# GTFS calendar window checks (lapsed, and not yet started)
 #
-# /health reports a lapsed bundle as a `warning` and still returns HTTP 200, so
-# the curl above passes while a source serves an expired timetable. That is the
-# dominant silent failure for a schedule-first source (PATCO, SEPTA Metro):
-# the feed re-downloads nightly and looks fresh, departures keep appearing, and
-# every one of them is fabricated from a dead calendar. Asserted here rather
-# than left to an operator reading JSON, so the staging validation path actually
-# gates it (issue #1634).
+# /health reports both as a `warning` and still returns HTTP 200, so the curl
+# above passes while a source serves an expired timetable — or no timetable at
+# all. Asserted here rather than left to an operator reading JSON, so the
+# staging validation path actually gates them.
 #
-# Absent on deployments predating the `lapsed_sources` field, which read as
-# empty — unknown is not lapsed, matching GTFSFeedStatus.is_lapsed.
+# A lapse is the dominant silent failure for a schedule-first source (PATCO,
+# SEPTA Metro): the feed re-downloads nightly and looks fresh, departures keep
+# appearing, and every one of them is fabricated from a dead calendar
+# (issue #1634).
+#
+# A not-yet-active bundle is the mirror image and fails the opposite way — the
+# source goes silent rather than serving fiction. An agency publishes next
+# week's bundle early, the refresh job adopts it, and nothing is served until
+# its start date. SEPTA Regional Rail served zero departures for a day and a
+# half this way while /health reported healthy (issue #1770).
+#
+# Both fields are absent on deployments predating them and read as empty —
+# unknown is neither lapsed nor pending, matching GTFSFeedStatus.
 echo ""
 echo "📅 Checking GTFS feed calendars..."
 
-if ! LAPSED_SOURCES=$(python3 -c '
+if ! GTFS_CALENDAR_STATE=$(python3 -c '
 import json
 
 with open("/tmp/health-response.json") as fh:
@@ -96,10 +104,14 @@ with open("/tmp/health-response.json") as fh:
 
 gtfs = health.get("checks", {}).get("gtfs_feeds") or {}
 print(",".join(gtfs.get("lapsed_sources") or []))
+print(",".join(gtfs.get("not_yet_active_sources") or []))
 ' 2>/dev/null); then
     echo "   ❌ Could not parse the health response for GTFS feed status"
     exit 1
 fi
+
+LAPSED_SOURCES=$(sed -n 1p <<< "$GTFS_CALENDAR_STATE")
+NOT_YET_ACTIVE_SOURCES=$(sed -n 2p <<< "$GTFS_CALENDAR_STATE")
 
 if [[ -n "$LAPSED_SOURCES" ]]; then
     echo "   ❌ GTFS bundle calendar has lapsed: $LAPSED_SOURCES"
@@ -109,7 +121,16 @@ if [[ -n "$LAPSED_SOURCES" ]]; then
     exit 1
 fi
 
-echo "   ✅ No lapsed GTFS bundles"
+if [[ -n "$NOT_YET_ACTIVE_SOURCES" ]]; then
+    echo "   ❌ GTFS bundle has not taken effect yet: $NOT_YET_ACTIVE_SOURCES"
+    echo "      The stored bundle's calendar starts in the future, so these"
+    echo "      sources have no schedule for today and serve nothing. The agency"
+    echo "      published the next bundle early and it was adopted over the one"
+    echo "      still in force. Check feed_start_date in /health."
+    exit 1
+fi
+
+echo "   ✅ No lapsed or not-yet-active GTFS bundles"
 
 # API Endpoint Tests
 echo ""
