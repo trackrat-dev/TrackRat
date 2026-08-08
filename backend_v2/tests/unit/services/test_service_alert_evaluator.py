@@ -6,6 +6,7 @@ and end-to-end evaluation with real PostgreSQL via db_session fixture.
 APNS send calls are mocked since we cannot hit Apple's servers.
 """
 
+import json
 import time
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
@@ -21,11 +22,11 @@ from trackrat.models.database import (
     ServiceAlert,
 )
 from trackrat.services.alert_evaluator import (
+    APNS_PAYLOAD_LIMIT_BYTES,
     _build_service_alert_message,
     _find_matching_alerts,
     _get_gtfs_route_ids_for_subscription,
     _get_route_name_for_subscription,
-    _is_within_time_window,
     _line_codes_to_gtfs_ids,
     evaluate_service_alerts,
 )
@@ -1281,25 +1282,29 @@ class TestEvaluateServiceAlerts:
         # Total calls should still be 1
         assert apns.send_alert_notification.call_count == 1
 
-    async def test_dedup_truncation_keeps_most_recent(self, db_session: AsyncSession):
-        """When >50 alert IDs accumulate, the 50 most recent are kept.
+    async def test_dedup_state_prunes_ids_whose_alerts_left_the_feed(
+        self, db_session: AsyncSession
+    ):
+        """The notified set is pruned to alerts still active, not capped at 50.
 
-        This verifies that dedup truncation is deterministic and preserves
-        the newest alert IDs rather than arbitrarily discarding them.
+        Replaces an earlier test that asserted a fixed 50-id FIFO. That cap was
+        the #1747 defect: it could not cover a matched set larger than itself,
+        so still-active ids fell off the tail and were re-pushed forever. The
+        bound is now the feed itself — ids for alerts that have gone are
+        dropped, so the list can never exceed the active set.
         """
         device, sub = _make_subscription(
             db_session,
-            device_id="dedup-trunc-dev",
-            apns_token="token-trunc",
+            device_id="dedup-prune-dev",
+            apns_token="token-prune",
             data_source="SUBWAY",
             line_id="subway-g",
             include_planned_work=True,
         )
-        # Pre-populate with 49 already-notified alert IDs
-        old_ids = [f"lmm:planned_work:old-{i}" for i in range(49)]
-        sub.last_service_alert_ids = old_ids
+        # 49 ids from alerts that are no longer in the feed (no ServiceAlert row)
+        stale_ids = [f"lmm:planned_work:old-{i}" for i in range(49)]
+        sub.last_service_alert_ids = list(stale_ids)
 
-        # Create 3 new matching alerts (total 52 > 50 limit)
         for i in range(3):
             _make_service_alert(
                 db_session,
@@ -1312,18 +1317,18 @@ class TestEvaluateServiceAlerts:
 
         apns = _make_apns()
         count = await evaluate_service_alerts(db_session, apns)
-        assert count == 1
+        assert count == 1, f"Expected one bundled push, got {count}"
 
-        # All 3 new alert IDs must be in the retained list
-        retained = sub.last_service_alert_ids
-        assert len(retained) == 50
-        for i in range(3):
-            assert (
-                f"lmm:planned_work:new-{i}" in retained
-            ), f"New alert ID 'lmm:planned_work:new-{i}' was dropped by truncation"
-        # The oldest IDs should have been trimmed
-        assert "lmm:planned_work:old-0" not in retained
-        assert "lmm:planned_work:old-1" not in retained
+        retained = set(sub.last_service_alert_ids)
+        expected = {f"lmm:planned_work:new-{i}" for i in range(3)}
+        assert retained == expected, (
+            "Retained set must be exactly the still-active alerts. Extra: "
+            f"{sorted(retained - expected)}, missing: {sorted(expected - retained)}"
+        )
+        assert not (retained & set(stale_ids)), (
+            "Ids whose alerts left the feed must be pruned, but these survived: "
+            f"{sorted(retained & set(stale_ids))}"
+        )
 
 
 @pytest.mark.asyncio
@@ -1515,3 +1520,361 @@ class TestServiceAlertTimeWindow:
         assert count == 1, "No time window = always fire"
         apns.send_alert_notification.assert_called_once()
         print("  Verified: service alert fires when no time window configured")
+
+
+@pytest.mark.asyncio
+class TestServiceAlertDedupConvergence:
+    """Issue #1747: a large matched set must converge instead of re-pushing.
+
+    The old dedupe kept only the last 50 notified ids. A subscription matching
+    more than 50 active alerts could never record its whole matched set, so the
+    overflow was "new" again on the next 5-minute cycle and was pushed to the
+    device forever. These tests pin the convergence, the retry-on-failure
+    behavior, and the payload bound that the fix depends on.
+    """
+
+    @staticmethod
+    def _seed_alerts(db_session: AsyncSession, count: int, prefix: str) -> list[str]:
+        """Create `count` currently-active SUBWAY alerts on the G route.
+
+        Args:
+            db_session: Test database session
+            count: How many alerts to create
+            prefix: Alert-id prefix, unique per test
+
+        Returns:
+            The alert ids created
+        """
+        ids = []
+        for i in range(count):
+            alert_id = f"lmm:planned_work:{prefix}-{i:03d}"
+            _make_service_alert(
+                db_session,
+                alert_id=alert_id,
+                data_source="SUBWAY",
+                route_ids=["G"],
+                header=f"G train: planned work item {i}",
+            )
+            ids.append(alert_id)
+        return ids
+
+    @staticmethod
+    def _pushed_alert_ids(apns: AsyncMock) -> list[str]:
+        """Collect every alert id carried by every push made to the mock.
+
+        Args:
+            apns: The mocked APNS service
+
+        Returns:
+            All alert ids pushed, in call order, including any duplicates
+        """
+        pushed: list[str] = []
+        for call in apns.send_alert_notification.call_args_list:
+            payload = call.kwargs["custom_data"]["service_alert"]
+            pushed.extend(payload["alert_ids"])
+        return pushed
+
+    async def test_system_wide_sub_over_fifty_alerts_goes_quiet_on_cycle_two(
+        self, db_session: AsyncSession
+    ):
+        """60 active alerts: one burst, then silence while the feed is unchanged.
+
+        This is the exact production signature from #1747 — a system-wide
+        SUBWAY subscription against a matched set larger than the old 50-id
+        buffer. Under the old code cycle 2 re-pushed the 10 that fell off the
+        tail, and did so every 5 minutes indefinitely.
+        """
+        device, sub = _make_subscription(
+            db_session,
+            device_id="conv-sw-dev",
+            apns_token="token-conv-sw",
+            data_source="SUBWAY",
+            line_id=None,  # system-wide: matches every SUBWAY alert
+            include_planned_work=True,
+        )
+        alert_ids = self._seed_alerts(db_session, 60, "conv-sw")
+        await db_session.flush()
+
+        apns = _make_apns()
+
+        first = await evaluate_service_alerts(db_session, apns)
+        assert first == 1, f"Expected one bundled push on cycle 1, got {first}"
+
+        retained = set(sub.last_service_alert_ids or [])
+        assert retained == set(alert_ids), (
+            "All 60 matched alerts must be recorded as notified; missing "
+            f"{sorted(set(alert_ids) - retained)}"
+        )
+        assert len(retained) == 60, (
+            "The notified set must not be capped at 50 — that cap is what made "
+            f"this loop forever. Got {len(retained)} ids."
+        )
+
+        second = await evaluate_service_alerts(db_session, apns)
+        assert second == 0, (
+            "With the active set unchanged, cycle 2 must send nothing, but it "
+            f"sent {second} push(es)"
+        )
+        assert apns.send_alert_notification.call_count == 1, (
+            "Cycle 2 must not reach APNS at all, but total call count is "
+            f"{apns.send_alert_notification.call_count}"
+        )
+
+        third = await evaluate_service_alerts(db_session, apns)
+        assert third == 0, f"Cycle 3 must also stay silent, sent {third}"
+
+    async def test_line_scoped_sub_over_fifty_alerts_also_converges(
+        self, db_session: AsyncSession
+    ):
+        """The defect was never specific to system-wide subscriptions.
+
+        Any subscription whose matched set exceeds 50 hit the same tail
+        eviction; system-wide on SUBWAY merely makes it near-certain. A
+        line-scoped subscription with 55 matching alerts must converge too.
+        """
+        device, sub = _make_subscription(
+            db_session,
+            device_id="conv-line-dev",
+            apns_token="token-conv-line",
+            data_source="SUBWAY",
+            line_id="subway-g",
+            include_planned_work=True,
+        )
+        alert_ids = self._seed_alerts(db_session, 55, "conv-line")
+        await db_session.flush()
+
+        apns = _make_apns()
+
+        assert await evaluate_service_alerts(db_session, apns) == 1
+        assert set(sub.last_service_alert_ids or []) == set(alert_ids)
+
+        second = await evaluate_service_alerts(db_session, apns)
+        assert second == 0, (
+            "A line-scoped subscription with 55 matched alerts must also go "
+            f"quiet on cycle 2, but it sent {second}"
+        )
+
+    async def test_failed_send_leaves_alerts_unnotified_for_retry(
+        self, db_session: AsyncSession
+    ):
+        """A rejected push must not mark its alerts as delivered.
+
+        The old code wrote last_service_alert_ids before awaiting APNS, so a
+        rejection (dead token, oversized payload) silently lost those alerts
+        for good — turning a notification storm into total silence.
+        """
+        device, sub = _make_subscription(
+            db_session,
+            device_id="fail-retry-dev",
+            apns_token="token-fail-retry",
+            data_source="SUBWAY",
+            line_id="subway-g",
+            include_planned_work=True,
+        )
+        alert_ids = self._seed_alerts(db_session, 3, "fail-retry")
+        await db_session.flush()
+
+        failing = _make_apns(send_returns=False)
+        count = await evaluate_service_alerts(db_session, failing)
+
+        assert count == 0, f"A failed send must count zero alerts sent, got {count}"
+        failing.send_alert_notification.assert_called_once()
+        assert not sub.last_service_alert_ids, (
+            "A failed send must leave the alerts un-notified so the next cycle "
+            f"retries them, but state was recorded as {sub.last_service_alert_ids}"
+        )
+
+        recovered = _make_apns(send_returns=True)
+        count = await evaluate_service_alerts(db_session, recovered)
+
+        assert count == 1, (
+            "Once APNS recovers, the previously-failed alerts must be retried, "
+            f"but the cycle sent {count}"
+        )
+        assert set(sub.last_service_alert_ids or []) == set(alert_ids), (
+            "After a successful retry all three alerts must be recorded, got "
+            f"{sub.last_service_alert_ids}"
+        )
+
+    async def test_large_matched_set_stays_under_the_apns_payload_limit(
+        self, db_session: AsyncSession
+    ):
+        """No push may exceed APNS' 4 KB limit, however many alerts match.
+
+        200 alerts' worth of ids is comfortably over the limit in one document,
+        so this fails if the payload is not bounded.
+        """
+        device, sub = _make_subscription(
+            db_session,
+            device_id="payload-dev",
+            apns_token="token-payload",
+            data_source="SUBWAY",
+            line_id=None,
+            include_planned_work=True,
+        )
+        self._seed_alerts(db_session, 200, "payload")
+        await db_session.flush()
+
+        apns = _make_apns()
+        await evaluate_service_alerts(db_session, apns)
+
+        apns.send_alert_notification.assert_called_once()
+        call = apns.send_alert_notification.call_args
+        _token, title, body = call.args
+        document = {
+            "aps": {"alert": {"title": title, "body": body}, "sound": "default"},
+            **call.kwargs["custom_data"],
+        }
+        size = len(json.dumps(document).encode("utf-8"))
+        assert size <= APNS_PAYLOAD_LIMIT_BYTES, (
+            f"Push payload is {size} bytes, over the "
+            f"{APNS_PAYLOAD_LIMIT_BYTES}-byte APNS limit; APNS would reject it"
+        )
+
+        payload = call.kwargs["custom_data"]["service_alert"]
+        assert payload["alert_count"] == len(payload["alert_ids"]), (
+            "alert_count must describe the ids actually sent, got "
+            f"{payload['alert_count']} vs {len(payload['alert_ids'])} ids"
+        )
+        assert len(payload["alert_ids"]) < 200, (
+            "A 200-alert match must have been capped to fit the payload, but "
+            f"{len(payload['alert_ids'])} ids went out"
+        )
+
+    async def test_capped_remainder_drains_over_cycles_without_repeating(
+        self, db_session: AsyncSession
+    ):
+        """Alerts deferred by the payload cap are delivered later, exactly once.
+
+        Capping must defer, not drop: every matched alert eventually reaches
+        the device, no alert is pushed twice, and the loop terminates.
+        """
+        device, sub = _make_subscription(
+            db_session,
+            device_id="drain-dev",
+            apns_token="token-drain",
+            data_source="SUBWAY",
+            line_id=None,
+            include_planned_work=True,
+        )
+        alert_ids = self._seed_alerts(db_session, 200, "drain")
+        await db_session.flush()
+
+        apns = _make_apns()
+
+        cycles = 0
+        while await evaluate_service_alerts(db_session, apns):
+            cycles += 1
+            assert cycles <= 20, (
+                "Draining 200 alerts should take a handful of cycles; 20+ "
+                "means the remainder is not converging"
+            )
+
+        pushed = self._pushed_alert_ids(apns)
+        assert len(pushed) == len(set(pushed)), "An alert was pushed more than once"
+        assert set(pushed) == set(alert_ids), (
+            "Every matched alert must be delivered eventually; never sent: "
+            f"{sorted(set(alert_ids) - set(pushed))}"
+        )
+        assert cycles > 1, (
+            "200 alerts cannot fit one push, so this must have taken multiple "
+            f"cycles, but it took {cycles}"
+        )
+
+    async def test_notified_state_cannot_grow_beyond_the_active_set(
+        self, db_session: AsyncSession
+    ):
+        """Under churn, stored ids stay bounded by the alerts that still exist.
+
+        Simulates a feed whose alerts turn over: each round deactivates the
+        previous batch and adds a new one. The old FIFO grew to its 50-id cap
+        and held ids for long-gone alerts; the pruned set tracks the live feed.
+        """
+        device, sub = _make_subscription(
+            db_session,
+            device_id="churn-dev",
+            apns_token="token-churn",
+            data_source="SUBWAY",
+            line_id=None,
+            include_planned_work=True,
+        )
+        apns = _make_apns()
+        previous: list[ServiceAlert] = []
+
+        for round_index in range(5):
+            for alert in previous:
+                alert.is_active = False
+
+            current = []
+            for i in range(10):
+                current.append(
+                    _make_service_alert(
+                        db_session,
+                        alert_id=f"lmm:planned_work:churn-{round_index}-{i}",
+                        data_source="SUBWAY",
+                        route_ids=["G"],
+                        header=f"G train: round {round_index} item {i}",
+                    )
+                )
+            await db_session.flush()
+
+            await evaluate_service_alerts(db_session, apns)
+
+            retained = set(sub.last_service_alert_ids or [])
+            expected = {str(a.alert_id) for a in current}
+            assert retained == expected, (
+                f"After round {round_index} the notified set must track only "
+                f"the 10 live alerts. Extra: {sorted(retained - expected)}, "
+                f"missing: {sorted(expected - retained)}"
+            )
+            assert len(retained) <= 10, (
+                f"Notified set grew to {len(retained)} ids while only 10 alerts "
+                "are active — it is not bounded by the feed"
+            )
+            previous = current
+
+    async def test_deactivated_alert_that_returns_is_notified_again(
+        self, db_session: AsyncSession
+    ):
+        """Pruning is what lets a recurring alert fire on its next occurrence.
+
+        An alert that leaves the feed and comes back is a new occurrence. If
+        its id were retained forever, the return would be silently suppressed.
+        """
+        device, sub = _make_subscription(
+            db_session,
+            device_id="return-dev",
+            apns_token="token-return",
+            data_source="SUBWAY",
+            line_id="subway-g",
+            include_planned_work=True,
+        )
+        alert = _make_service_alert(
+            db_session,
+            alert_id="lmm:planned_work:returning",
+            data_source="SUBWAY",
+            route_ids=["G"],
+            header="G train: weekend service change",
+        )
+        await db_session.flush()
+
+        apns = _make_apns()
+        assert await evaluate_service_alerts(db_session, apns) == 1
+        assert set(sub.last_service_alert_ids or []) == {"lmm:planned_work:returning"}
+
+        # Alert leaves the feed; the collector deactivates it.
+        alert.is_active = False
+        await db_session.flush()
+        assert await evaluate_service_alerts(db_session, apns) == 0
+        assert not sub.last_service_alert_ids, (
+            "Once the alert left the feed its id must be pruned, but state is "
+            f"{sub.last_service_alert_ids}"
+        )
+
+        # Next occurrence of the same recurring alert.
+        alert.is_active = True
+        await db_session.flush()
+        assert await evaluate_service_alerts(db_session, apns) == 1, (
+            "A recurring alert returning to the feed is a new occurrence and "
+            "must notify again"
+        )
