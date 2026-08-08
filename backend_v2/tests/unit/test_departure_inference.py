@@ -954,16 +954,30 @@ class TestDepartureInference:
         assert np_stop.has_departed_station is True
         assert np_stop.departure_source == "sequential_inference"
 
-        # Critical invariant: actual_departure is never in the future.
-        # NP's primary candidate (time_field) was 30 min ahead; Tier 2
-        # must fall back to the past scheduled departure instead.
+        # Critical invariant (#1221): actual_departure is never in the future.
         now = now_et()
+        for stop in (ny_stop, np_stop):
+            assert stop.actual_departure is None or stop.actual_departure <= now, (
+                f"{stop.station_code}.actual_departure must never be in the "
+                f"future, got {stop.actual_departure!r}"
+            )
+
+        # NP's only candidate was 30 minutes ahead, so there is nothing
+        # admissible to record and the stop records nothing. It must NOT fall
+        # back to its scheduled departure the way this tier originally did: a
+        # schedule in the actuals column is indistinguishable from a train that
+        # ran on time, which is what issue #1768 traced the vanishing delay
+        # badges (and false on-time percentages) to.
+        assert np_stop.actual_departure is None, (
+            "NP must record no actual departure rather than its schedule "
+            f"({np_stop.scheduled_departure!r}), got {np_stop.actual_departure!r}"
+        )
+
+        # NY's own candidate — DEP_TIME, which is the live departure at the
+        # origin — is two hours in the past, so it is recorded normally.
         assert (
-            np_stop.actual_departure is not None and np_stop.actual_departure <= now
-        ), f"NP.actual_departure must not be in the future, got {np_stop.actual_departure!r}"
-        assert (
-            ny_stop.actual_departure is not None and ny_stop.actual_departure <= now
-        ), f"NY.actual_departure must not be in the future, got {ny_stop.actual_departure!r}"
+            ny_stop.actual_departure is not None
+        ), "NY had an admissible live reading and must record it, got None"
 
     async def test_tier1_refuses_to_write_future_actual_departure(
         self, collector, sample_journey, mock_session
@@ -973,9 +987,15 @@ class TestDepartureInference:
         Defense in depth: NJT can briefly flip DEPARTED=YES while still
         serving a stale future TIME field (likely the original trigger for
         issue #1221). Once written, the freeze guard prevents correction
-        on later cycles. The future-time guard rejects the bogus candidate
-        and falls back to scheduled_departure (or leaves None if even that
-        is in the future).
+        on later cycles, so the future-time guard rejects the bogus candidate.
+
+        This originally fell back to ``scheduled_departure`` when the candidate
+        was rejected. That fallback became issue #1768: for a delayed train the
+        live estimate is routinely still ahead of now at the moment NJT flips
+        the flag, so the fallback fired constantly and stamped the timetable
+        into the actuals column, where nothing can tell it apart from a train
+        that ran on time. The stop now records nothing instead — #1221's
+        invariant is "never a future timestamp", which ``None`` satisfies.
         """
         session = mock_session
 
@@ -1064,10 +1084,18 @@ class TestDepartureInference:
         # NP gets api_explicit because NJT said DEPARTED=YES
         assert np_stop.has_departed_station is True
         assert np_stop.departure_source == "api_explicit"
-        # But its actual_departure must not be in the future
-        assert (
-            np_stop.actual_departure is not None and np_stop.actual_departure <= now
-        ), f"NP.actual_departure must not be in the future, got {np_stop.actual_departure!r}"
+
+        # Its actual_departure must not be in the future (#1221)...
+        assert np_stop.actual_departure is None or np_stop.actual_departure <= now, (
+            f"NP.actual_departure must not be in the future, got "
+            f"{np_stop.actual_departure!r}"
+        )
+        # ...and must not be the schedule standing in for one (#1768). The flag
+        # still marks the stop departed; only the timestamp is withheld.
+        assert np_stop.actual_departure is None, (
+            "NP must record no actual departure rather than its schedule "
+            f"({np_stop.scheduled_departure!r}), got {np_stop.actual_departure!r}"
+        )
 
     async def test_tier3_skipped_when_only_dep_time_is_future(
         self, collector, sample_journey, mock_session
