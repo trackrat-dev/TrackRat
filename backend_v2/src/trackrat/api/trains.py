@@ -55,6 +55,7 @@ from trackrat.utils.train import (
     effective_njt_updated_times,
     get_effective_observation_type,
     is_amtrak_train,
+    journey_terminates_at_station,
     stop_sequence_sort_key,
     terminal_stop_index,
 )
@@ -654,7 +655,12 @@ async def get_train_details(
         from trackrat.config.station_configs import station_has_predictions
 
         from_station_codes = set(expand_station_codes(from_station))
-        if station_has_predictions(from_station):
+        # A train that terminates at from_station arrives there and never
+        # departs, so it has no boarding track to predict (#1773).
+        terminates_at_from_station = journey_terminates_at_station(
+            sorted_stops, journey.terminal_station_code, from_station_codes
+        )
+        if station_has_predictions(from_station) and not terminates_at_from_station:
             # Check if the origin stop has a track assigned
             origin_stop = next(
                 (s for s in stops if s.station.code in from_station_codes), None
