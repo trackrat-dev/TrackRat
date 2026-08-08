@@ -315,6 +315,74 @@ def departed_stop_time(
     return None
 
 
+def resolve_actual_departure(
+    existing: datetime | None,
+    observed: datetime | None,
+    actual_arrival: datetime | None,
+    now: datetime,
+) -> datetime | None:
+    """The value ``JourneyStop.actual_departure`` should hold after an observation.
+
+    ``actual_departure`` means "the train was observed leaving this stop". Every
+    writer therefore has to answer the same two questions, and both were
+    answered wrongly on different paths before issue #1768:
+
+    **What may be written.** Only a live observation, never the timetable. NJT
+    flags ``DEPARTED=YES`` while its live estimate for that stop is still in the
+    future, so a writer that falls back to ``scheduled_departure`` when the
+    estimate is inadmissible stamps the schedule into the actuals column. That
+    value is indistinguishable from a train that ran on time: the stop's delay
+    computes to zero, the train-detail row drops its delay badge (a rider on
+    train 7825 saw six of eleven departed stops read "on time" while the train
+    ran 35 minutes late), the on-time percentage counts it as punctual, and the
+    segment analyzer measures the following hop from the scheduled time instead
+    of the real one. Silence is strictly better than a plausible wrong number,
+    which is why every consumer already handles ``None``
+    (``coalesce(actual_departure, scheduled_departure)`` on the departure board,
+    ``actual_departure or actual_arrival`` in the segment analyzer, the live
+    estimate branch in ``summary``) — the tier-3 branch of NJT's departure
+    inference has always said so in a comment while tiers 1 and 2 did the
+    opposite. ``departed_stop_time`` supplies the "must be in the past" half of
+    this rule.
+
+    **When it may be rewritten.** The value is otherwise frozen at first
+    capture: NJT revises its estimates for hours after a train passes, and the
+    reading taken while the train was at the stop is the accurate one. The sole
+    exception is a value that cannot be true — a departure recorded *before* the
+    arrival recorded at that same stop. Freezing that keeps the corruption
+    permanent (both writers only ever filled a ``NULL``), so it is replaced by
+    the current observation, or cleared when none is admissible. Clearing is a
+    repair, not a loss: it hands each consumer back to its own honest fallback.
+
+    Args:
+        existing: The value already stored on the stop, if any.
+        observed: The live departure reading for this stop, in the provider's
+            own semantics — for NJT that is ``normalize_njt_stop_times``'
+            ``actual_departure`` (DEP_TIME at the origin, TIME elsewhere), which
+            already resolves the position-dependent TIME/DEP_TIME inversion.
+        actual_arrival: The arrival recorded at this same stop, used only to
+            detect the impossible ordering described above.
+        now: Current time; compared in Eastern Time by ``departed_stop_time`` so
+            naive database values and aware API values compare consistently.
+
+    Returns:
+        The value to assign to ``actual_departure`` — which may be ``None``,
+        both when there is nothing admissible to record yet and when an
+        impossible stored value is being cleared.
+    """
+    admissible = departed_stop_time(observed, now)
+
+    if existing is None:
+        return admissible
+
+    if actual_arrival is not None and normalize_to_et(existing) < normalize_to_et(
+        actual_arrival
+    ):
+        return admissible
+
+    return existing
+
+
 def normalize_njt_destination(destination: str | None) -> str:
     """Normalize an NJT destination string for cross-source matching.
 

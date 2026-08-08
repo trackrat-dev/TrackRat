@@ -16,6 +16,7 @@ from structlog import get_logger
 
 from trackrat.collectors.njt.client import NJTransitClient, TrainNotFoundError
 from trackrat.collectors.njt.journey import JourneyCollector as NJTJourneyCollector
+from trackrat.collectors.njt.journey import normalize_njt_stop_times
 from trackrat.collectors.njt.schedule import parse_njt_line_code
 from trackrat.config.route_topology import find_route_for_segment
 from trackrat.config.stations import (
@@ -50,6 +51,7 @@ from trackrat.utils.train import (
     is_njt_stop_cancelled,
     njt_cancellation_reason,
     normalize_njt_destination,
+    resolve_actual_departure,
     stop_sequence_sort_key,
     terminal_stop_index,
 )
@@ -1789,6 +1791,10 @@ class DepartureService:
             if (sd.get("DEPARTED") or "").upper() == "YES":
                 max_departed_idx = max(max_departed_idx, idx)
 
+        # Snapshot "now" once for the whole pass so every stop's past/future
+        # comparisons share one reference point (matches collect_journey_details).
+        now = now_et()
+
         for i, stop_data in enumerate(stops_data):
             station_code = stop_data.get("STATION_2CHAR")
             if not station_code:
@@ -1849,15 +1855,30 @@ class DepartureService:
             # These have inverted semantics by stop type (see journey.py:1320-1332),
             # but consumers use max(updated_departure, updated_arrival) which handles it.
             time_str = stop_data.get("TIME")
-            if time_str:
-                parsed_time = parse_njt_time(time_str)
-                if parsed_time:
-                    stop.updated_arrival = parsed_time
+            parsed_time = parse_njt_time(time_str) if time_str else None
+            if parsed_time:
+                stop.updated_arrival = parsed_time
             dep_time_rt_str = stop_data.get("DEP_TIME")
-            if dep_time_rt_str:
-                parsed_dep = parse_njt_time(dep_time_rt_str)
-                if parsed_dep:
-                    stop.updated_departure = parsed_dep
+            parsed_dep = parse_njt_time(dep_time_rt_str) if dep_time_rt_str else None
+            if parsed_dep:
+                stop.updated_departure = parsed_dep
+
+            # The board's live departure reading for this stop, in NJT's
+            # position-dependent semantics. Routed through the collector's
+            # normalizer so the TIME/DEP_TIME inversion is resolved in exactly
+            # one place rather than re-derived here (DEP_TIME is the live
+            # departure at the origin; TIME is the live estimate everywhere
+            # else, including the terminal, where DEP_TIME can be a later
+            # turnaround that is not this train's departure at all, #1492).
+            # has_departed is passed True to ask for the reading itself; whether
+            # this stop actually departed is decided by the branches below, which
+            # include sequential inference for stops NJT has not yet flagged.
+            observed_departure = normalize_njt_stop_times(
+                parsed_time,
+                parsed_dep,
+                is_origin_station=station_code == journey.origin_station_code,
+                has_departed=True,
+            )["actual_departure"]
 
             # Update departure status with time validation
             departed = (stop_data.get("DEPARTED") or "").upper() or None
@@ -1871,7 +1892,7 @@ class DepartureService:
                     stop.has_departed_station = False
             # Never mark as departed if scheduled departure is in the future
             # This prevents stale NJT data from incorrectly marking future trains as departed
-            elif stop.scheduled_departure and stop.scheduled_departure > now_et():
+            elif stop.scheduled_departure and stop.scheduled_departure > now:
                 stop.has_departed_station = False
                 if departed == "YES":
                     logger.debug(
@@ -1883,20 +1904,23 @@ class DepartureService:
                     )
             elif departed == "YES":
                 stop.has_departed_station = True
-                # Set actual_departure if not already set
-                # Use arrival time (live estimate from TIME field) or scheduled departure
-                if stop.actual_departure is None:
-                    stop.actual_departure = (
-                        stop.scheduled_arrival or stop.scheduled_departure
-                    )
+                # Record the board's live reading, never the timetable. This
+                # previously read `stop.scheduled_arrival or
+                # stop.scheduled_departure` — the comment intended the live TIME
+                # estimate, but `scheduled_arrival` is a different column and is
+                # almost always NULL for NJT, so every departed stop was stamped
+                # with its scheduled departure and rendered as an on-time
+                # departure for a late train (issue #1768).
+                stop.actual_departure = resolve_actual_departure(
+                    stop.actual_departure, observed_departure, stop.actual_arrival, now
+                )
             elif i < max_departed_idx:
                 # Sequential inference: a later stop has DEPARTED=YES,
                 # so this earlier stop must have departed too.
                 stop.has_departed_station = True
-                if stop.actual_departure is None:
-                    stop.actual_departure = (
-                        stop.scheduled_arrival or stop.scheduled_departure
-                    )
+                stop.actual_departure = resolve_actual_departure(
+                    stop.actual_departure, observed_departure, stop.actual_arrival, now
+                )
             else:
                 # Not departed — but never revert a stop previously marked
                 # as departed (NJT API DEPARTED flag is inconsistent)

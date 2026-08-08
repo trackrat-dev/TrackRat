@@ -197,19 +197,15 @@ struct TrainV2: Identifiable, Codable {
         return false
     }
     
-    // Get departure time from a specific station (best available: actual > live estimate > scheduled).
-    // actualDeparture wins once set so departed trains stop showing their
-    // pre-departure delay estimate, which sometimes lingers in the upstream
-    // API for hours after the train left on time. The live estimate uses
-    // StopV2.liveEstimatedDeparture so NJT intermediate stops surface the delayed
-    // time rather than the raw schedule that NJT stores in updated_departure.
+    // Get departure time from a specific station (see StopV2.bestKnownDeparture
+    // for why the live estimate sits between the actual and the schedule).
     func getDepartureTime(fromStationCode: String) -> Date? {
         if Stations.areEquivalentStations(fromStationCode, originStationCode) {
             return departureTime
         }
 
         if let stop = stops?.first(where: { Stations.areEquivalentStations($0.stationCode, fromStationCode) }) {
-            return stop.actualDeparture ?? stop.liveEstimatedDeparture ?? stop.scheduledDeparture
+            return stop.bestKnownDeparture
         }
         return nil
     }
@@ -492,6 +488,22 @@ struct StopV2: Identifiable, Codable {
             updatedDeparture: updatedDeparture,
             updatedArrival: updatedArrival
         )
+    }
+
+    /// Best known departure time for this stop: a real observation when we have
+    /// one, else the live estimate, else the timetable.
+    ///
+    /// `actualDeparture` wins once set so a departed train stops showing the
+    /// pre-departure estimate, which sometimes lingers in the upstream API for
+    /// hours after the train left on time. The live estimate has to sit between
+    /// the two rather than being skipped: falling straight from a missing
+    /// actual to `scheduledDeparture` presents the timetable as though it were
+    /// what happened, so the row renders a late train as on time — the display
+    /// half of issue #1768, which the server's `resolve_actual_departure` fix
+    /// would otherwise expose more often by (correctly) leaving
+    /// `actual_departure` null rather than filling it with the schedule.
+    var bestKnownDeparture: Date? {
+        actualDeparture ?? liveEstimatedDeparture ?? scheduledDeparture
     }
 
     // Computed delay based on the live estimated departure vs the schedule.

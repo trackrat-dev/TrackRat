@@ -727,14 +727,17 @@ struct StopRowV2: View {
         
         let formatter = DateFormatter.easternTimeShort
 
-        // For departed stops: Show only "Departed X:XX PM" with delay indicator
+        // For departed stops: Show only "Departed X:XX PM" with delay indicator.
+        // bestKnownDeparture falls back to the live estimate before the
+        // timetable, so a stop the train passed late still reports its delay
+        // instead of echoing the schedule back as an on-time departure
+        // (issue #1768). When it does fall through to the schedule the delay
+        // computes to zero and no badge is shown, as before.
         if stop.hasDepartedStation {
-            if let correctedDepartureTime = stop.actualDeparture {
-                let delayText = departureDelayText(actual: correctedDepartureTime, scheduled: stop.scheduledDeparture)
-                let departureText = "Departed: \(formatter.string(from: correctedDepartureTime))" + (delayText.isEmpty ? "" : " (\(delayText))")
+            if let departedTime = stop.bestKnownDeparture {
+                let delayText = departureDelayText(actual: departedTime, scheduled: stop.scheduledDeparture)
+                let departureText = "Departed: \(formatter.string(from: departedTime))" + (delayText.isEmpty ? "" : " (\(delayText))")
                 return (nil, departureText, [])
-            } else if let scheduledDeparture = stop.scheduledDeparture {
-                return (nil, "Departed: \(formatter.string(from: scheduledDeparture))", [])
             } else {
                 return (nil, "Departed: --:--", [])
             }

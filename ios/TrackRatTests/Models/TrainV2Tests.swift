@@ -1456,4 +1456,103 @@ class TrainV2Tests: XCTestCase {
             "A pushed cancellation must be surfaced immediately — it changes what the user should do")
         XCTAssertEqual(updated.calculateStatus(fromStationCode: "NY"), .cancelled)
     }
+
+    // MARK: - StopV2.bestKnownDeparture (Issue #1768)
+
+    // The train-detail row for a stop the train has already left reads
+    // "Departed: <time>" plus a delay badge computed against the schedule.
+    // Falling straight from a missing actualDeparture to scheduledDeparture
+    // makes that row present the timetable as though it were what happened:
+    // the delay computes to zero and the badge disappears, so a late train
+    // renders as on time on exactly the stops where the server had no actual
+    // to give. That is the display half of #1768, and it matters more after
+    // the server-side fix, which correctly leaves actual_departure null
+    // rather than filling it with the schedule.
+
+    func testBestKnownDeparture_departedWithoutActual_usesLiveEstimateNotSchedule() {
+        print("🐀 Testing StopV2.bestKnownDeparture prefers the live estimate over the schedule")
+
+        // Train 7825 at Newark Airport: scheduled 08:38, passed ~09:15.
+        // NJT intermediate-stop semantics put the live estimate in
+        // updated_arrival and the immutable schedule in updated_departure.
+        let scheduled = Date(timeIntervalSince1970: 1_700_000_000)
+        let liveEstimate = scheduled.addingTimeInterval(37 * 60)
+
+        let stop = makeStop(
+            scheduledDeparture: scheduled,
+            updatedDeparture: scheduled,      // NJT inversion: schedule here
+            updatedArrival: liveEstimate,     // NJT inversion: live estimate here
+            actualDeparture: nil,             // server withheld it — no admissible reading
+            hasDepartedStation: true
+        )
+
+        print("  - scheduledDeparture: \(scheduled)")
+        print("  - liveEstimatedDeparture: \(String(describing: stop.liveEstimatedDeparture))")
+        print("  - bestKnownDeparture: \(String(describing: stop.bestKnownDeparture))")
+
+        XCTAssertEqual(stop.bestKnownDeparture, liveEstimate,
+            "A departed stop with no actual must fall back to the live estimate, not the schedule")
+
+        let shownDelay = Int(stop.bestKnownDeparture!.timeIntervalSince(scheduled) / 60)
+        XCTAssertEqual(shownDelay, 37,
+            "The row must still show its 37-minute delay; the schedule would have shown 0 and dropped the badge")
+    }
+
+    func testBestKnownDeparture_prefersActualOverLiveEstimate() {
+        print("🐀 Testing StopV2.bestKnownDeparture prefers a real observation")
+
+        // actualDeparture wins once set: the pre-departure estimate can linger
+        // in the upstream API for hours after a train left on time.
+        let scheduled = Date(timeIntervalSince1970: 1_700_000_000)
+        let actual = scheduled.addingTimeInterval(60)
+        let staleEstimate = scheduled.addingTimeInterval(20 * 60)
+
+        let stop = makeStop(
+            scheduledDeparture: scheduled,
+            updatedDeparture: staleEstimate,
+            updatedArrival: staleEstimate,
+            actualDeparture: actual,
+            hasDepartedStation: true
+        )
+
+        XCTAssertEqual(stop.bestKnownDeparture, actual,
+            "A recorded observation must outrank a lingering estimate")
+    }
+
+    func testBestKnownDeparture_fallsBackToScheduleWhenNothingIsLive() {
+        print("🐀 Testing StopV2.bestKnownDeparture falls back to the schedule as a last resort")
+
+        // With nothing live to show, the schedule is all there is — and because
+        // it equals scheduledDeparture the delay computes to zero and the view
+        // shows no badge, which is honest here rather than misleading.
+        let scheduled = Date(timeIntervalSince1970: 1_700_000_000)
+
+        let stop = makeStop(
+            scheduledDeparture: scheduled,
+            updatedDeparture: nil,
+            updatedArrival: nil,
+            actualDeparture: nil,
+            hasDepartedStation: true
+        )
+
+        XCTAssertEqual(stop.bestKnownDeparture, scheduled,
+            "The schedule is the last resort, not the second choice")
+        XCTAssertEqual(Int(stop.bestKnownDeparture!.timeIntervalSince(scheduled) / 60), 0,
+            "Falling through to the schedule must yield no delay badge, as before")
+    }
+
+    func testBestKnownDeparture_noTimesAtAll_isNil() {
+        print("🐀 Testing StopV2.bestKnownDeparture with no times at all")
+
+        let stop = makeStop(
+            scheduledDeparture: nil,
+            updatedDeparture: nil,
+            updatedArrival: nil,
+            actualDeparture: nil,
+            hasDepartedStation: true
+        )
+
+        XCTAssertNil(stop.bestKnownDeparture,
+            "With no times at all the view must render its \"--:--\" placeholder")
+    }
 }
