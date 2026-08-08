@@ -409,6 +409,8 @@ class GTFSFeedStatus:
     error_message: str | None
     feed_end_date: date | None = None
     days_until_feed_end: int | None = None
+    feed_start_date: date | None = None
+    days_until_feed_start: int | None = None
 
     @property
     def is_stale(self) -> bool:
@@ -454,6 +456,39 @@ class GTFSFeedStatus:
         if self.data_source in GTFS_EXPIRY_EXEMPT_SOURCES:
             return False
         return self.days_until_feed_end is not None and self.days_until_feed_end < 0
+
+    @property
+    def is_not_yet_active(self) -> bool:
+        """True if the parsed bundle's service period has not started yet.
+
+        The mirror image of :attr:`is_lapsed`, and the half that had no signal
+        at all: agencies publish the next bundle *before* it takes effect, so a
+        feed can be freshly downloaded, internally valid and weeks from expiry
+        while describing no service whatsoever for today.
+
+        SEPTA did exactly this. The bundle adopted on 2026-08-08 was
+        ``feed_version v202608090`` with every ``calendar.txt`` row starting
+        ``20260809``; Regional Rail served zero departures for a day and a half
+        and Metro lost every timetable-only line, while ``/health`` reported
+        ``healthy``, ``lapsed_sources: []`` and ``days_until_feed_end: 22``
+        (issue #1770). Nothing in the freshness or lapse checks can see this:
+        the feed is neither old nor expired, it simply has not begun.
+
+        ``feed_start_date`` comes from ``min(calendar.start_date)``, matching
+        how ``feed_end_date`` takes ``max(calendar.end_date)``. GTFS defines
+        ``start_date`` as inclusive, so a bundle starting today is active and
+        only a strictly future date counts. Feeds publishing only
+        ``calendar_dates.txt`` have no start date and report ``None`` —
+        unknown, deliberately not treated as pending, the same way
+        :attr:`is_lapsed` treats a missing end date.
+
+        ``GTFS_EXPIRY_EXEMPT_SOURCES`` is deliberately *not* consulted here.
+        That exemption exists because those feeds' calendars have already
+        expired, which puts their ``start_date`` firmly in the past — they can
+        never trip this check, so excluding them would only hide a real future
+        regression behind a permanent carve-out.
+        """
+        return self.days_until_feed_start is not None and self.days_until_feed_start > 0
 
 
 def _gtfs_csv_rows(f: Any) -> Iterator[dict[str, str]]:
@@ -2036,10 +2071,11 @@ class GTFSService:
         stale. Absence of a feed is a worse state than an old feed, not a
         missing data point to be skipped over.
 
-        ``days_until_feed_end`` is resolved here rather than inside
-        :attr:`GTFSFeedStatus.is_lapsed` so the dataclass stays a pure value
-        object with no hidden clock read — the same reason ``age_hours`` is
-        precomputed.
+        ``days_until_feed_end`` and ``days_until_feed_start`` are resolved here
+        rather than inside :attr:`GTFSFeedStatus.is_lapsed` /
+        :attr:`GTFSFeedStatus.is_not_yet_active` so the dataclass stays a pure
+        value object with no hidden clock read — the same reason ``age_hours``
+        is precomputed.
         """
         rows = (
             (
@@ -2061,6 +2097,7 @@ class GTFSService:
             feed_info = by_source.get(source)
             parsed_at = feed_info.last_successful_parse_at if feed_info else None
             end_date = feed_info.feed_end_date if feed_info else None
+            start_date = feed_info.feed_start_date if feed_info else None
             statuses.append(
                 GTFSFeedStatus(
                     data_source=source,
@@ -2074,6 +2111,10 @@ class GTFSService:
                     error_message=feed_info.error_message if feed_info else None,
                     feed_end_date=end_date,
                     days_until_feed_end=((end_date - today).days if end_date else None),
+                    feed_start_date=start_date,
+                    days_until_feed_start=(
+                        (start_date - today).days if start_date else None
+                    ),
                 )
             )
         return statuses
