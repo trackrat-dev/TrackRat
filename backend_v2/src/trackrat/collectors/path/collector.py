@@ -829,6 +829,23 @@ class PathCollector:
                 "completed": 0,
             }
 
+        # An empty-but-successful response is a no-data cycle, not a cycle in
+        # which every train vanished. Falling through would run Phase 2 against
+        # zero arrivals, striking every in-flight journey (there is nothing to
+        # match them to) and expiring the whole fleet after three such cycles.
+        # The strike counter must only count cycles in which we had data and
+        # still did not see a given train, so the guard belongs here rather than
+        # in _update_journeys: discovery has nothing to discover either.
+        if not arrivals:
+            logger.warning("path_collection_skipped_no_arrivals")
+            return {
+                "data_source": "PATH",
+                "arrivals_fetched": 0,
+                "new_journeys": 0,
+                "updated": 0,
+                "completed": 0,
+            }
+
         # === LOAD GTFS SEGMENT TIMES ===
         segment_times = await get_segment_times(session)
 
