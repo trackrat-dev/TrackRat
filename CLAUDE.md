@@ -104,6 +104,19 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --env sta
 When E2E fails, correlate with logs using the route and timestamp from the failure output.
 The E2E script prints response bodies on HTTP errors and flags slow responses (>5s).
 
+The suite reads `/api/v2/alerts/service` at startup and indexes planned work that is
+active right now. A route or trip pair serving 0 trains is reported as WARN with the
+agency's own headline — rather than FAIL — when **every** line serving that pair is
+closed for planned work; weekend GO work otherwise makes hardcoded terminal-to-terminal
+pairs fail while the backend is entirely correct (#1771). Requiring *all* the pair's
+lines is deliberate: many lines carry some planned work at any hour, so excusing a pair
+because one of its lines is touched would suppress real outages. The `lines` field is
+left empty for LIRR/MNR (MTA publishes numeric route ids in alerts that don't match
+`route_topology`), for many-line trunks, and for sources with no alert feed — an empty
+field means the route keeps its original strictness. Amtrak is likewise exempt from the
+"0 SCHEDULED trains" assertion after 20:00 ET, since its SCHEDULED records cover the
+current service day only and are regenerated at 00:45.
+
 **Ground Truth Validation:**
 
 Compares TrackRat departures against raw transit provider APIs to verify data quality.
