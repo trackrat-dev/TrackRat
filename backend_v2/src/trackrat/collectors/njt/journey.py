@@ -640,15 +640,25 @@ class JourneyCollector:
             try:
                 train_data = await self.njt_client.get_train_stop_list(journey.train_id)
             except NJTransitNullDataError:
-                # NJT API returned a response with all key fields null — transient
-                # API issue. The train likely still appears on departure boards.
-                # Do NOT increment api_error_count; keep last known data.
+                # NJT has no stop-list coverage for this train. Persistent, not a
+                # failure on our side (see NJTransitNullDataError) — the train
+                # likely still appears on departure boards, so do NOT increment
+                # api_error_count or discard the last known data.
+                #
+                # Advance freshness metadata anyway: `schedule_periodic_updates`
+                # orders its batch by `last_updated_at` ASC, so a journey that
+                # never stamps stays pinned at the head of the queue and is
+                # re-selected every tick for its whole in-flight window, starving
+                # trains behind it (issue #1748). The clock records "we asked",
+                # which is exactly what happened.
+                journey.last_updated_at = now_et()
                 logger.info(
                     "train_null_data_skipped",
                     train_id=journey.train_id,
                     journey_id=journey.id,
                     api_error_count=journey.api_error_count,
                 )
+                await session.flush()
                 return
             except TrainNotFoundError:
                 # Train is genuinely not available (empty/None response) —

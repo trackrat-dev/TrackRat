@@ -2168,6 +2168,16 @@ class SchedulerService:
                 async with self._njt_collection_semaphore:
                     train_data = await self.njt_client.get_train_stop_list(train_id)
             except NJTransitNullDataError:
+                # NJT has no stop-list coverage for this train — persistent, not
+                # our failure, so no strike (see NJTransitNullDataError). But the
+                # freshness clock must still advance or this journey stays at the
+                # head of the oldest-first batch forever (issue #1748).
+                with SyncSession() as session:
+                    journey = session.get(TrainJourney, journey_id)
+                    if journey:
+                        journey.last_updated_at = now_et()
+                        commit_with_retry(session, log_context={"train_id": train_id})
+
                 logger.info(
                     "train_null_data_skipped_sync",
                     train_id=train_id,
@@ -2177,7 +2187,8 @@ class SchedulerService:
                 return {
                     "train_id": train_id,
                     "success": False,
-                    "error": "Transient null data",
+                    "skipped": True,
+                    "reason": "no_upstream_data",
                     "expired": False,
                 }
             except TrainNotFoundError:

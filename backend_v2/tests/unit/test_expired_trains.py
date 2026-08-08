@@ -214,9 +214,12 @@ async def test_api_error_count_reset_on_success():
 async def test_null_data_response_does_not_increment_error_count():
     """Test that NJTransitNullDataError does NOT increment api_error_count.
 
-    When the NJT API returns a response with all key fields null, it's a
-    transient API issue — the train likely still appears on departure boards.
-    This must NOT count toward the 3-strike expiry threshold.
+    When the NJT API returns a response with all key fields null, NJT simply has
+    no stop-list coverage for that train — the train likely still appears on
+    departure boards. This must NOT count toward the 3-strike expiry threshold.
+
+    The freshness clock is a separate concern and IS advanced (issue #1748);
+    that is asserted in test_null_data_advances_the_freshness_clock below.
     """
     journey = TrainJourney(
         id=1,
@@ -236,12 +239,10 @@ async def test_null_data_response_does_not_increment_error_count():
     session = AsyncMock(spec=AsyncSession)
     session.flush = AsyncMock()
 
-    # Mock NJT client that raises NJTransitNullDataError (transient null data)
+    # Mock NJT client that raises NJTransitNullDataError (no upstream coverage)
     njt_client = AsyncMock()
     njt_client.get_train_stop_list = AsyncMock(
-        side_effect=NJTransitNullDataError(
-            "Train 744 - API returned null data (transient)"
-        )
+        side_effect=NJTransitNullDataError("Train 744 - API returned null data")
     )
 
     collector = JourneyCollector(njt_client)
@@ -259,10 +260,121 @@ async def test_null_data_response_does_not_increment_error_count():
         "Train should NOT be expired after null data responses. "
         "The train still appears on NJT departure boards."
     )
-    # session.flush should NOT have been called (no state changes)
-    assert not session.flush.called, (
-        "session.flush should not be called for null data responses "
-        "since no database fields are modified."
+
+
+@pytest.mark.asyncio
+async def test_null_data_advances_the_freshness_clock():
+    """Null data must stamp last_updated_at while leaving the strike count alone
+    (issue #1748).
+
+    `schedule_periodic_updates` picks its batch with `ORDER BY last_updated_at
+    ASC LIMIT batch_size`. That is only fair if every refresh outcome advances
+    the column. Null data used to return without touching the DB at all, so the
+    same train sorted first on every subsequent tick — burning a batch slot and
+    an NJT API call each time while making no progress.
+
+    The two properties are independent and both matter: `last_updated_at` is the
+    freshness clock ("we asked"), `api_error_count` is the strike counter ("this
+    train is failing"). Null data is the first, never the second.
+    """
+    before = now_et()
+
+    journey = TrainJourney(
+        id=1,
+        train_id="744",
+        journey_date=now_et().date(),
+        line_code="NE",
+        destination="New York",
+        origin_station_code="TR",
+        terminal_station_code="NY",
+        scheduled_departure=now_et() - timedelta(hours=1),
+        data_source="NJT",
+        has_complete_journey=True,
+        api_error_count=0,
+        is_expired=False,
+        last_updated_at=now_et() - timedelta(hours=2),
+    )
+
+    session = AsyncMock(spec=AsyncSession)
+    session.flush = AsyncMock()
+
+    njt_client = AsyncMock()
+    njt_client.get_train_stop_list = AsyncMock(
+        side_effect=NJTransitNullDataError("Train 744 - API returned null data")
+    )
+
+    collector = JourneyCollector(njt_client)
+    await collector.collect_journey_details(session, journey)
+
+    assert journey.last_updated_at >= before, (
+        "last_updated_at must be advanced to now on a null-data response; it was "
+        f"{journey.last_updated_at}, which is older than the call at {before}. "
+        "A stale clock pins this journey to the head of the oldest-first batch."
+    )
+    assert session.flush.called, (
+        "the stamped last_updated_at must be flushed, or it never reaches the "
+        "DB and the ordering bug persists despite the in-memory write"
+    )
+    assert journey.api_error_count == 0, (
+        "stamping the freshness clock must not also record a strike — null data "
+        "is missing upstream coverage, not a failure of this train"
+    )
+
+
+@pytest.mark.asyncio
+async def test_null_data_train_does_not_hold_the_batch_head_across_ticks():
+    """Consecutive null-data responses must keep moving the train down the
+    oldest-first ordering, not re-pin it (issue #1748).
+
+    This is the starvation mechanism itself: with a fixed clock, one null-data
+    train sorts ahead of a genuinely stale train forever. Production had ~116
+    such trains every night, enough to consume the whole default batch of 100.
+    """
+    other_train_last_updated = now_et() - timedelta(minutes=30)
+
+    journey = TrainJourney(
+        id=1,
+        train_id="744",
+        journey_date=now_et().date(),
+        line_code="NE",
+        destination="New York",
+        origin_station_code="TR",
+        terminal_station_code="NY",
+        scheduled_departure=now_et() - timedelta(hours=1),
+        data_source="NJT",
+        has_complete_journey=True,
+        api_error_count=0,
+        is_expired=False,
+        last_updated_at=now_et() - timedelta(hours=2),
+    )
+
+    session = AsyncMock(spec=AsyncSession)
+    session.flush = AsyncMock()
+
+    njt_client = AsyncMock()
+    njt_client.get_train_stop_list = AsyncMock(
+        side_effect=NJTransitNullDataError("Train 744 - API returned null data")
+    )
+
+    collector = JourneyCollector(njt_client)
+
+    stamps = []
+    for _ in range(3):
+        await collector.collect_journey_details(session, journey)
+        stamps.append(journey.last_updated_at)
+
+    assert stamps == sorted(
+        stamps
+    ), f"each null-data cycle must advance the clock monotonically, got {stamps}"
+    assert all(stamp > other_train_last_updated for stamp in stamps), (
+        "after being asked, the null-data train must sort behind a train last "
+        f"updated 30 minutes ago ({other_train_last_updated}); it did not, so it "
+        "would be re-selected ahead of that train on the very next tick"
+    )
+    assert journey.api_error_count == 0, "repeated null data still records no strikes"
+    assert journey.is_expired is False, (
+        "a null-data train must never be expired by the 3-strike threshold, no "
+        "matter how many cycles it goes without upstream coverage"
     )
 
 

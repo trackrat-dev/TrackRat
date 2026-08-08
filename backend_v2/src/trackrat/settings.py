@@ -138,8 +138,13 @@ class Settings(BaseSettings):
             "batch is ordered oldest-updated-first over the trains currently "
             "in flight, so this bounds NJT API volume while keeping the "
             "worst-case staleness of any one train at "
-            "ceil(in_flight / batch_size) ticks. Raise it if "
-            "`scheduler.periodic.scheduled` logs a persistent backlog."
+            "ceil(in_flight / batch_size) ticks. That bound holds only "
+            "because every refresh outcome advances `last_updated_at` and so "
+            "leaves the head of the queue — including the no-upstream-data "
+            "case, which would otherwise be re-selected every tick and starve "
+            "the trains behind it regardless of batch size (issue #1748). "
+            "Raise it if `scheduler.periodic.scheduled` logs a persistent "
+            "backlog."
         ),
         ge=1,
     )
