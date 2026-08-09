@@ -62,7 +62,12 @@ from trackrat.models.database import (
     TrainJourney,
 )
 from trackrat.utils.sanitize import bounded_text
-from trackrat.utils.time import DATETIME_MAX_ET, ET, PROVIDER_TIMEZONE, now_et
+from trackrat.utils.time import (
+    DATETIME_MAX_ET,
+    ET,
+    PROVIDER_TIMEZONE,
+    now_et,
+)
 
 logger = get_logger(__name__)
 
@@ -437,10 +442,13 @@ class GTFSFeedStatus:
         data but the only thing being served, and it fails silently: departures
         keep appearing, so no coverage or emptiness check notices (issue #1634).
 
-        ``feed_end_date`` comes from ``max(calendar.end_date)``, which GTFS
-        defines as inclusive, so a bundle ending today is still valid. Feeds
-        that publish only ``calendar_dates.txt`` have no end date at all and
-        report ``None`` — unknown, deliberately not treated as lapsed.
+        ``feed_end_date`` is the ``max`` over the retained services' calendar
+        ``end_date``s and their ``calendar_dates.txt`` addition dates (so a
+        calendar_dates-only feed such as NJT gets a real bound too). GTFS
+        defines both as inclusive, so a bundle ending today is still valid. A
+        ``None`` end date — a row written before this derivation existed, or a
+        bundle with no calendar data for its retained trips — reads as
+        unknown, deliberately not treated as lapsed.
 
         ``GTFS_EXPIRY_EXEMPT_SOURCES`` are excluded. For those an expired
         calendar is not a failure but the documented steady state:
@@ -474,13 +482,17 @@ class GTFSFeedStatus:
         (issue #1770). Nothing in the freshness or lapse checks can see this:
         the feed is neither old nor expired, it simply has not begun.
 
-        ``feed_start_date`` comes from ``min(calendar.start_date)``, matching
-        how ``feed_end_date`` takes ``max(calendar.end_date)``. GTFS defines
-        ``start_date`` as inclusive, so a bundle starting today is active and
-        only a strictly future date counts. Feeds publishing only
-        ``calendar_dates.txt`` have no start date and report ``None`` —
-        unknown, deliberately not treated as pending, the same way
-        :attr:`is_lapsed` treats a missing end date.
+        ``feed_start_date`` is the ``min`` over the retained services'
+        calendar ``start_date``s and their ``calendar_dates.txt`` addition
+        dates, mirroring how ``feed_end_date`` takes the ``max``. Additions
+        count because :meth:`GTFSService.get_active_service_ids` activates an
+        addition-dated service with no start-date constraint — a bundle
+        bridged by additions before its calendar window opens genuinely serves
+        those days and must not read as pending. GTFS defines ``start_date``
+        as inclusive, so a bundle starting today is active and only a strictly
+        future date counts. A ``None`` start date reads as unknown,
+        deliberately not treated as pending, the same way :attr:`is_lapsed`
+        treats a missing end date.
 
         ``GTFS_EXPIRY_EXEMPT_SOURCES`` is deliberately *not* consulted here.
         That exemption exists because those feeds' calendars have already
@@ -715,7 +727,13 @@ class GTFSService:
     ) -> dict[str, Any]:
         """Parse GTFS zip and store in database.
 
-        Returns stats about what was parsed.
+        Returns stats about what was parsed. ``start_date`` / ``end_date`` are
+        the bundle's service-period bounds — min/max over the calendar windows
+        and calendar_dates additions of the services the retained trips
+        reference — and become ``gtfs_feed_info.feed_start_date`` /
+        ``feed_end_date``, which :attr:`GTFSFeedStatus.is_not_yet_active` and
+        :attr:`GTFSFeedStatus.is_lapsed` read. Either key is absent when the
+        bundle carries no calendar data for its retained trips.
         """
         # Clear existing data for this source
         await self._clear_existing_data(db, data_source)
@@ -766,35 +784,56 @@ class GTFSService:
                 )
                 stats["stop_times"] = stop_times_count
 
-            # Get date range from calendar, restricted to services the stored
-            # trips actually reference. GTFS_ROUTE_TYPE_FILTER drops routes
-            # (and, through them, trips and stop_times), but _parse_calendar
-            # keeps every calendar.txt row — SEPTA_METRO's bundle is the shared
-            # google_bus.zip and carries ~131 bus routes' calendars. Dating the
-            # bundle from service that is never ingested would let a bus
-            # calendar that has already started hide a Metro calendar that has
-            # not (this feed_start_date is what is_not_yet_active reads), and
-            # symmetrically let a running bus calendar hide a lapsed Metro one.
-            if calendar_services:
-                result = await db.execute(
-                    select(
-                        GTFSCalendar.start_date,
-                        GTFSCalendar.end_date,
+            # Service-period bounds, scoped to the services the retained trips
+            # actually reference. `_clear_existing_data` ran first, so the
+            # GTFSTrip rows for this source are exactly the trips kept after
+            # GTFS_ROUTE_TYPE_FILTER — a shared bundle's excluded routes (the
+            # ~131 bus routes in SEPTA_METRO's google_bus.zip) must not let
+            # their calendar rows set the window for a network we don't ingest —
+            # a running bus calendar could hide a Metro one that has not begun,
+            # and symmetrically a lapsed one.
+            #
+            # calendar_dates.txt additions (exception_type 1) count toward both
+            # bounds because `get_active_service_ids` activates an addition-
+            # dated service with no start-date constraint: a bundle bridged by
+            # additions before its calendar window opens genuinely serves those
+            # days and must not read as pending, and a calendar_dates-only feed
+            # (NJT) gets real bounds instead of none.
+            retained_services = (
+                select(GTFSTrip.service_id)
+                .where(GTFSTrip.data_source == data_source)
+                .distinct()
+                .scalar_subquery()
+            )
+            calendar_rows = (
+                await db.execute(
+                    select(GTFSCalendar.start_date, GTFSCalendar.end_date).where(
+                        and_(
+                            GTFSCalendar.data_source == data_source,
+                            GTFSCalendar.service_id.in_(retained_services),
+                        )
                     )
-                    .where(
-                        GTFSCalendar.data_source == data_source,
-                        GTFSCalendar.service_id.in_(
-                            select(GTFSTrip.service_id).where(
-                                GTFSTrip.data_source == data_source
-                            )
-                        ),
-                    )
-                    .order_by(GTFSCalendar.start_date)
                 )
-                dates = result.all()
-                if dates:
-                    stats["start_date"] = min(d[0] for d in dates)
-                    stats["end_date"] = max(d[1] for d in dates)
+            ).all()
+            addition_dates = list(
+                (
+                    await db.execute(
+                        select(GTFSCalendarDate.date).where(
+                            and_(
+                                GTFSCalendarDate.data_source == data_source,
+                                GTFSCalendarDate.exception_type == 1,
+                                GTFSCalendarDate.service_id.in_(retained_services),
+                            )
+                        )
+                    )
+                ).scalars()
+            )
+            start_candidates = [row[0] for row in calendar_rows] + addition_dates
+            end_candidates = [row[1] for row in calendar_rows] + addition_dates
+            if start_candidates:
+                stats["start_date"] = min(start_candidates)
+            if end_candidates:
+                stats["end_date"] = max(end_candidates)
 
         await db.flush()
         return stats
@@ -2090,7 +2129,10 @@ class GTFSService:
         rather than inside :attr:`GTFSFeedStatus.is_lapsed` /
         :attr:`GTFSFeedStatus.is_not_yet_active` so the dataclass stays a pure
         value object with no hidden clock read — the same reason ``age_hours``
-        is precomputed.
+        is precomputed. "Today" is deliberately the Eastern date for every
+        source — the serving path asks ``get_active_service_ids`` for the ET
+        date regardless of agency timezone, so it is the clock that decides
+        whether departures are actually served; see the comment in the loop.
         """
         rows = (
             (

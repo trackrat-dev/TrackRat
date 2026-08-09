@@ -675,10 +675,11 @@ class TestGTFSFeedStatusLapse:
         assert self._status(30).is_lapsed is False
 
     def test_absent_end_date_is_unknown_not_lapsed(self):
-        """Feeds publishing only calendar_dates.txt have no calendar.end_date,
-        so `_load_feed_stats` records None. Unknown must not be reported as
-        expired — that would put a permanently un-clearable warning on any such
-        source and train operators to ignore the field."""
+        """A NULL end date — a row written before the bounds derivation
+        existed, or a bundle with no calendar data for its retained trips.
+        Unknown must not be reported as expired — that would put a permanently
+        un-clearable warning on any such source and train operators to ignore
+        the field."""
         status = self._status(None)
         assert status.feed_end_date is None
         assert status.is_lapsed is False
@@ -767,6 +768,71 @@ class TestGTFSFeedStatusLapseExemptions:
         """No inversion: the exemption suppresses the verdict, it does not flip
         it. A PATH feed republished with a live calendar stays quiet too."""
         assert self._status("PATH", 30).is_lapsed is False
+
+
+class TestGTFSFeedStatusNotYetActive:
+    """`is_not_yet_active` is the mirror image of `is_lapsed`: a bundle whose
+    service period has not *started*, adopted after an agency published it
+    early. Freshly downloaded, internally valid, weeks from expiry — and no
+    schedule for today, so the source serves nothing while every other signal
+    reads green. SEPTA Regional Rail spent a day and a half in exactly that
+    state behind a `healthy` /health (issue #1770).
+    """
+
+    @staticmethod
+    def _status(
+        days_until_feed_start: int | None,
+        age_hours: float | None = 1.0,
+        data_source: str = "SEPTA_RR",
+    ) -> GTFSFeedStatus:
+        """Build a status with an explicit start offset and, by default, a
+        thoroughly fresh download — the combination that isolates pending
+        from staleness, mirroring the lapse suite's builder."""
+        return GTFSFeedStatus(
+            data_source=data_source,
+            last_successful_parse_at=(
+                datetime.now(ET) - timedelta(hours=age_hours) if age_hours else None
+            ),
+            age_hours=age_hours,
+            trip_count=1340,
+            error_message=None,
+            feed_start_date=(
+                date.today() + timedelta(days=days_until_feed_start)
+                if days_until_feed_start is not None
+                else None
+            ),
+            days_until_feed_start=days_until_feed_start,
+        )
+
+    def test_a_perfectly_fresh_feed_can_still_be_pending(self):
+        """The production state of SEPTA_RR on 2026-08-08: parsed an hour ago,
+        no error, trips loaded — and the calendar starts tomorrow. `is_stale`
+        is structurally unable to see this, which is why the property exists.
+        """
+        status = self._status(1, age_hours=1.0)
+        assert status.is_stale is False, "precondition: the download is healthy"
+        assert status.is_not_yet_active is True
+
+    def test_bundle_starting_today_is_active(self):
+        """GTFS defines calendar.start_date as inclusive — service runs from
+        that date. Treating today as pending would alarm on every agency's
+        changeover morning, including the day SEPTA's bundle finally took
+        effect."""
+        assert self._status(0).is_not_yet_active is False
+
+    def test_bundle_that_started_in_the_past_is_active(self):
+        """Ordinary operation: a bundle in force for a fortnight. Negative
+        `days_until_feed_start` must not read as pending."""
+        assert self._status(-14).is_not_yet_active is False
+
+    def test_absent_start_date_is_unknown_not_pending(self):
+        """A NULL start date — a row written before the bounds derivation
+        existed, or a bundle with no calendar data for its retained trips —
+        must read as unknown, exactly as `is_lapsed` treats a missing end
+        date."""
+        status = self._status(None)
+        assert status.feed_start_date is None
+        assert status.is_not_yet_active is False
 
 
 class TestGTFSTripIdentifiers:

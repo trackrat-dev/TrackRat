@@ -92,7 +92,11 @@ done
 # half this way while /health reported healthy (issue #1770).
 #
 # Both fields are absent on deployments predating them and read as empty —
-# unknown is neither lapsed nor pending, matching GTFSFeedStatus.
+# unknown is neither lapsed nor pending, matching GTFSFeedStatus. That
+# tolerance must not extend to a check that *errored*: when the status query
+# throws, health.py reports {"status": "unhealthy", "error": ...} with neither
+# sources list, and /health still returns 200 — silence there means the check
+# could not run, not that nothing was found.
 echo ""
 echo "📅 Checking GTFS feed calendars..."
 
@@ -103,15 +107,27 @@ with open("/tmp/health-response.json") as fh:
     health = json.load(fh)
 
 gtfs = health.get("checks", {}).get("gtfs_feeds") or {}
-print(",".join(gtfs.get("lapsed_sources") or []))
-print(",".join(gtfs.get("not_yet_active_sources") or []))
+
+if "error" in gtfs or gtfs.get("status") == "unhealthy":
+    print("CHECK_ERROR")
+    print(gtfs.get("error") or "gtfs_feeds check reported unhealthy")
+else:
+    print("OK")
+    print(",".join(gtfs.get("lapsed_sources") or []))
+    print(",".join(gtfs.get("not_yet_active_sources") or []))
 ' 2>/dev/null); then
     echo "   ❌ Could not parse the health response for GTFS feed status"
     exit 1
 fi
 
-LAPSED_SOURCES=$(sed -n 1p <<< "$GTFS_CALENDAR_STATE")
-NOT_YET_ACTIVE_SOURCES=$(sed -n 2p <<< "$GTFS_CALENDAR_STATE")
+if [[ "$(sed -n 1p <<< "$GTFS_CALENDAR_STATE")" == "CHECK_ERROR" ]]; then
+    echo "   ❌ The gtfs_feeds health check itself failed, so feed calendars"
+    echo "      could not be verified: $(sed -n 2p <<< "$GTFS_CALENDAR_STATE")"
+    exit 1
+fi
+
+LAPSED_SOURCES=$(sed -n 2p <<< "$GTFS_CALENDAR_STATE")
+NOT_YET_ACTIVE_SOURCES=$(sed -n 3p <<< "$GTFS_CALENDAR_STATE")
 
 if [[ -n "$LAPSED_SOURCES" ]]; then
     echo "   ❌ GTFS bundle calendar has lapsed: $LAPSED_SOURCES"

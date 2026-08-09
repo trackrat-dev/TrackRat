@@ -802,7 +802,11 @@ class GTFSFeedInfo(Base):
     feed_url = Column(String(500), nullable=False)
     last_downloaded_at = Column(DateTime(timezone=True))
     last_successful_parse_at = Column(DateTime(timezone=True))
-    feed_start_date = Column(Date)  # From feed_info.txt if available
+    # Service-period bounds, derived at parse time from the calendar data of
+    # the services the retained trips reference: min/max over calendar.txt
+    # windows plus calendar_dates.txt additions (not from feed_info.txt).
+    # NULL when the bundle carries no calendar data for its retained trips.
+    feed_start_date = Column(Date)
     feed_end_date = Column(Date)
     route_count = Column(Integer)
     trip_count = Column(Integer)

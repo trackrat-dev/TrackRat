@@ -15,7 +15,8 @@ a mocked session cannot disagree with itself.
 import contextlib
 import io
 import zipfile
-from datetime import timedelta
+from collections.abc import Sequence
+from datetime import date, timedelta
 from unittest.mock import AsyncMock, Mock, patch
 
 import httpx
@@ -28,6 +29,7 @@ from trackrat.models.database import GTFSFeedInfo, GTFSStopTime, GTFSTrip
 from trackrat.services.gtfs import (
     GTFS_EXPIRY_EXEMPT_SOURCES,
     GTFS_FEED_URLS,
+    GTFS_ROUTE_TYPE_FILTER,
     GTFS_STALE_FEED_HOURS,
     GTFSRefreshOutcome,
     GTFSService,
@@ -53,8 +55,9 @@ async def _seed_feed(
 
     ``feed_ends_in_days`` sets ``feed_end_date`` relative to today; negative
     values model a bundle whose calendar has already expired. Left ``None``
-    (the default) the column stays NULL, which is what a feed publishing only
-    ``calendar_dates.txt`` produces.
+    (the default) the column stays NULL — what a row written before the
+    bounds derivation existed carries, or a bundle with no calendar data for
+    its retained trips.
 
     ``feed_starts_in_days`` does the same for ``feed_start_date``; *positive*
     values model the mirror-image failure — a bundle published early and
@@ -113,13 +116,31 @@ async def _passthrough_freshness(
     return True
 
 
-def _gtfs_zip(*, trips: int = 2, service_id: str = "WKDY") -> bytes:
+def _gtfs_zip(
+    *,
+    trips: int = 2,
+    service_id: str = "WKDY",
+    route_type: str = "2",
+    calendar_start: str = "20260101",
+    calendar_end: str = "20261231",
+    calendar_date_additions: Sequence[str] = (),
+    bus_service: tuple[str, str, str] | None = None,
+) -> bytes:
     """Build a small but genuinely valid GTFS static feed.
 
     Real enough that `_parse_and_store_gtfs` walks its whole pipeline —
     routes → calendar → stops → trips → stop_times — and reports non-zero
     counts, so a test can assert on what the parse actually persisted rather
     than on a stubbed stats dict.
+
+    ``calendar_start`` / ``calendar_end`` (YYYYMMDD) set the weekday service's
+    calendar window; ``calendar_date_additions`` adds a calendar_dates.txt row
+    (exception_type 1) for that service on each given date.
+
+    ``bus_service`` = (service_id, start, end) adds a route_type-3 bus route
+    with one trip on its own calendar row — the shape of SEPTA's shared
+    google_bus.zip, where GTFS_ROUTE_TYPE_FILTER drops the bus network at
+    parse time.
     """
     trip_rows = "\n".join(
         f"T{n},{service_id},R1,Test Terminal,{n % 2}" for n in range(1, trips + 1)
@@ -129,15 +150,22 @@ def _gtfs_zip(*, trips: int = 2, service_id: str = "WKDY") -> bytes:
         f"T{n},{(5 + n) % 24:02d}:30:00,{(5 + n) % 24:02d}:30:00,S2,2"
         for n in range(1, trips + 1)
     )
+    routes_rows = f"R1,TL,Test Line,{route_type},ff0000\n"
+    calendar_rows = f"{service_id},1,1,1,1,1,0,0,{calendar_start},{calendar_end}\n"
+    if bus_service is not None:
+        bus_service_id, bus_start, bus_end = bus_service
+        routes_rows += "RBUS,TB,Test Bus,3,0000ff\n"
+        calendar_rows += f"{bus_service_id},1,1,1,1,1,1,1,{bus_start},{bus_end}\n"
+        trip_rows += f"\nTBUS1,{bus_service_id},RBUS,Test Bus Terminal,0"
+        stop_time_rows += "\nTBUS1,06:00:00,06:00:00,S1,1\nTBUS1,06:30:00,06:30:00,S2,2"
     files = {
         "routes.txt": (
             "route_id,route_short_name,route_long_name,route_type,route_color\n"
-            "R1,TL,Test Line,2,ff0000\n"
+            + routes_rows
         ),
         "calendar.txt": (
             "service_id,monday,tuesday,wednesday,thursday,friday,"
-            "saturday,sunday,start_date,end_date\n"
-            f"{service_id},1,1,1,1,1,0,0,20260101,20261231\n"
+            "saturday,sunday,start_date,end_date\n" + calendar_rows
         ),
         "stops.txt": (
             "stop_id,stop_name,stop_lat,stop_lon\n"
@@ -155,6 +183,10 @@ def _gtfs_zip(*, trips: int = 2, service_id: str = "WKDY") -> bytes:
             + "\n"
         ),
     }
+    if calendar_date_additions:
+        files["calendar_dates.txt"] = "service_id,date,exception_type\n" + "".join(
+            f"{service_id},{d},1\n" for d in calendar_date_additions
+        )
 
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -446,8 +478,10 @@ class TestFeedStatusesAgainstRealPostgres:
     async def test_a_feed_with_no_calendar_end_date_reports_unknown(
         self, db_session: AsyncSession
     ):
-        """calendar_dates-only feeds leave the column NULL. That must read as
-        unknown, not expired, or the source carries a warning forever."""
+        """A NULL end date — a row written before the bounds derivation
+        existed, or a bundle with no calendar data for its retained trips —
+        must read as unknown, not expired, or the source carries a warning
+        forever."""
         await _seed_feed(db_session, "NJT", parsed_hours_ago=3)
 
         (status,) = await GTFSService().get_feed_statuses(db_session, ["NJT"])
@@ -521,9 +555,10 @@ class TestFeedStatusesAgainstRealPostgres:
     async def test_a_feed_with_no_calendar_start_date_reports_unknown(
         self, db_session: AsyncSession
     ):
-        """calendar_dates-only feeds leave the column NULL, exactly as they do
-        for the end date. Unknown is not pending — treating it as pending would
-        park a permanent warning on NJT, which publishes no calendar.txt."""
+        """A NULL start date must read as unknown, exactly as a NULL end date
+        does. Unknown is not pending — treating it as pending would park a
+        permanent warning on any row written before the bounds derivation
+        existed."""
         await _seed_feed(db_session, "NJT", parsed_hours_ago=3)
 
         (status,) = await GTFSService().get_feed_statuses(db_session, ["NJT"])
@@ -792,6 +827,13 @@ class TestRealRefreshPathWritesWhatTheSweepReads:
         assert feed_info.trip_count == 3
         assert feed_info.route_count == 1
         assert feed_info.stop_time_count == 6
+        # The calendar-derived service window landed too — the write half of
+        # the #1770 detection chain. If the parse stopped producing these stats
+        # the columns would quietly stay NULL, and NULL reads as unknown, so
+        # `is_not_yet_active` / `is_lapsed` would never fire again while every
+        # status-level test (which seeds the columns by hand) stayed green.
+        assert feed_info.feed_start_date == date(2026, 1, 1)
+        assert feed_info.feed_end_date == date(2026, 12, 31)
 
         # The rows really landed — the counts are not a stats dict talking to
         # itself. Six stop_times across three trips is the fixture's shape.
@@ -910,6 +952,100 @@ class TestRealRefreshPathWritesWhatTheSweepReads:
 
         (status,) = await service.get_feed_statuses(db_session, ["PATH"])
         assert status.trip_count == 2
+
+    async def test_calendar_dates_additions_bridge_a_future_calendar_window(
+        self, db_session: AsyncSession
+    ):
+        """A bundle bridged by date additions before its calendar opens is
+        serving, and must not read as pending.
+
+        `get_active_service_ids` activates an addition-dated service with no
+        start-date constraint, so a feed whose calendar.txt window opens
+        tomorrow but which carries a calendar_dates.txt addition for today
+        genuinely serves today. If `feed_start_date` were derived from
+        calendar.txt alone, /health would report the source pending — and
+        verify-deployment.sh would fail the deploy — while its departure board
+        was full.
+        """
+        today = now_et().date()
+        service = GTFSService()
+
+        with _stub_download(
+            _gtfs_zip(
+                trips=2,
+                calendar_start=(today + timedelta(days=1)).strftime("%Y%m%d"),
+                calendar_end=(today + timedelta(days=21)).strftime("%Y%m%d"),
+                calendar_date_additions=[today.strftime("%Y%m%d")],
+            )
+        ):
+            outcome = await service.refresh_feed(db_session, "PATCO", force=True)
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+
+        # Serving really does start today — the fact the bounds must agree with.
+        active = await service.get_active_service_ids(db_session, "PATCO", today)
+        assert active == {"WKDY"}
+
+        feed_info = (
+            await db_session.execute(
+                select(GTFSFeedInfo).where(GTFSFeedInfo.data_source == "PATCO")
+            )
+        ).scalar_one()
+        assert feed_info.feed_start_date == today
+        assert feed_info.feed_end_date == today + timedelta(days=21)
+
+        (status,) = await service.get_feed_statuses(db_session, ["PATCO"])
+        assert status.is_not_yet_active is False
+        assert status.days_until_feed_start == 0
+
+    async def test_shared_bundle_bounds_come_from_retained_routes_only(
+        self, db_session: AsyncSession
+    ):
+        """Calendar rows of routes we do not ingest must not set the bounds.
+
+        SEPTA_METRO parses the shared google_bus.zip, keeping only the rail
+        route types; the ~131 bus routes ride along in calendar.txt. A bus
+        calendar in force today would drag min(start_date) into the past and
+        mask a rail network that has no service until tomorrow — the exact
+        #1770 blackout, reading as active because of a network this source
+        never serves. The bus calendar's later end date would overstate the
+        runway the same way.
+        """
+        assert GTFS_ROUTE_TYPE_FILTER.get("SEPTA_METRO") == frozenset({"0", "1"})
+        today = now_et().date()
+        service = GTFSService()
+
+        with _stub_download(
+            _gtfs_zip(
+                trips=2,
+                route_type="0",  # trolley — retained by the filter
+                calendar_start=(today + timedelta(days=1)).strftime("%Y%m%d"),
+                calendar_end=(today + timedelta(days=21)).strftime("%Y%m%d"),
+                bus_service=(
+                    "BUSWKDY",
+                    (today - timedelta(days=30)).strftime("%Y%m%d"),
+                    (today + timedelta(days=60)).strftime("%Y%m%d"),
+                ),
+            )
+        ):
+            outcome = await service.refresh_feed(db_session, "SEPTA_METRO", force=True)
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+
+        feed_info = (
+            await db_session.execute(
+                select(GTFSFeedInfo).where(GTFSFeedInfo.data_source == "SEPTA_METRO")
+            )
+        ).scalar_one()
+        # The bus route and its trip were dropped by the filter...
+        assert feed_info.route_count == 1
+        assert feed_info.trip_count == 2
+        # ...so the bounds are the rail service's window, not the bus row that
+        # would otherwise dominate both min() and max().
+        assert feed_info.feed_start_date == today + timedelta(days=1)
+        assert feed_info.feed_end_date == today + timedelta(days=21)
+
+        (status,) = await service.get_feed_statuses(db_session, ["SEPTA_METRO"])
+        assert status.is_not_yet_active is True
+        assert status.days_until_feed_start == 1
 
 
 @pytest.mark.asyncio
