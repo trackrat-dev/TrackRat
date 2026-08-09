@@ -109,6 +109,7 @@ def _gtfs_zip(
     start_date: str = "20260101",
     end_date: str = "20261231",
     include_calendar: bool = True,
+    retired_service: tuple[str, str] | None = None,
 ) -> bytes:
     """Build a small but genuinely valid GTFS static feed.
 
@@ -123,6 +124,10 @@ def _gtfs_zip(
 
     ``include_calendar=False`` drops ``calendar.txt`` entirely, as NJT's real
     feed does — the bundle then declares no service window at all.
+
+    ``retired_service=(start, end)`` adds a second calendar row, referenced by
+    no trip, whose window has already closed — an archive that carries last
+    season's calendar alongside the current one, which several agencies do.
     """
     trip_rows = "\n".join(
         f"T{n},{service_id},R1,Test Terminal,{n % 2}" for n in range(1, trips + 1)
@@ -158,6 +163,12 @@ def _gtfs_zip(
             + "\n"
         ),
     }
+
+    if retired_service is not None:
+        retired_start, retired_end = retired_service
+        files[
+            "calendar.txt"
+        ] += f"{service_id}_RETIRED,1,1,1,1,1,0,0,{retired_start},{retired_end}\n"
 
     if not include_calendar:
         del files["calendar.txt"]
@@ -539,6 +550,90 @@ class TestFutureDatedBundlesAreDeclined:
         # The download did happen, so the rate limit holds and this does not
         # re-download in a tight loop.
         assert feed_info.last_downloaded_at is not None
+
+    async def test_a_retired_calendar_row_cannot_smuggle_in_a_future_bundle(
+        self, db_session: AsyncSession
+    ):
+        """An expired row must not vouch for a bundle that has not started.
+
+        Agencies commonly ship the outgoing rating's calendar alongside the
+        incoming one. Judging the bundle by the earliest start date across
+        every row lets that closed window answer "this has already started"
+        while the only service the bundle actually describes begins next week.
+        Adopting on that basis deletes the in-force timetable, and
+        `get_active_service_ids` then drops the retired row on its `end_date`
+        and the replacement on its `start_date` — the source serves nothing,
+        which is the outage the guard exists to prevent.
+        """
+        service = GTFSService()
+
+        with _stub_download(
+            _gtfs_zip(trips=3, start_date=_gtfs_date(-7), end_date=_gtfs_date(7))
+        ):
+            first = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+        assert first is GTFSRefreshOutcome.REFRESHED
+        in_force = await _stored_trip_ids(db_session, "SEPTA_RR")
+        assert in_force == {"T1", "T2", "T3"}
+
+        with _stub_download(
+            _gtfs_zip(
+                trips=5,
+                service_id="NEXTWK",
+                start_date=_gtfs_date(1),
+                end_date=_gtfs_date(21),
+                retired_service=(_gtfs_date(-60), _gtfs_date(-1)),
+            )
+        ):
+            second = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        assert second is GTFSRefreshOutcome.SKIPPED_NOT_YET_ACTIVE, (
+            "A bundle whose only live service starts tomorrow was adopted "
+            "because a retired calendar row reported a start date in the past "
+            f"(outcome={second})"
+        )
+        assert await _stored_trip_ids(db_session, "SEPTA_RR") == in_force, (
+            "The in-force timetable was cleared for a bundle that describes no "
+            "service today"
+        )
+
+    async def test_a_bundle_whose_every_row_has_expired_is_still_adopted(
+        self, db_session: AsyncSession
+    ):
+        """Ignoring closed windows must not turn into declining a lapsed feed.
+
+        With every row expired the guard has nothing to judge and reads
+        unknown, so the bundle is adopted exactly as before. A lapsed calendar
+        is the `lapsed_sources` health check's business (#1770), not this
+        guard's — declining here would pin the source to an even older bundle.
+        """
+        service = GTFSService()
+
+        with _stub_download(
+            _gtfs_zip(trips=3, start_date=_gtfs_date(-7), end_date=_gtfs_date(7))
+        ):
+            await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        with _stub_download(
+            _gtfs_zip(
+                trips=5,
+                service_id="LAPSED",
+                start_date=_gtfs_date(-60),
+                end_date=_gtfs_date(-1),
+            )
+        ):
+            second = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        assert second is GTFSRefreshOutcome.REFRESHED, (
+            "An all-expired bundle was declined; the guard only refuses "
+            f"bundles that have not started yet (outcome={second})"
+        )
+        assert await _stored_trip_ids(db_session, "SEPTA_RR") == {
+            "T1",
+            "T2",
+            "T3",
+            "T4",
+            "T5",
+        }
 
     async def test_declining_is_a_skip_not_a_failure(self, db_session: AsyncSession):
         """An agency publishing early is expected operation, not a fault.

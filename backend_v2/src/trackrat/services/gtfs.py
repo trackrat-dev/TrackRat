@@ -745,8 +745,25 @@ class GTFSService:
 
         Malformed rows are absorbed for the same reason: a genuinely corrupt
         archive still fails inside :meth:`_parse_and_store_gtfs` and reports
-        ``FAILED_PROCESS``, and the guard must not be what surfaces it.
+        ``FAILED_PROCESS``, and the guard must not be what surfaces it. Note
+        that "absorbed" here means :meth:`_parse_gtfs_date` returns today for an
+        unparseable value rather than raising, so a malformed row reads as
+        already-started and the bundle is adopted — the same fail-open
+        direction, reached without the ``FAILED_PROCESS`` path.
+
+        Rows whose service window has already closed are ignored. Only
+        ``start_date`` decides whether a bundle has begun, but an archive that
+        retains last season's calendar beside a not-yet-started replacement
+        would otherwise report that expired row's past start and slip the
+        guard — and :meth:`get_active_service_ids` drops those same rows on
+        ``end_date``, so the source would go dark in exactly the way this guard
+        exists to prevent. Deliberately *not* extended to the weekday flags or
+        ``calendar_dates.txt`` exceptions: a weekday-only bundle downloaded on a
+        Sunday, or one whose services are all suppressed by a holiday
+        exception, has genuinely started, and declining it would freeze a
+        healthy feed.
         """
+        today = now_et().date()
         try:
             with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
                 if "calendar.txt" not in zf.namelist():
@@ -756,6 +773,7 @@ class GTFSService:
                         self._parse_gtfs_date(row["start_date"])
                         for row in _gtfs_csv_rows(f)
                         if row.get("start_date")
+                        and self._parse_gtfs_date(row.get("end_date", "")) >= today
                     ]
         except Exception as e:
             logger.warning("gtfs_bundle_start_date_unreadable", error=str(e))
