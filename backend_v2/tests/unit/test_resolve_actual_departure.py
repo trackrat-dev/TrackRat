@@ -28,7 +28,9 @@ The two halves of the rule tested here are therefore:
   * freeze the first real capture — NJT revises estimates for hours — *except*
     when the stored value precedes the arrival recorded at the same stop, which
     is impossible and would otherwise stay corrupt forever, since both writers
-    only ever filled a NULL.
+    only ever filled a NULL. The repair itself must not mint a new impossible
+    value: an admissible observation still earlier than the arrival (NJT
+    reverting TIME to the timetable) clears the column instead of replacing it.
 
 Naive-datetime cases are not academic: stop times reach this helper from the
 database (naive, Eastern by the ``utils.time.ensure_timezone_aware``
@@ -188,6 +190,45 @@ class TestRepairsImpossibleOrdering:
 
         assert first == observed
         assert second == first, "a second pass must be a no-op"
+
+    def test_repair_refuses_admissible_reading_before_arrival(self):
+        """The repair must not mint a fresh impossible value.
+
+        NJT reverts TIME to the timetable on some cycles. The timetable is in
+        the past, so it passes the admissibility gate — but it still precedes
+        the recorded arrival, so writing it would recreate exactly the
+        pre-arrival departure the repair exists to remove. Clear instead.
+        """
+        now = now_et()
+        arrival = now - timedelta(minutes=3)
+        corrupt = arrival - timedelta(minutes=37)  # the stored schedule
+        reverted = arrival - timedelta(minutes=37)  # NJT re-serving the schedule
+
+        result = resolve_actual_departure(corrupt, reverted, arrival, now)
+
+        print(f"  - stored (schedule):   {corrupt}")
+        print(f"  - recorded arrival:    {arrival}")
+        print(f"  - reading (= schedule, admissible but pre-arrival): {reverted}")
+        print(f"  - resolved:            {result}")
+        assert result is None, (
+            "an admissible reading that still precedes the arrival must clear "
+            "the column, not replace one impossible value with another"
+        )
+
+    def test_repair_accepts_reading_equal_to_arrival(self):
+        """The boundary of the new guard: NJT publishes one TIME per stop, so a
+        reading exactly equal to the recorded arrival is the normal repaired
+        outcome and must be accepted."""
+        now = now_et()
+        arrival = now - timedelta(minutes=3)
+        corrupt = arrival - timedelta(minutes=37)
+
+        result = resolve_actual_departure(corrupt, arrival, arrival, now)
+
+        assert result == arrival, (
+            "a reading at the recorded arrival is consistent and must be "
+            f"accepted, got {result}"
+        )
 
 
 class TestNaiveDatetimes:

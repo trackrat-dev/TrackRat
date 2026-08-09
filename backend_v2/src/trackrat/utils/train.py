@@ -351,8 +351,13 @@ def resolve_actual_departure(
     exception is a value that cannot be true — a departure recorded *before* the
     arrival recorded at that same stop. Freezing that keeps the corruption
     permanent (both writers only ever filled a ``NULL``), so it is replaced by
-    the current observation, or cleared when none is admissible. Clearing is a
-    repair, not a loss: it hands each consumer back to its own honest fallback.
+    the current observation — but only when that observation is itself at or
+    after the recorded arrival, so the repair cannot manufacture a fresh
+    impossible state. An observation that is admissible yet still precedes the
+    arrival (NJT reverting TIME to the timetable is the known producer) clears
+    the value instead, exactly as when no observation is admissible at all.
+    Clearing is a repair, not a loss: it hands each consumer back to its own
+    honest fallback.
 
     Args:
         existing: The value already stored on the stop, if any.
@@ -378,7 +383,14 @@ def resolve_actual_departure(
     if actual_arrival is not None and normalize_to_et(existing) < normalize_to_et(
         actual_arrival
     ):
-        return admissible
+        # Repairing: never trade one impossible value for another. Only an
+        # observation at/after the recorded arrival may replace it; anything
+        # earlier (NJT reverting TIME to the timetable) counts as no reading.
+        if admissible is not None and normalize_to_et(admissible) >= normalize_to_et(
+            actual_arrival
+        ):
+            return admissible
+        return None
 
     return existing
 

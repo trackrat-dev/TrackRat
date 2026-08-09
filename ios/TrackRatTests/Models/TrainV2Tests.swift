@@ -1555,4 +1555,37 @@ class TrainV2Tests: XCTestCase {
         XCTAssertNil(stop.bestKnownDeparture,
             "With no times at all the view must render its \"--:--\" placeholder")
     }
+
+    func testMinutesSinceDeparture_delayedDepartedStop_usesLiveEstimateNotSchedule() {
+        print("🐀 Testing minutesSinceDeparture uses bestKnownDeparture, not the schedule")
+
+        // The filterUpcomingTrains grace-window regression: a train 35 minutes
+        // late departed NY two minutes ago. The server (correctly, #1768) left
+        // actual_departure nil, so falling from a missing actual straight to
+        // the schedule computes 37 minutes-ago and instantly loses the
+        // 10-minute grace window; the live estimate says 2.
+        let now = Date()
+        let scheduled = now.addingTimeInterval(-37 * 60)
+        let liveEstimate = now.addingTimeInterval(-2 * 60)
+
+        let stop = makeStop(
+            stationCode: "NY",
+            sequence: 1,
+            scheduledDeparture: scheduled,
+            updatedDeparture: scheduled,      // NJT inversion: schedule here
+            updatedArrival: liveEstimate,     // NJT inversion: live estimate here
+            actualDeparture: nil,             // withheld by the server
+            hasDepartedStation: true
+        )
+        let train = createTestTrainV2(departureTime: scheduled, stops: [stop])
+
+        let minutes = train.minutesSinceDeparture(fromStationCode: "NY")
+
+        print("  - scheduledDeparture: \(scheduled)")
+        print("  - live estimate:      \(liveEstimate)")
+        print("  - minutesSinceDeparture: \(String(describing: minutes))")
+        XCTAssertNotNil(minutes, "A departed stop must report minutes since departure")
+        XCTAssertEqual(minutes, 2,
+            "minutesSinceDeparture must derive from the live estimate (2), not the schedule (37)")
+    }
 }

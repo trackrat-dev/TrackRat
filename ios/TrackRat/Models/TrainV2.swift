@@ -331,12 +331,16 @@ struct TrainV2: Identifiable, Codable {
     func minutesSinceDeparture(fromStationCode: String) -> Int? {
         guard hasAlreadyDeparted(fromStationCode: fromStationCode) else { return nil }
 
-        // Get the actual or scheduled departure time
+        // Best-known departure time: actual > live estimate > scheduled.
+        // Skipping the live estimate here fell straight from a missing actual
+        // to the schedule, so a delayed departed stop (actual withheld by the
+        // server per issue #1768) computed minutes-ago from the timetable and
+        // instantly lost filterUpcomingTrains' 10-minute grace window.
         let departureTime: Date?
         if let stop = stops?.first(where: { Stations.areEquivalentStations($0.stationCode, fromStationCode) }) {
-            departureTime = stop.actualDeparture ?? stop.scheduledDeparture
+            departureTime = stop.bestKnownDeparture
         } else if Stations.areEquivalentStations(fromStationCode, originStationCode) {
-            departureTime = departure.actualTime ?? departure.scheduledTime
+            departureTime = departure.actualTime ?? departure.updatedTime ?? departure.scheduledTime
         } else {
             departureTime = nil
         }
