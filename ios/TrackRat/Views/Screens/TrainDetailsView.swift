@@ -244,6 +244,7 @@ struct TrainDetailsView: View {
                                 journeyTotalStops: viewModel.journeyTotalStops,
                                 isLoadingStops: viewModel.isLoadingStops,
                                 prefetchedTrackPrediction: viewModel.prefetchedTrackPrediction,
+                                refreshGeneration: viewModel.refreshGeneration,
                                 isSheet: isSheet
                             )
 
@@ -358,6 +359,10 @@ struct CombinedDetailsCard: View {
     let journeyTotalStops: Int
     let isLoadingStops: Bool
     let prefetchedTrackPrediction: PredictionData?
+    /// Counts successful train-details fetches; passed to the track prediction
+    /// card so its fetch branch refreshes with the poll instead of freezing on
+    /// the first result.
+    let refreshGeneration: Int
     /// When true, the parent is shown as a sheet whose NavigationStack does not
     /// register `.stationDetails`, so the long-press → station details modifier
     /// is suppressed to avoid pushing onto a stack that can't render it.
@@ -514,7 +519,8 @@ struct CombinedDetailsCard: View {
                     SegmentedTrackPredictionView(
                         train: train,
                         isDepartingFromNYPenn: appState.departureStationCode == "NY",
-                        prefetchedPredictions: prefetchedTrackPrediction
+                        prefetchedPredictions: prefetchedTrackPrediction,
+                        refreshGeneration: refreshGeneration
                     )
                 }
             }
@@ -1083,6 +1089,12 @@ class TrainDetailsViewModel: ObservableObject {
     /// cached. Decides whether a failed refresh leaves us showing stale data.
     private var trainDataAsOf: Date?
 
+    /// How many successful fetches have landed for this screen. The track
+    /// prediction card keys its fetch branch on this so a distribution it had
+    /// to request separately is refreshed with the poll rather than pinned to
+    /// whatever the first request returned (#1751).
+    @Published private(set) var refreshGeneration = 0
+
     // Prefetched secondary data (loaded in parallel with main train fetch)
     @Published var prefetchedSummary: OperationsSummaryResponse?
     @Published var prefetchedDelayForecast: DelayForecastResponse?
@@ -1433,6 +1445,7 @@ class TrainDetailsViewModel: ObservableObject {
     private func markDataFetched() {
         trainDataAsOf = Date()
         staleDataTimestamp = nil
+        refreshGeneration += 1
     }
 
     /// Records a failed refresh: once the data on screen has aged past the cache
@@ -1643,9 +1656,18 @@ struct SegmentedTrackPredictionView: View {
     let train: TrainV2
     let isDepartingFromNYPenn: Bool
     let prefetchedPredictions: PredictionData?
+    /// Increments once per successful train-details fetch. Only the fetch
+    /// branch reads it, as the one thing about that branch that changes from
+    /// poll to poll — see `predictionTaskID`.
+    let refreshGeneration: Int
     @Environment(\.accessibilityReduceMotion) private var accessibilityReduceMotion
     @State private var adjustedPredictions: PredictionData?
     @State private var isLoadingPredictions = true
+    /// Whether any load has finished, successfully or not. Gates the spinner so
+    /// a background refresh never re-shows it: `isLoadingPredictions` is part of
+    /// the card's visibility condition, so raising it on every poll would flash
+    /// an empty loading card at a rider who is looking at nothing.
+    @State private var hasCompletedInitialLoad = false
     @State private var isExpanded = false
     @State private var showWaitingLink = false
     
@@ -1680,13 +1702,43 @@ struct SegmentedTrackPredictionView: View {
     }
 
     private var predictionTaskID: String {
-        if let inlineProbabilities = train.trackPrediction?.platformProbabilities {
+        Self.predictionTaskID(
+            inlineProbabilities: train.trackPrediction?.platformProbabilities,
+            prefetchedProbabilities: prefetchedPredictions?.trackProbabilities,
+            trainId: train.trainId,
+            track: train.track,
+            refreshGeneration: refreshGeneration
+        )
+    }
+
+    /// The identity of the current prediction task.
+    ///
+    /// Inline and prefetched distributions are fingerprinted, so the task
+    /// re-runs exactly when the data it would show changes and not on every
+    /// poll that repeats it.
+    ///
+    /// The fallback branch has no such content to key on: the view only exists
+    /// while the track is unassigned, so `trainId` and `track` are both
+    /// session-constant, and a distribution fetched from
+    /// `StaticTrackDistributionService` would be loaded once and then frozen
+    /// for as long as the screen stayed open — the staleness #1648 set out to
+    /// remove, reappearing on the other branch. `refreshGeneration` ties that
+    /// branch to the poll cycle instead, so each successful train-details fetch
+    /// re-requests a current distribution.
+    static func predictionTaskID(
+        inlineProbabilities: [String: Double]?,
+        prefetchedProbabilities: [String: Double]?,
+        trainId: String,
+        track: String?,
+        refreshGeneration: Int
+    ) -> String {
+        if let inlineProbabilities {
             return "inline:\(TrackPredictionSegment.probabilityFingerprint(inlineProbabilities))"
         }
-        if let prefetchedProbabilities = prefetchedPredictions?.trackProbabilities {
+        if let prefetchedProbabilities {
             return "prefetched:\(TrackPredictionSegment.probabilityFingerprint(prefetchedProbabilities))"
         }
-        return "fallback:\(train.trainId):\(train.track ?? "unassigned")"
+        return "fallback:\(trainId):\(track ?? "unassigned"):\(refreshGeneration)"
     }
     
     private var hasOnlyLowConfidencePredictions: Bool {
@@ -1718,8 +1770,52 @@ struct SegmentedTrackPredictionView: View {
         return .fetch
     }
     
-    @ViewBuilder
     var body: some View {
+        // The loader lives on this wrapper, outside the `if` below, and that
+        // placement is the whole point. It used to be chained onto the VStack
+        // *inside* the branch, so a fetch returning nil made both halves of the
+        // condition false, removed the container, and took its own `.task` with
+        // it — leaving nothing that could ever write `adjustedPredictions`
+        // again. One transient miss (a 404, a dropped connection, or simply the
+        // prefetch not having landed on a cold open) permanently killed the
+        // card for the rest of the screen session. Mounted here the loader
+        // survives an empty result, so the next poll carrying a distribution
+        // brings the card back (#1751).
+        //
+        // The wrapper must be a real container, not a `Group`: SwiftUI applies
+        // a modifier on a Group to each of its children, so the loader would
+        // unmount with the card again. An empty VStack is zero-sized, so the
+        // layout is unchanged whether the card renders or not.
+        VStack(alignment: .leading, spacing: 0) {
+            predictionCard
+        }
+        .task(id: predictionTaskID) {
+            switch Self.predictionSource(
+                hasInlinePrediction: train.trackPrediction != nil,
+                hasPrefetchedPrediction: prefetchedPredictions != nil,
+                isTrackAssigned: train.track != nil,
+                hasLoadedPredictions: adjustedPredictions != nil
+            ) {
+            case .inline:
+                adjustedPredictions = train.trackPrediction.map {
+                    PredictionData(trackProbabilities: $0.platformProbabilities)
+                }
+                isLoadingPredictions = false
+                hasCompletedInitialLoad = true
+                revealWaitingLinkIfNeeded()
+            case .prefetched:
+                adjustedPredictions = prefetchedPredictions
+                isLoadingPredictions = false
+                hasCompletedInitialLoad = true
+                revealWaitingLinkIfNeeded()
+            case .fetch:
+                await loadAdjustedPredictions()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var predictionCard: some View {
         // Hide entire section when loading complete and no prediction data (404 from API)
         if isLoadingPredictions || adjustedPredictions != nil {
             VStack(alignment: .leading, spacing: 12) {
@@ -1809,27 +1905,6 @@ struct SegmentedTrackPredictionView: View {
                 RoundedRectangle(cornerRadius: TrackRatTheme.CornerRadius.md)
                     .stroke(Color.orange.opacity(0.3), lineWidth: 1)
             )
-            .task(id: predictionTaskID) {
-                switch Self.predictionSource(
-                    hasInlinePrediction: train.trackPrediction != nil,
-                    hasPrefetchedPrediction: prefetchedPredictions != nil,
-                    isTrackAssigned: train.track != nil,
-                    hasLoadedPredictions: adjustedPredictions != nil
-                ) {
-                case .inline:
-                    adjustedPredictions = train.trackPrediction.map {
-                        PredictionData(trackProbabilities: $0.platformProbabilities)
-                    }
-                    isLoadingPredictions = false
-                    revealWaitingLinkIfNeeded()
-                case .prefetched:
-                    adjustedPredictions = prefetchedPredictions
-                    isLoadingPredictions = false
-                    revealWaitingLinkIfNeeded()
-                case .fetch:
-                    await loadAdjustedPredictions()
-                }
-            }
         }
     }
 
@@ -1888,7 +1963,12 @@ struct SegmentedTrackPredictionView: View {
         print("   - Origin: \(train.originStationCode)")
         print("   - Is NY Penn: \(isDepartingFromNYPenn)")
 
-        isLoadingPredictions = true
+        // Only the first load shows the spinner. Later refreshes run silently:
+        // this flag is half the card's visibility condition, so raising it on a
+        // poll would flash an empty loading card over whatever is on screen —
+        // or, when the last result was empty, make the card blink into
+        // existence every 30 seconds with nothing in it.
+        isLoadingPredictions = !hasCompletedInitialLoad
 
         // Prefer inline prediction from train details response (refreshes every poll)
         let loadedPredictions: PredictionData?
@@ -1909,6 +1989,7 @@ struct SegmentedTrackPredictionView: View {
         guard !Task.isCancelled else { return }
         adjustedPredictions = loadedPredictions
         isLoadingPredictions = false
+        hasCompletedInitialLoad = true
 
         if let predictions = loadedPredictions {
             let trackCount = predictions.trackProbabilities?.count ?? 0
