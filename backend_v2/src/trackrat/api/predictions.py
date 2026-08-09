@@ -111,11 +111,18 @@ async def predict_track(
     train_journey = result.scalar_one_or_none()
 
     if not train_journey:
-        # Try to find any journey for this train ID to get metadata
+        # Try to find any journey for this train ID to get metadata.
+        # Newest run first: this surrogate supplies the route shape, line code
+        # and stop-level departure time for a date that has no journey row
+        # (future GTFS-served dates, and sources that only create rows on
+        # observation), so an unordered LIMIT 1 could answer from a run up to
+        # the retention window old and describe a route the train no longer
+        # takes — including which station it terminates at.
         query = (
             select(TrainJourney)
             .options(selectinload(TrainJourney.stops))
             .where(TrainJourney.train_id == train_id)
+            .order_by(TrainJourney.journey_date.desc())
             .limit(1)
         )
 

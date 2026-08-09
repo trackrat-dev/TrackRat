@@ -242,6 +242,60 @@ class TestPredictTrackEndpoint:
             f"missing data: {exc_info.value.detail}"
         )
 
+    async def test_surrogate_lookup_answers_from_the_most_recent_run(
+        self, db_session: AsyncSession
+    ):
+        """A date with no journey row must be answered by the *newest* run.
+
+        Dates the collector has no row for — future boards served from GTFS
+        static, and sources that only create rows on observation — fall back to
+        "any journey with this train ID". That surrogate is not incidental: it
+        supplies the route, the line code and the stop-level departure time the
+        prediction is built from, so answering from an arbitrary run means
+        describing a route the train may no longer take. Runs stay queryable
+        for the whole 60-day retention window.
+
+        Here the train number has been re-cut to terminate at NY Penn (its
+        newest run arrives and never departs), while a fortnight of older runs
+        still on file departed from Penn. Answering from any of those older
+        runs serves the rider a boarding platform for a train that will not
+        board — #1773 reached through the back door.
+        """
+        await _seed(db_session)
+
+        # The re-cut run, dated after every seeded one.
+        recut = (now_et() + timedelta(days=1)).replace(
+            hour=13, minute=30, second=0, microsecond=0
+        )
+        db_session.add(
+            _journey(
+                DEPARTING_TRAIN_ID,
+                recut.date(),
+                NORTHBOUND_STOPS,
+                recut,
+                ny_track=None,
+            )
+        )
+        await db_session.commit()
+
+        with pytest.raises(HTTPException) as exc_info:
+            await predict_track(
+                station_code="NY",
+                train_id=DEPARTING_TRAIN_ID,
+                journey_date=(now_et() + timedelta(days=7)).date(),
+                db=db_session,
+            )
+
+        assert exc_info.value.status_code == 404, (
+            "A date with no journey row was answered from an older run: the "
+            "train's most recent run terminates at NY Penn, so there is no "
+            f"boarding track to predict (got {exc_info.value.status_code})"
+        )
+        assert "terminates" in str(exc_info.value.detail).lower(), (
+            "The 404 must come from the terminal guard reading the newest run, "
+            f"not from a missing journey: {exc_info.value.detail}"
+        )
+
 
 @pytest.mark.asyncio
 class TestInlineTrackPredictionOnTrainDetails:
