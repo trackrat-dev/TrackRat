@@ -334,8 +334,12 @@ ROUTES=(
   "NJT NJCL|NY|LB|NJT|NY||NC"
   "NJT Main Line|HB|SF|NJT|HB|"
   # NJ Transit - weekday-only (limited weekend service)
-  "NJT Morris & Essex|HB|DV|NJT|HB|w|ME,MO,Mo"
-  "NJT Raritan Valley|NP|HG|NJT|NP|w|RV,Ra"
+  # Alert-feed codes only: `Mo`/`Ra` are pre-2026-03 database aliases that the
+  # alert parser never emits, and planned_work_note requires every listed code
+  # to have an alert, so including them made these two rows unexcusable. `MO`
+  # stays on the M&E pair because Montclair-Boonton genuinely serves HB->DV.
+  "NJT Morris & Essex|HB|DV|NJT|HB|w|ME,MO"
+  "NJT Raritan Valley|NP|HG|NJT|NP|w|RV"
   # Amtrak
   "Amtrak NEC|NY|WS|AMTRAK|NY|"
   "Amtrak Keystone|PH|HAR|AMTRAK|PH|"
@@ -442,7 +446,18 @@ for src, n in [('NJT',3),('AMTRAK',3),('PATH',2),('LIRR',3),('MNR',2),('SUBWAY',
         else:
             t = stations[-1]
         m = next((s for s in [f, t] if s in ml), '')
-        codes = sorted(r.line_codes) if src in ALERT_LINE_SOURCES else []
+        # Same alias problem as the fixed NJT rows above, generalized: for 8 of
+        # 12 NJT routes `line_codes` carries a Title-case legacy alias beside
+        # the canonical code ('Ra', 'Mo', 'Gl', 'Ma', 'Be', 'Pa', 'At', 'Pr'),
+        # and the alert parser emits only the canonical one. Since every listed
+        # code must match, keeping the aliases made every one of those routes
+        # permanently unexcusable. Codes in other namespaces are already
+        # upper-case ('7'.upper() == '7'), so this drops nothing else.
+        codes = (
+            sorted(c for c in r.line_codes if c == c.upper())
+            if src in ALERT_LINE_SOURCES
+            else []
+        )
         lines = ','.join(codes) if 0 < len(codes) <= MAX_ALERT_LINES else ''
         print(f'{src} {r.name}|{f}|{t}|{src}|{m}|{flags}|{lines}')
 " > "$TMPDIR/random_routes.txt" 2>"$TMPDIR/random_routes_err.txt"; then
@@ -556,18 +571,25 @@ for route in "${ROUTES[@]}"; do
       FAILED_ROUTES+=("$label ($from -> $to): 0 trains")
     fi
   elif [[ "$sched" -eq 0 && "$source" == "AMTRAK" && "$obs" -gt 0 && "$ET_HOUR" -ge "$AMTRAK_SCHEDULE_QUIET_FROM_HOUR" ]]; then
-    # Amtrak generates SCHEDULED records for the current service day only, in a
-    # daily 00:45 ET job, and each one is upgraded to OBSERVED as its train is
-    # discovered. Late in the evening every remaining train has therefore been
-    # observed and tomorrow's records do not exist yet, so an all-OBSERVED board
-    # is correct rather than a discovery gap.
+    # Amtrak's SCHEDULED records are upgraded to OBSERVED as each train is
+    # discovered, so by late evening today's are all consumed. Tomorrow's do
+    # exist — the 00:45 ET job generates today *and* tomorrow
+    # (services/scheduler.py::generate_amtrak_schedules) — but they are almost
+    # entirely out of range: the departures query defaults its window to
+    # midnight-today + 26 hours (services/departure.py), i.e. it stops at 02:00
+    # ET tomorrow. An all-OBSERVED Amtrak board late in the evening is
+    # therefore expected rather than a discovery gap.
+    #
+    # What this gives up: on a route with genuine post-midnight Amtrak service,
+    # a total failure of tomorrow's generation would have left a SCHEDULED row
+    # inside that 00:00-02:00 slice, and this now swallows it. That signal is
+    # thin and route-dependent, which is why the check false-failed.
     #
     # Three Amtrak routes failed this check at 22:00 ET and passed unchanged at
     # 10:30 the next morning (issue #1771). NJT is deliberately not exempt: its
-    # schedule collection covers a 27-hour window, so it really does carry
-    # post-midnight SCHEDULED trains all evening, and relaxing it there would
-    # give up a check that still holds.
-    pass "Amtrak: $obs observed, 0 scheduled (after ${AMTRAK_SCHEDULE_QUIET_FROM_HOUR}:00 ET, next day not generated until 00:45)"
+    # 27-hour schedule collection lands post-midnight SCHEDULED trains inside
+    # that same 02:00 cutoff, so the check still holds there.
+    pass "Amtrak: $obs observed, 0 scheduled (after ${AMTRAK_SCHEDULE_QUIET_FROM_HOUR}:00 ET, tomorrow's board is past the 26h query window)"
   elif [[ "$sched" -eq 0 ]]; then
     fail "No SCHEDULED trains ($obs observed, 0 scheduled)"
     FAILED_ROUTES+=("$label ($from -> $to): 0 SCHEDULED trains")

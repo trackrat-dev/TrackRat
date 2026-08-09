@@ -113,9 +113,14 @@ lines is deliberate: many lines carry some planned work at any hour, so excusing
 because one of its lines is touched would suppress real outages. The `lines` field is
 left empty for LIRR/MNR (MTA publishes numeric route ids in alerts that don't match
 `route_topology`), for many-line trunks, and for sources with no alert feed — an empty
-field means the route keeps its original strictness. Amtrak is likewise exempt from the
-"0 SCHEDULED trains" assertion after 20:00 ET, since its SCHEDULED records cover the
-current service day only and are regenerated at 00:45.
+field means the route keeps its original strictness. Codes are restricted to what the
+alert parser actually emits: `route_topology.line_codes` carries pre-2026-03 Title-case
+database aliases (`Ra`, `Mo`, …) that never appear in an alert, and since every listed
+line must match, including them would silently make a pair unexcusable. Amtrak is
+likewise exempt from the "0 SCHEDULED trains" assertion after 20:00 ET — tomorrow's
+SCHEDULED records do exist (the 00:45 job generates today and tomorrow) but the
+departures query window ends at 02:00 ET tomorrow, so they are out of range and an
+all-OBSERVED evening board is expected.
 
 **Ground Truth Validation:**
 
