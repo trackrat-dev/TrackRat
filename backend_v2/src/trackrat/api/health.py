@@ -162,11 +162,19 @@ async def health_check(
         # staleness check, and invisible to coverage sweeps too, since
         # departures keep appearing (issue #1634).
         lapsed = [s for s in statuses if s.is_lapsed]
+        # The mirror image of a lapse, and just as invisible to the two checks
+        # above: an agency publishes next week's bundle early, the refresh job
+        # adopts it, and the source serves nothing until its start date. Freshly
+        # downloaded, weeks from expiry, and completely dark. SEPTA Regional
+        # Rail spent a day and a half in exactly that state reporting `healthy`
+        # (issue #1770).
+        not_yet_active = [s for s in statuses if s.is_not_yet_active]
         health_status["checks"]["gtfs_feeds"] = {
-            "status": "warning" if stale or lapsed else "healthy",
+            "status": "warning" if stale or lapsed or not_yet_active else "healthy",
             "stale_after_hours": GTFS_STALE_FEED_HOURS,
             "stale_sources": [s.data_source for s in stale],
             "lapsed_sources": [s.data_source for s in lapsed],
+            "not_yet_active_sources": [s.data_source for s in not_yet_active],
             "feeds": {
                 s.data_source: {
                     "last_successful_parse_at": (
@@ -181,6 +189,10 @@ async def health_check(
                         s.feed_end_date.isoformat() if s.feed_end_date else None
                     ),
                     "days_until_feed_end": s.days_until_feed_end,
+                    "feed_start_date": (
+                        s.feed_start_date.isoformat() if s.feed_start_date else None
+                    ),
+                    "days_until_feed_start": s.days_until_feed_start,
                 }
                 for s in statuses
             },
