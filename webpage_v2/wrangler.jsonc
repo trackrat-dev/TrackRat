@@ -48,21 +48,27 @@
       ]
     },
 
-    // production deliberately has no `routes` yet. Adding the two custom
-    // domains below IS the production cutover — it repoints trackrat.net away
-    // from the Google load balancer at 136.110.151.144 — so it is a separate,
-    // deliberate commit at runbook step P5.4 rather than something that ships
-    // with the pipeline change:
+    // These two custom domains ARE what serves trackrat.net and
+    // www.trackrat.net. There is no GCS fallback — the Google load balancer
+    // that used to front the bucket was deleted on 2026-08-08 — so removing
+    // these routes takes the site down.
     //
-    //   "routes": [
-    //     { "pattern": "trackrat.net",     "custom_domain": true },
-    //     { "pattern": "www.trackrat.net", "custom_domain": true }
-    //   ]
+    // They were attached by a manual `wrangler deploy` during the 2026-08-08
+    // incident (runbook step P5.4). Committing them here reconciles the repo
+    // with what already exists in Cloudflare: CI deploys find both Custom
+    // Domains present and re-attach them to the same Worker cleanly.
     //
-    // Until then this env deploys to its workers.dev URL only, which is where
-    // P5 verifies the build before any DNS moves.
+    // For the from-scratch case only: the apex `A` records must NOT exist
+    // before the deploy. Wrangler sends override_existing_dns_record, but the
+    // Cloudflare API rejects it for externally managed records (code 100117;
+    // see infra_v2/RUNBOOK-cloudflare-cutover.md, step P5.4), and the pipeline
+    // token has no DNS:Edit to clear them itself.
     "production": {
-      "name": "trackrat-webpage-production"
+      "name": "trackrat-webpage-production",
+      "routes": [
+        { "pattern": "trackrat.net", "custom_domain": true },
+        { "pattern": "www.trackrat.net", "custom_domain": true }
+      ]
     }
   }
 }

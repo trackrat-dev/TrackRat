@@ -542,12 +542,11 @@ early.
    repointing the apex away from `136.110.151.144`. Re-run the S8 verification
    block against `https://trackrat.net` and `https://www.trackrat.net`.
 
-   **Do not pre-delete the grey `A` records.** `trackrat.net` and `www` still
-   point at `136.110.151.144`, and it is tempting to clear them first so the
-   Custom Domain lands on a clean name (as it did on staging, which was
-   NXDOMAIN). Deleting them buys nothing and costs an apex outage for anything
-   whose cached record has expired. Wrangler takes the existing records over on
-   its own — from `publishCustomDomains` in the pinned wrangler 4.118.0:
+   **Delete the apex `A` records first.** This reverses the previous revision of
+   this runbook, which said not to. That guidance was wrong and it fails the
+   deploy — corrected 2026-08-08 after it did exactly that in production.
+
+   The old reasoning was that `publishCustomDomains` in wrangler 4.118.0 does
 
    ```js
    if (!process.stdout.isTTY) {
@@ -558,28 +557,61 @@ early.
    }
    ```
 
-   Cloud Build is **not** a TTY, so the pipeline takes the non-interactive
-   branch: it overrides both records without prompting and without failing.
-   (The documented "cannot create a Custom Domain over an existing record"
-   caution is about **CNAME** records; ours are `A`.)
+   so a non-TTY Cloud Build would take the records over silently. Wrangler does
+   send those flags — but the **Cloudflare API rejects the request anyway**:
 
-   The asymmetry is worth knowing in the other direction too: run
-   `./scripts/deploy-webpage.sh production` locally with routes configured and
-   stdout *is* a TTY, so wrangler will stop and ask before touching the apex
-   records. That prompt is a feature locally and impossible in CI — do the
-   cutover by merging, not from a laptop.
+   ```
+   ✘ [ERROR] Trigger configuration for "trackrat-webpage-production" was only
+     partially updated:
+       Custom domains:
+         - Hostname 'trackrat.net' already has externally managed DNS records
+           (A, CNAME, etc). Delete them first or try a different hostname.
+           [code: 100117]
+     Successful trigger changes were not rolled back.
+
+   No targets deployed for trackrat-webpage-production
+   ```
+
+   Reproduced with `[ -t 1 ]` false, i.e. the exact non-interactive path CI
+   takes. The TTY branch is therefore irrelevant to the outcome: the records
+   must be gone before the deploy, from CI or from a laptop alike. The
+   documented "cannot create a Custom Domain over an existing record" caution
+   is **not** limited to CNAMEs, as the previous revision claimed.
+
+   So: delete `A trackrat.net` and `A www.trackrat.net` in the Cloudflare
+   dashboard, then deploy. There is a brief window where the apex does not
+   resolve — unavoidable, and the reason to do this off-peak. Leave
+   `apiv2.trackrat.net` alone; it is the tunnel record.
+
+   The pipeline's own token cannot do the deletion. `cloudflare-workers-api-token`
+   carries Workers Scripts/Routes edit plus Zone:Read and returns
+   `Authentication error` (code 10000) on `/zones/{id}/dns_records`. Use the
+   dashboard, or add DNS:Edit to a token if this should ever be automated.
+
+   Note also that `workers_dev` is not set in `wrangler.jsonc`, so wrangler
+   disables it by default. When the custom domains fail to attach there is no
+   `workers.dev` fallback either, which is why the failure above reported **no**
+   targets rather than degrading to one.
 5. **Soak ≥24h.** Then delete the `sync`, `cache-html` and `cache-assets` steps
    and the `_WEBPAGE_BUCKET` substitution from `cloudbuild-webpage.yaml`.
+   This changes the pipeline only: `scripts/deploy-webpage.sh` used to key its
+   production guard off the `sync` step's existence, but its guard is now
+   unconditional and its messaging already reflects the Worker serving the
+   apex, so nothing in the script retires or changes here.
 
 Universal links are worth a real check here, not just a curl: Apple's CDN
 caches the AASA file, so an installed app may keep working for a while off the
 old copy. Confirm a shared `/train/...` link still opens the app.
 
-**Rollback (before step 5):** revert the `routes` block and redeploy, then
-recreate the grey `A` records pointing at `136.110.151.144`. The GCS bucket is
-still receiving every build, so it is current, not stale — that is the whole
-reason for the dual deploy. After step 5 the bucket goes stale immediately and
-rollback means restoring those pipeline steps and pushing.
+**Rollback:** the GCS path written here originally — revert the `routes` block,
+recreate the grey `A` records pointing at `136.110.151.144`, let the
+still-current bucket serve — no longer exists: the load balancer behind that IP
+was deleted on 2026-08-08, before P5.4 ran, so those records would point at
+nothing. The bucket still receives every build (until step 5) but nothing
+serves it. Rollback now means redeploying a known-good build to the Worker
+(`git checkout <good-commit>` then
+`./scripts/deploy-webpage.sh production --cloudflare-only`); do **not** remove
+the `routes` block — that just takes the site down.
 
 ### P6. Phase 4 — delete the webpage LB (point of no easy return)
 
@@ -666,7 +698,7 @@ This matches the invariant already stated for the staging rehearsal in S9.
 | S9 | `git revert` + re-apply | new IP, DNS update |
 | P1–P3 | none needed (connector additive) | — |
 | P4 | grey `A` `apiv2` → `136.110.151.144` | seconds |
-| P5 | revert the `routes` block + redeploy, recreate grey `A` → `136.110.151.144` (GCS stays current while the pipeline dual-deploys) | seconds |
+| P5 | redeploy a known-good build to the Worker (`deploy-webpage.sh production --cloudflare-only`) — no GCS fallback, the LB behind `136.110.151.144` is gone | minutes |
 | **P6** | **re-apply webpage LB Terraform** | **new IP + DNS + cert reprovision** |
 
 ## Verification cheatsheet
