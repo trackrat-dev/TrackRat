@@ -670,8 +670,11 @@ class TestLIRRCollectorJourneyDetails:
 
         await collector.collect_journey_details(mock_session, journey)
 
-        # Must use trip_correct times, NOT trip_wrong
-        assert journey.actual_departure == correct_time
+        # Must use trip_correct times, NOT trip_wrong. The departure is the
+        # origin stop's own actual_departure (issue #1750) — JAM is stop 1 and
+        # the feed observed it, so the journey departed when it left JAM, not
+        # when it arrived there. trip_wrong would put this 30 minutes earlier.
+        assert journey.actual_departure == correct_time + timedelta(minutes=1)
         assert journey.actual_arrival == correct_time + timedelta(minutes=30)
 
     @pytest.mark.asyncio
@@ -728,8 +731,9 @@ class TestLIRRCollectorJourneyDetails:
 
         await collector.collect_journey_details(mock_session, journey)
 
-        # Fuzzy fallback should still update the journey
-        assert journey.actual_departure == now + timedelta(seconds=30)
+        # Fuzzy fallback should still update the journey. The value is the
+        # observed origin's actual_departure (issue #1750), not its arrival.
+        assert journey.actual_departure == now + timedelta(seconds=60)
 
 
 class TestLIRRCollectorRun:

@@ -21,6 +21,7 @@ from trackrat.collectors.mta_common import (
     check_journey_completed,
     group_candidate_trips_by_overlap,
     infer_missing_origin,
+    origin_actual_departure,
     select_matching_trip,
     set_stop_track,
     synthetic_origin_departure,
@@ -391,7 +392,8 @@ class MBTACollector:
                 terminal_station_code=terminal_code,
                 scheduled_departure=sched_departure,
                 scheduled_arrival=sched_arrival,
-                actual_departure=first_arrival.arrival_time,
+                # Set from the origin stop once the stops exist, below.
+                actual_departure=None,
                 has_complete_journey=True,
                 stops_count=(
                     len(merged_stops)
@@ -492,6 +494,11 @@ class MBTACollector:
             await session.flush()
             now = now_et()
             update_stop_departure_status(created_stops, now)
+            # A static backfill can put the origin ahead of the first stop the
+            # feed still lists, so the journey's departure comes from that
+            # origin stop — not from the first visible arrival, which pairs an
+            # origin schedule with a downstream actual and reads as delay.
+            journey.actual_departure = origin_actual_departure(created_stops)
             update_journey_metadata(journey, now, created_stops)
             check_journey_completed(journey, created_stops)
 
@@ -500,7 +507,6 @@ class MBTACollector:
 
         else:
             # Update existing journey
-            journey.actual_departure = first_arrival.arrival_time
             journey.actual_arrival = last_arrival.arrival_time
 
             # Use in-memory lookup from eagerly-loaded stops (avoids N+1 queries).
@@ -525,6 +531,7 @@ class MBTACollector:
             now = now_et()
             journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
             update_stop_departure_status(journey_stops, now)
+            journey.actual_departure = origin_actual_departure(journey_stops)
             update_journey_metadata(journey, now, journey_stops)
             check_journey_completed(journey, journey_stops)
 
@@ -581,10 +588,8 @@ class MBTACollector:
                     stop.updated_departure = arr.departure_time
                 set_stop_track(stop, arr.track, "MBTA", journey.train_id, now_et())
 
-        first_stop = min(best_trip, key=lambda a: a.arrival_time)
         last_stop = max(best_trip, key=lambda a: a.arrival_time)
 
-        journey.actual_departure = first_stop.arrival_time
         journey.actual_arrival = last_stop.arrival_time
 
         now = now_et()
@@ -595,6 +600,7 @@ class MBTACollector:
         )
         journey_stops = list(stop_result.scalars().all())
         update_stop_departure_status(journey_stops, now)
+        journey.actual_departure = origin_actual_departure(journey_stops)
         update_journey_metadata(journey, now, journey_stops)
         check_journey_completed(journey, journey_stops)
 

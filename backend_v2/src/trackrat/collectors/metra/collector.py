@@ -21,6 +21,7 @@ from trackrat.collectors.mta_common import (
     check_journey_completed,
     group_candidate_trips_by_overlap,
     infer_missing_origin,
+    origin_actual_departure,
     select_matching_trip,
     synthetic_origin_departure,
     update_journey_metadata,
@@ -424,7 +425,8 @@ class MetraCollector:
                 terminal_station_code=terminal_code,
                 scheduled_departure=sched_departure,
                 scheduled_arrival=sched_arrival,
-                actual_departure=first_arrival.arrival_time,
+                # Set from the origin stop once the stops exist, below.
+                actual_departure=None,
                 has_complete_journey=True,
                 stops_count=(
                     len(merged_stops)
@@ -525,6 +527,11 @@ class MetraCollector:
             await session.flush()
             now = now_for_provider(DATA_SOURCE)
             update_stop_departure_status(created_stops, now)
+            # A static backfill can put the origin ahead of the first stop the
+            # feed still lists, so the journey's departure comes from that
+            # origin stop — not from the first visible arrival, which pairs an
+            # origin schedule with a downstream actual and reads as delay.
+            journey.actual_departure = origin_actual_departure(created_stops)
             update_journey_metadata(journey, now, created_stops)
             check_journey_completed(journey, created_stops)
 
@@ -533,7 +540,6 @@ class MetraCollector:
 
         else:
             # Update existing journey
-            journey.actual_departure = first_arrival.arrival_time
             journey.actual_arrival = last_arrival.arrival_time
 
             # Use in-memory lookup from eagerly-loaded stops (avoids N+1 queries).
@@ -555,6 +561,7 @@ class MetraCollector:
             now = now_for_provider(DATA_SOURCE)
             journey_stops = sorted(journey.stops, key=lambda s: s.stop_sequence or 0)
             update_stop_departure_status(journey_stops, now)
+            journey.actual_departure = origin_actual_departure(journey_stops)
             update_journey_metadata(journey, now, journey_stops)
             check_journey_completed(journey, journey_stops)
 
@@ -623,10 +630,8 @@ class MetraCollector:
                     stop.updated_departure = arr.departure_time
 
         # Update journey-level times
-        first_stop = min(best_trip, key=lambda a: a.arrival_time)
         last_stop = max(best_trip, key=lambda a: a.arrival_time)
 
-        journey.actual_departure = first_stop.arrival_time
         journey.actual_arrival = last_stop.arrival_time
 
         # Update departure status and journey metadata
@@ -638,6 +643,7 @@ class MetraCollector:
         )
         journey_stops = list(stop_result.scalars().all())
         update_stop_departure_status(journey_stops, now)
+        journey.actual_departure = origin_actual_departure(journey_stops)
         update_journey_metadata(journey, now, journey_stops)
         check_journey_completed(journey, journey_stops)
 
