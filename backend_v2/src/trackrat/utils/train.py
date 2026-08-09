@@ -206,6 +206,40 @@ def journey_terminates_at_station(
     return sorted_stops[terminal_index].station_code in station_codes
 
 
+def journey_serves_station(
+    sorted_stops: "list[JourneyStop]",
+    terminal_station_code: str | None,
+    station_codes: Container[str],
+) -> bool:
+    """Whether the journey calls at one of ``station_codes`` at all — or its
+    shape is not yet known well enough to prove that it doesn't.
+
+    Companion to :func:`journey_terminates_at_station`, covering the other way
+    a track prediction can be about somebody else's train: the requested
+    station is not on the route at all. The train-id level of the predictor
+    finds no history for a station the train never visits, and the hierarchy
+    falls through to distributions built entirely from *other* trains at that
+    station — exactly the #1773 failure shape, reached from a different
+    direction.
+
+    Trust is delegated to :func:`terminal_stop_index` — the same conditions as
+    the terminal check, deliberately: only a fully-sequenced journey whose
+    last stop agrees with ``terminal_station_code`` has a proven shape. On an
+    NJT discovery or schedule row (``stop_sequence = NULL``, placeholder
+    terminal) the stop list is incomplete, so a station absent from it may
+    still be served; this returns ``True`` there and the prediction is kept.
+    A just-discovered train must never lose its prediction to a guess about a
+    route we have not collected yet.
+
+    ``station_codes`` is a container so callers can pass an
+    equivalence-expanded set (``expand_station_codes``) and match whichever
+    code the journey stored.
+    """
+    if terminal_stop_index(sorted_stops, terminal_station_code) is None:
+        return True
+    return any(stop.station_code in station_codes for stop in sorted_stops)
+
+
 def effective_njt_updated_times(
     stop: "JourneyStop", data_source: str | None, is_terminal: bool = False
 ) -> tuple[datetime | None, datetime | None]:

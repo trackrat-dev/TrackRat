@@ -25,7 +25,11 @@ from trackrat.models.api import DelayBreakdownProbabilities, DelayForecastRespon
 from trackrat.models.database import TrainJourney
 from trackrat.services.delay_forecaster import delay_forecaster
 from trackrat.services.historical_track_predictor import historical_track_predictor
-from trackrat.utils.train import journey_terminates_at_station, stop_sequence_sort_key
+from trackrat.utils.train import (
+    journey_serves_station,
+    journey_terminates_at_station,
+    stop_sequence_sort_key,
+)
 
 logger = get_logger()
 
@@ -141,10 +145,10 @@ async def predict_track(
     sorted_stops = sorted(train_journey.stops, key=stop_sequence_sort_key)
     station_codes = set(expand_station_codes(station_code))
 
-    # The train terminates here: it arrives and never departs, so there is no
-    # boarding track to predict. Without this the hierarchy falls through to a
-    # distribution built from the station's *departing* trains and presents it
-    # as this train's platform (#1773).
+    # The train terminates here: it arrives and never departs, so there is
+    # no boarding track to predict. Without this the hierarchy falls
+    # through to a distribution built from the station's *departing*
+    # trains and presents it as this train's platform (#1773).
     if journey_terminates_at_station(
         sorted_stops, train_journey.terminal_station_code, station_codes
     ):
@@ -158,6 +162,27 @@ async def predict_track(
             status_code=404,
             detail=(
                 f"Train {train_id} terminates at station {station_code}; "
+                "no departure track to predict"
+            ),
+        )
+
+    # The train never calls here at all: with no history for it at this
+    # station, the hierarchy's static/service-distribution fallbacks would
+    # answer from other trains' platforms — the same failure shape as the
+    # terminal arrival, reached from a different direction.
+    if not journey_serves_station(
+        sorted_stops, train_journey.terminal_station_code, station_codes
+    ):
+        logger.info(
+            "track_prediction_unavailable",
+            station_code=station_code,
+            train_id=train_id,
+            reason="station_not_served",
+        )
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"Train {train_id} does not serve station {station_code}; "
                 "no departure track to predict"
             ),
         )

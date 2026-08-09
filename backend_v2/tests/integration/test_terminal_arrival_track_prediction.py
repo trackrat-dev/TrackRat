@@ -27,6 +27,21 @@ terminating at NY Penn with none — and assert on the two real endpoints:
    inherited.
 2. ``/trains/{train_id}``'s inline ``track_prediction`` is omitted for the
    terminating train and present for the departing one.
+
+Two follow-on review findings share the seed and are covered here too:
+
+3. A station the train never serves at all reaches the same failure shape from
+   the other direction — with no history for the train there, the hierarchy's
+   static / service-distribution fallbacks answer from other trains' platforms.
+   ``/predictions/track`` now 404s that as ``station_not_served``, with a
+   served-intermediate control (Newark Penn) proving the guard is positional,
+   not "any station that isn't the origin".
+4. Both route-shape guards apply only to the journey row for the *requested*
+   ``journey_date``. When none exists the endpoint falls back to an arbitrary
+   historical journey with the same train ID; a timetable change can make that
+   surrogate terminate where today's run departs, and 404ing on its stops
+   would suppress a valid prediction. The date-fallback test pins the
+   pre-guard behavior: surrogate journeys serve the prediction.
 """
 
 from datetime import timedelta
@@ -68,14 +83,21 @@ async def _fresh_app_engine():
 DEPARTING_TRAIN_ID = "7841"
 # Northbound Trenton -> NY Penn (terminates at NY Penn: nothing to board).
 TERMINATING_TRAIN_ID = "7832"
+# Northbound run that exists only on a past journey_date — exercises the
+# arbitrary-historical-journey fallback in predict_track.
 
 # Enough same-train history to clear MIN_TRAIN_ID_RECORDS (10) for the
 # southbound train, which also makes the shared time+line level rich enough to
 # answer for the northbound one — the fallback that produced the bug.
 HISTORY_DAYS = 14
 
-SOUTHBOUND_STOPS = ["NY", "SE", "EWR", "NB", "PJ", "HL", "TR"]
-NORTHBOUND_STOPS = ["TR", "HL", "PJ", "NB", "EWR", "SE", "NY"]
+# NP (Newark Penn) is deliberately included: it is a prediction-enabled
+# *intermediate* station, giving the unserved-station guard its control. HB
+# (Hoboken) is prediction-enabled and genuinely never served by the NEC,
+# giving the guard its trigger.
+SOUTHBOUND_STOPS = ["NY", "SE", "NP", "EWR", "NB", "PJ", "HL", "TR"]
+NORTHBOUND_STOPS = ["TR", "HL", "PJ", "NB", "EWR", "NP", "SE", "NY"]
+UNSERVED_STATION = "HB"
 
 
 def _journey(
@@ -84,7 +106,7 @@ def _journey(
     station_codes: list[str],
     first_departure,
     *,
-    ny_track: str | None,
+    tracks: dict[str, str] | None,
 ) -> TrainJourney:
     """Build a fully-collected NJT journey along ``station_codes``.
 
@@ -93,9 +115,9 @@ def _journey(
     the last one agrees with ``terminal_station_code``. Stops are spaced 10
     minutes apart from ``first_departure``.
 
-    ``ny_track`` is the track recorded at the NY Penn stop — a real value for
-    southbound departures, ``None`` for northbound arrivals, mirroring what NJT
-    actually publishes.
+    ``tracks`` maps station code -> recorded departure track — real values for
+    southbound departure stops, ``None``/absent for northbound arrivals,
+    mirroring what NJT actually publishes.
     """
     journey = TrainJourney(
         train_id=train_id,
@@ -126,7 +148,7 @@ def _journey(
             stop_sequence=index,
             scheduled_departure=first_departure + timedelta(minutes=10 * index),
             scheduled_arrival=first_departure + timedelta(minutes=10 * index),
-            track=ny_track if code == "NY" else None,
+            track=(tracks or {}).get(code),
             has_departed_station=False,
         )
         for index, code in enumerate(station_codes)
@@ -135,11 +157,12 @@ def _journey(
 
 
 async def _seed(db_session: AsyncSession) -> None:
-    """Seed NY Penn departure-track history plus today's two runs.
+    """Seed NY Penn and Newark Penn departure-track history plus today's runs.
 
     The southbound train has run daily for HISTORY_DAYS off tracks 1-4 (Penn's
-    NJT-side tracks), each departure at the same clock time so the ±30 minute
-    time+line window covers today's northbound arrival too.
+    NJT-side tracks) with a track also recorded at Newark Penn, each departure
+    at the same clock time so the ±30 minute time+line window covers today's
+    northbound arrival too.
     """
     today = now_et().replace(hour=13, minute=30, second=0, microsecond=0)
 
@@ -151,32 +174,36 @@ async def _seed(db_session: AsyncSession) -> None:
                 historical_departure.date(),
                 SOUTHBOUND_STOPS,
                 historical_departure,
-                # Vary the track so the distribution has real spread rather
+                # Vary the tracks so the distributions have real spread rather
                 # than a single degenerate 100% bucket.
-                ny_track=str((days_ago % 4) + 1),
+                tracks={
+                    "NY": str((days_ago % 4) + 1),
+                    "NP": str((days_ago % 3) + 1),
+                },
             )
         )
 
-    # Today's southbound run: departs NY Penn, no track posted yet.
+    # Today's southbound run: departs NY Penn, no tracks posted yet.
     db_session.add(
         _journey(
             DEPARTING_TRAIN_ID,
             today.date(),
             SOUTHBOUND_STOPS,
             today,
-            ny_track=None,
+            tracks=None,
         )
     )
 
-    # Today's northbound run: reaches NY Penn ~60 min after it leaves Trenton,
-    # inside the ±30 minute time+line window around the southbound departure.
+    # Today's northbound run: reaches NY Penn 70 min after it leaves Trenton,
+    # at the same clock time as the southbound departures — inside the ±30
+    # minute time+line window that produced the bug.
     db_session.add(
         _journey(
             TERMINATING_TRAIN_ID,
             today.date(),
             NORTHBOUND_STOPS,
-            today - timedelta(minutes=60),
-            ny_track=None,
+            today - timedelta(minutes=70),
+            tracks=None,
         )
     )
 
@@ -273,7 +300,7 @@ class TestPredictTrackEndpoint:
                 recut.date(),
                 NORTHBOUND_STOPS,
                 recut,
-                ny_track=None,
+                tracks=None,
             )
         )
         await db_session.commit()
@@ -294,6 +321,60 @@ class TestPredictTrackEndpoint:
         assert "terminates" in str(exc_info.value.detail).lower(), (
             "The 404 must come from the terminal guard reading the newest run, "
             f"not from a missing journey: {exc_info.value.detail}"
+        )
+
+    async def test_served_intermediate_station_still_gets_a_prediction(
+        self, db_session: AsyncSession
+    ):
+        """Control for the unserved guard: Newark Penn is mid-route, not the
+        origin, and the train genuinely departs it — the prediction must
+        survive. Together with the unserved 404 below this proves the guard is
+        positional ("is this stop on the route"), not "anything but the
+        origin".
+        """
+        await _seed(db_session)
+        today = now_et().date()
+
+        response = await predict_track(
+            station_code="NP",
+            train_id=DEPARTING_TRAIN_ID,
+            journey_date=today,
+            db=db_session,
+        )
+
+        assert response.platform_probabilities, (
+            "Served intermediate stop (Newark Penn) returned no platform "
+            f"probabilities; model_version={response.model_version}"
+        )
+        assert abs(sum(response.platform_probabilities.values()) - 1.0) < 1e-6, (
+            "Platform probabilities must be a normalized distribution: "
+            f"{response.platform_probabilities}"
+        )
+
+    async def test_unserved_station_is_rejected(self, db_session: AsyncSession):
+        """A station the train never calls at: NEC trains don't serve Hoboken,
+        yet HB is prediction-enabled, so without the guard the request falls
+        through to the hierarchy's station-level fallbacks — other trains'
+        Hoboken platforms presented as this train's.
+        """
+        await _seed(db_session)
+        today = now_et().date()
+
+        with pytest.raises(HTTPException) as exc_info:
+            await predict_track(
+                station_code=UNSERVED_STATION,
+                train_id=DEPARTING_TRAIN_ID,
+                journey_date=today,
+                db=db_session,
+            )
+
+        assert exc_info.value.status_code == 404, (
+            "A station the train never serves must not get a departure track "
+            f"prediction (got {exc_info.value.status_code})"
+        )
+        assert "does not serve" in str(exc_info.value.detail).lower(), (
+            "The 404 must name the real reason (station not served), not read "
+            f"as missing data: {exc_info.value.detail}"
         )
 
 
