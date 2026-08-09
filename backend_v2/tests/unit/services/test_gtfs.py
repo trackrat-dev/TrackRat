@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from tests.fixtures.gtfs_bundles import build_gtfs_zip
 from trackrat.models.database import (
     GTFSFeedInfo,
     GTFSRoute,
@@ -2310,3 +2311,133 @@ class TestBoundedErrorText:
         result = bounded_text(giant, GTFS_ERROR_MESSAGE_MAX_CHARS)
         assert len(result) < GTFS_ERROR_MESSAGE_MAX_CHARS + 100
         assert "truncated" in result
+
+
+class TestBundleServiceStatus:
+    """`_bundle_service_status`: the pre-adoption in-force verdict (#1769).
+
+    Pure zip-in, verdict-out — no DB — so the boundary semantics that decide
+    whether a live timetable gets destroyed run under `pytest tests/unit/`.
+    The refresh-path behavior these verdicts drive is covered end to end in
+    tests/integration/test_gtfs_feed_observability.py.
+    """
+
+    TODAY = date(2026, 8, 10)
+
+    def setup_method(self):
+        self.service = GTFSService()
+
+    def _status(self, zip_data, data_source="SEPTA_RR"):
+        return self.service._bundle_service_status(zip_data, data_source, self.TODAY)
+
+    def test_a_window_covering_today_is_in_force(self):
+        status = self._status(
+            build_gtfs_zip(start_date="20260801", end_date="20260830")
+        )
+        assert status.in_force is True
+
+    def test_window_boundaries_are_inclusive(self):
+        # GTFS defines both dates inclusive: a bundle starting or ending today
+        # is serving today, and declining it would drop a live timetable.
+        starts_today = self._status(
+            build_gtfs_zip(start_date="20260810", end_date="20260830")
+        )
+        ends_today = self._status(
+            build_gtfs_zip(start_date="20260701", end_date="20260810")
+        )
+        assert starts_today.in_force is True
+        assert ends_today.in_force is True
+
+    def test_an_all_future_window_is_not_in_force_and_names_its_start(self):
+        status = self._status(
+            build_gtfs_zip(start_date="20260812", end_date="20260830")
+        )
+        assert status.in_force is False
+        assert status.service_begins_on == date(2026, 8, 12)
+
+    def test_an_expired_row_does_not_vouch_for_a_future_timetable(self):
+        # The min(start_date) bypass: one ancient historical row must not make
+        # an otherwise all-future bundle read as in force.
+        status = self._status(
+            build_gtfs_zip(
+                start_date="20260812",
+                end_date="20260830",
+                extra_calendar_rows=["HIST,1,1,1,1,1,0,0,20250101,20250301"],
+            )
+        )
+        assert status.in_force is False
+        assert status.service_begins_on == date(2026, 8, 12)
+
+    def test_an_all_expired_bundle_names_no_future_start(self):
+        # in_force False with service_begins_on None: refresh_feed adopts this
+        # shape (a lapse problem, not an early publication) — declining it
+        # would pin PATH's permanently-expired exempt feed forever.
+        status = self._status(
+            build_gtfs_zip(start_date="20250101", end_date="20250601")
+        )
+        assert status.in_force is False
+        assert status.service_begins_on is None
+
+    def test_a_calendar_dates_addition_today_or_earlier_is_in_force(self):
+        bridged = self._status(
+            build_gtfs_zip(
+                start_date="20260812",
+                end_date="20260830",
+                calendar_dates_rows=["WKDY,20260810,1"],
+            )
+        )
+        already_ran = self._status(
+            build_gtfs_zip(
+                start_date="20260812",
+                end_date="20260830",
+                calendar_dates_rows=["WKDY,20260808,1"],
+            )
+        )
+        assert bridged.in_force is True
+        assert already_ran.in_force is True
+
+    def test_a_removal_exception_does_not_count_as_service(self):
+        status = self._status(
+            build_gtfs_zip(
+                start_date="20260812",
+                end_date="20260830",
+                calendar_dates_rows=["WKDY,20260810,2"],
+            )
+        )
+        assert status.in_force is False
+
+    def test_a_future_addition_is_named_as_the_start(self):
+        status = self._status(
+            build_gtfs_zip(
+                include_calendar=False,
+                calendar_dates_rows=["WKDY,20260815,1"],
+            )
+        )
+        assert status.in_force is False
+        assert status.service_begins_on == date(2026, 8, 15)
+
+    def test_no_calendar_files_is_unknown(self):
+        # NJT publishes neither file; unknown must fail open (None, not False)
+        # or the guard would pin such a source to its first bundle forever.
+        status = self._status(build_gtfs_zip(include_calendar=False), "NJT")
+        assert status.in_force is None
+        assert status.service_begins_on is None
+
+    def test_an_unreadable_archive_is_unknown(self):
+        status = self._status(b"not a zip file")
+        assert status.in_force is None
+
+    def test_route_type_filter_scopes_the_verdict_to_retained_services(self):
+        # SEPTA_METRO ingests route types 0/1; a bus service (type 3) running
+        # today must not vouch for all-future rail services — and the same zip
+        # read for an unfiltered source counts every service.
+        zip_data = build_gtfs_zip(
+            route_type="1",
+            start_date="20260812",
+            end_date="20260830",
+            extra_route_rows=["RBUS,44,A Bus Route,3,00ff00"],
+            extra_calendar_rows=["BUSNOW,1,1,1,1,1,1,1,20260701,20260830"],
+            extra_trip_rows=["TB1,BUSNOW,RBUS,Bus Terminal,0"],
+        )
+        assert self._status(zip_data, "SEPTA_METRO").in_force is False
+        assert self._status(zip_data, "SEPTA_RR").in_force is True

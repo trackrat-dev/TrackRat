@@ -230,6 +230,32 @@ too. Unlike the lapse check, `GTFS_EXPIRY_EXEMPT_SOURCES` is *not* excluded here
 exempt feed's calendar has already expired, so its start date is firmly in the past and
 it cannot trip this check anyway — carving it out would only mask a future regression.
 
+**Future-dated GTFS bundles are declined, not adopted (#1769).** Agencies publish the
+next bundle before it takes effect, and storing one is destructive — `_parse_and_store_gtfs`
+clears the source's rows first. So `refresh_feed` decides *before* parsing whether the
+prospective bundle's service has begun (`_bundle_service_status`) and returns
+`GTFSRefreshOutcome.SKIPPED_NOT_YET_ACTIVE` when it has not and a usable bundle is
+stored; the daily refresh retries and adopts it once it applies. "Has begun" is
+per-service, not `min(calendar.start_date)`: a retained `calendar.txt` row covering
+today (dates inclusive, so a bundle starting today is adopted) or a retained
+`calendar_dates.txt` addition dated today or earlier counts — expired historical
+calendar rows don't mask an all-future timetable, calendar_dates-bridged bundles are
+not wrongly declined, and "retained" honors `GTFS_ROUTE_TYPE_FILTER` so SEPTA's bus
+calendar can't vouch for its Metro rail services. An unknown window (neither calendar
+file, as with NJT; no dated retained rows; unreadable archive) fails **open** and is
+adopted — the guard can only decline, so treating unknown as not-in-force would pin a
+source to its current bundle forever. Two paths still adopt a future-dated bundle: a
+first-ever download with nothing stored (`gtfs_first_bundle_not_yet_active` at error —
+exactly how SEPTA went dark on 2026-08-08), and a stored bundle that has itself lapsed
+(`gtfs_adopting_future_bundle_over_lapsed` — both serve nothing today, and the future
+one self-heals on its start date). A decline is a skip, not a failure — it stays out of
+`failed_sources` but is named in `declined_sources` on `gtfs_feed_refresh_complete` so
+it cannot be mistaken for a routine rate-limited skip. One interplay to know when paged:
+declines deliberately do not advance `last_successful_parse_at`, so an agency publishing
+3+ days early crosses `GTFS_STALE_FEED_HOURS` (48) mid-wait — the nightly log escalates
+to error via `stale_sources` and /health degrades until the start date arrives, with
+`declined_sources` on the same log line saying why.
+
 **Server Usage Report:**
 
 Shows how the server is being used: API traffic breakdown, route searches, train follows,

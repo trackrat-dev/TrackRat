@@ -15,7 +15,6 @@ a mocked session cannot disagree with itself.
 import contextlib
 import io
 import zipfile
-from collections.abc import Sequence
 from datetime import date, timedelta
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -25,6 +24,7 @@ import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from tests.fixtures.gtfs_bundles import build_gtfs_zip
 from trackrat.models.database import GTFSFeedInfo, GTFSStopTime, GTFSTrip
 from trackrat.services.gtfs import (
     GTFS_EXPIRY_EXEMPT_SOURCES,
@@ -116,85 +116,6 @@ async def _passthrough_freshness(
     return True
 
 
-def _gtfs_zip(
-    *,
-    trips: int = 2,
-    service_id: str = "WKDY",
-    route_type: str = "2",
-    calendar_start: str = "20260101",
-    calendar_end: str = "20261231",
-    calendar_date_additions: Sequence[str] = (),
-    bus_service: tuple[str, str, str] | None = None,
-) -> bytes:
-    """Build a small but genuinely valid GTFS static feed.
-
-    Real enough that `_parse_and_store_gtfs` walks its whole pipeline —
-    routes → calendar → stops → trips → stop_times — and reports non-zero
-    counts, so a test can assert on what the parse actually persisted rather
-    than on a stubbed stats dict.
-
-    ``calendar_start`` / ``calendar_end`` (YYYYMMDD) set the weekday service's
-    calendar window; ``calendar_date_additions`` adds a calendar_dates.txt row
-    (exception_type 1) for that service on each given date.
-
-    ``bus_service`` = (service_id, start, end) adds a route_type-3 bus route
-    with one trip on its own calendar row — the shape of SEPTA's shared
-    google_bus.zip, where GTFS_ROUTE_TYPE_FILTER drops the bus network at
-    parse time.
-    """
-    trip_rows = "\n".join(
-        f"T{n},{service_id},R1,Test Terminal,{n % 2}" for n in range(1, trips + 1)
-    )
-    stop_time_rows = "\n".join(
-        f"T{n},{(5 + n) % 24:02d}:00:00,{(5 + n) % 24:02d}:00:00,S1,1\n"
-        f"T{n},{(5 + n) % 24:02d}:30:00,{(5 + n) % 24:02d}:30:00,S2,2"
-        for n in range(1, trips + 1)
-    )
-    routes_rows = f"R1,TL,Test Line,{route_type},ff0000\n"
-    calendar_rows = f"{service_id},1,1,1,1,1,0,0,{calendar_start},{calendar_end}\n"
-    if bus_service is not None:
-        bus_service_id, bus_start, bus_end = bus_service
-        routes_rows += "RBUS,TB,Test Bus,3,0000ff\n"
-        calendar_rows += f"{bus_service_id},1,1,1,1,1,1,1,{bus_start},{bus_end}\n"
-        trip_rows += f"\nTBUS1,{bus_service_id},RBUS,Test Bus Terminal,0"
-        stop_time_rows += "\nTBUS1,06:00:00,06:00:00,S1,1\nTBUS1,06:30:00,06:30:00,S2,2"
-    files = {
-        "routes.txt": (
-            "route_id,route_short_name,route_long_name,route_type,route_color\n"
-            + routes_rows
-        ),
-        "calendar.txt": (
-            "service_id,monday,tuesday,wednesday,thursday,friday,"
-            "saturday,sunday,start_date,end_date\n" + calendar_rows
-        ),
-        "stops.txt": (
-            "stop_id,stop_name,stop_lat,stop_lon\n"
-            "S1,Test Origin,40.7,-74.0\n"
-            "S2,Test Terminal,40.8,-74.1\n"
-        ),
-        "trips.txt": (
-            "trip_id,service_id,route_id,trip_headsign,direction_id\n"
-            + trip_rows
-            + "\n"
-        ),
-        "stop_times.txt": (
-            "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
-            + stop_time_rows
-            + "\n"
-        ),
-    }
-    if calendar_date_additions:
-        files["calendar_dates.txt"] = "service_id,date,exception_type\n" + "".join(
-            f"{service_id},{d},1\n" for d in calendar_date_additions
-        )
-
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for name, body in files.items():
-            zf.writestr(name, body)
-    return buffer.getvalue()
-
-
 def _split_route_type_zip(
     *,
     rail_start: str,
@@ -210,42 +131,20 @@ def _split_route_type_zip(
     different windows, so whichever rows are used to date the bundle changes
     the answer. Dates are in GTFS's own `YYYYMMDD` form.
     """
-    files = {
-        "routes.txt": (
-            "route_id,route_short_name,route_long_name,route_type,route_color\n"
-            "R_RAIL,BSL,Broad Street Line,1,ff5722\n"
-            "R_BUS,17,Bus Route 17,3,336699\n"
-        ),
-        "calendar.txt": (
-            "service_id,monday,tuesday,wednesday,thursday,friday,"
-            "saturday,sunday,start_date,end_date\n"
-            f"RAIL,1,1,1,1,1,1,1,{rail_start},{rail_end}\n"
-            f"BUS,1,1,1,1,1,1,1,{bus_start},{bus_end}\n"
-        ),
-        "stops.txt": (
-            "stop_id,stop_name,stop_lat,stop_lon\n"
-            "S1,Test Origin,39.95,-75.16\n"
-            "S2,Test Terminal,40.00,-75.15\n"
-        ),
-        "trips.txt": (
-            "trip_id,service_id,route_id,trip_headsign,direction_id\n"
-            "T_RAIL,RAIL,R_RAIL,Test Terminal,0\n"
-            "T_BUS,BUS,R_BUS,Test Terminal,0\n"
-        ),
-        "stop_times.txt": (
-            "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
-            "T_RAIL,08:00:00,08:00:00,S1,1\n"
-            "T_RAIL,08:30:00,08:30:00,S2,2\n"
-            "T_BUS,09:00:00,09:00:00,S1,1\n"
-            "T_BUS,09:30:00,09:30:00,S2,2\n"
-        ),
-    }
-
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-        for name, body in files.items():
-            zf.writestr(name, body)
-    return buffer.getvalue()
+    return build_gtfs_zip(
+        trips=1,
+        service_id="RAIL",
+        route_type="1",
+        start_date=rail_start,
+        end_date=rail_end,
+        extra_route_rows=["R_BUS,17,Bus Route 17,3,336699"],
+        extra_calendar_rows=[f"BUS,1,1,1,1,1,1,1,{bus_start},{bus_end}"],
+        extra_trip_rows=["T_BUS,BUS,R_BUS,Test Terminal,0"],
+        extra_stop_time_rows=[
+            "T_BUS,09:00:00,09:00:00,S1,1",
+            "T_BUS,09:30:00,09:30:00,S2,2",
+        ],
+    )
 
 
 @contextlib.contextmanager
@@ -707,6 +606,452 @@ class TestRefreshOutcomesAgainstRealPostgres:
         assert outcome is GTFSRefreshOutcome.FAILED_DOWNLOAD
 
 
+def _gtfs_date(days_from_today: int) -> str:
+    """A GTFS `YYYYMMDD` date relative to today."""
+    return (now_et().date() + timedelta(days=days_from_today)).strftime("%Y%m%d")
+
+
+async def _stored_trip_ids(db: AsyncSession, data_source: str) -> set[str]:
+    """The trip ids currently persisted for a source.
+
+    The load-bearing assertion for issue #1769: `_parse_and_store_gtfs` clears
+    a source's rows before writing, so "did we adopt this bundle" is really
+    "did the previously stored timetable survive". A test that only checked the
+    returned outcome would pass against an implementation that declined the
+    bundle *after* deleting the old one — the exact outage being prevented.
+    """
+    rows = await db.execute(
+        select(GTFSTrip.trip_id).where(GTFSTrip.data_source == data_source)
+    )
+    return set(rows.scalars().all())
+
+
+@pytest.mark.asyncio
+class TestFutureDatedBundlesAreDeclined:
+    """Issue #1769: adopting a bundle that has not taken effect takes the
+    source dark, because storing one destroys the bundle still in force."""
+
+    async def test_a_bundle_starting_tomorrow_is_declined_and_the_stored_one_survives(
+        self, db_session: AsyncSession
+    ):
+        """The core guard, reproducing SEPTA's 2026-08-08 publication.
+
+        A bundle in force is stored, then the agency publishes next week's
+        early. Adopting it would delete today's timetable and replace it with
+        one describing no service until tomorrow.
+        """
+        service = GTFSService()
+
+        with _stub_download(
+            build_gtfs_zip(trips=3, start_date=_gtfs_date(-7), end_date=_gtfs_date(7))
+        ):
+            first = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+        assert first is GTFSRefreshOutcome.REFRESHED
+        in_force = await _stored_trip_ids(db_session, "SEPTA_RR")
+        assert in_force == {"T1", "T2", "T3"}
+
+        feed_info = await service._get_or_create_feed_info(db_session, "SEPTA_RR")
+        parsed_at_before = feed_info.last_successful_parse_at
+        downloaded_at_before = feed_info.last_downloaded_at
+
+        with _stub_download(
+            build_gtfs_zip(
+                trips=5,
+                service_id="NEXTWK",
+                start_date=_gtfs_date(1),
+                end_date=_gtfs_date(21),
+            )
+        ):
+            second = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        assert second is GTFSRefreshOutcome.SKIPPED_NOT_YET_ACTIVE
+        # The whole point: the timetable serving today is still there.
+        assert await _stored_trip_ids(db_session, "SEPTA_RR") == in_force
+
+        await db_session.refresh(feed_info)
+        # Not a parse, so the parse timestamp must not move — `age_hours` has to
+        # keep climbing, because the deployment really is on an older bundle.
+        assert feed_info.last_successful_parse_at == parsed_at_before
+        # The download did happen and must be stamped as one, so the rate limit
+        # holds and this does not re-download in a tight loop.
+        assert feed_info.last_downloaded_at > downloaded_at_before
+
+    async def test_declining_is_a_skip_not_a_failure(self, db_session: AsyncSession):
+        """An agency publishing early is expected operation, not a fault.
+
+        Classifying it as a failure would page on a normal weekly changeover
+        and, worse, teach readers to ignore `failed_sources`.
+        """
+        outcome = GTFSRefreshOutcome.SKIPPED_NOT_YET_ACTIVE
+
+        assert outcome.is_failure is False
+        assert outcome.refreshed is False
+
+    async def test_a_future_bundle_is_adopted_when_nothing_is_stored(
+        self, db_session: AsyncSession
+    ):
+        """Production's actual situation on 2026-08-08: SEPTA's first-ever
+        download. There is no bundle to protect, and refusing would leave the
+        source with nothing at all — including after the start date arrives."""
+        service = GTFSService()
+
+        with _stub_download(
+            build_gtfs_zip(trips=4, start_date=_gtfs_date(1), end_date=_gtfs_date(21))
+        ):
+            outcome = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+        assert await _stored_trip_ids(db_session, "SEPTA_RR") == {
+            "T1",
+            "T2",
+            "T3",
+            "T4",
+        }
+
+    async def test_a_bundle_starting_today_is_adopted(self, db_session: AsyncSession):
+        """GTFS start dates are inclusive. Declining on the changeover morning
+        would freeze every source on the previous week's timetable for a day."""
+        service = GTFSService()
+
+        with _stub_download(build_gtfs_zip(trips=2, start_date=_gtfs_date(-7))):
+            await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        with _stub_download(
+            build_gtfs_zip(
+                trips=6,
+                service_id="TODAY",
+                start_date=_gtfs_date(0),
+                end_date=_gtfs_date(14),
+            )
+        ):
+            outcome = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+        assert len(await _stored_trip_ids(db_session, "SEPTA_RR")) == 6
+
+    async def test_an_ordinary_in_force_bundle_is_adopted(
+        self, db_session: AsyncSession
+    ):
+        """The baseline that keeps the guard honest: normal weekly refreshes
+        must still replace the stored bundle, or the feed never updates."""
+        service = GTFSService()
+
+        with _stub_download(build_gtfs_zip(trips=2, start_date=_gtfs_date(-14))):
+            await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        with _stub_download(
+            build_gtfs_zip(trips=7, service_id="CURRENT", start_date=_gtfs_date(-1))
+        ):
+            outcome = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+        assert len(await _stored_trip_ids(db_session, "SEPTA_RR")) == 7
+
+    async def test_a_bundle_without_calendar_txt_is_adopted(
+        self, db_session: AsyncSession
+    ):
+        """NJT publishes no calendar.txt, so its start date is unknowable.
+
+        Unknown must fail *open*. The guard can only decline, so treating an
+        unreadable window as future-dated would pin such a source to its first
+        bundle permanently — a worse outage than the one being prevented.
+        """
+        service = GTFSService()
+
+        with _stub_download(build_gtfs_zip(trips=2, start_date=_gtfs_date(-14))):
+            await service.refresh_feed(db_session, "NJT", force=True)
+
+        with _stub_download(
+            build_gtfs_zip(trips=9, service_id="NOCAL", include_calendar=False)
+        ):
+            outcome = await service.refresh_feed(db_session, "NJT", force=True)
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+        assert len(await _stored_trip_ids(db_session, "NJT")) == 9
+
+    async def test_the_service_window_is_read_without_touching_stored_data(
+        self, db_session: AsyncSession
+    ):
+        """The helper must be genuinely read-only.
+
+        It runs before `_parse_and_store_gtfs`, whose first act is deleting the
+        source's rows — so if reading the start date had any storage side
+        effect, the guard would destroy the bundle it exists to protect.
+        """
+        service = GTFSService()
+
+        with _stub_download(build_gtfs_zip(trips=3, start_date=_gtfs_date(-7))):
+            await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+        before = await _stored_trip_ids(db_session, "SEPTA_RR")
+
+        status = service._bundle_service_status(
+            build_gtfs_zip(trips=5, service_id="OTHER", start_date=_gtfs_date(3)),
+            "SEPTA_RR",
+            now_et().date(),
+        )
+
+        assert status.in_force is False
+        assert status.service_begins_on == now_et().date() + timedelta(days=3)
+        assert await _stored_trip_ids(db_session, "SEPTA_RR") == before
+
+    async def test_an_unreadable_archive_reports_an_unknown_window(self):
+        """A corrupt download must not be surfaced *by the guard*.
+
+        It still fails in `_parse_and_store_gtfs` and reports FAILED_PROCESS,
+        which is the outcome that carries the stage and the error text. Raising
+        here would relabel a download problem as a calendar problem.
+        """
+        status = GTFSService()._bundle_service_status(
+            b"not a zip file", "SEPTA_RR", now_et().date()
+        )
+        assert status.in_force is None
+        assert status.service_begins_on is None
+
+    async def test_a_calendar_with_no_usable_start_dates_is_adopted(
+        self, db_session: AsyncSession
+    ):
+        """`calendar.txt` present but yielding nothing is still unknown.
+
+        Distinct from the missing-file case above: the file exists and parses,
+        it just carries no start date (header only, or every row blank). Both
+        have to fail open for the same reason — the guard can only decline, so
+        an unknown read as future-dated would pin the source permanently.
+        """
+        service = GTFSService()
+
+        header_only = build_gtfs_zip(trips=2, start_date=_gtfs_date(-14))
+        rebuilt = io.BytesIO()
+        with zipfile.ZipFile(io.BytesIO(header_only)) as src:
+            with zipfile.ZipFile(rebuilt, "w", zipfile.ZIP_DEFLATED) as dst:
+                for name in src.namelist():
+                    body = src.read(name)
+                    if name == "calendar.txt":
+                        body = (
+                            b"service_id,monday,tuesday,wednesday,thursday,"
+                            b"friday,saturday,sunday,start_date,end_date\n"
+                        )
+                    dst.writestr(name, body)
+        no_dates = rebuilt.getvalue()
+
+        assert (
+            service._bundle_service_status(
+                no_dates, "SEPTA_RR", now_et().date()
+            ).in_force
+            is None
+        )
+
+        with _stub_download(build_gtfs_zip(trips=2, start_date=_gtfs_date(-14))):
+            await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+        with _stub_download(no_dates):
+            outcome = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+
+    async def test_a_retired_calendar_row_cannot_smuggle_in_a_future_bundle(
+        self, db_session: AsyncSession
+    ):
+        """An expired row must not vouch for a bundle that has not started.
+
+        Agencies commonly ship the outgoing rating's calendar alongside the
+        incoming one. Judging the bundle by the earliest start date across
+        every row lets that closed window answer "this has already started"
+        while the only service the bundle actually describes begins next week.
+        Adopting on that basis deletes the in-force timetable, and
+        `get_active_service_ids` then drops the retired row on its `end_date`
+        and the replacement on its `start_date` — the source serves nothing,
+        which is the outage the guard exists to prevent.
+        """
+        service = GTFSService()
+
+        with _stub_download(
+            build_gtfs_zip(trips=3, start_date=_gtfs_date(-7), end_date=_gtfs_date(7))
+        ):
+            first = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+        assert first is GTFSRefreshOutcome.REFRESHED
+        in_force = await _stored_trip_ids(db_session, "SEPTA_RR")
+        assert in_force == {"T1", "T2", "T3"}
+
+        with _stub_download(
+            build_gtfs_zip(
+                trips=5,
+                service_id="NEXTWK",
+                start_date=_gtfs_date(1),
+                end_date=_gtfs_date(21),
+                extra_calendar_rows=[
+                    f"RETIRED,1,1,1,1,1,0,0,{_gtfs_date(-60)},{_gtfs_date(-1)}"
+                ],
+            )
+        ):
+            second = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        assert second is GTFSRefreshOutcome.SKIPPED_NOT_YET_ACTIVE, (
+            "A bundle whose only live service starts tomorrow was adopted "
+            "because a retired calendar row reported a start date in the past "
+            f"(outcome={second})"
+        )
+        assert await _stored_trip_ids(db_session, "SEPTA_RR") == in_force, (
+            "The in-force timetable was cleared for a bundle that describes no "
+            "service today"
+        )
+
+    async def test_a_bundle_whose_every_row_has_expired_is_still_adopted(
+        self, db_session: AsyncSession
+    ):
+        """Ignoring closed windows must not turn into declining a lapsed feed.
+
+        A bundle that names no future service at all is a lapse problem — the
+        lapse detection's to report — not an early publication. Declining it
+        would loop forever: PATH's permanently-expired exempt feed would be
+        pinned to its first stored copy, unable to pick up corrections.
+        """
+        service = GTFSService()
+
+        with _stub_download(
+            build_gtfs_zip(trips=3, start_date=_gtfs_date(-30), end_date=_gtfs_date(7))
+        ):
+            await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        with _stub_download(
+            build_gtfs_zip(
+                trips=4,
+                service_id="LAPSED",
+                start_date=_gtfs_date(-60),
+                end_date=_gtfs_date(-1),
+            )
+        ):
+            outcome = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+        assert await _stored_trip_ids(db_session, "SEPTA_RR") == {
+            "T1",
+            "T2",
+            "T3",
+            "T4",
+        }
+
+    async def test_a_calendar_dates_bridged_bundle_is_adopted(
+        self, db_session: AsyncSession
+    ):
+        """A future calendar window bridged by date additions serves today.
+
+        Agencies bridge a rating changeover with explicit calendar_dates
+        additions before the new calendar.txt window opens, and the serving
+        path (`get_active_service_ids`) honors those additions with no
+        start-date constraint. Declining such a bundle would wrongly pin the
+        source to the outgoing timetable — the wrongful-decline mirror of the
+        min(start_date) bypass.
+        """
+        service = GTFSService()
+
+        with _stub_download(
+            build_gtfs_zip(trips=3, start_date=_gtfs_date(-7), end_date=_gtfs_date(7))
+        ):
+            await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        with _stub_download(
+            build_gtfs_zip(
+                trips=4,
+                service_id="NEXTWK",
+                start_date=_gtfs_date(3),
+                end_date=_gtfs_date(30),
+                calendar_dates_rows=[f"NEXTWK,{_gtfs_date(0)},1"],
+            )
+        ):
+            outcome = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+        assert await _stored_trip_ids(db_session, "SEPTA_RR") == {
+            "T1",
+            "T2",
+            "T3",
+            "T4",
+        }
+
+    async def test_a_future_bundle_replaces_a_lapsed_stored_bundle(
+        self, db_session: AsyncSession
+    ):
+        """Declining requires the stored bundle to be worth keeping.
+
+        "A parse once succeeded" is not that: a lapsed stored bundle serves
+        nothing, so declining its replacement keeps the source dark AND makes
+        recovery depend on the start-date morning's download succeeding. Both
+        bundles serve nothing today; the future one at least starts serving by
+        itself the day its window opens, so it is adopted.
+        """
+        service = GTFSService()
+
+        # First-ever download: an already-expired bundle. Nothing is stored,
+        # so the first-bundle path adopts it; the source now holds a lapsed
+        # timetable (feed_end_date in the past).
+        with _stub_download(
+            build_gtfs_zip(trips=2, start_date=_gtfs_date(-30), end_date=_gtfs_date(-1))
+        ):
+            first = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+        assert first is GTFSRefreshOutcome.REFRESHED
+
+        feed_info = await service._get_or_create_feed_info(db_session, "SEPTA_RR")
+        assert feed_info.feed_end_date is not None
+        assert feed_info.feed_end_date < now_et().date()
+
+        with _stub_download(
+            build_gtfs_zip(
+                trips=6,
+                service_id="NEXTWK",
+                start_date=_gtfs_date(2),
+                end_date=_gtfs_date(40),
+            )
+        ):
+            outcome = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+        assert len(await _stored_trip_ids(db_session, "SEPTA_RR")) == 6
+
+    async def test_septa_metros_bus_calendar_cannot_vouch_for_its_rail_services(
+        self, db_session: AsyncSession
+    ):
+        """The verdict honors GTFS_ROUTE_TYPE_FILTER (review on #1775).
+
+        SEPTA_METRO ingests route types 0/1 out of a shared bundle whose bus
+        network dwarfs the rail lines. A bus service running today proves
+        nothing about the Metro timetable that would actually be served — if
+        it counted, a bundle whose every retained rail service is future would
+        be adopted and Metro would go dark while the buses vouched for it.
+        """
+        service = GTFSService()
+
+        with _stub_download(
+            build_gtfs_zip(
+                trips=3,
+                route_type="1",
+                start_date=_gtfs_date(-7),
+                end_date=_gtfs_date(7),
+            )
+        ):
+            first = await service.refresh_feed(db_session, "SEPTA_METRO", force=True)
+        assert first is GTFSRefreshOutcome.REFRESHED
+        in_force = await _stored_trip_ids(db_session, "SEPTA_METRO")
+        assert in_force == {"T1", "T2", "T3"}
+
+        with _stub_download(
+            build_gtfs_zip(
+                trips=4,
+                route_type="1",
+                service_id="RAILNEXT",
+                start_date=_gtfs_date(2),
+                end_date=_gtfs_date(30),
+                extra_route_rows=["RBUS,44,A Bus Route,3,00ff00"],
+                extra_calendar_rows=[
+                    f"BUSNOW,1,1,1,1,1,1,1,{_gtfs_date(-30)},{_gtfs_date(30)}"
+                ],
+                extra_trip_rows=["TB1,BUSNOW,RBUS,Bus Terminal,0"],
+            )
+        ):
+            outcome = await service.refresh_feed(db_session, "SEPTA_METRO", force=True)
+
+        assert outcome is GTFSRefreshOutcome.SKIPPED_NOT_YET_ACTIVE
+        assert await _stored_trip_ids(db_session, "SEPTA_METRO") == in_force
+
+
 @pytest.mark.asyncio
 class TestRealRefreshPathWritesWhatTheSweepReads:
     """The outcome and the persisted row are two halves of one contract.
@@ -810,7 +1155,7 @@ class TestRealRefreshPathWritesWhatTheSweepReads:
         """
         service = GTFSService()
 
-        with _stub_download(_gtfs_zip(trips=3)):
+        with _stub_download(build_gtfs_zip(trips=3)):
             outcome = await service.refresh_feed(db_session, "PATCO")
 
         assert outcome is GTFSRefreshOutcome.REFRESHED
@@ -875,7 +1220,7 @@ class TestRealRefreshPathWritesWhatTheSweepReads:
         (before,) = await service.get_feed_statuses(db_session, ["SUBWAY"])
         assert before.is_stale is True
 
-        with _stub_download(_gtfs_zip(trips=2)):
+        with _stub_download(build_gtfs_zip(trips=2)):
             outcome = await service.refresh_feed(db_session, "SUBWAY", force=True)
 
         assert outcome is GTFSRefreshOutcome.REFRESHED
@@ -930,11 +1275,11 @@ class TestRealRefreshPathWritesWhatTheSweepReads:
         """
         service = GTFSService()
 
-        with _stub_download(_gtfs_zip(trips=4, service_id="OLD")):
+        with _stub_download(build_gtfs_zip(trips=4, service_id="OLD")):
             assert await service.refresh_feed(db_session, "PATH", force=True) is (
                 GTFSRefreshOutcome.REFRESHED
             )
-        with _stub_download(_gtfs_zip(trips=2, service_id="NEW")):
+        with _stub_download(build_gtfs_zip(trips=2, service_id="NEW")):
             assert await service.refresh_feed(db_session, "PATH", force=True) is (
                 GTFSRefreshOutcome.REFRESHED
             )
@@ -971,11 +1316,11 @@ class TestRealRefreshPathWritesWhatTheSweepReads:
         service = GTFSService()
 
         with _stub_download(
-            _gtfs_zip(
+            build_gtfs_zip(
                 trips=2,
-                calendar_start=(today + timedelta(days=1)).strftime("%Y%m%d"),
-                calendar_end=(today + timedelta(days=21)).strftime("%Y%m%d"),
-                calendar_date_additions=[today.strftime("%Y%m%d")],
+                start_date=(today + timedelta(days=1)).strftime("%Y%m%d"),
+                end_date=(today + timedelta(days=21)).strftime("%Y%m%d"),
+                calendar_dates_rows=[f"WKDY,{today.strftime('%Y%m%d')},1"],
             )
         ):
             outcome = await service.refresh_feed(db_session, "PATCO", force=True)
@@ -1015,16 +1360,22 @@ class TestRealRefreshPathWritesWhatTheSweepReads:
         service = GTFSService()
 
         with _stub_download(
-            _gtfs_zip(
+            build_gtfs_zip(
                 trips=2,
                 route_type="0",  # trolley — retained by the filter
-                calendar_start=(today + timedelta(days=1)).strftime("%Y%m%d"),
-                calendar_end=(today + timedelta(days=21)).strftime("%Y%m%d"),
-                bus_service=(
-                    "BUSWKDY",
-                    (today - timedelta(days=30)).strftime("%Y%m%d"),
-                    (today + timedelta(days=60)).strftime("%Y%m%d"),
-                ),
+                start_date=(today + timedelta(days=1)).strftime("%Y%m%d"),
+                end_date=(today + timedelta(days=21)).strftime("%Y%m%d"),
+                extra_route_rows=["RBUS,TB,Test Bus,3,0000ff"],
+                extra_calendar_rows=[
+                    "BUSWKDY,1,1,1,1,1,1,1,"
+                    f"{(today - timedelta(days=30)).strftime('%Y%m%d')},"
+                    f"{(today + timedelta(days=60)).strftime('%Y%m%d')}"
+                ],
+                extra_trip_rows=["TBUS1,BUSWKDY,RBUS,Test Bus Terminal,0"],
+                extra_stop_time_rows=[
+                    "TBUS1,06:00:00,06:00:00,S1,1",
+                    "TBUS1,06:30:00,06:30:00,S2,2",
+                ],
             )
         ):
             outcome = await service.refresh_feed(db_session, "SEPTA_METRO", force=True)
@@ -1129,6 +1480,59 @@ class TestNightlyRefreshJobSurfacesFailures:
 
         assert _completion_event(captured)["log_level"] == "info"
 
+    async def test_declined_source_is_named_and_alone_stays_below_error(
+        self, db_engine, db_session: AsyncSession
+    ):
+        """The PR's headline property: a decline must not page.
+
+        An agency publishing next week's bundle early is expected operation —
+        the stored bundle is still the correct thing to serve — but it must not
+        read as an ordinary skip either: `{source}_refreshed: false` alone is
+        the indistinguishable-from-routine state that hid #1646.
+        """
+        await _seed_feed(db_session, "NJT", parsed_hours_ago=1)
+        await _seed_feed(db_session, "SEPTA_RR", parsed_hours_ago=20)
+
+        captured = await _run_refresh_job(
+            db_engine,
+            {
+                "NJT": GTFSRefreshOutcome.REFRESHED,
+                "SEPTA_RR": GTFSRefreshOutcome.SKIPPED_NOT_YET_ACTIVE,
+            },
+        )
+
+        event = _completion_event(captured)
+        assert event["log_level"] == "info"
+        assert event["declined_sources"] == {"SEPTA_RR": "skipped_not_yet_active"}
+
+    async def test_a_long_decline_stretch_still_escalates_via_staleness(
+        self, db_engine, db_session: AsyncSession
+    ):
+        """Declines don't advance the parse timestamp — deliberately.
+
+        An agency publishing 3+ days early crosses GTFS_STALE_FEED_HOURS
+        mid-wait: the deployment really is pinned to an aging bundle it cannot
+        replace yet, so the nightly summary escalates via `stale_sources` while
+        `declined_sources` on the same line says why. An operator paged on day
+        three of an expected decline stretch finds both names together.
+        """
+        await _seed_feed(db_session, "NJT", parsed_hours_ago=1)
+        await _seed_feed(db_session, "SEPTA_RR", parsed_hours_ago=72)
+
+        captured = await _run_refresh_job(
+            db_engine,
+            {
+                "NJT": GTFSRefreshOutcome.REFRESHED,
+                "SEPTA_RR": GTFSRefreshOutcome.SKIPPED_NOT_YET_ACTIVE,
+            },
+        )
+
+        event = _completion_event(captured)
+        assert event["log_level"] == "error"
+        assert not event["failed_sources"]
+        assert set(event["stale_sources"]) == {"SEPTA_RR"}
+        assert event["declined_sources"] == {"SEPTA_RR": "skipped_not_yet_active"}
+
     async def test_stale_feed_alarms_even_when_the_run_reports_no_failure(
         self, db_engine, db_session: AsyncSession
     ):
@@ -1231,7 +1635,7 @@ class TestNightlyRefreshJobSurfacesFailures:
         captured = await _run_refresh_job(
             db_engine,
             enabled={
-                "PATCO": _gtfs_zip(trips=2),
+                "PATCO": build_gtfs_zip(trips=2),
                 "SUBWAY": b"not a zip",
             },
         )

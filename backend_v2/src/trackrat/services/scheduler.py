@@ -3299,9 +3299,22 @@ class SchedulerService:
                     ]
 
                 failed = {s: o.value for s, o in results.items() if o.is_failure}
-                per_source = {
+                per_source: dict[str, Any] = {
                     f"{s.lower()}_refreshed": o.refreshed for s, o in results.items()
                 }
+                # A declined bundle is not a failure — the agency published next
+                # week's feed early and the stored one is still the correct
+                # thing to serve (issue #1769) — but it must not read as an
+                # ordinary skip either. `{source}_refreshed: false` alone is the
+                # indistinguishable-from-routine state that hid #1646, so name
+                # it explicitly.
+                declined = {
+                    s: o.value
+                    for s, o in results.items()
+                    if o is GTFSRefreshOutcome.SKIPPED_NOT_YET_ACTIVE
+                }
+                if declined:
+                    per_source["declined_sources"] = declined
                 if failed or stale:
                     logger.error(
                         "gtfs_feed_refresh_complete",
