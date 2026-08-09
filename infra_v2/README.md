@@ -149,7 +149,7 @@ Manual deploy from the repo root:
 ```
 Requires `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the environment. There is no destination override: the target Worker comes from `wrangler.jsonc`.
 
-While `cloudbuild-webpage.yaml` still dual-deploys to GCS, `trackrat.net` is served from the bucket and the `production` Worker has no routes, so a manual production run updates an unserved `workers.dev` target and leaves the live site unchanged. The script refuses a bare `production` run in that window and requires `--cloudflare-only` to acknowledge it; both the guard and the flag disappear when the GCS steps are deleted at cutover. To ship to the live site during the window, push to the `production` branch.
+The `production` Worker's custom domains serve `trackrat.net` and `www.trackrat.net` directly, with no GCS fallback (the load balancer was deleted 2026-08-08), so a manual production run deploys the local build straight to the live site. The script always refuses a bare `production` run and requires `--cloudflare-only` to acknowledge that; the normal path is pushing to the `production` branch so Cloud Build builds from committed source.
 
 ## Key Configuration
 

@@ -119,7 +119,7 @@ To deploy manually from the repo root:
 
 Defaults to production. The script builds `dist/` and uploads it as the Worker's static assets; it needs `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` in the environment.
 
-Until the production DNS cutover, `trackrat.net` is still served from GCS and the `production` Worker has no routes, so a bare `production` run would update an unserved target. The script refuses it in that window and requires `--cloudflare-only` to acknowledge; to ship to the live site, push to the `production` branch. Both the guard and the flag retire automatically when the pipeline's gsutil `sync` step is deleted.
+The `production` Worker's custom domains serve `trackrat.net` and `www.trackrat.net` directly, with no GCS fallback, so a production run deploys the local build straight to the live site. The script always refuses a bare `production` run and requires `--cloudflare-only` to acknowledge that; the normal path is pushing to the `production` branch so Cloud Build builds from committed source.
 
 Cache headers (`no-cache` for `index.html` and the service worker, `max-age=1yr` for hashed assets), HSTS, and the `application/json` content type for `/.well-known/apple-app-site-association` come from `public/_headers`, which Vite copies into `dist/`. Deep links are served by `assets.not_found_handling: "single-page-application"` in `wrangler.jsonc`.
 

@@ -472,7 +472,7 @@ Manual deploy from the repo root (needs `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACC
 ```bash
 ./scripts/deploy-webpage.sh [staging|production] [--cloudflare-only] [--dry-run]
 ```
-A bare `production` run is refused while `trackrat.net` is still served from GCS (the `production` Worker has no routes yet, so it would update an unserved target) — pass `--cloudflare-only` to acknowledge, or push to the `production` branch to ship to the live site.
+A bare `production` run is always refused: the production Worker's custom domains serve `trackrat.net` directly (no GCS fallback), so a run here deploys the local build straight to the live site. Push to the `production` branch instead; pass `--cloudflare-only` to acknowledge deliberately deploying the local build to the live site.
 
 ### Infrastructure Management
 ```bash

@@ -594,16 +594,24 @@ early.
    targets rather than degrading to one.
 5. **Soak ≥24h.** Then delete the `sync`, `cache-html` and `cache-assets` steps
    and the `_WEBPAGE_BUCKET` substitution from `cloudbuild-webpage.yaml`.
+   This changes the pipeline only: `scripts/deploy-webpage.sh` used to key its
+   production guard off the `sync` step's existence, but its guard is now
+   unconditional and its messaging already reflects the Worker serving the
+   apex, so nothing in the script retires or changes here.
 
 Universal links are worth a real check here, not just a curl: Apple's CDN
 caches the AASA file, so an installed app may keep working for a while off the
 old copy. Confirm a shared `/train/...` link still opens the app.
 
-**Rollback (before step 5):** revert the `routes` block and redeploy, then
-recreate the grey `A` records pointing at `136.110.151.144`. The GCS bucket is
-still receiving every build, so it is current, not stale — that is the whole
-reason for the dual deploy. After step 5 the bucket goes stale immediately and
-rollback means restoring those pipeline steps and pushing.
+**Rollback:** the GCS path written here originally — revert the `routes` block,
+recreate the grey `A` records pointing at `136.110.151.144`, let the
+still-current bucket serve — no longer exists: the load balancer behind that IP
+was deleted on 2026-08-08, before P5.4 ran, so those records would point at
+nothing. The bucket still receives every build (until step 5) but nothing
+serves it. Rollback now means redeploying a known-good build to the Worker
+(`git checkout <good-commit>` then
+`./scripts/deploy-webpage.sh production --cloudflare-only`); do **not** remove
+the `routes` block — that just takes the site down.
 
 ### P6. Phase 4 — delete the webpage LB (point of no easy return)
 
@@ -690,7 +698,7 @@ This matches the invariant already stated for the staging rehearsal in S9.
 | S9 | `git revert` + re-apply | new IP, DNS update |
 | P1–P3 | none needed (connector additive) | — |
 | P4 | grey `A` `apiv2` → `136.110.151.144` | seconds |
-| P5 | revert the `routes` block + redeploy, recreate grey `A` → `136.110.151.144` (GCS stays current while the pipeline dual-deploys) | seconds |
+| P5 | redeploy a known-good build to the Worker (`deploy-webpage.sh production --cloudflare-only`) — no GCS fallback, the LB behind `136.110.151.144` is gone | minutes |
 | **P6** | **re-apply webpage LB Terraform** | **new IP + DNS + cert reprovision** |
 
 ## Verification cheatsheet

@@ -3,9 +3,12 @@
 #
 # Usage: ./scripts/deploy-webpage.sh [staging|production] [--cloudflare-only] [--dry-run]
 #
-# --cloudflare-only acknowledges that, before the production DNS cutover, a
-# production run here updates the Worker only and leaves the live site
-# untouched. Required for production until then; see the guard below.
+# trackrat.net and www.trackrat.net are served directly by the production
+# Worker's custom domains (webpage_v2/wrangler.jsonc), with no GCS fallback —
+# so a production run here deploys the LOCAL build straight to the live site.
+# A bare `production` run is always refused; --cloudflare-only is the explicit
+# acknowledgement. The normal path is pushing to the `production` branch. See
+# the guard below.
 #
 # Defaults to production if no environment specified. The destination Worker
 # name and its custom domains come from the matching environment in
@@ -32,7 +35,6 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 WEB_DIR="$PROJECT_DIR/webpage_v2"
 DIST_DIR="$WEB_DIR/dist"
-PROD_CLOUDBUILD="$PROJECT_DIR/infra_v2/cloudbuild-webpage.yaml"
 DRY_RUN=false
 ENVIRONMENT="production"
 CLOUDFLARE_ONLY=false
@@ -68,28 +70,23 @@ fi
 echo "Environment: $ENVIRONMENT"
 echo "API URL: $API_URL"
 
-# Until the production DNS cutover, trackrat.net is still served by the Google
-# load balancer in front of gs://trackrat-webpage-production, and
-# cloudbuild-webpage.yaml deploys to BOTH that bucket and the Worker for exactly
-# that reason. This script writes only to Cloudflare, and the `production`
-# environment in wrangler.jsonc deliberately has no routes yet — so a production
-# run during that window updates an unserved workers.dev target and would
-# otherwise print "Deploy complete (production)" over an unchanged live site.
-#
-# The pipeline's gsutil `sync` step is the signal: it exists precisely while GCS
-# is still live, and deleting it at runbook step P5.5 is what retires this guard
-# automatically. No network call, no second thing to remember.
-if [[ "$ENVIRONMENT" == "production" ]] && ! $CLOUDFLARE_ONLY \
-   && grep -q "^ *id: 'sync'" "$PROD_CLOUDBUILD" 2>/dev/null; then
-    echo "❌ trackrat.net is still served from GCS — this would NOT update the live site."
+# trackrat.net and www.trackrat.net are served by the production Worker's
+# custom domains (the `routes` in wrangler.jsonc) — the Google load balancer
+# that used to serve the apex from GCS was deleted on 2026-08-08, so there is
+# no fallback behind the Worker. A production run here therefore ships whatever
+# is in this working tree straight to the live site, bypassing CI entirely.
+# That is sometimes the right tool (incident response, rolling back to a
+# known-good checkout), but it must never happen by accident — so a bare
+# `production` run is refused unconditionally, and --cloudflare-only is the
+# explicit acknowledgement. The normal path is pushing to the `production`
+# branch and letting Cloud Build build from committed source.
+if [[ "$ENVIRONMENT" == "production" ]] && ! $CLOUDFLARE_ONLY; then
+    echo "❌ Refusing bare 'production': this deploys the LOCAL build directly to the LIVE site trackrat.net."
     echo ""
-    echo "   $(basename "$PROD_CLOUDBUILD") still has its gsutil 'sync' step, so the production"
-    echo "   cutover has not happened yet and the live site comes from the bucket, not the Worker."
+    echo "   The normal path is pushing to the 'production' branch — Cloud Build builds"
+    echo "   from committed source and deploys to the same Worker."
     echo ""
-    echo "   To ship to the live site now:  push to the 'production' branch — the pipeline"
-    echo "                                  dual-deploys to both GCS and Cloudflare."
-    echo "   To refresh the Worker only (the P5 pre-cutover rehearsal):"
-    echo "                                  $0 production --cloudflare-only"
+    echo "   To deploy from this machine anyway:  $0 production --cloudflare-only"
     exit 3
 fi
 
@@ -149,12 +146,11 @@ else
 
     npx wrangler deploy --env "$ENVIRONMENT"
 
-    if [[ "$ENVIRONMENT" == "production" ]] && $CLOUDFLARE_ONLY \
-       && grep -q "^ *id: 'sync'" "$PROD_CLOUDBUILD" 2>/dev/null; then
-        # Say what actually changed. "Deploy complete" alone reads as "the live
-        # site is updated", which is not true until the cutover.
-        echo "✅ Worker 'trackrat-webpage-production' updated (workers.dev only)."
-        echo "⚠️  trackrat.net is UNCHANGED — it is still served from GCS until the cutover."
+    if [[ "$ENVIRONMENT" == "production" ]]; then
+        # The guard above means we only get here with --cloudflare-only. Say
+        # what actually changed: the custom domains serve the apex, so this
+        # local build IS live now.
+        echo "✅ Deploy complete: trackrat.net and www.trackrat.net now serve this local build."
     else
         echo "✅ Deploy complete ($ENVIRONMENT)"
     fi
