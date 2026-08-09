@@ -34,9 +34,11 @@ from trackrat.utils.time import (
     parse_njt_time,
 )
 from trackrat.utils.train import (
+    departed_stop_time,
     is_njt_stop_cancelled,
     njt_cancellation_reason,
     normalize_njt_destination,
+    resolve_actual_departure,
 )
 
 logger = get_logger(__name__)
@@ -1106,15 +1108,6 @@ class JourneyCollector:
         # past/future comparisons use the same reference point.
         now = now_et()
 
-        def _accept_past(ts: datetime | None) -> datetime | None:
-            """Return ts if it's a real past timestamp, else None.
-
-            Used to guard actual_departure writes against NJT live-estimate
-            fields (TIME at intermediate stops, DEP_TIME at origin for delayed
-            trains) that can sit in the future. See issue #1221.
-            """
-            return ts if ts is not None and ts <= now else None
-
         # Second pass: Process each stop
         for sequence, stop_data in enumerate(stops_data):
             # Parse raw time fields from NJT API
@@ -1291,35 +1284,51 @@ class JourneyCollector:
             # Cancelled stops never physically departed — skip all inference
             is_stop_cancelled = is_njt_stop_cancelled(stop_data.STOP_STATUS)
 
+            # The live departure reading for this stop in NJT's
+            # position-dependent semantics (DEP_TIME at the origin, TIME
+            # everywhere else). has_departed is forced True to ask the
+            # normalizer for the reading itself; whether this stop actually
+            # departed is decided by the tiers below, which include sequential
+            # inference for stops NJT has not yet flagged. Mirrors
+            # DepartureService._update_stops_from_embedded_data.
+            observed_departure = normalize_njt_stop_times(
+                time_field, dep_time_field, is_origin, has_departed=True
+            )["actual_departure"]
+
             # Tier 1: Explicit DEPARTED flag from API (most reliable)
             if is_stop_cancelled:
                 if not stop.has_departed_station:
                     stop.has_departed_station = False
                     stop.departure_source = None
             elif stop_data.DEPARTED == "YES":
-                # Use normalized actual_departure which handles origin vs intermediate
-                # At origin: DEP_TIME (actual departure), at intermediate: TIME (actual)
-                # Freeze after first capture — NJT may revise TIME in later cycles,
-                # but the value captured when the train was at/near the stop is most
-                # accurate. Consistent with actual_arrival freeze logic below.
-                if stop.actual_departure is None:
-                    stop.actual_departure = _accept_past(
-                        normalized["actual_departure"]
-                    ) or _accept_past(stop.scheduled_departure)
+                # resolve_actual_departure applies the freeze (NJT revises TIME for
+                # hours; the reading taken at the stop is the accurate one) and
+                # refuses to substitute the schedule when that reading is still in
+                # the future — which is how this tier used to manufacture on-time
+                # departures for delayed trains (issue #1768).
+                stop.actual_departure = resolve_actual_departure(
+                    stop.actual_departure,
+                    observed_departure,
+                    stop.actual_arrival,
+                    now,
+                )
                 stop.has_departed_station = True
                 stop.departure_source = "api_explicit"
 
             # Tier 2: Sequential inference (very reliable)
             elif sequence < max_departed_sequence:
                 # If a later stop has departed, this one must have too.
-                # Only set actual_departure if not already recorded, to avoid
-                # overwriting a value captured when the train was at this stop
-                # with a stale NJT timestamp from a later collection cycle.
-                if not stop.actual_departure:
-                    primary = dep_time_field if is_origin else time_field
-                    stop.actual_departure = _accept_past(primary) or _accept_past(
-                        stop.scheduled_departure
-                    )
+                # resolve_actual_departure keeps a value captured when the train
+                # was at this stop rather than overwriting it with a stale NJT
+                # timestamp from a later cycle, and — as in tier 1 — records
+                # nothing rather than the schedule when no live reading has yet
+                # moved into the past (issue #1768).
+                stop.actual_departure = resolve_actual_departure(
+                    stop.actual_departure,
+                    observed_departure,
+                    stop.actual_arrival,
+                    now,
+                )
                 stop.has_departed_station = True
                 stop.departure_source = stop.departure_source or "sequential_inference"
 
@@ -1369,8 +1378,20 @@ class JourneyCollector:
                     stop.actual_arrival is None
                     and stop.departure_source != "time_inference"
                 ):
-                    stop.actual_arrival = normalized["actual_arrival"]
-                    stop.arrival_source = "api_observed"
+                    # Write-side symmetry with the departure tiers: TIME can
+                    # still be a future estimate at the moment NJT flips
+                    # DEPARTED=YES (the #1768 shape). Stamping that future
+                    # time here poisons resolve_actual_departure's repair
+                    # clause on later cycles — a valid frozen departure reads
+                    # as "before the arrival" and gets rewritten. Only an
+                    # already-past reading is admissible; a future estimate
+                    # leaves the arrival NULL for a later cycle to capture.
+                    admissible_arrival = departed_stop_time(
+                        normalized["actual_arrival"], now
+                    )
+                    if admissible_arrival is not None:
+                        stop.actual_arrival = admissible_arrival
+                        stop.arrival_source = "api_observed"
                 elif stop.actual_arrival is not None and stop.arrival_source is None:
                     # Backfill arrival_source for stops written before the column existed
                     stop.arrival_source = "api_observed"
@@ -2112,30 +2133,46 @@ class JourneyCollector:
                 total_stops=len(stops_data),
             )
 
-        # Set journey actual_departure from first departed stop (if not already set)
-        if not journey.actual_departure:
-            # Find the first stop that has departed by querying directly
-            first_departed_stmt = (
-                select(JourneyStop)
-                .where(
-                    and_(
-                        JourneyStop.journey_id == journey.id,
-                        JourneyStop.has_departed_station.is_(True),
-                    )
+        # Keep journey.actual_departure consistent with the first departed
+        # stop's actual_departure. This used to be write-once
+        # (`if not journey.actual_departure`), which preserved a corrupt
+        # journey-level copy forever after the stop-level value was
+        # guarded/repaired (issue #1768) — and that copy is served directly
+        # by /api/v2/trains/{id} and /share. Syncing every cycle also clears
+        # the journey value when the stop's has been repaired to NULL.
+        first_departed_stmt = (
+            select(JourneyStop)
+            .where(
+                and_(
+                    JourneyStop.journey_id == journey.id,
+                    JourneyStop.has_departed_station.is_(True),
                 )
-                .order_by(JourneyStop.stop_sequence)
-                .limit(1)
             )
-            first_departed_stop = await session.scalar(first_departed_stmt)
+            .order_by(JourneyStop.stop_sequence)
+            .limit(1)
+        )
+        first_departed_stop = await session.scalar(first_departed_stmt)
 
-            if first_departed_stop and first_departed_stop.actual_departure:
-                journey.actual_departure = first_departed_stop.actual_departure
-                logger.debug(
-                    "set_journey_actual_departure",
-                    train_id=journey.train_id,
-                    departure_time=journey.actual_departure.isoformat(),
-                    station_code=first_departed_stop.station_code,
-                )
+        if (
+            first_departed_stop is not None
+            and journey.actual_departure != first_departed_stop.actual_departure
+        ):
+            logger.debug(
+                "set_journey_actual_departure",
+                train_id=journey.train_id,
+                departure_time=(
+                    first_departed_stop.actual_departure.isoformat()
+                    if first_departed_stop.actual_departure
+                    else None
+                ),
+                previous=(
+                    journey.actual_departure.isoformat()
+                    if journey.actual_departure
+                    else None
+                ),
+                station_code=first_departed_stop.station_code,
+            )
+            journey.actual_departure = first_departed_stop.actual_departure
 
     def _is_monitored_station(self, station_code: str) -> bool:
         """Check if station is monitored for departure board data.

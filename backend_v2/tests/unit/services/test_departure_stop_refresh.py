@@ -13,7 +13,7 @@ Tests for JIT station refresh fixes:
 """
 
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -46,21 +46,37 @@ def _make_journey_mock(
     return journey
 
 
-def _make_stops_data(station_codes: list[str]) -> list[dict]:
-    """Create embedded stop data dicts as returned by NJT's getTrainSchedule."""
+NJT_BOARD_TIME_FORMAT = "%d-%b-%Y %I:%M:%S %p"
+
+
+def _make_stops_data(
+    station_codes: list[str], delay_minutes: int = 0
+) -> list[dict[str, str]]:
+    """Create embedded stop data dicts as returned by NJT's getTrainSchedule.
+
+    ``delay_minutes`` moves the *live* fields away from the immutable SCHED_*
+    ones, which is the only way to tell a real reading from the timetable in a
+    payload where an on-time train has them all equal. It has to be applied
+    according to NJT's position-dependent semantics: at the origin (index 0)
+    DEP_TIME carries the live departure and TIME the schedule, while at every
+    later stop that is inverted — TIME is the live estimate and DEP_TIME stays
+    the schedule.
+    """
     past = now_et() - timedelta(hours=1)
     stops = []
     for i, code in enumerate(station_codes):
         t = past + timedelta(minutes=15 * i)
-        time_str = t.strftime("%d-%b-%Y %I:%M:%S %p")
+        scheduled = t.strftime(NJT_BOARD_TIME_FORMAT)
+        live = (t + timedelta(minutes=delay_minutes)).strftime(NJT_BOARD_TIME_FORMAT)
+        is_origin = i == 0
         stops.append(
             {
                 "STATION_2CHAR": code,
                 "STATIONNAME": f"Station {code}",
-                "TIME": time_str,
-                "DEP_TIME": time_str,
-                "SCHED_DEP_DATE": time_str,
-                "SCHED_ARR_DATE": time_str,
+                "TIME": scheduled if is_origin else live,
+                "DEP_TIME": live if is_origin else scheduled,
+                "SCHED_DEP_DATE": scheduled,
+                "SCHED_ARR_DATE": scheduled,
                 "DEPARTED": "NO",
                 "STOP_STATUS": "OnTime",
             }
@@ -409,10 +425,7 @@ class TestSecondPassPerJourneyCommit:
         lines = source.split("\n")
         commit_after_retry = False
         for i, line in enumerate(lines):
-            if (
-                "retry_on_deadlock(db, refresh_journey)" in line
-                and i + 5 < len(lines)
-            ):
+            if "retry_on_deadlock(db, refresh_journey)" in line and i + 5 < len(lines):
                 window = "\n".join(lines[i : i + 5])
                 if "await db.commit()" in window:
                     commit_after_retry = True
@@ -461,3 +474,214 @@ class TestSecondPassPerJourneyCommit:
             "Generic Exception handler must roll back the session to clear "
             "any pending state before the next iteration."
         )
+
+
+class TestStationBoardActualDeparture:
+    """The board refresh must record a live reading, never the timetable (#1768).
+
+    This is the highest-frequency NJT write path, and it assigned
+
+        stop.actual_departure = stop.scheduled_arrival or stop.scheduled_departure
+
+    under a comment reading "Use arrival time (live estimate from TIME field) or
+    scheduled departure". The comment named the right value; the code read the
+    wrong column. ``scheduled_arrival`` is the timetable's arrival — a different
+    column from the live ``updated_arrival`` the same loop parses out of TIME
+    thirty lines earlier — and it is almost always NULL for NJT, so every
+    departed stop fell through to its own ``scheduled_departure``.
+
+    The result is indistinguishable from a train that ran on time. On train 7825
+    (NY→TR, 35 minutes late) six of eleven departed stops recorded their
+    schedule as their actual departure, and the train-detail rows for those
+    stops dropped their delay badge while their neighbours showed "+35m delay".
+    Because both writers only ever filled a NULL, the wrong value was then
+    frozen for the life of the row.
+    """
+
+    @staticmethod
+    def _service_and_journey(
+        station_codes: list[str], train_id: str = "7825"
+    ) -> tuple[DepartureService, MagicMock, list[JourneyStop]]:
+        stops = [_make_stop(code, i) for i, code in enumerate(station_codes)]
+        journey = _make_journey_mock(train_id=train_id, stops=stops)
+        journey.is_cancelled = False
+        journey.cancellation_reason = None
+        # NJT's origin/intermediate inversion is resolved against this.
+        journey.origin_station_code = station_codes[0]
+        return DepartureService(), journey, stops
+
+    def test_departed_stop_records_live_estimate_not_schedule(self):
+        """The #1768 shape: a stop passed 35 minutes late."""
+        service, journey, stops = self._service_and_journey(["NY", "NA", "TR"])
+
+        stops_data = _make_stops_data(["NY", "NA", "TR"], delay_minutes=35)
+        stops_data[1]["DEPARTED"] = "YES"
+
+        asyncio.run(
+            service._update_stops_from_embedded_data(AsyncMock(), journey, stops_data)
+        )
+
+        na = stops[1]
+        print(f"  - scheduled_departure: {na.scheduled_departure}")
+        print(f"  - updated_arrival (live TIME): {na.updated_arrival}")
+        print(f"  - actual_departure: {na.actual_departure}")
+
+        assert na.has_departed_station is True
+        assert na.actual_departure == na.updated_arrival, (
+            "the board's live TIME reading is what actually happened at this "
+            f"stop, but actual_departure is {na.actual_departure}"
+        )
+        assert na.actual_departure != na.scheduled_departure, (
+            "recording the timetable is what made a 35-minute-late train render "
+            "as on time in #1768"
+        )
+        delay = (na.actual_departure - na.scheduled_departure).total_seconds() / 60
+        assert delay == pytest.approx(
+            35, abs=0.1
+        ), f"the stop must now compute a 35-minute delay, got {delay:.1f}"
+
+    def test_sequential_inference_records_live_estimate_not_schedule(self):
+        """The second call site carried an identical copy of the same bug."""
+        service, journey, stops = self._service_and_journey(["NY", "NA", "TR"])
+
+        stops_data = _make_stops_data(["NY", "NA", "TR"], delay_minutes=35)
+        # NA is not flagged, but the later TR is — so NA must have departed.
+        stops_data[2]["DEPARTED"] = "YES"
+
+        asyncio.run(
+            service._update_stops_from_embedded_data(AsyncMock(), journey, stops_data)
+        )
+
+        na = stops[1]
+        assert na.has_departed_station is True
+        assert na.actual_departure == na.updated_arrival, (
+            f"sequential inference must record the live reading, got "
+            f"{na.actual_departure} against a schedule of {na.scheduled_departure}"
+        )
+
+    def test_records_nothing_when_live_estimate_is_future(self):
+        """NJT flips DEPARTED=YES before its estimate has come to pass.
+
+        Withholding the timestamp is the whole point: every consumer has an
+        honest fallback for NULL, and none can tell a schedule stamped into the
+        actuals column apart from a punctual train.
+        """
+        service, journey, stops = self._service_and_journey(["NY", "NA", "TR"])
+
+        stops_data = _make_stops_data(["NY", "NA", "TR"])
+        stops_data[1]["DEPARTED"] = "YES"
+        stops_data[1]["TIME"] = (now_et() + timedelta(minutes=5)).strftime(
+            NJT_BOARD_TIME_FORMAT
+        )
+
+        asyncio.run(
+            service._update_stops_from_embedded_data(AsyncMock(), journey, stops_data)
+        )
+
+        na = stops[1]
+        print(f"  - scheduled_departure: {na.scheduled_departure}")
+        print(f"  - actual_departure: {na.actual_departure}")
+
+        assert (
+            na.has_departed_station is True
+        ), "the fix withholds the timestamp, not the departure itself"
+        assert na.actual_departure is None, (
+            f"got {na.actual_departure}; scheduled_departure is "
+            f"{na.scheduled_departure} and scheduled_arrival is "
+            f"{na.scheduled_arrival} — neither may be recorded as an actual"
+        )
+
+    def test_origin_records_its_live_dep_time(self):
+        """At the origin the live value is DEP_TIME, not TIME.
+
+        Guards the fix against flattening NJT's position-dependent semantics:
+        reading TIME here would record the immutable schedule and report a
+        late-leaving train as punctual out of its origin.
+        """
+        service, journey, stops = self._service_and_journey(["NY", "NA", "TR"])
+
+        stops_data = _make_stops_data(["NY", "NA", "TR"], delay_minutes=35)
+        stops_data[0]["DEPARTED"] = "YES"
+
+        asyncio.run(
+            service._update_stops_from_embedded_data(AsyncMock(), journey, stops_data)
+        )
+
+        ny = stops[0]
+        print(f"  - scheduled_departure (TIME): {ny.scheduled_departure}")
+        print(f"  - updated_departure (live DEP_TIME): {ny.updated_departure}")
+        print(f"  - actual_departure: {ny.actual_departure}")
+
+        assert ny.actual_departure == ny.updated_departure, (
+            f"the origin's live DEP_TIME must be recorded, got "
+            f"{ny.actual_departure}"
+        )
+        assert ny.actual_departure != ny.scheduled_departure
+
+    def test_repairs_departure_recorded_before_arrival(self):
+        """Rows the old code already wrote are corrupt and were frozen that way.
+
+        Train 7825's Newark Airport stop was serving actual_departure 08:38:30
+        against actual_arrival 09:15:30 — the train left 37 minutes before it
+        got there. Since both writers only filled a NULL, nothing would ever
+        have corrected it.
+        """
+        service, journey, stops = self._service_and_journey(["NY", "NA", "TR"])
+
+        stops_data = _make_stops_data(["NY", "NA", "TR"], delay_minutes=35)
+        stops_data[1]["DEPARTED"] = "YES"
+
+        na = stops[1]
+        scheduled = datetime.strptime(
+            stops_data[1]["SCHED_DEP_DATE"], NJT_BOARD_TIME_FORMAT
+        ).replace(tzinfo=now_et().tzinfo)
+        live = datetime.strptime(stops_data[1]["TIME"], NJT_BOARD_TIME_FORMAT).replace(
+            tzinfo=now_et().tzinfo
+        )
+        na.scheduled_departure = scheduled
+        na.actual_departure = scheduled  # what the old code wrote
+        na.actual_arrival = live  # 35 minutes after its own "departure"
+        na.has_departed_station = True
+
+        asyncio.run(
+            service._update_stops_from_embedded_data(AsyncMock(), journey, stops_data)
+        )
+
+        print(f"  - seeded actual_departure: {scheduled} (the schedule)")
+        print(f"  - recorded actual_arrival: {na.actual_arrival}")
+        print(f"  - repaired actual_departure: {na.actual_departure}")
+
+        assert na.actual_departure == na.updated_arrival, (
+            "the impossible ordering must be replaced by the live reading, got "
+            f"{na.actual_departure}"
+        )
+        assert na.actual_departure >= na.actual_arrival, (
+            "after repair the stop must no longer claim the train left before "
+            "it arrived"
+        )
+
+    def test_does_not_overwrite_a_valid_recorded_departure(self):
+        """The freeze still holds for values that can be true.
+
+        NJT revises its estimates for hours after a train passes; the reading
+        taken while the train was at the stop is the accurate one. Only the
+        impossible ordering may reopen it.
+        """
+        service, journey, stops = self._service_and_journey(["NY", "NA", "TR"])
+
+        stops_data = _make_stops_data(["NY", "NA", "TR"], delay_minutes=35)
+        stops_data[1]["DEPARTED"] = "YES"
+
+        na = stops[1]
+        captured = now_et() - timedelta(minutes=20)
+        na.actual_departure = captured
+        na.actual_arrival = captured
+        na.has_departed_station = True
+
+        asyncio.run(
+            service._update_stops_from_embedded_data(AsyncMock(), journey, stops_data)
+        )
+
+        assert (
+            na.actual_departure == captured
+        ), f"a valid first capture must not be revised, got {na.actual_departure}"

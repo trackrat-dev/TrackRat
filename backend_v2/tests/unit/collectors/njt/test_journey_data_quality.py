@@ -18,15 +18,14 @@ from datetime import date, datetime, timedelta
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from sqlalchemy import select, event
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
-
-from trackrat.collectors.njt.client import NJTransitClient
-from trackrat.collectors.njt.journey import JourneyCollector, normalize_njt_stop_times
-from trackrat.models.database import Base, JourneyStop, TrainJourney
-from trackrat.utils.time import ET, now_et
+from sqlalchemy import event, select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
 from tests.fixtures.njt_api_responses import NJT_TIME_FORMAT, StopBuilder
+from trackrat.collectors.njt.client import NJTransitClient
+from trackrat.collectors.njt.journey import JourneyCollector
+from trackrat.models.database import Base, JourneyStop, TrainJourney
+from trackrat.utils.time import now_et
 
 # ---------------------------------------------------------------------------
 # SQLite in-memory fixtures (avoids PostgreSQL requirement)
@@ -71,7 +70,8 @@ async def sqlite_engine():
     # This approach is consistent regardless of whether a column uses our
     # patched TZDateTime type or the original DateTime type (AnnotatedColumn
     # caching means some columns bypass the patch).
-    from sqlalchemy import TypeDecorator, DateTime as SADateTime
+    from sqlalchemy import DateTime as SADateTime
+    from sqlalchemy import TypeDecorator
 
     class TZDateTime(TypeDecorator):
         impl = SADateTime
@@ -2335,4 +2335,578 @@ class TestTerminalStopArrivalOnCompletion:
         assert terminal_stop.actual_arrival == journey.actual_arrival, (
             f"Terminal stop actual_arrival ({terminal_stop.actual_arrival}) "
             f"should match journey.actual_arrival ({journey.actual_arrival})"
+        )
+
+
+# ---------------------------------------------------------------------------
+# 5. The schedule is never an actual departure (issue #1768)
+# ---------------------------------------------------------------------------
+
+
+class TestActualDepartureNeverTheSchedule:
+    """Tiers 1 and 2 must record a live reading or nothing — never the timetable.
+
+    A rider on train 7825 (NY→TR, 35 minutes late) reported that some stops
+    showed 30+ minute delays while others showed none. Six of its eleven
+    departed stops carried an ``actual_departure`` exactly equal to their
+    ``scheduled_departure``, five of them recording a departure 37-46 minutes
+    *before* the arrival recorded at the same stop.
+
+    The cause was the ``or _accept_past(stop.scheduled_departure)`` fallback in
+    both tiers. NJT flips ``DEPARTED=YES`` while its live estimate for the stop
+    is still in the future — routine for a late train — so the live reading was
+    rejected as not-yet-happened and the schedule was written in its place.
+    That value is indistinguishable from a train that ran on time, which is why
+    the delay badge vanished on exactly those rows.
+
+    Tier 3 has always refused to do this, in a comment that says why: "we have
+    no real data for the actual time, and using the schedule creates false 'on
+    time' status". These tests hold tiers 1 and 2 to the same rule.
+    """
+
+    @staticmethod
+    def _journey(scheduled_departure: datetime) -> TrainJourney:
+        """Train 7825's shape: NY origin, Newark Airport intermediate, TR terminal."""
+        return TrainJourney(
+            train_id="7825",
+            journey_date=date.today(),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="Trenton",
+            origin_station_code="NY",
+            terminal_station_code="TR",
+            data_source="NJT",
+            observation_type="OBSERVED",
+            scheduled_departure=scheduled_departure,
+            is_cancelled=False,
+            is_completed=False,
+        )
+
+    @pytest.mark.asyncio
+    async def test_tier1_records_nothing_when_live_estimate_is_future(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """The exact #1768 shape: DEPARTED=YES with TIME still ahead of now."""
+        now = now_et().replace(microsecond=0)
+        scheduled = now - timedelta(minutes=40)
+        live_estimate = now + timedelta(minutes=5)  # NJT has not caught up yet
+
+        journey = self._journey(now - timedelta(minutes=55))
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        builder = StopBuilder()
+        stops = [
+            _make_stop_with_sched_fields(
+                builder,
+                "NY",
+                "New York Penn Station",
+                dep_time=(now - timedelta(minutes=55)).strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NA",
+                "Newark Airport",
+                dep_time=scheduled.strftime(NJT_TIME_FORMAT),
+                arr_time=live_estimate.strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "TR",
+                "Trenton",
+                dep_time=(now + timedelta(minutes=30)).strftime(NJT_TIME_FORMAT),
+                arr_time=(now + timedelta(minutes=28)).strftime(NJT_TIME_FORMAT),
+                departed=False,
+            ),
+        ]
+        await journey_collector.update_journey_stops(sqlite_session, journey, stops)
+        await sqlite_session.flush()
+
+        na = await sqlite_session.scalar(
+            select(JourneyStop).where(
+                JourneyStop.journey_id == journey.id,
+                JourneyStop.station_code == "NA",
+            )
+        )
+        assert na is not None
+        print(f"  - scheduled_departure: {na.scheduled_departure}")
+        print(f"  - live TIME estimate:  {live_estimate} (in the future)")
+        print(f"  - actual_departure:    {na.actual_departure}")
+
+        assert na.has_departed_station is True, (
+            "DEPARTED=YES must still mark the stop departed — the fix withholds "
+            "the timestamp, not the departure itself"
+        )
+        assert na.actual_departure is None, (
+            "with no admissible live reading the stop must record no actual "
+            f"departure, but got {na.actual_departure} "
+            f"(scheduled_departure is {na.scheduled_departure} — writing that "
+            "is what made a 35-minute-late train render as on time in #1768)"
+        )
+
+    @pytest.mark.asyncio
+    async def test_tier1_records_live_estimate_once_it_is_in_the_past(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """The ordinary case must keep working: a past TIME is the real thing."""
+        now = now_et().replace(microsecond=0)
+        scheduled = now - timedelta(minutes=40)
+        observed = now - timedelta(minutes=3)  # ran 37 minutes late
+
+        journey = self._journey(now - timedelta(minutes=55))
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        builder = StopBuilder()
+        stops = [
+            _make_stop_with_sched_fields(
+                builder,
+                "NY",
+                "New York Penn Station",
+                dep_time=(now - timedelta(minutes=55)).strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NA",
+                "Newark Airport",
+                dep_time=scheduled.strftime(NJT_TIME_FORMAT),
+                arr_time=observed.strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+        ]
+        await journey_collector.update_journey_stops(sqlite_session, journey, stops)
+        await sqlite_session.flush()
+
+        na = await sqlite_session.scalar(
+            select(JourneyStop).where(
+                JourneyStop.journey_id == journey.id,
+                JourneyStop.station_code == "NA",
+            )
+        )
+        assert na is not None
+        print(f"  - scheduled_departure: {na.scheduled_departure}")
+        print(f"  - actual_departure:    {na.actual_departure}")
+
+        assert na.actual_departure == observed, (
+            "a live TIME reading that has already happened is exactly what "
+            f"actual_departure is for, but got {na.actual_departure}"
+        )
+        delay = (na.actual_departure - na.scheduled_departure).total_seconds() / 60
+        assert delay == pytest.approx(
+            37, abs=0.1
+        ), f"the stop must now compute a 37-minute delay, got {delay:.1f}"
+
+    @pytest.mark.asyncio
+    async def test_tier2_records_nothing_when_live_estimate_is_future(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """Sequential inference carried the same fallback as tier 1.
+
+        NA reports DEPARTED=NO while the later TR reports YES, so NA departed.
+        That inference is sound; the timestamp it used was not.
+        """
+        now = now_et().replace(microsecond=0)
+        scheduled = now - timedelta(minutes=40)
+
+        journey = self._journey(now - timedelta(minutes=55))
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        builder = StopBuilder()
+        stops = [
+            _make_stop_with_sched_fields(
+                builder,
+                "NY",
+                "New York Penn Station",
+                dep_time=(now - timedelta(minutes=55)).strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NA",
+                "Newark Airport",
+                dep_time=scheduled.strftime(NJT_TIME_FORMAT),
+                arr_time=(now + timedelta(minutes=5)).strftime(NJT_TIME_FORMAT),
+                departed=False,  # NJT has not flagged it, but TR has
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "TR",
+                "Trenton",
+                dep_time=(now - timedelta(minutes=10)).strftime(NJT_TIME_FORMAT),
+                arr_time=(now - timedelta(minutes=12)).strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+        ]
+        await journey_collector.update_journey_stops(sqlite_session, journey, stops)
+        await sqlite_session.flush()
+
+        na = await sqlite_session.scalar(
+            select(JourneyStop).where(
+                JourneyStop.journey_id == journey.id,
+                JourneyStop.station_code == "NA",
+            )
+        )
+        assert na is not None
+        print(f"  - departure_source: {na.departure_source}")
+        print(f"  - actual_departure: {na.actual_departure}")
+
+        assert na.has_departed_station is True
+        assert na.departure_source == "sequential_inference"
+        assert na.actual_departure is None, (
+            "tier 2 must infer that the stop departed without inventing when, "
+            f"but got {na.actual_departure} (schedule: {na.scheduled_departure})"
+        )
+
+    @pytest.mark.asyncio
+    async def test_repairs_departure_recorded_before_arrival(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """Production rows are already corrupt, and the freeze kept them so.
+
+        Both writers only ever filled a NULL, so the impossible values already
+        in the database — train 7825's Newark Airport stop departed 08:38:30 and
+        arrived 09:15:30 — would never have been rewritten by the code fix
+        alone. A departure before the arrival at the same stop is the signal
+        that lets the next collection cycle correct itself.
+        """
+        now = now_et().replace(microsecond=0)
+        scheduled = now - timedelta(minutes=40)
+        arrival = now - timedelta(minutes=3)
+
+        journey = self._journey(now - timedelta(minutes=55))
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        # Seed the stop exactly as the old code left it: actual_departure is the
+        # schedule, 37 minutes before the arrival it recorded.
+        corrupt = JourneyStop(
+            journey=journey,
+            station_code="NA",
+            station_name="Newark Airport",
+            stop_sequence=1,
+            scheduled_departure=scheduled,
+            actual_departure=scheduled,
+            actual_arrival=arrival,
+            has_departed_station=True,
+            departure_source="api_explicit",
+            arrival_source="api_observed",
+        )
+        sqlite_session.add(corrupt)
+        await sqlite_session.flush()
+
+        builder = StopBuilder()
+        stops = [
+            _make_stop_with_sched_fields(
+                builder,
+                "NY",
+                "New York Penn Station",
+                dep_time=(now - timedelta(minutes=55)).strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NA",
+                "Newark Airport",
+                dep_time=scheduled.strftime(NJT_TIME_FORMAT),
+                arr_time=arrival.strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+        ]
+        await journey_collector.update_journey_stops(sqlite_session, journey, stops)
+        await sqlite_session.flush()
+        await sqlite_session.refresh(corrupt)
+
+        print(f"  - seeded actual_departure: {scheduled} (the schedule)")
+        print(f"  - recorded actual_arrival: {arrival}")
+        print(f"  - repaired actual_departure: {corrupt.actual_departure}")
+
+        assert corrupt.actual_departure == arrival, (
+            "the impossible ordering must be replaced by the live reading, but "
+            f"got {corrupt.actual_departure}"
+        )
+        assert corrupt.actual_departure >= corrupt.actual_arrival, (
+            "after repair the stop must no longer claim the train left before "
+            "it arrived"
+        )
+
+    @pytest.mark.asyncio
+    async def test_origin_uses_dep_time_and_not_the_schedule(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """At the origin the live value is DEP_TIME, not TIME (inverted).
+
+        Guards the fix against flattening NJT's position-dependent semantics:
+        the origin must still record its live departure, and must not fall back
+        to TIME (which is the immutable schedule there).
+        """
+        now = now_et().replace(microsecond=0)
+        origin_scheduled = now - timedelta(minutes=55)
+        origin_actual = now - timedelta(minutes=22)  # left 33 minutes late
+
+        journey = self._journey(now - timedelta(minutes=55))
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        builder = StopBuilder()
+        stops = [
+            _make_stop_with_sched_fields(
+                builder,
+                "NY",
+                "New York Penn Station",
+                # At origin: DEP_TIME is the live departure, TIME the schedule.
+                dep_time=origin_actual.strftime(NJT_TIME_FORMAT),
+                arr_time=origin_scheduled.strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+        ]
+        await journey_collector.update_journey_stops(sqlite_session, journey, stops)
+        await sqlite_session.flush()
+
+        ny = await sqlite_session.scalar(
+            select(JourneyStop).where(
+                JourneyStop.journey_id == journey.id,
+                JourneyStop.station_code == "NY",
+            )
+        )
+        assert ny is not None
+        print(f"  - scheduled_departure (TIME): {ny.scheduled_departure}")
+        print(f"  - actual_departure (DEP_TIME): {ny.actual_departure}")
+
+        assert ny.actual_departure == origin_actual, (
+            f"the origin's live DEP_TIME must be recorded, got {ny.actual_departure} "
+            f"against a schedule of {ny.scheduled_departure}"
+        )
+        assert ny.actual_departure != ny.scheduled_departure, (
+            "a train that left 33 minutes late must not record its schedule as "
+            "its actual departure"
+        )
+
+
+@pytest.mark.asyncio
+class TestArrivalWriteAndRepairIntegrity:
+    """The arrival-side half of #1768, and the repair clause it poisoned.
+
+    NJT flips DEPARTED=YES while TIME is still a future estimate. The old
+    arrival write stamped that future TIME into ``actual_arrival`` unguarded;
+    on later cycles ``resolve_actual_departure``'s repair clause then read a
+    valid frozen departure as "before the arrival" and rewrote it — including
+    with the timetable itself when NJT reverted TIME to the schedule. These
+    tests run the collector through the actual multi-cycle sequence.
+    """
+
+    def _stops(self, builder, now, na_time, na_departed=True):
+        """Train 7825's shape with the Newark Airport TIME under test."""
+        return [
+            _make_stop_with_sched_fields(
+                builder,
+                "NY",
+                "New York Penn Station",
+                dep_time=(now - timedelta(minutes=55)).strftime(NJT_TIME_FORMAT),
+                departed=True,
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "NA",
+                "Newark Airport",
+                dep_time=(now - timedelta(minutes=40)).strftime(NJT_TIME_FORMAT),
+                arr_time=na_time.strftime(NJT_TIME_FORMAT),
+                departed=na_departed,
+            ),
+            _make_stop_with_sched_fields(
+                builder,
+                "TR",
+                "Trenton",
+                dep_time=(now + timedelta(minutes=30)).strftime(NJT_TIME_FORMAT),
+                arr_time=(now + timedelta(minutes=28)).strftime(NJT_TIME_FORMAT),
+                departed=False,
+            ),
+        ]
+
+    async def _na(self, session, journey):
+        return await session.scalar(
+            select(JourneyStop).where(
+                JourneyStop.journey_id == journey.id,
+                JourneyStop.station_code == "NA",
+            )
+        )
+
+    async def test_flag_flip_with_future_time_stamps_no_arrival(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """Cycle 1 of the repro: DEPARTED=YES, TIME five minutes ahead.
+
+        The departure side already withholds the timestamp; the arrival must
+        be withheld for the same reason — a future reading in an actuals
+        column is the exact bug class this PR eliminates, and it is the value
+        the repair clause later trusts.
+        """
+        now = now_et().replace(microsecond=0)
+        journey = TestActualDepartureNeverTheSchedule._journey(
+            now - timedelta(minutes=55)
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        await journey_collector.update_journey_stops(
+            sqlite_session,
+            journey,
+            self._stops(StopBuilder(), now, now + timedelta(minutes=5)),
+        )
+        await sqlite_session.flush()
+
+        na = await self._na(sqlite_session, journey)
+        print(f"  - live TIME (future): {now + timedelta(minutes=5)}")
+        print(f"  - actual_departure:   {na.actual_departure}")
+        print(f"  - actual_arrival:     {na.actual_arrival}")
+        assert na.has_departed_station is True
+        assert na.actual_departure is None
+        assert na.actual_arrival is None, (
+            "a future TIME estimate must not be stamped into actual_arrival "
+            f"(got {na.actual_arrival}) — that future value is what let later "
+            "cycles rewrite a valid frozen departure"
+        )
+
+    async def test_capture_freezes_across_post_pass_revisions(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """Cycles 1-3: nothing, then capture, then a revision that must not win.
+
+        Cycle 2's converged TIME is the reading taken at the stop — the
+        accurate one. NJT keeps revising for hours; cycle 3's later TIME must
+        not reopen the freeze now that the arrival write is past-only.
+        """
+        now = now_et().replace(microsecond=0)
+        journey = TestActualDepartureNeverTheSchedule._journey(
+            now - timedelta(minutes=55)
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        # Cycle 1: flag flips, TIME still future — nothing recorded.
+        await journey_collector.update_journey_stops(
+            sqlite_session,
+            journey,
+            self._stops(StopBuilder(), now, now + timedelta(minutes=4)),
+        )
+        # Cycle 2: TIME converges to the actual passage, now in the past.
+        captured = now - timedelta(minutes=1)
+        await journey_collector.update_journey_stops(
+            sqlite_session, journey, self._stops(StopBuilder(), now, captured)
+        )
+        await sqlite_session.flush()
+        na = await self._na(sqlite_session, journey)
+        assert na.actual_departure == captured
+        assert na.actual_arrival == captured
+
+        # Cycle 3: NJT revises TIME two minutes later. The capture must hold.
+        await journey_collector.update_journey_stops(
+            sqlite_session,
+            journey,
+            self._stops(StopBuilder(), now, captured + timedelta(minutes=2)),
+        )
+        await sqlite_session.flush()
+        na = await self._na(sqlite_session, journey)
+        print(f"  - captured at cycle 2: {captured}")
+        print(f"  - revised TIME:        {captured + timedelta(minutes=2)}")
+        print(f"  - actual_departure:    {na.actual_departure}")
+        assert na.actual_departure == captured, (
+            "the freeze must hold: the reading taken at the stop is the "
+            f"accurate one, but a later revision rewrote it to {na.actual_departure}"
+        )
+
+    async def test_repair_clears_rather_than_writing_the_reverted_schedule(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """Legacy corrupt rows + NJT re-serving the timetable as TIME.
+
+        The repair clause replaces a departure recorded before its arrival —
+        but when the only reading NJT offers is the schedule itself
+        (its real shape when it has no live estimate), writing it would
+        recreate the exact invariant violation this PR exists to enforce.
+        Clear instead; a later genuine reading may still repair it.
+        """
+        now = now_et().replace(microsecond=0)
+        scheduled_na = now - timedelta(minutes=40)
+        arrival = now - timedelta(minutes=3)
+        journey = TestActualDepartureNeverTheSchedule._journey(
+            now - timedelta(minutes=55)
+        )
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        # Create the stops, then seed the legacy corruption directly: the old
+        # `or _accept_past(schedule)` fallback wrote the timetable, and the
+        # old arrival write later recorded a genuine arrival after it.
+        await journey_collector.update_journey_stops(
+            sqlite_session, journey, self._stops(StopBuilder(), now, arrival)
+        )
+        na = await self._na(sqlite_session, journey)
+        na.actual_departure = scheduled_na  # 37 minutes before the arrival
+        na.actual_arrival = arrival
+        await sqlite_session.flush()
+
+        # NJT reverts TIME to the schedule — admissible, but pre-arrival.
+        await journey_collector.update_journey_stops(
+            sqlite_session, journey, self._stops(StopBuilder(), now, scheduled_na)
+        )
+        await sqlite_session.flush()
+        na = await self._na(sqlite_session, journey)
+        print(f"  - corrupt stored value: {scheduled_na} (the schedule)")
+        print(f"  - recorded arrival:     {arrival}")
+        print(f"  - after repair:         {na.actual_departure}")
+        assert na.actual_departure is None, (
+            "repairing with the reverted schedule would write a departure "
+            f"before the arrival again — got {na.actual_departure}"
+        )
+
+        # A later cycle with a genuine post-arrival reading completes the repair.
+        await journey_collector.update_journey_stops(
+            sqlite_session, journey, self._stops(StopBuilder(), now, arrival)
+        )
+        await sqlite_session.flush()
+        na = await self._na(sqlite_session, journey)
+        assert na.actual_departure == arrival
+
+    async def test_journey_level_copy_is_repaired_with_the_stop(
+        self, sqlite_session: AsyncSession, journey_collector
+    ):
+        """TrainJourney.actual_departure must track the repaired stop value.
+
+        The old write-once copy froze whatever the origin stop carried when it
+        first departed — including the schedule the old tier-1 fallback wrote —
+        and that copy is served directly by /api/v2/trains/{id} and /share.
+        """
+        now = now_et().replace(microsecond=0)
+        origin_sched = now - timedelta(minutes=55)
+        journey = TestActualDepartureNeverTheSchedule._journey(origin_sched)
+        sqlite_session.add(journey)
+        await sqlite_session.flush()
+
+        # Legacy corruption at the journey level: the schedule, frozen.
+        journey.actual_departure = origin_sched
+
+        await journey_collector.update_journey_stops(
+            sqlite_session,
+            journey,
+            self._stops(StopBuilder(), now, now - timedelta(minutes=1)),
+        )
+        await sqlite_session.flush()
+
+        ny = await sqlite_session.scalar(
+            select(JourneyStop).where(
+                JourneyStop.journey_id == journey.id,
+                JourneyStop.station_code == "NY",
+            )
+        )
+        print(f"  - corrupt journey copy: {origin_sched}")
+        print(f"  - first departed stop:  {ny.actual_departure}")
+        print(f"  - journey after sync:   {journey.actual_departure}")
+        assert journey.actual_departure == ny.actual_departure, (
+            "the journey-level copy must be kept consistent with the first "
+            "departed stop's (guarded/repaired) actual_departure — it is "
+            "served directly by /api/v2/trains/{id} and /share"
         )
