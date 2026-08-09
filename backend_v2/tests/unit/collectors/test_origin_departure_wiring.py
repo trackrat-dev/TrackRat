@@ -65,6 +65,14 @@ GTFS_RT_COLLECTORS = [
 
 COLLECTORS_DIR = Path(__file__).resolve().parents[3] / "src" / "trackrat" / "collectors"
 
+# Every Python source under collectors/, discovered from disk so the source
+# scan matches its "anywhere under collectors/" claim — njt, amtrak, path,
+# wmata, and the shared root modules included, plus any collector added later.
+ALL_COLLECTOR_SOURCES = sorted(COLLECTORS_DIR.rglob("*.py"))
+ALL_COLLECTOR_SOURCE_IDS = [
+    str(path.relative_to(COLLECTORS_DIR)) for path in ALL_COLLECTOR_SOURCES
+]
+
 
 # =============================================================================
 # SOURCE-LEVEL CONTRACT
@@ -76,8 +84,11 @@ class TestNoCollectorSubstitutesTheFirstVisibleStop:
 
     This is the issue's own acceptance criterion, kept as a test because the
     defect's history is that it was fixed in one collector and left in seven.
-    A behavioural test only guards the collector it names; this guards the ones
-    nobody has written a test for yet, including any added later.
+    A behavioural test only guards the collector it names, so the two scans
+    run over every ``*.py`` discovered under ``collectors/`` — njt, amtrak,
+    path, wmata, and the shared root modules included, plus any collector
+    added later. The helper-wiring assertions that follow only apply to the
+    eight converted GTFS-RT collectors, so they keep the explicit list.
     """
 
     # `journey.actual_departure = <arrival>.arrival_time` in the update/JIT
@@ -93,9 +104,11 @@ class TestNoCollectorSubstitutesTheFirstVisibleStop:
         r"journey\.actual_departure\s*=\s*min\(", re.MULTILINE
     )
 
-    @pytest.mark.parametrize("collector_name", GTFS_RT_COLLECTORS)
-    def test_no_raw_first_visible_arrival_substitution(self, collector_name):
-        source = (COLLECTORS_DIR / collector_name / "collector.py").read_text()
+    @pytest.mark.parametrize(
+        "source_path", ALL_COLLECTOR_SOURCES, ids=ALL_COLLECTOR_SOURCE_IDS
+    )
+    def test_no_raw_first_visible_arrival_substitution(self, source_path):
+        source = source_path.read_text()
 
         offenders = [
             line.strip()
@@ -103,21 +116,25 @@ class TestNoCollectorSubstitutesTheFirstVisibleStop:
             if self.RAW_SUBSTITUTION.search(line)
         ]
         assert not offenders, (
-            f"{collector_name}/collector.py assigns the first feed-visible "
-            "stop to actual_departure. GTFS-RT prunes passed stops, so that "
-            "stop is not the origin and the value reads as departure delay. "
-            f"Use origin_actual_departure(stops) instead. Offending: {offenders}"
+            f"{source_path.relative_to(COLLECTORS_DIR)} assigns the first "
+            "feed-visible stop to actual_departure. GTFS-RT prunes passed "
+            "stops, so that stop is not the origin and the value reads as "
+            "departure delay. Use origin_actual_departure(stops) instead. "
+            f"Offending: {offenders}"
         )
 
-    @pytest.mark.parametrize("collector_name", GTFS_RT_COLLECTORS)
-    def test_no_inlined_min_substitution(self, collector_name):
-        source = (COLLECTORS_DIR / collector_name / "collector.py").read_text()
+    @pytest.mark.parametrize(
+        "source_path", ALL_COLLECTOR_SOURCES, ids=ALL_COLLECTOR_SOURCE_IDS
+    )
+    def test_no_inlined_min_substitution(self, source_path):
+        source = source_path.read_text()
 
         assert not self.RAW_MIN_SUBSTITUTION.search(source), (
-            f"{collector_name}/collector.py derives actual_departure from a "
-            "min() over feed arrivals. The earliest *visible* stop is not the "
-            "origin — use origin_actual_departure(stops), which reads the "
-            "min-stop_sequence stop and returns None for a backfilled origin."
+            f"{source_path.relative_to(COLLECTORS_DIR)} derives "
+            "actual_departure from a min() over feed arrivals. The earliest "
+            "*visible* stop is not the origin — use "
+            "origin_actual_departure(stops), which reads the min-stop_sequence "
+            "stop and returns None for a backfilled origin."
         )
 
     @pytest.mark.parametrize("collector_name", GTFS_RT_COLLECTORS)
