@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { apiService } from '../services/api';
 import { PlatformPrediction } from '../types';
 import { usePolling } from '../utils/usePolling';
@@ -23,12 +23,23 @@ export function TrackPredictionBar({ trainId, originStationCode, journeyDate }: 
   const [prediction, setPrediction] = useState<PlatformPrediction | null>(null);
   const [loading, setLoading] = useState(true);
   const [failed, setFailed] = useState(false);
+  const [halted, setHalted] = useState(false);
+
+  // A different train/station/date is a fresh question — poll again.
+  useEffect(() => {
+    setHalted(false);
+  }, [originStationCode, trainId, journeyDate]);
 
   const fetchPrediction = useCallback(async (signal?: AbortSignal) => {
     try {
       const result = await apiService.getPlatformPrediction(originStationCode, trainId, journeyDate, signal);
       setPrediction(result);
       setFailed(false);
+      // null means the API answered 404: the train terminates here, never
+      // calls here, or is unknown. That answer is permanent for this train
+      // at this station — a firming track assignment cannot turn it into a
+      // 200 — so stop re-asking every minute.
+      if (result === null) setHalted(true);
     } catch (err) {
       if (err instanceof DOMException && err.name === 'AbortError') return;
       setFailed(true);
@@ -38,7 +49,10 @@ export function TrackPredictionBar({ trainId, originStationCode, journeyDate }: 
     }
   }, [originStationCode, trainId, journeyDate]);
 
-  usePolling(fetchPrediction, [originStationCode, trainId, journeyDate], { intervalMs: PREDICTION_POLL_MS });
+  usePolling(fetchPrediction, [originStationCode, trainId, journeyDate], {
+    intervalMs: PREDICTION_POLL_MS,
+    enabled: !halted,
+  });
 
   if (loading && !prediction) {
     return (

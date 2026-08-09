@@ -2,6 +2,7 @@
 Train-related utility functions for TrackRat V2.
 """
 
+from collections.abc import Container
 from datetime import datetime
 from typing import TYPE_CHECKING
 
@@ -167,6 +168,76 @@ def terminal_stop_index(
     if sorted_stops[last_index].station_code != terminal_station_code:
         return None
     return last_index
+
+
+def journey_terminates_at_station(
+    sorted_stops: "list[JourneyStop]",
+    terminal_station_code: str | None,
+    station_codes: Container[str],
+) -> bool:
+    """Whether the journey *ends* at one of ``station_codes`` rather than
+    departing from it.
+
+    A train that terminates at a station never boards there, so anything framed
+    around its departure — most notably a track/platform prediction — is
+    meaningless for that stop. Worse than meaningless, in the track-prediction
+    case: providers publish tracks for departures, so a terminal stop carries no
+    track of its own (verified across NJT arrivals into NY Penn, including
+    completed runs), the train-id level of
+    :class:`~trackrat.services.historical_track_predictor.HistoricalTrackPredictor`
+    can never reach its record threshold, and the hierarchy falls through to a
+    distribution built entirely from *other, departing* trains. Issue #1773: a
+    rider whose selected route started at NY Penn opened NJT 7832 — a Trenton →
+    NY Penn run terminating at Penn — and was shown Penn departure platforms.
+
+    Positional detection is delegated to :func:`terminal_stop_index`, so this
+    returns ``False`` on a journey that isn't fully sequenced yet (NJT discovery
+    and schedule rows carry ``stop_sequence = NULL`` and a placeholder
+    ``terminal_station_code``). That is the deliberate direction to fail: a
+    just-discovered train sitting at its origin should keep its prediction, and
+    only a journey whose shape is known can prove the stop is an arrival.
+
+    ``station_codes`` is a container so callers can pass an equivalence-expanded
+    set (``expand_station_codes``) and match whichever code the journey stored.
+    """
+    terminal_index = terminal_stop_index(sorted_stops, terminal_station_code)
+    if terminal_index is None:
+        return False
+    return sorted_stops[terminal_index].station_code in station_codes
+
+
+def journey_serves_station(
+    sorted_stops: "list[JourneyStop]",
+    terminal_station_code: str | None,
+    station_codes: Container[str],
+) -> bool:
+    """Whether the journey calls at one of ``station_codes`` at all — or its
+    shape is not yet known well enough to prove that it doesn't.
+
+    Companion to :func:`journey_terminates_at_station`, covering the other way
+    a track prediction can be about somebody else's train: the requested
+    station is not on the route at all. The train-id level of the predictor
+    finds no history for a station the train never visits, and the hierarchy
+    falls through to distributions built entirely from *other* trains at that
+    station — exactly the #1773 failure shape, reached from a different
+    direction.
+
+    Trust is delegated to :func:`terminal_stop_index` — the same conditions as
+    the terminal check, deliberately: only a fully-sequenced journey whose
+    last stop agrees with ``terminal_station_code`` has a proven shape. On an
+    NJT discovery or schedule row (``stop_sequence = NULL``, placeholder
+    terminal) the stop list is incomplete, so a station absent from it may
+    still be served; this returns ``True`` there and the prediction is kept.
+    A just-discovered train must never lose its prediction to a guess about a
+    route we have not collected yet.
+
+    ``station_codes`` is a container so callers can pass an
+    equivalence-expanded set (``expand_station_codes``) and match whichever
+    code the journey stored.
+    """
+    if terminal_stop_index(sorted_stops, terminal_station_code) is None:
+        return True
+    return any(stop.station_code in station_codes for stop in sorted_stops)
 
 
 def effective_njt_updated_times(
