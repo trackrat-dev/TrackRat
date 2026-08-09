@@ -67,7 +67,6 @@ from trackrat.utils.time import (
     ET,
     PROVIDER_TIMEZONE,
     now_et,
-    now_for_provider,
 )
 
 logger = get_logger(__name__)
@@ -654,15 +653,21 @@ class GTFSService:
             # bundle it cannot replace yet, and `declined_sources` on the same
             # log line says why.
             #
-            # `today` is the provider's local date — BART (Pacific) and Metra
-            # (Central) would otherwise flip a bundle's verdict during the hours
-            # when Eastern has rolled over and their timezone has not.
+            # `today` is the Eastern date for every source, deliberately —
+            # the same clock the serving path uses: `get_active_service_ids`
+            # is asked for the ET date regardless of agency timezone
+            # (services/departure.py), so a bundle whose window opens on ET
+            # date D is served from ET midnight of D. Judging it by the
+            # provider's local date would decline it for the first hours of
+            # that ET day (BART: three), delaying adoption past the moment
+            # serving would already use it. The mirror check in
+            # get_feed_statuses dates by ET for the same reason.
             # An all-expired bundle (in_force False but no future service
             # named) is deliberately NOT declined: that is a lapse problem the
             # lapse detection owns, not an early publication — and PATH's
             # permanently-expired exempt feed must stay refreshable, or a
             # decline loop would pin it to its first stored copy forever.
-            today = now_for_provider(data_source).date()
+            today = now_et().date()
             bundle = self._bundle_service_status(zip_data, data_source, today)
             if bundle.in_force is False and bundle.service_begins_on is not None:
                 begins_on = bundle.service_begins_on.isoformat()
