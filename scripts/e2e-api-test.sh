@@ -53,6 +53,23 @@ NC='\033[0m'
 
 FAILED_ROUTES=()
 SLOW_THRESHOLD=5  # seconds
+# Hour (ET) from which an all-OBSERVED Amtrak board stops being suspicious.
+# The 00:45 ET job (scheduler.generate_amtrak_schedules) creates SCHEDULED
+# rows for both today AND tomorrow, so next-day rows exist in the DB all day —
+# but the departures endpoint serves a 26-hour window from today's midnight
+# ET, so only next-day departures before 02:00 ET can appear, and Amtrak runs
+# none then on these routes. Amtrak's last departures run to roughly 23:30 and
+# are discovered ~an hour ahead, so the day's visible SCHEDULED records are
+# exhausted well before midnight.
+AMTRAK_SCHEDULE_QUIET_FROM_HOUR=20
+
+# Backend schedules run on Eastern time regardless of where this script runs.
+# Sampled at each check site rather than once at startup: a full run makes
+# hundreds of curls and takes 20-40+ minutes, so a start-time snapshot drifts
+# across the very boundaries these checks key on (a 00:35 start reaching the
+# subway trip pairs at 01:10 would FAIL instead of WARNing as overnight; same
+# skew at the 06:00 boundary and the Amtrak evening gate).
+current_et_hour() { TZ=America/New_York date +%-H; }
 
 pass() { printf "  ${GREEN}PASS${NC} %s\n" "$1"; PASS=$((PASS + 1)); }
 fail() { printf "  ${RED}FAIL${NC} %s\n" "$1"; FAIL=$((FAIL + 1)); }
@@ -138,6 +155,102 @@ station_system() {
   esac
 }
 
+# --- Active planned work ---
+#
+# Agencies close segments and truncate lines constantly, especially at weekends,
+# and the backend reports that faithfully: a line running only part of its route
+# genuinely has no through service, so a hardcoded terminal-to-terminal pair
+# returns 0 trains and the suite calls it a failure. Three subway pairs failed
+# that way on 2026-08-08 while the backend was completely correct, and which
+# pairs failed rotated between runs, so the output could not be trusted at a
+# glance (issue #1771).
+#
+# TrackRat already collects the answer. `/api/v2/alerts/service` carries MTA,
+# NJT and SEPTA alerts with `affected_route_ids` and `active_periods`, so an
+# empty board can be checked against the agency's own explanation rather than
+# guessed at from the clock.
+#
+# Indexed once here as `SOURCE<TAB>ROUTE_ID<TAB>headline`, filtered to
+# planned_work active at this moment. Alerts are advisory for this suite — if
+# the endpoint is unreachable the file is empty and every check keeps its
+# original strictness.
+echo -e "${BOLD}Service alerts...${NC}"
+: > "$TMPDIR/planned_work.tsv"
+if curl -s -f --max-time 20 -o "$TMPDIR/alerts.json" "$API/alerts/service" 2>/dev/null; then
+  python3 - "$TMPDIR/alerts.json" "$TMPDIR/planned_work.tsv" <<'PY' 2>/dev/null || true
+import json, sys, time
+
+with open(sys.argv[1]) as fh:
+    payload = json.load(fh)
+alerts = payload.get("alerts", payload) if isinstance(payload, dict) else payload
+now = int(time.time())
+
+
+def active(alert):
+    # No active_periods means the alert carries no window and is in force now.
+    periods = alert.get("active_periods") or []
+    if not periods:
+        return True
+    return any(
+        (p.get("start") is None or p["start"] <= now)
+        and (p.get("end") is None or p["end"] >= now)
+        for p in periods
+    )
+
+
+rows = []
+for alert in alerts:
+    if alert.get("alert_type") != "planned_work" or not active(alert):
+        continue
+    headline = " ".join((alert.get("header_text") or "").split())[:120]
+    for route_id in alert.get("affected_route_ids") or []:
+        rows.append(f"{alert.get('data_source', '')}\t{route_id}\t{headline}")
+
+with open(sys.argv[2], "w") as out:
+    out.write("\n".join(sorted(set(rows))) + ("\n" if rows else ""))
+PY
+  pw_count=$(wc -l < "$TMPDIR/planned_work.tsv" | tr -d ' ')
+  echo -e "Active planned work: ${pw_count} line(s) affected"
+else
+  echo -e "${YELLOW}Service alerts unavailable — empty boards will not be excused${NC}"
+fi
+echo ""
+
+# NJT's parser types every non-RSS advisory as "planned_work" with an
+# open-ended active window (start=pubdate, end=None), so for NJT alert_type
+# means "advisory", not "closure" — a months-old line-scoped notice (fare
+# change, schedule pamphlet) would otherwise permanently excuse a dark NEC or
+# NJCL board. NJT rows therefore get an extra gate: the headline itself must
+# look closure-shaped. Other sources keep the alert_type contract as designed
+# (MTA's lmm:planned_work: entity ids are genuinely planned service changes).
+# Matches the NJT planned-work sample in the collector's own tests
+# (tests/unit/collectors/test_service_alerts.py: "Service suspended between
+# A and B." — caught by "suspend").
+NJT_CLOSURE_RE='suspend|no (rail |train )?service|bus(es)? (will )?(replace|substitut)|shuttle|not operat|closed|cancel'
+
+# Echo a planned-work headline when EVERY line serving a pair has active work.
+# Usage: planned_work_note <data_source> <comma-separated line codes>
+#
+# Requiring *all* of them is the point. Many lines carry some planned work at
+# any hour — 18 subway lines did during the run that motivated this — so
+# excusing a pair because one of its lines is touched would suppress genuine
+# outages wholesale. A pair served by a single line needs that line closed; a
+# multi-line trunk is never excused by one branch's work, which is why
+# many-line pairs deliberately leave the field empty.
+planned_work_note() {
+  local source="$1" lines="$2" line note first=""
+  [[ -z "$lines" || ! -s "$TMPDIR/planned_work.tsv" ]] && return 1
+  local IFS=,
+  for line in $lines; do
+    note=$(awk -F'\t' -v s="$source" -v l="$line" -v njt_re="$NJT_CLOSURE_RE" \
+      '$1 == s && $2 == l && (s != "NJT" || tolower($3) ~ njt_re) { print $3; exit }' \
+      "$TMPDIR/planned_work.tsv")
+    [[ -z "$note" ]] && return 1
+    [[ -z "$first" ]] && first="$note"
+  done
+  echo "$first"
+}
+
 # --- Congestion API (network-wide, tested once per data source) ---
 
 echo -e "${BOLD}Congestion API...${NC}"
@@ -218,19 +331,51 @@ done
 echo ""
 
 # --- Routes ---
-# Format: "label|from|to|data_source|ml_station|flags"
+# Format: "label|from|to|data_source|ml_station|flags|lines"
 #   ml_station: station code for ML prediction tests (empty if none)
 #   flags:  w = weekday-only (skip on weekends)
 #           s = schedule-only data source (skip OBSERVED check)
+#   lines:  comma-separated line codes serving this pair, as they appear in
+#           service alerts' `affected_route_ids`. Used only to explain an empty
+#           board: a route serving 0 trains is downgraded from FAIL to WARN when
+#           EVERY listed line has active planned work (see planned_work_note).
+#
+#           Codes must be canonical alert-namespace codes. route_topology's
+#           line_codes is a DB-matching set, not the alert namespace: it also
+#           carries strings journeys' line_code column may hold — NJT titlecase
+#           legacy aliases ("Ra", "Mo") and subway express variants ("7X") —
+#           which alerts never use. Since every listed code must have an alert,
+#           one stray alias would make the pair permanently inexcusable.
+#
+#           Deliberately empty in three cases, because a wrong or over-broad
+#           value here silently suppresses real outages:
+#             - LIRR / MNR: MTA publishes numeric GTFS route ids in alerts
+#               (`LIRR|10`, `MNR|2`) which do not match route_topology's
+#               `LIRR-BB` / `MNR-HUD` codes. There is no mapping to key on, so
+#               these are left unset rather than guessed.
+#             - Pairs served by many lines (SEPTA RR through Center City runs
+#               13). Planned work on one branch is no reason to excuse the whole
+#               trunk being empty.
+#             - Sources that can never produce a planned_work row: PATH, PATCO,
+#               Amtrak, BART, MBTA and Metra publish no service-alert feed at
+#               all; WMATA has an incidents feed but the collector types every
+#               incident "alert", never "planned_work" (and the source is
+#               disabled in committed config); SEPTA's alert remapper likewise
+#               emits only "elevator"/"alert", so SEPTA_RR / SEPTA_METRO codes
+#               here could never fire.
 
 ROUTES=(
   # NJ Transit - high frequency, reliable all-week
-  "NJT NEC|NY|TR|NJT|NY|"
-  "NJT NJCL|NY|LB|NJT|NY|"
+  "NJT NEC|NY|TR|NJT|NY||NE"
+  "NJT NJCL|NY|LB|NJT|NY||NC"
   "NJT Main Line|HB|SF|NJT|HB|"
   # NJ Transit - weekday-only (limited weekend service)
-  "NJT Morris & Essex|HB|DV|NJT|HB|w"
-  "NJT Raritan Valley|NP|HG|NJT|NP|w"
+  # Alert-feed codes only: `Mo`/`Ra` are pre-2026-03 database aliases that the
+  # alert parser never emits, and planned_work_note requires every listed code
+  # to have an alert, so including them made these two rows unexcusable. `MO`
+  # stays on the M&E pair because Montclair-Boonton genuinely serves HB->DV.
+  "NJT Morris & Essex|HB|DV|NJT|HB|w|ME,MO"
+  "NJT Raritan Valley|NP|HG|NJT|NP|w|RV"
   # Amtrak
   "Amtrak NEC|NY|WS|AMTRAK|NY|"
   "Amtrak Keystone|PH|HAR|AMTRAK|PH|"
@@ -262,14 +407,20 @@ ROUTES=(
   "MNR New Haven Main|GCT|MNHV|MNR|GCT|"
   "MNR Hudson Short|GCT|MCRH|MNR|GCT|"
   # Subway
-  "Subway 1|S101|S142|SUBWAY||"
-  "Subway A|SA55|SA24|SUBWAY||"
-  "Subway L|SL29|SL01|SUBWAY||"
-  "Subway 7|S701|S726|SUBWAY||"
-  "Subway N|SR01|SD43|SUBWAY||"
+  "Subway 1|S101|S142|SUBWAY|||1"
+  "Subway A|SA55|SA24|SUBWAY|||A,C"
+  "Subway L|SL29|SL01|SUBWAY|||L"
+  # MTA scopes alerts to the base route id, not express variants ("7X" is a
+  # separate DB line_code, never an alert route), so the Flushing pair keys
+  # on "7" alone.
+  "Subway 7|S701|S726|SUBWAY|||7"
+  "Subway N|SR01|SD43|SUBWAY|||N"
   # PATCO - schedule-only (no real-time API available)
   "PATCO Speedline|LND|FFL|PATCO||s"
-  # SEPTA Regional Rail — Center City pairs (all lines pass 30th St/Suburban)
+  # SEPTA Regional Rail — Center City pairs (all lines pass 30th St/Suburban).
+  # No `lines` values for SEPTA: its alert remapper only ever emits
+  # "elevator"/"alert", never "planned_work", so a code here could never match
+  # the index (same no-value-beats-wrong-value treatment as LIRR/MNR).
   "SEPTA RR Center City|SEPR90004|SEPR90005|SEPTA_RR||"
   "SEPTA RR Trenton Line|SEPR90701|SEPR90004|SEPTA_RR||"
   # SEPTA Metro — NHSL is the real-time-upgraded Metro line (Broad St / MFL are
@@ -315,6 +466,34 @@ sc = _load('station_configs')
 ${seed_arg}
 ml = set(sc.get_prediction_enabled_stations())
 is_weekend = datetime.date.today().weekday() >= 5
+# Sources whose route_topology line codes are the same strings the service-alert
+# feed puts in affected_route_ids. LIRR and MNR are excluded on purpose: MTA
+# publishes numeric GTFS route ids for them, so their topology codes would never
+# match and a guessed mapping could wrongly excuse a real outage. SEPTA_RR and
+# SEPTA_METRO are excluded for a different reason: the SEPTA alert remapper only
+# ever emits 'elevator' or 'alert', never 'planned_work', so a SEPTA code could
+# never match the planned-work index. See the 'lines' notes on the fixed table.
+ALERT_LINE_SOURCES = {'SUBWAY', 'NJT'}
+# A pair served by more lines than this is a trunk; planned work on one branch
+# is no reason to excuse the whole thing being empty, so it gets no codes.
+MAX_ALERT_LINES = 3
+def alert_line_codes(src, codes):
+    # route_topology line_codes is a DB-matching set, not the alert namespace:
+    # it holds every string journeys' line_code column may contain. Alerts only
+    # ever carry canonical codes, and planned_work_note requires EVERY listed
+    # code to have an alert, so one non-canonical code makes the pair
+    # permanently inexcusable. Filter to the alert namespace:
+    if src == 'NJT':
+        # Titlecase entries ('Ra', 'Mo', 'Pa', ...) are pre-2026-03 DB aliases —
+        # 8 of 12 NJT routes carry one beside the canonical code;
+        # canonical NJT codes (the NJT_LINE_SCOPE_TO_CODES values) are all
+        # uppercase.
+        codes = {c for c in codes if c == c.upper()}
+    if src == 'SUBWAY':
+        # MTA scopes alerts to base route ids; express variants ('7X', '6X')
+        # are dropped when their base route is also listed.
+        codes = {c for c in codes if not (c.endswith('X') and c[:-1] in codes)}
+    return sorted(codes)
 for src, n in [('NJT',3),('AMTRAK',3),('PATH',2),('LIRR',3),('MNR',2),('SUBWAY',2),('PATCO',1),('BART',2),('MBTA',3),('METRA',3),('WMATA',2)]:
     routes = rt.get_routes_for_data_source(src)
     flags = 's' if src == 'PATCO' else ''
@@ -328,7 +507,9 @@ for src, n in [('NJT',3),('AMTRAK',3),('PATH',2),('LIRR',3),('MNR',2),('SUBWAY',
         else:
             t = stations[-1]
         m = next((s for s in [f, t] if s in ml), '')
-        print(f'{src} {r.name}|{f}|{t}|{src}|{m}|{flags}')
+        codes = alert_line_codes(src, r.line_codes) if src in ALERT_LINE_SOURCES else []
+        lines = ','.join(codes) if 0 < len(codes) <= MAX_ALERT_LINES else ''
+        print(f'{src} {r.name}|{f}|{t}|{src}|{m}|{flags}|{lines}')
 " > "$TMPDIR/random_routes.txt" 2>"$TMPDIR/random_routes_err.txt"; then
     # Dedup: skip routes whose from|to|source already appears in fixed set
     for route in "${ROUTES[@]}"; do
@@ -364,8 +545,9 @@ for route in "${ROUTES[@]}"; do
       echo -e "${BOLD}Phase 2: Random routes ($((${#ROUTES[@]} - FIXED_COUNT)))${NC}\n"
     fi
   fi
-  IFS='|' read -r label from to source ml flags <<< "$route"
+  IFS='|' read -r label from to source ml flags lines <<< "$route"
   flags="${flags:-}"
+  lines="${lines:-}"
 
   # Skip weekday-only routes on weekends
   if [[ "$IS_WEEKEND" == "true" && "$flags" == *w* ]]; then
@@ -403,8 +585,16 @@ for route in "${ROUTES[@]}"; do
 
   count=$(jq '.departures | length' "$TMPDIR/dep.json")
   if [[ "$count" -eq 0 ]]; then
-    fail "Departures: 0 trains"
-    FAILED_ROUTES+=("$label ($from -> $to): 0 trains")
+    # An empty board is only a defect if the agency is claiming to run the
+    # service. When every line on this pair has active planned work, 0 trains
+    # is the backend correctly reflecting a closure — WARN rather than SKIP,
+    # because the run did test it and the headline is worth reading.
+    if pw_note=$(planned_work_note "$source" "$lines"); then
+      warn "Departures: 0 trains — planned work: $pw_note"
+    else
+      fail "Departures: 0 trains"
+      FAILED_ROUTES+=("$label ($from -> $to): 0 trains")
+    fi
     echo ""
     IDX=$((IDX + 1))
     continue
@@ -430,6 +620,30 @@ for route in "${ROUTES[@]}"; do
       fail "No trains (OBSERVED or SCHEDULED)"
       FAILED_ROUTES+=("$label ($from -> $to): 0 trains")
     fi
+  elif [[ "$sched" -eq 0 && "$source" == "AMTRAK" && "$obs" -gt 0 && "$(current_et_hour)" -ge "$AMTRAK_SCHEDULE_QUIET_FROM_HOUR" ]]; then
+    # Amtrak's SCHEDULED records are upgraded to OBSERVED as each train is
+    # discovered, so by late evening today's are all consumed. Tomorrow's do
+    # exist — the 00:45 ET job generates today *and* tomorrow
+    # (services/scheduler.py::generate_amtrak_schedules) — but they are almost
+    # entirely out of range: the departures query defaults its window to
+    # midnight-today + 26 hours (services/departure.py), i.e. it stops at 02:00
+    # ET tomorrow. An all-OBSERVED Amtrak board late in the evening is
+    # therefore expected rather than a discovery gap.
+    #
+    # What this gives up: on a route with genuine post-midnight Amtrak service,
+    # a total failure of tomorrow's generation would have left a SCHEDULED row
+    # inside that 00:00-02:00 slice, and this now swallows it. That signal is
+    # thin and route-dependent, which is why the check false-failed.
+    #
+    # No exemption is needed at 00:00-00:45: the new service day's rows were
+    # generated a day ahead (yesterday's tomorrow pass), so a 0-SCHEDULED
+    # board just after midnight means generation really failed.
+    #
+    # Three Amtrak routes failed this check at 22:00 ET and passed unchanged at
+    # 10:30 the next morning (issue #1771). NJT is deliberately not exempt: its
+    # 27-hour schedule collection lands post-midnight SCHEDULED trains inside
+    # that same 02:00 cutoff, so the check still holds there.
+    pass "Amtrak: $obs observed, 0 scheduled (after ${AMTRAK_SCHEDULE_QUIET_FROM_HOUR}:00 ET, tomorrow's board is past the 26h query window)"
   elif [[ "$sched" -eq 0 ]]; then
     fail "No SCHEDULED trains ($obs observed, 0 scheduled)"
     FAILED_ROUTES+=("$label ($from -> $to): 0 SCHEDULED trains")
@@ -706,19 +920,22 @@ done
 
 echo -e "${BOLD}Trip Search API (bidirectional)...${NC}"
 
-TRIP_ET_HOUR=$(TZ=America/New_York date +%-H)
-
 # Test a single trip search direction.
-# Returns 0 on success, 1 on failure.
-# Usage: trip_test "label" from to expected tmpfile [always_expect]
+# Returns 0 on success, 1 on failure, 2 when excused by active planned work.
+# Usage: trip_test "label" from to expected tmpfile [always_expect] [source] [lines]
 #   expected: "transfer" | "direct" | "any" | "same_complex"
 #             "same_complex" expects no_direct_trains/0 trips (origin and dest
 #             are platforms in one station complex — see #1357)
 #   always_expect: "true" to FAIL on 0 trips (for 24/7 services like subway)
 #                  During overnight hours (1-5 AM ET), downgrades to WARN due to sparse real-time data
+#   source/lines:  data source and comma-separated line codes serving this pair,
+#                  used to excuse an empty result during planned work. Same
+#                  semantics and same caveats as the ROUTES table's `lines`
+#                  field — set only for single-line pairs (issue #1771).
 trip_test() {
   local label="$1" from="$2" to="$3" expected="$4" tmpfile="$5" always_expect="${6:-false}"
-  local code count search_type is_direct legs transfers
+  local source="${7:-}" lines="${8:-}"
+  local code count search_type is_direct legs transfers pw_note et_hour
 
   code=$(curl -s -o "$tmpfile" -w "%{http_code}" \
     "$API/trips/search?from=$from&to=$to&hide_departed=true&limit=10" 2>/dev/null)
@@ -751,9 +968,23 @@ trip_test() {
   fi
 
   if [[ "$count" -eq 0 ]]; then
-    if [[ "$always_expect" == "true" && "$TRIP_ET_HOUR" -ge 1 && "$TRIP_ET_HOUR" -lt 6 ]]; then
+    # A line closed for planned work has no through service to find, so trip
+    # search returning nothing is correct. Checked before the 24/7 assumption
+    # below, which is exactly the assumption planned work suspends.
+    if pw_note=$(planned_work_note "$source" "$lines"); then
+      warn "$label: 0 trips ($search_type) — planned work: $pw_note"
+      # Distinct from an ordinary miss so the caller can tell an excused
+      # direction from a failing one when checking for asymmetry.
+      return 2
+    fi
+    # Sampled here, not at script start: hundreds of curls run before the trip
+    # tests, and a stale snapshot recreates the boundary false results this
+    # branch exists to avoid (00:35 start reaching this pair at 01:10 → FAIL
+    # instead of the overnight WARN; 05:5x → 06:2x mirror).
+    et_hour=$(current_et_hour)
+    if [[ "$always_expect" == "true" && "$et_hour" -ge 1 && "$et_hour" -lt 6 ]]; then
       warn "$label: 0 trips ($search_type) — overnight (24/7 service, sparse data)"
-    elif [[ "$always_expect" == "true" || "$TRIP_ET_HOUR" -ge 6 ]]; then
+    elif [[ "$always_expect" == "true" || "$et_hour" -ge 6 ]]; then
       fail "$label: 0 trips ($search_type)"
       FAILED_ROUTES+=("Trip search $label: 0 trips ($search_type)")
     else
@@ -797,12 +1028,14 @@ trip_test() {
 }
 
 # Test A→B and B→A. Flag asymmetry if only one direction works.
-# Usage: trip_bidi "label" from to expected [always_expect]
+# Usage: trip_bidi "label" from to expected [always_expect] [source] [lines]
 #   always_expect: "true" to FAIL on 0 trips (for 24/7 services like subway)
 #                  During overnight hours (1-5 AM ET), downgrades to WARN due to sparse real-time data
+#   source/lines:  passed through to trip_test to excuse planned-work closures
 trip_bidi() {
   local label="$1" from="$2" to="$3" expected="$4" always_expect="${5:-false}"
-  local fwd_ok=0 rev_ok=0 sys_from sys_to
+  local source="${6:-}" lines="${7:-}"
+  local fwd_rc=0 rev_rc=0 sys_from sys_to
 
   # Skip pairs whose endpoints belong to a disabled data source.
   sys_from=$(station_system "$from")
@@ -815,13 +1048,19 @@ trip_bidi() {
   fi
 
   echo -e "  ${BOLD}$label${NC}"
-  trip_test "  $from → $to" "$from" "$to" "$expected" "$TMPDIR/trip_fwd.json" "$always_expect" && fwd_ok=1
-  trip_test "  $to → $from" "$to" "$from" "$expected" "$TMPDIR/trip_rev.json" "$always_expect" && rev_ok=1
+  trip_test "  $from → $to" "$from" "$to" "$expected" "$TMPDIR/trip_fwd.json" \
+    "$always_expect" "$source" "$lines" || fwd_rc=$?
+  trip_test "  $to → $from" "$to" "$from" "$expected" "$TMPDIR/trip_rev.json" \
+    "$always_expect" "$source" "$lines" || rev_rc=$?
 
-  if [[ "$fwd_ok" -eq 1 && "$rev_ok" -eq 0 ]]; then
+  # rc 2 means the direction was excused by planned work. Asymmetry is only
+  # meaningful between a working direction and a genuinely failing one —
+  # single-direction closures ("Coney Island-bound F runs express") are real
+  # and would otherwise be reported as a code bug.
+  if [[ "$fwd_rc" -eq 0 && "$rev_rc" -eq 1 ]]; then
     fail "  ASYMMETRY: $from→$to works but $to→$from fails"
     FAILED_ROUTES+=("Trip asymmetry: $label reverse fails")
-  elif [[ "$fwd_ok" -eq 0 && "$rev_ok" -eq 1 ]]; then
+  elif [[ "$fwd_rc" -eq 1 && "$rev_rc" -eq 0 ]]; then
     fail "  ASYMMETRY: $to→$from works but $from→$to fails"
     FAILED_ROUTES+=("Trip asymmetry: $label forward fails")
   fi
@@ -900,13 +1139,13 @@ trip_bidi "SUBWAY A/C↔L BroadwayJunction"    "SA51" "SL22" "same_complex"
 trip_bidi "SUBWAY 7↔G CourtSq"               "S719" "SG22" "same_complex"
 
 # ── Same-line direct (single subway train, 24/7) ───────────────────
-trip_bidi "SUBWAY 4/5 UnionSq↔WallSt"       "S635" "S419" "direct"   "true"
-trip_bidi "SUBWAY L UnionSq↔BedfordAv"       "SL03" "SL08" "direct"   "true"
-trip_bidi "SUBWAY A 59St↔CanalSt"            "SA24" "SA34" "direct"   "true"
-trip_bidi "SUBWAY 7 Flushing↔HudsonYards"    "S701" "S726" "direct"   "true"
-trip_bidi "SUBWAY F 4Av-9St↔W4St"            "SF23" "SD20" "direct"   "true"
-trip_bidi "SUBWAY 1/2/3 96St↔Chambers"       "S120" "S137" "direct"   "true"
-trip_bidi "SUBWAY G CourtSq↔ChurchAv"        "SG22" "SF27" "direct"   "true"
+trip_bidi "SUBWAY 4/5 UnionSq↔WallSt"       "S635" "S419" "direct"   "true" "SUBWAY" "4,5"
+trip_bidi "SUBWAY L UnionSq↔BedfordAv"       "SL03" "SL08" "direct"   "true" "SUBWAY" "L"
+trip_bidi "SUBWAY A 59St↔CanalSt"            "SA24" "SA34" "direct"   "true" "SUBWAY" "A"
+trip_bidi "SUBWAY 7 Flushing↔HudsonYards"    "S701" "S726" "direct"   "true" "SUBWAY" "7"
+trip_bidi "SUBWAY F 4Av-9St↔W4St"            "SF23" "SD20" "direct"   "true" "SUBWAY" "F"
+trip_bidi "SUBWAY 1/2/3 96St↔Chambers"       "S120" "S137" "direct"   "true" "SUBWAY" "1,2,3"
+trip_bidi "SUBWAY G CourtSq↔ChurchAv"        "SG22" "SF27" "direct"   "true" "SUBWAY" "G"
 
 echo ""
 
