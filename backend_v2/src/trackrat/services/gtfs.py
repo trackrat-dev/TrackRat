@@ -766,14 +766,29 @@ class GTFSService:
                 )
                 stats["stop_times"] = stop_times_count
 
-            # Get date range from calendar
+            # Get date range from calendar, restricted to services the stored
+            # trips actually reference. GTFS_ROUTE_TYPE_FILTER drops routes
+            # (and, through them, trips and stop_times), but _parse_calendar
+            # keeps every calendar.txt row — SEPTA_METRO's bundle is the shared
+            # google_bus.zip and carries ~131 bus routes' calendars. Dating the
+            # bundle from service that is never ingested would let a bus
+            # calendar that has already started hide a Metro calendar that has
+            # not (this feed_start_date is what is_not_yet_active reads), and
+            # symmetrically let a running bus calendar hide a lapsed Metro one.
             if calendar_services:
                 result = await db.execute(
                     select(
                         GTFSCalendar.start_date,
                         GTFSCalendar.end_date,
                     )
-                    .where(GTFSCalendar.data_source == data_source)
+                    .where(
+                        GTFSCalendar.data_source == data_source,
+                        GTFSCalendar.service_id.in_(
+                            select(GTFSTrip.service_id).where(
+                                GTFSTrip.data_source == data_source
+                            )
+                        ),
+                    )
                     .order_by(GTFSCalendar.start_date)
                 )
                 dates = result.all()
@@ -2091,6 +2106,17 @@ class GTFSService:
         by_source = {row.data_source: row for row in rows}
 
         now = now_et()
+        # One Eastern date for every source, deliberately. GTFS calendar dates
+        # are agency-local, so a per-source date (utils/time.now_for_provider)
+        # would be the spec-correct reading — but it is not what this check is
+        # for. `get_active_service_ids` is asked for the Eastern date on every
+        # source (services/departure.py), so the Eastern date is what decides
+        # whether departures are actually served. Judging the bundle by the
+        # agency's own date would report BART "not yet active" — and fail the
+        # deployment gate — for the three hours after Eastern midnight during
+        # which its departures are being served fine. The residual skew belongs
+        # to the serving path's ET dating, not here; every source that reaches
+        # this loop today is Eastern (BART and Metra are in the disabled set).
         today = now.date()
         statuses = []
         for source in data_sources:

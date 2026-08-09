@@ -163,6 +163,59 @@ def _gtfs_zip(*, trips: int = 2, service_id: str = "WKDY") -> bytes:
     return buffer.getvalue()
 
 
+def _split_route_type_zip(
+    *,
+    rail_start: str,
+    rail_end: str,
+    bus_start: str,
+    bus_end: str,
+) -> bytes:
+    """A SEPTA-shaped bundle carrying both rail and bus, on separate calendars.
+
+    SEPTA publishes Metro inside `google_bus.zip`, so the real bundle mixes
+    route types and `GTFS_ROUTE_TYPE_FILTER` keeps only 0/1. This models the
+    case that matters: the two modes run on *different* service ids with
+    different windows, so whichever rows are used to date the bundle changes
+    the answer. Dates are in GTFS's own `YYYYMMDD` form.
+    """
+    files = {
+        "routes.txt": (
+            "route_id,route_short_name,route_long_name,route_type,route_color\n"
+            "R_RAIL,BSL,Broad Street Line,1,ff5722\n"
+            "R_BUS,17,Bus Route 17,3,336699\n"
+        ),
+        "calendar.txt": (
+            "service_id,monday,tuesday,wednesday,thursday,friday,"
+            "saturday,sunday,start_date,end_date\n"
+            f"RAIL,1,1,1,1,1,1,1,{rail_start},{rail_end}\n"
+            f"BUS,1,1,1,1,1,1,1,{bus_start},{bus_end}\n"
+        ),
+        "stops.txt": (
+            "stop_id,stop_name,stop_lat,stop_lon\n"
+            "S1,Test Origin,39.95,-75.16\n"
+            "S2,Test Terminal,40.00,-75.15\n"
+        ),
+        "trips.txt": (
+            "trip_id,service_id,route_id,trip_headsign,direction_id\n"
+            "T_RAIL,RAIL,R_RAIL,Test Terminal,0\n"
+            "T_BUS,BUS,R_BUS,Test Terminal,0\n"
+        ),
+        "stop_times.txt": (
+            "trip_id,arrival_time,departure_time,stop_id,stop_sequence\n"
+            "T_RAIL,08:00:00,08:00:00,S1,1\n"
+            "T_RAIL,08:30:00,08:30:00,S2,2\n"
+            "T_BUS,09:00:00,09:00:00,S1,1\n"
+            "T_BUS,09:30:00,09:30:00,S2,2\n"
+        ),
+    }
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
+        for name, body in files.items():
+            zf.writestr(name, body)
+    return buffer.getvalue()
+
+
 @contextlib.contextmanager
 def _stub_download(bodies: bytes | dict[str, bytes]):
     """Serve `bodies` in place of the real GTFS download, per source.
@@ -631,6 +684,85 @@ class TestRealRefreshPathWritesWhatTheSweepReads:
     test stayed green. These drive the real service with a controlled feed so
     the outcome and the row are both produced by production code.
     """
+
+    async def test_parse_dates_the_bundle_only_by_service_it_actually_ingests(
+        self, db_session: AsyncSession
+    ):
+        """SEPTA_METRO's bundle is the shared bus feed; bus rows must not date it.
+
+        `GTFS_ROUTE_TYPE_FILTER` keeps only route types 0/1 for SEPTA_METRO, so
+        the ~131 bus routes' trips are dropped — but `_parse_calendar` stores
+        every `calendar.txt` row regardless. Taking `min(start_date)` across all
+        of them lets a bus calendar that has already started vouch for a Metro
+        calendar that has not, and `is_not_yet_active` (which reads exactly this
+        column) then reports the source healthy while Metro serves nothing:
+        #1770's detection gap reopened one level down.
+        """
+        service = GTFSService()
+        today = now_et().date()
+        metro_start = today + timedelta(days=3)
+
+        with _stub_download(
+            _split_route_type_zip(
+                rail_start=metro_start.strftime("%Y%m%d"),
+                rail_end=(today + timedelta(days=60)).strftime("%Y%m%d"),
+                bus_start=(today - timedelta(days=14)).strftime("%Y%m%d"),
+                bus_end=(today + timedelta(days=60)).strftime("%Y%m%d"),
+            )
+        ):
+            outcome = await service.refresh_feed(db_session, "SEPTA_METRO")
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+
+        (status,) = await service.get_feed_statuses(db_session, ["SEPTA_METRO"])
+
+        assert status.feed_start_date == metro_start, (
+            "The bundle was dated from a bus calendar that is never ingested "
+            f"(feed_start_date={status.feed_start_date}, "
+            f"Metro service starts {metro_start})"
+        )
+        assert status.is_not_yet_active is True, (
+            "A bundle whose only ingested service starts in three days read as "
+            "active, so /health and verify-deployment.sh both pass while Metro "
+            "serves nothing"
+        )
+
+    async def test_parse_dates_the_bundle_end_only_by_service_it_ingests(
+        self, db_session: AsyncSession
+    ):
+        """The mirror bound: a running bus calendar must not mask a lapsed Metro one.
+
+        `max(end_date)` has the same blind spot as `min(start_date)`, and it
+        feeds `is_lapsed` — the check `verify-deployment.sh` has been gating on
+        since #1419.
+        """
+        service = GTFSService()
+        today = now_et().date()
+        metro_end = today - timedelta(days=2)
+
+        with _stub_download(
+            _split_route_type_zip(
+                rail_start=(today - timedelta(days=60)).strftime("%Y%m%d"),
+                rail_end=metro_end.strftime("%Y%m%d"),
+                bus_start=(today - timedelta(days=60)).strftime("%Y%m%d"),
+                bus_end=(today + timedelta(days=60)).strftime("%Y%m%d"),
+            )
+        ):
+            outcome = await service.refresh_feed(db_session, "SEPTA_METRO")
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+
+        (status,) = await service.get_feed_statuses(db_session, ["SEPTA_METRO"])
+
+        assert status.feed_end_date == metro_end, (
+            "The bundle's expiry was taken from a bus calendar that is never "
+            f"ingested (feed_end_date={status.feed_end_date}, Metro service "
+            f"ended {metro_end})"
+        )
+        assert status.is_lapsed is True, (
+            "A bundle whose ingested service expired two days ago read as "
+            "in-force because an excluded bus calendar is still running"
+        )
 
     async def test_successful_refresh_stamps_the_parse_the_sweep_reads(
         self, db_session: AsyncSession
