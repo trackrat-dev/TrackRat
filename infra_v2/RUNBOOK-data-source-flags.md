@@ -177,10 +177,10 @@ empty history and lose the analytics baseline the soak built up.
 | Environment | Disabled sources |
 |---|---|
 | staging | BART, WMATA, MBTA, METRA |
-| production | BART, WMATA, MBTA, METRA, SEPTA_RR, SEPTA_METRO |
+| production | BART, WMATA, MBTA, METRA |
 
-The environments diverge deliberately: `SEPTA_RR` and `SEPTA_METRO` are running
-their staging soak (issue #1634). Production stays dark until the soak gates
-pass, and moves in one coordinated release with the iOS
-(`TrainSystem.disabledSystems`) and web (`DISABLED_SYSTEMS`) mirrors — backend
-first, clients after.
+The environments match again: `SEPTA_RR` and `SEPTA_METRO` passed their staging
+soak (issue #1634) and the production cutover has landed, alongside the iOS
+(`TrainSystem.disabledSystems`) and web (`DISABLED_SYSTEMS`) mirrors. Keeping
+them divergent is still the supported mode for the next soak — that is what the
+per-environment keying exists for.
