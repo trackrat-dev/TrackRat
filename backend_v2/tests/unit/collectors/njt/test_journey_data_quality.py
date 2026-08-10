@@ -538,7 +538,13 @@ class TestArrivalTimeFreezing:
 
         This prevents the anomaly where NJT revises TIME values for past stops,
         producing erroneous delay readings (e.g., +99m or -13m)."""
-        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+        # Anchor relative to the clock, not a fixed 08:00: the #1768 write guard
+        # only admits an arrival reading that has already happened, so a fixed
+        # hour made this test fail on any run starting before 08:20 ET. NP's
+        # arrival (+20) and departure (+22) must be past for the first cycle to
+        # record anything; NY (+38/+40) must stay future so it remains the
+        # not-yet-reached stop.
+        base_time = now_et().replace(second=0, microsecond=0) - timedelta(minutes=30)
 
         # Create a journey
         journey = TrainJourney(
