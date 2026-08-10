@@ -93,7 +93,7 @@ poetry run uvicorn trackrat.main:app --reload
 - **Every 5 minutes**: Update checks for active journeys
 - **Every 15 minutes**: NJT journey maintenance (silent-cancellation reconcile + old-journey expiry sweeps)
 - **Every 5 minutes**: Route alert evaluation and push notifications
-- **Hourly at :05**: Validation across key routes
+- **Hourly**: Validation across key routes
 - **Daily 3:30 AM ET**: Data retention cleanup (deletes journeys, discovery runs, validation results, and inactive service alerts older than `TRACKRAT_RETENTION_DAYS`, default 60 days; active service alerts are kept regardless of age)
 - Monitor scheduler status at `/scheduler/status` endpoint
 

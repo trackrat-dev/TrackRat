@@ -5,7 +5,7 @@
 ## Technology Stack
 
 - **Framework**: React 19.2 + TypeScript 7.0 + PWA (vite-plugin-pwa)
-- **Build Tool**: Vite 8.1 (fast dev server, optimized builds)
+- **Build Tool**: Vite 8.2 (fast dev server, optimized builds)
 - **Styling**: Tailwind CSS 4.3 (utility-first, custom design system)
 - **State Management**: Zustand 5.0 (lightweight, no boilerplate)
 - **Routing**: React Router DOM 7.18
@@ -170,7 +170,7 @@ webpage_v2/
 │   ├── store/
 │   │   └── appStore.ts     # Zustand global state
 │   ├── data/
-│   │   ├── stations.ts     # Static station list (1500+ stations, 13 transit systems); DISABLED_SYSTEMS / AVAILABLE_SYSTEMS hide app-wide-disabled systems (currently BART, WMATA, MBTA, Metra — mirrors backend TRACKRAT_DISABLED_DATA_SOURCES). SEPTA is enabled for the #1634 rollout and the production backend flag is now cleared to match, so main → production is safe to promote — that promotion is the SEPTA production cutover
+│   │   ├── stations.ts     # Static station list (1500+ stations, 13 transit systems); DISABLED_SYSTEMS / AVAILABLE_SYSTEMS hide app-wide-disabled systems (currently BART, WMATA, MBTA, Metra — mirrors backend TRACKRAT_DISABLED_DATA_SOURCES). SEPTA is enabled for the #1634 rollout and the backend flag is cleared in both environments, so the picker entry is backed by real data everywhere
 │   │   ├── routeTopology.ts # Route topology for smart search and filtering
 │   │   └── subwayLines.ts  # Subway line definitions and color mappings
 │   ├── types/
