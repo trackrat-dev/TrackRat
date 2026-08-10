@@ -26,6 +26,7 @@ config block out of ``compute.tf``.
 """
 
 import os
+import re
 import shutil
 import subprocess
 import textwrap
@@ -129,6 +130,32 @@ def test_enable_cloudflare_tunnel_variable_has_committed_boolean_default():
     assert (
         "default     = true" in block or "default     = false" in block
     ), "connector gate must keep an explicit committed boolean default (issue #1578)"
+
+
+def test_enable_cloudflare_tunnel_description_matches_its_default():
+    """The description must not contradict the literal default.
+
+    It claimed "When false (the committed default)" while the default was
+    ``true`` — and the runbook repeated the wrong value. Anyone reasoning about
+    blast radius from the description alone would conclude the connector was off
+    (issue #1758). Assert the two agree so the drift cannot silently return.
+    """
+    text = _VARIABLES_TF.read_text()
+    block = text.split('variable "enable_cloudflare_tunnel"', 1)[1].split(
+        "variable ", 1
+    )[0]
+    declared = re.search(r"^\s*default\s*=\s*(true|false)\s*$", block, re.MULTILINE)
+    assert declared, f"no literal boolean default found: {block}"
+    opposite = "false" if declared.group(1) == "true" else "true"
+    contradiction = re.search(
+        rf"[Ww]hen {opposite} \(the committed default\)|"
+        rf"committed default is {opposite}",
+        block,
+    )
+    assert not contradiction, (
+        f"default is {declared.group(1)} but the description calls "
+        f"{opposite} the committed default: {contradiction.group(0)}"
+    )
 
 
 def test_startup_script_gates_connector_on_flag_and_token():
@@ -734,3 +761,180 @@ def test_tunnel_block_cleanup_failure_does_not_abort_startup(tmp_path):
     _assert_api_db_config_intact(run)
     assert run.tunnel_enabled, run.output
     assert "temporary tunnel config cleanup failed" in run.output
+
+
+# --------------------------------------------------------------------------- #
+# The token READ itself (issue #1758)
+#
+# Everything above takes CLOUDFLARE_TUNNEL_TOKEN as given. The 2026-08-08
+# production outage happened one step earlier: the read failed, gcloud's error
+# text arrived on toolbox's stdout, and the non-empty result was appended to
+# .env — which made .env unparseable and killed the startup script under
+# `set -e` before any container started. These execute the real read block.
+# --------------------------------------------------------------------------- #
+
+_TOKEN_BLOCK_START = 'CLOUDFLARE_TUNNEL_TOKEN=""'
+_TOKEN_BLOCK_END = 'echo "Secrets fetched successfully"'
+
+# Verbatim shape of what a failed read put on STDOUT during the outage: toolbox
+# runs gcloud in a container on a pty, so gcloud's stderr is merged into
+# toolbox's stdout (hence the \r) and the caller's `2>/dev/null` discards
+# nothing. The second line is what landed on .env line 16.
+_GCLOUD_ERROR_BLOB = (
+    "ERROR: (gcloud.secrets.versions.access) NOT_FOUND: "
+    "Secret [projects/trackrat-v2/secrets/x] not found.\r\n"
+    "- '@type': type.googleapis.com/google.rpc.ErrorInfo\r\n"
+    "  reason: SECRET_NOT_FOUND\r\n"
+)
+
+# Shape of a real connector token: one line, base64url alphabet, no whitespace.
+_WELL_FORMED_TOKEN = (
+    "eyJhIjoiOWY4ZTdkNmM1YjRhMzkyODE3MDYiLCJ0IjoiZGVhZGJlZWYtMTIzNC00NTY3"
+    "LTg5YWItY2RlZjAxMjM0NTY3Iiwic181IjoiYWJjZC0=_-"
+)
+
+_TOKEN_TOOLBOX_STUB = """#!/bin/bash
+# Emulates: toolbox --quiet gcloud secrets versions access latest --secret=...
+#
+# The whole point is that toolbox puts gcloud's diagnostics on STDOUT, so the
+# stub writes $STUB_TOKEN_STDOUT to stdout regardless of the exit code it is
+# told to return. A stub that wrote failures to stderr would test nothing.
+printf '%s' "$STUB_TOKEN_STDOUT"
+exit "$STUB_TOKEN_EXIT"
+"""
+
+
+def _extract_token_read_block() -> str:
+    """Slice the tunnel-token read + validation out of the real startup script."""
+    startup = _COMPUTE_TF.read_text().split("shutdown-script", 1)[0]
+    assert _TOKEN_BLOCK_START in startup, "token read block not found"
+    block = startup.split(_TOKEN_BLOCK_START, 1)[1].split(_TOKEN_BLOCK_END, 1)[0]
+    assert "$(toolbox" not in block, (
+        "the token read must not be captured via command substitution — that is "
+        "what let toolbox's stdout become the token (issue #1758)"
+    )
+    body = textwrap.dedent(block)
+    assert body.splitlines()[1].startswith("if "), (
+        "dedent did not strip the Terraform heredoc indent; a column-0 line "
+        f"probably crept into the slice: {body[:200]!r}"
+    )
+    return f"{_TOKEN_BLOCK_START}\n{body}\n"
+
+
+def _run_token_read(tmp_path: Path, *, stdout: str, exit_code: int) -> tuple:
+    """Execute the real read block against a toolbox stub.
+
+    Returns (completed_process, resolved_token).
+    """
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    toolbox = bin_dir / "toolbox"
+    toolbox.write_text(_TOKEN_TOOLBOX_STUB)
+    toolbox.chmod(0o755)
+
+    # A sentinel around the value so trailing-newline handling is observable and
+    # an empty token is distinguishable from an absent echo.
+    script = _extract_token_read_block() + '\necho "TOKEN[$CLOUDFLARE_TUNNEL_TOKEN]"\n'
+    proc = subprocess.run(
+        ["bash", "-e", "-c", script],
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "PATH": f"{bin_dir}:{os.environ.get('PATH', '/usr/bin:/bin')}",
+            "ENVIRONMENT": "staging",
+            "PROJECT_ID": "trackrat-v2",
+            "STUB_TOKEN_STDOUT": stdout,
+            "STUB_TOKEN_EXIT": str(exit_code),
+        },
+    )
+    match = re.search(r"TOKEN\[(.*)\]", proc.stdout, re.DOTALL)
+    assert match, f"read block produced no token line: {proc.stdout}{proc.stderr}"
+    return proc, match.group(1)
+
+
+def test_token_read_rejects_a_failed_read_that_printed_to_stdout(tmp_path):
+    """The exact 2026-08-08 regression: non-zero exit, error text on stdout."""
+    proc, token = _run_token_read(tmp_path, stdout=_GCLOUD_ERROR_BLOB, exit_code=1)
+
+    assert proc.returncode == 0, (
+        "a failed token read must never abort the startup script "
+        f"(set -e is active): {proc.stdout}{proc.stderr}"
+    )
+    assert token == "", (
+        "gcloud's error text was accepted as a token — this is what was appended "
+        f"to .env and boot-looped the MIG: {token!r}"
+    )
+    assert "token could not be read" in proc.stdout
+
+
+def test_token_read_rejects_diagnostics_returned_on_a_zero_exit(tmp_path):
+    """Exit status alone is not enough: toolbox chatter can accompany a 0 exit,
+    so the shape check has to independently reject it."""
+    proc, token = _run_token_read(tmp_path, stdout=_GCLOUD_ERROR_BLOB, exit_code=0)
+
+    assert proc.returncode == 0, f"{proc.stdout}{proc.stderr}"
+    assert token == "", f"malformed token accepted on a zero exit: {token!r}"
+    assert "token is malformed" in proc.stdout
+
+
+@pytest.mark.parametrize(
+    "junk,label",
+    [
+        ("has a space in it", "whitespace"),
+        ("token\nsecond-line", "embedded newline"),
+        ("ERROR: (gcloud.secrets.versions.access) PERMISSION_DENIED", "gcloud error"),
+        ("{'code': 403}", "structured diagnostics"),
+    ],
+)
+def test_token_read_rejects_anything_outside_the_base64_alphabet(
+    tmp_path, junk, label
+):
+    proc, token = _run_token_read(tmp_path, stdout=junk, exit_code=0)
+
+    assert proc.returncode == 0, f"{proc.stdout}{proc.stderr}"
+    assert token == "", f"{label} was accepted as a token: {token!r}"
+
+
+def test_token_read_accepts_a_well_formed_token(tmp_path):
+    """The guard must not break the working path it protects."""
+    proc, token = _run_token_read(
+        tmp_path, stdout=f"{_WELL_FORMED_TOKEN}\n", exit_code=0
+    )
+
+    assert proc.returncode == 0, f"{proc.stdout}{proc.stderr}"
+    assert token == _WELL_FORMED_TOKEN, (
+        f"a valid token was mangled or rejected: {token!r}"
+    )
+    assert "malformed" not in proc.stdout
+    assert "could not be read" not in proc.stdout
+
+
+def test_token_read_strips_the_pty_carriage_return(tmp_path):
+    """toolbox's pty appends \\r\\n. A CR left in the value would be written into
+    .env and passed to cloudflared as part of the token."""
+    proc, token = _run_token_read(
+        tmp_path, stdout=f"{_WELL_FORMED_TOKEN}\r\n", exit_code=0
+    )
+
+    assert proc.returncode == 0, f"{proc.stdout}{proc.stderr}"
+    assert token == _WELL_FORMED_TOKEN, f"CR/LF not stripped: {token!r}"
+
+
+def test_token_read_treats_an_empty_secret_as_no_token(tmp_path):
+    proc, token = _run_token_read(tmp_path, stdout="", exit_code=0)
+
+    assert proc.returncode == 0, f"{proc.stdout}{proc.stderr}"
+    assert token == ""
+    # An empty read is not malformed — it is the documented "tunnel off" path.
+    assert "token is malformed" not in proc.stdout
+
+
+def test_startup_script_pull_failure_does_not_abort_the_boot():
+    """`down` runs before `pull`, so an unguarded `pull` under `set -e` leaves the
+    VM with zero containers and the MIG auto-healing into the same failure."""
+    text = _COMPUTE_TF.read_text()
+    assert "$COMPOSE_PATH pull ||" in text, (
+        "`$COMPOSE_PATH pull` must be non-fatal — an abort here lands after "
+        "`down` and before any `up` (issue #1758)"
+    )

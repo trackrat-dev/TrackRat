@@ -177,9 +177,13 @@ Phases complete: **0 of 4.** (The LB consolidation was a different runbook.)
 
 ## Repo levers
 
-- `infra_v2/terraform/variables.tf` — **`enable_cloudflare_tunnel`** (default
-  `false`). Master on/off switch for the connector. `cloudflared` starts **only**
-  when this flag is `true` **and** the token secret is present (issue #1578).
+- `infra_v2/terraform/variables.tf` — **`enable_cloudflare_tunnel`** (committed
+  default `true`, since both environments are now cut over). Master on/off switch
+  for the connector. `cloudflared` starts **only** when this flag is `true`
+  **and** the read of the token secret yields a well-formed token (issues #1578,
+  #1758). Flipping it to `false` stops the connector, which takes that
+  workspace's API offline unless its Google frontend is restored first
+  (`frontend_via_cloudflare`).
 - `infra_v2/terraform/variables.tf` — **`frontend_via_cloudflare`** (default
   `false`). Tears down *this workspace's* dedicated API frontend. Effective on
   staging; already a no-op on production (finding 3).
@@ -240,8 +244,17 @@ gcloud secrets add-iam-policy-binding trackrat-cloudflare-tunnel-token-staging \
 ```
 
 The grant stays out of Terraform so the repo state remains inert: the startup
-script reads the secret tolerantly, so a missing secret just leaves the tunnel
-off.
+script reads the secret tolerantly, so a missing secret — or a missing grant,
+or a transient Secret Manager error — just leaves the tunnel off.
+
+That tolerance is real only as of issue #1758. Before it, the read was captured
+with `VAR=$(toolbox ...)`, and because toolbox runs gcloud on a pty its stderr
+arrives on toolbox's *stdout*; a failed read therefore yielded gcloud's error
+text as a non-empty "token", which went into `.env` and boot-looped the MIG. The
+read now gates on the exit status and validates the token's shape, and a warning
+naming the failure is written to `/var/log/startup.log`. If the connector is
+unexpectedly absent, grep that log for `Cloudflare tunnel token` — the previous
+behaviour logged nothing at all and still printed "Secrets fetched successfully".
 
 ### S3. Push #1 — rebuild staging *with* the connector
 
