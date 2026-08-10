@@ -173,12 +173,46 @@ resource "google_compute_instance_template" "trackrat" {
       METRA_API_TOKEN=$(toolbox --quiet gcloud secrets versions access latest \
         --secret=trackrat-metra-api-token --project="$PROJECT_ID" 2>/dev/null) || true
       # Cloudflare Tunnel token (optional, per-environment). The connector is only
-      # started when ENABLE_CLOUDFLARE_TUNNEL=true AND this token is non-empty
-      # (issue #1578) — so an absent/unreadable secret OR the flag being off both
-      # leave the tunnel fully off. Only the staging secret exists during the
-      # Cloudflare pilot; production reads a nonexistent secret and keeps its LB.
-      CLOUDFLARE_TUNNEL_TOKEN=$(toolbox --quiet gcloud secrets versions access latest \
-        --secret="trackrat-cloudflare-tunnel-token-$ENVIRONMENT" --project="$PROJECT_ID" 2>/dev/null) || true
+      # started when ENABLE_CLOUDFLARE_TUNNEL=true AND this read yields a
+      # well-formed token (issue #1578) — so an absent/unreadable secret OR the
+      # flag being off both leave the tunnel fully off, while api/db come up
+      # normally either way.
+      #
+      # This deliberately does NOT use VAR=$(toolbox ...): toolbox runs gcloud in
+      # a container on a pty, so gcloud's stderr is merged into toolbox's STDOUT
+      # and the `2>/dev/null` above discards nothing. With `|| true` also throwing
+      # away the exit status, a failed read produced gcloud's *error text* as a
+      # non-empty "token", which was appended to .env verbatim — making .env
+      # unparseable and aborting the whole startup script under `set -e` before
+      # any container started (issue #1758; ~30 min production outage on
+      # 2026-08-08). Capture to a file so the exit status is the signal, then
+      # validate the shape so toolbox chatter on a zero exit is rejected too.
+      CLOUDFLARE_TUNNEL_TOKEN=""
+      if TUNNEL_TOKEN_TMP=$(mktemp); then
+        if toolbox --quiet gcloud secrets versions access latest \
+             --secret="trackrat-cloudflare-tunnel-token-$ENVIRONMENT" \
+             --project="$PROJECT_ID" > "$TUNNEL_TOKEN_TMP" 2>/dev/null; then
+          # tr strips the pty's CRs; $(...) strips the trailing newline. Any
+          # newline left in the middle is a multi-line blob, and is caught by the
+          # character-class check below rather than silently concatenated.
+          CLOUDFLARE_TUNNEL_TOKEN=$(tr -d '\r' < "$TUNNEL_TOKEN_TMP")
+        else
+          echo "WARN: Cloudflare tunnel token could not be read — connector disabled this boot; api/db unaffected"
+        fi
+        rm -f "$TUNNEL_TOKEN_TMP" || echo "WARN: tunnel token temp file cleanup failed; api/db unaffected"
+      else
+        echo "WARN: could not create a temp file for the tunnel token read — connector disabled this boot; api/db unaffected"
+      fi
+      # A connector token is a single-line base64 blob. Whitespace, an embedded
+      # newline, or anything outside the base64/base64url alphabet means we are
+      # holding diagnostics rather than a token — never write that to .env.
+      case "$CLOUDFLARE_TUNNEL_TOKEN" in
+        "") ;;
+        *[!A-Za-z0-9+/=_-]*)
+          echo "WARN: Cloudflare tunnel token is malformed — connector disabled this boot; api/db unaffected"
+          CLOUDFLARE_TUNNEL_TOKEN=""
+          ;;
+      esac
       echo "Secrets fetched successfully"
 
       # ===========================================
@@ -306,8 +340,13 @@ TUNNELEOF
       # is recreated by the isolated connector bring-up further below.
       $COMPOSE_PATH down --remove-orphans 2>/dev/null || true
 
-      # Pull latest images (DOCKER_CONFIG is exported, so compose uses it)
-      $COMPOSE_PATH pull
+      # Pull latest images (DOCKER_CONFIG is exported, so compose uses it).
+      # Non-fatal: `down` has already run, so aborting here under `set -e` leaves
+      # the VM with no containers at all, fails the LB health check and makes the
+      # MIG auto-heal into the same failure (issue #1758). A pull failure is
+      # usually transient/registry-side; the bring-up below uses the cached image
+      # if there is one, and fails loudly on its own if there is not.
+      $COMPOSE_PATH pull || echo "WARN: image pull failed — starting with cached images"
 
       # ---------------------------------------------------------
       # 7a. Scrub production user data on staging
