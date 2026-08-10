@@ -99,6 +99,38 @@ This family shipped as a bug **five separate times** (#1268 `/trains/{id}`,
 existed. If you find yourself writing `max(updated_...)` inline, stop and
 use the helper.
 
+### Writer rule: `actual_departure` is an observation, never the schedule
+
+The rules above govern *reading* the live fields. Writing
+`JourneyStop.actual_departure` has its own rule, and #1768 broke it on two
+paths at once:
+
+- **Never substitute `scheduled_departure` (or `scheduled_arrival`) when no
+  live reading is admissible.** NJT flips `DEPARTED=YES` while its live
+  estimate for that stop is still in the future, so any "fall back to the
+  schedule" branch fires constantly on delayed trains. A schedule sitting in
+  the actuals column is indistinguishable from a train that ran on time: the
+  stop's delay computes to zero for *every* consumer simultaneously — delay
+  badge, on-time percentage, dwell analysis, and the next segment's transit
+  time. Write nothing instead. Every consumer already has an honest fallback
+  for `NULL` (`coalesce(actual_departure, scheduled_departure)` on the
+  departure board, `actual_departure or actual_arrival` in the segment
+  analyzer, the live-estimate branch in `summary`).
+- **`has_departed_station` and `actual_departure` are separate facts.**
+  Knowing the train left is not knowing when. Set the flag; withhold the
+  timestamp.
+- **The value is frozen at first capture**, because NJT revises estimates for
+  hours after a train passes. The one exception is a departure stored *before*
+  the arrival recorded at the same stop — impossible, and the freeze is what
+  made #1768's corruption permanent, since both writers only ever filled a
+  `NULL`.
+
+All of this is single-sourced in `utils/train.resolve_actual_departure(existing,
+observed, actual_arrival, now)`; `departed_stop_time` is its past-only half.
+Pass `observed` in the provider's own semantics — for NJT that means
+`normalize_njt_stop_times(...)["actual_departure"]`, which resolves the
+position-dependent inversion above (DEP_TIME at the origin, TIME elsewhere).
+
 ## 3. `journey_date` convention
 
 `journey_date` is the **service date of the train's origin departure**, not

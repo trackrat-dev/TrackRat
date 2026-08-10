@@ -2,9 +2,6 @@
 Tests for health and monitoring endpoints.
 """
 
-import pytest
-from datetime import datetime
-
 
 def test_health_check(client):
     """Test the health check endpoint."""
@@ -114,8 +111,13 @@ def test_health_reports_gtfs_feed_freshness(client):
     assert set(check["stale_sources"]) == set(GTFS_FEED_URLS)
     assert check["status"] == "warning"
 
-    # A source with no row has no calendar end date either, so it is stale but
-    # not lapsed — the two are reported separately because neither implies the
-    # other (issue #1634).
+    # A source with no row has no calendar dates either, so it is stale but
+    # neither lapsed nor not-yet-active — the three are reported separately
+    # because none implies another (issues #1634, #1770).
     assert check["lapsed_sources"] == []
-    assert all(f["feed_end_date"] is None for f in check["feeds"].values())
+    assert check["not_yet_active_sources"] == []
+    for feed in check["feeds"].values():
+        assert feed["feed_end_date"] is None
+        assert feed["days_until_feed_end"] is None
+        assert feed["feed_start_date"] is None
+        assert feed["days_until_feed_start"] is None

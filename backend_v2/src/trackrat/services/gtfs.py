@@ -62,7 +62,12 @@ from trackrat.models.database import (
     TrainJourney,
 )
 from trackrat.utils.sanitize import bounded_text
-from trackrat.utils.time import DATETIME_MAX_ET, ET, PROVIDER_TIMEZONE, now_et
+from trackrat.utils.time import (
+    DATETIME_MAX_ET,
+    ET,
+    PROVIDER_TIMEZONE,
+    now_et,
+)
 
 logger = get_logger(__name__)
 
@@ -364,6 +369,7 @@ class GTFSRefreshOutcome(Enum):
     REFRESHED = "refreshed"
     SKIPPED_RATE_LIMITED = "skipped_rate_limited"
     SKIPPED_NO_API_KEY = "skipped_no_api_key"
+    SKIPPED_NOT_YET_ACTIVE = "skipped_not_yet_active"
     FAILED_UNKNOWN_SOURCE = "failed_unknown_source"
     FAILED_DOWNLOAD = "failed_download"
     FAILED_PROCESS = "failed_process"
@@ -382,8 +388,9 @@ class GTFSRefreshOutcome(Enum):
     def is_failure(self) -> bool:
         """True when the refresh did not happen *because something broke*.
 
-        The deliberate skips are excluded: being rate limited, or having no
-        WMATA key configured, is expected operation and must not raise an alarm.
+        The deliberate skips are excluded: being rate limited, having no WMATA
+        key configured, or declining a bundle that has not taken effect yet, is
+        expected operation and must not raise an alarm.
         """
         return self in (
             GTFSRefreshOutcome.FAILED_UNKNOWN_SOURCE,
@@ -409,6 +416,8 @@ class GTFSFeedStatus:
     error_message: str | None
     feed_end_date: date | None = None
     days_until_feed_end: int | None = None
+    feed_start_date: date | None = None
+    days_until_feed_start: int | None = None
 
     @property
     def is_stale(self) -> bool:
@@ -435,10 +444,13 @@ class GTFSFeedStatus:
         data but the only thing being served, and it fails silently: departures
         keep appearing, so no coverage or emptiness check notices (issue #1634).
 
-        ``feed_end_date`` comes from ``max(calendar.end_date)``, which GTFS
-        defines as inclusive, so a bundle ending today is still valid. Feeds
-        that publish only ``calendar_dates.txt`` have no end date at all and
-        report ``None`` — unknown, deliberately not treated as lapsed.
+        ``feed_end_date`` is the ``max`` over the retained services' calendar
+        ``end_date``s and their ``calendar_dates.txt`` addition dates (so a
+        calendar_dates-only feed such as NJT gets a real bound too). GTFS
+        defines both as inclusive, so a bundle ending today is still valid. A
+        ``None`` end date — a row written before this derivation existed, or a
+        bundle with no calendar data for its retained trips — reads as
+        unknown, deliberately not treated as lapsed.
 
         ``GTFS_EXPIRY_EXEMPT_SOURCES`` are excluded. For those an expired
         calendar is not a failure but the documented steady state:
@@ -454,6 +466,70 @@ class GTFSFeedStatus:
         if self.data_source in GTFS_EXPIRY_EXEMPT_SOURCES:
             return False
         return self.days_until_feed_end is not None and self.days_until_feed_end < 0
+
+    @property
+    def is_not_yet_active(self) -> bool:
+        """True if the parsed bundle's service period has not started yet.
+
+        The mirror image of :attr:`is_lapsed`, and the half that had no signal
+        at all: agencies publish the next bundle *before* it takes effect, so a
+        feed can be freshly downloaded, internally valid and weeks from expiry
+        while describing no service whatsoever for today.
+
+        SEPTA did exactly this. The bundle adopted on 2026-08-08 was
+        ``feed_version v202608090`` with every ``calendar.txt`` row starting
+        ``20260809``; Regional Rail served zero departures for a day and a half
+        and Metro lost every timetable-only line, while ``/health`` reported
+        ``healthy``, ``lapsed_sources: []`` and ``days_until_feed_end: 22``
+        (issue #1770). Nothing in the freshness or lapse checks can see this:
+        the feed is neither old nor expired, it simply has not begun.
+
+        ``feed_start_date`` is the ``min`` over the retained services'
+        calendar ``start_date``s and their ``calendar_dates.txt`` addition
+        dates, mirroring how ``feed_end_date`` takes the ``max``. Additions
+        count because :meth:`GTFSService.get_active_service_ids` activates an
+        addition-dated service with no start-date constraint — a bundle
+        bridged by additions before its calendar window opens genuinely serves
+        those days and must not read as pending. GTFS defines ``start_date``
+        as inclusive, so a bundle starting today is active and only a strictly
+        future date counts. A ``None`` start date reads as unknown,
+        deliberately not treated as pending, the same way :attr:`is_lapsed`
+        treats a missing end date.
+
+        ``GTFS_EXPIRY_EXEMPT_SOURCES`` is deliberately *not* consulted here.
+        That exemption exists because those feeds' calendars have already
+        expired, which puts their ``start_date`` firmly in the past — they can
+        never trip this check, so excluding them would only hide a real future
+        regression behind a permanent carve-out.
+        """
+        return self.days_until_feed_start is not None and self.days_until_feed_start > 0
+
+
+@dataclass(frozen=True)
+class GTFSBundleServiceStatus:
+    """Whether a prospective bundle describes service that has already begun.
+
+    Produced by :meth:`GTFSService._bundle_service_status` from the downloaded
+    zip alone, before anything is stored. ``in_force`` is three-valued:
+
+    - ``True`` — some retained service is running by today: a ``calendar.txt``
+      window covers today, or a ``calendar_dates.txt`` addition falls on or
+      before today.
+    - ``False`` — the bundle declares service windows but none has begun;
+      adopting it would serve nothing until ``service_begins_on``. Only this
+      verdict *with a future ``service_begins_on``* declines: all-expired
+      (``service_begins_on=None``) is a lapse problem, not an early
+      publication, and fails open.
+    - ``None`` — unknown: the bundle publishes neither calendar file (NJT), no
+      retained row carries dates, or the archive is unreadable.
+
+    ``service_begins_on`` is the earliest retained start or addition date
+    strictly after today — for a bundle not in force, the day it would begin
+    serving if adopted — or ``None`` when the bundle names no future service.
+    """
+
+    in_force: bool | None
+    service_begins_on: date | None
 
 
 def _gtfs_csv_rows(f: Any) -> Iterator[dict[str, str]]:
@@ -573,6 +649,117 @@ class GTFSService:
             feed_info.last_downloaded_at = now_et()
             await db.flush()
 
+            # Decline a bundle whose service has not begun yet, when a usable
+            # bundle is already stored.
+            #
+            # Agencies publish the next bundle before it takes effect, and
+            # storing one is destructive: `_parse_and_store_gtfs` clears the
+            # source's existing rows first. Adopting an early publication
+            # therefore deletes the timetable currently in force and replaces it
+            # with one describing no service for today, so the source serves
+            # nothing until the start date arrives — while looking freshly
+            # parsed and weeks from expiry.
+            #
+            # SEPTA published `v202608090` (every calendar row starting
+            # 20260809) on 2026-08-08. Production had no prior SEPTA bundle so
+            # nothing was lost, but any deployment already holding one would
+            # have gone dark; SEPTA publishes weekly, so this recurs whenever
+            # they publish early (issue #1769).
+            #
+            # "Has not begun" is a per-service verdict, not min(start_date):
+            # expired historical calendar rows and rows belonging to filtered-
+            # out routes (SEPTA's bus network) would make the minimum read as
+            # past while every retained service is still future, and a bundle
+            # whose calendar window opens tomorrow can legitimately serve today
+            # through calendar_dates additions. `_bundle_service_status` walks
+            # the retained services; unknown fails open and adopts.
+            #
+            # The decline also requires the *stored* bundle to be usable —
+            # expiry-exempt, or with a feed_end_date that has not passed. A
+            # lapsed stored bundle serves nothing either, so declining its
+            # replacement would keep the source dark and gamble adoption on the
+            # start-date morning's download; the future bundle at least heals
+            # itself the day its service begins, so it is adopted with a
+            # distinct warning instead.
+            #
+            # Declining is safe to repeat: `last_downloaded_at` is still stamped
+            # above, so the rate limit holds and the daily refresh simply tries
+            # again — adopting the bundle once it is in force. The stored feed's
+            # `age_hours` keeps climbing in the meantime, which is accurate: the
+            # deployment *is* serving an older bundle, and that is the honest
+            # signal to surface rather than suppress. It has a cost: past
+            # GTFS_STALE_FEED_HOURS (48h), an agency publishing three or more
+            # days early escalates the nightly summary to error via
+            # `stale_sources` and degrades /health until the start date arrives.
+            # That is deliberate — the deployment really is running on an aging
+            # bundle it cannot replace yet, and `declined_sources` on the same
+            # log line says why.
+            #
+            # `today` is the Eastern date for every source, deliberately —
+            # the same clock the serving path uses: `get_active_service_ids`
+            # is asked for the ET date regardless of agency timezone
+            # (services/departure.py), so a bundle whose window opens on ET
+            # date D is served from ET midnight of D. Judging it by the
+            # provider's local date would decline it for the first hours of
+            # that ET day (BART: three), delaying adoption past the moment
+            # serving would already use it. The mirror check in
+            # get_feed_statuses dates by ET for the same reason.
+            # An all-expired bundle (in_force False but no future service
+            # named) is deliberately NOT declined: that is a lapse problem the
+            # lapse detection owns, not an early publication — and PATH's
+            # permanently-expired exempt feed must stay refreshable, or a
+            # decline loop would pin it to its first stored copy forever.
+            today = now_et().date()
+            bundle = self._bundle_service_status(zip_data, data_source, today)
+            if bundle.in_force is False and bundle.service_begins_on is not None:
+                begins_on = bundle.service_begins_on.isoformat()
+                days_until_start = (bundle.service_begins_on - today).days
+                stored_is_usable = data_source in GTFS_EXPIRY_EXEMPT_SOURCES or (
+                    feed_info.feed_end_date is not None
+                    and feed_info.feed_end_date >= today
+                )
+                if feed_info.last_successful_parse_at is not None:
+                    if stored_is_usable:
+                        logger.warning(
+                            "gtfs_refresh_declined_not_yet_active",
+                            data_source=data_source,
+                            service_begins_on=begins_on,
+                            days_until_start=days_until_start,
+                        )
+                        await db.commit()
+                        return GTFSRefreshOutcome.SKIPPED_NOT_YET_ACTIVE
+
+                    # The stored bundle has lapsed: both bundles describe no
+                    # service today, but the future one at least starts serving
+                    # on its own once its start date arrives, while declining
+                    # it makes recovery depend on that morning's download
+                    # succeeding. Adopt the self-healing option and say so.
+                    logger.warning(
+                        "gtfs_adopting_future_bundle_over_lapsed",
+                        data_source=data_source,
+                        service_begins_on=begins_on,
+                        days_until_start=days_until_start,
+                        stored_feed_end_date=(
+                            feed_info.feed_end_date.isoformat()
+                            if feed_info.feed_end_date
+                            else None
+                        ),
+                    )
+                else:
+                    # Nothing stored to fall back on — a first-ever download
+                    # for this source. Take it, because an unusable bundle
+                    # still beats no bundle once its start date arrives, but
+                    # say so loudly: the source serves nothing until then, and
+                    # this is the one path that reaches the dark state the
+                    # guard above prevents. The detection side of it is issue
+                    # #1770.
+                    logger.error(
+                        "gtfs_first_bundle_not_yet_active",
+                        data_source=data_source,
+                        service_begins_on=begins_on,
+                        days_until_start=days_until_start,
+                    )
+
             # Parse and store the data
             stats = await self._parse_and_store_gtfs(db, data_source, zip_data)
 
@@ -675,12 +862,160 @@ class GTFSService:
 
         return feed_info
 
+    def _retained_service_ids(
+        self, zf: zipfile.ZipFile, data_source: str
+    ) -> set[str] | None:
+        """Service ids the parse would actually keep, or ``None`` for all.
+
+        ``GTFS_ROUTE_TYPE_FILTER`` makes some bundles (SEPTA's ``google_bus.zip``)
+        carry far more than what gets ingested: `_parse_routes` drops the ~131
+        bus routes, and trips/stop_times cascade off that. A service window
+        check that ignored the filter would read the bus network's calendar and
+        declare the bundle "in force" while every retained rail service was
+        still in the future — exactly the rows that end up served.
+
+        Sources without a filter return ``None`` (every service counts). So
+        does a filtered bundle missing ``routes.txt`` or ``trips.txt``: the
+        restriction cannot be computed, and over-counting services only ever
+        fails toward adopting — the safe direction for this guard.
+        """
+        route_type_filter = GTFS_ROUTE_TYPE_FILTER.get(data_source)
+        if route_type_filter is None:
+            return None
+
+        names = set(zf.namelist())
+        if "routes.txt" not in names or "trips.txt" not in names:
+            return None
+
+        retained_routes: set[str] = set()
+        with zf.open("routes.txt") as f:
+            for row in _gtfs_csv_rows(f):
+                if row.get("route_type", "") in route_type_filter:
+                    route_id = row.get("route_id", "")
+                    if route_id:
+                        retained_routes.add(route_id)
+
+        service_ids: set[str] = set()
+        with zf.open("trips.txt") as f:
+            for row in _gtfs_csv_rows(f):
+                if row.get("route_id", "") in retained_routes:
+                    service_id = row.get("service_id", "")
+                    if service_id:
+                        service_ids.add(service_id)
+
+        return service_ids
+
+    def _bundle_service_status(
+        self, zip_data: bytes, data_source: str, today: date
+    ) -> GTFSBundleServiceStatus:
+        """Whether a bundle's retained service has begun, read without storing.
+
+        The read-only counterpart to the calendar stats that
+        :meth:`_parse_and_store_gtfs` derives, and it has to be read-only: that
+        method's first act is ``_clear_existing_data``, so by the time those
+        stats exist the bundle currently in force has already been deleted.
+        Anything wanting to *decline* a bundle must decide before then.
+
+        "In force" is decided per retained service (see
+        :meth:`_retained_service_ids`), not from ``min(calendar.start_date)``:
+        real bundles keep expired historical calendar rows whose ancient start
+        date would mask an otherwise all-future timetable, and bundles whose
+        ``calendar.txt`` window opens tomorrow can still serve today through
+        ``calendar_dates.txt`` additions. A retained calendar row covering
+        today (``start_date <= today <= end_date``, both inclusive per GTFS) or
+        a retained ``exception_type == 1`` addition dated today or earlier
+        means the bundle's service has begun.
+
+        Unknown — no calendar file at all (NJT publishes neither), no retained
+        row carrying dates, or an unreadable archive — reports
+        ``in_force=None``, never ``False``. That direction is deliberate. The
+        only thing the caller can do with this verdict is refuse an update, so
+        an unknown reading as "not in force" would pin the source to its
+        current bundle indefinitely, turning a conservative guard into the
+        outage it exists to prevent.
+
+        Malformed dates fail open through :meth:`_parse_gtfs_date`, which never
+        raises — it falls back to today's date, so a corrupt row reads as a
+        window covering today and the bundle is adopted. A genuinely corrupt
+        archive is caught here, reported unknown, and then fails inside
+        :meth:`_parse_and_store_gtfs` as ``FAILED_PROCESS`` — the outcome that
+        carries the stage and error text; the guard must not be what surfaces
+        it.
+        """
+        try:
+            with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
+                names = set(zf.namelist())
+                if "calendar.txt" not in names and "calendar_dates.txt" not in names:
+                    return GTFSBundleServiceStatus(
+                        in_force=None, service_begins_on=None
+                    )
+
+                retained = self._retained_service_ids(zf, data_source)
+
+                in_force = False
+                saw_dated_row = False
+                future_dates: list[date] = []
+
+                if "calendar.txt" in names:
+                    with zf.open("calendar.txt") as f:
+                        for row in _gtfs_csv_rows(f):
+                            if (
+                                retained is not None
+                                and row.get("service_id", "") not in retained
+                            ):
+                                continue
+                            if not row.get("start_date") or not row.get("end_date"):
+                                continue
+                            saw_dated_row = True
+                            start = self._parse_gtfs_date(row["start_date"])
+                            end = self._parse_gtfs_date(row["end_date"])
+                            if start <= today <= end:
+                                in_force = True
+                            elif start > today:
+                                future_dates.append(start)
+
+                if "calendar_dates.txt" in names:
+                    with zf.open("calendar_dates.txt") as f:
+                        for row in _gtfs_csv_rows(f):
+                            if row.get("exception_type", "") != "1":
+                                continue
+                            if (
+                                retained is not None
+                                and row.get("service_id", "") not in retained
+                            ):
+                                continue
+                            if not row.get("date"):
+                                continue
+                            saw_dated_row = True
+                            added_on = self._parse_gtfs_date(row["date"])
+                            if added_on <= today:
+                                in_force = True
+                            else:
+                                future_dates.append(added_on)
+        except Exception as e:
+            logger.warning("gtfs_bundle_service_window_unreadable", error=str(e))
+            return GTFSBundleServiceStatus(in_force=None, service_begins_on=None)
+
+        if not saw_dated_row:
+            return GTFSBundleServiceStatus(in_force=None, service_begins_on=None)
+
+        return GTFSBundleServiceStatus(
+            in_force=in_force,
+            service_begins_on=min(future_dates) if future_dates else None,
+        )
+
     async def _parse_and_store_gtfs(
         self, db: AsyncSession, data_source: str, zip_data: bytes
     ) -> dict[str, Any]:
         """Parse GTFS zip and store in database.
 
-        Returns stats about what was parsed.
+        Returns stats about what was parsed. ``start_date`` / ``end_date`` are
+        the bundle's service-period bounds — min/max over the calendar windows
+        and calendar_dates additions of the services the retained trips
+        reference — and become ``gtfs_feed_info.feed_start_date`` /
+        ``feed_end_date``, which :attr:`GTFSFeedStatus.is_not_yet_active` and
+        :attr:`GTFSFeedStatus.is_lapsed` read. Either key is absent when the
+        bundle carries no calendar data for its retained trips.
         """
         # Clear existing data for this source
         await self._clear_existing_data(db, data_source)
@@ -731,20 +1066,56 @@ class GTFSService:
                 )
                 stats["stop_times"] = stop_times_count
 
-            # Get date range from calendar
-            if calendar_services:
-                result = await db.execute(
-                    select(
-                        GTFSCalendar.start_date,
-                        GTFSCalendar.end_date,
+            # Service-period bounds, scoped to the services the retained trips
+            # actually reference. `_clear_existing_data` ran first, so the
+            # GTFSTrip rows for this source are exactly the trips kept after
+            # GTFS_ROUTE_TYPE_FILTER — a shared bundle's excluded routes (the
+            # ~131 bus routes in SEPTA_METRO's google_bus.zip) must not let
+            # their calendar rows set the window for a network we don't ingest —
+            # a running bus calendar could hide a Metro one that has not begun,
+            # and symmetrically a lapsed one.
+            #
+            # calendar_dates.txt additions (exception_type 1) count toward both
+            # bounds because `get_active_service_ids` activates an addition-
+            # dated service with no start-date constraint: a bundle bridged by
+            # additions before its calendar window opens genuinely serves those
+            # days and must not read as pending, and a calendar_dates-only feed
+            # (NJT) gets real bounds instead of none.
+            retained_services = (
+                select(GTFSTrip.service_id)
+                .where(GTFSTrip.data_source == data_source)
+                .distinct()
+                .scalar_subquery()
+            )
+            calendar_rows = (
+                await db.execute(
+                    select(GTFSCalendar.start_date, GTFSCalendar.end_date).where(
+                        and_(
+                            GTFSCalendar.data_source == data_source,
+                            GTFSCalendar.service_id.in_(retained_services),
+                        )
                     )
-                    .where(GTFSCalendar.data_source == data_source)
-                    .order_by(GTFSCalendar.start_date)
                 )
-                dates = result.all()
-                if dates:
-                    stats["start_date"] = min(d[0] for d in dates)
-                    stats["end_date"] = max(d[1] for d in dates)
+            ).all()
+            addition_dates = list(
+                (
+                    await db.execute(
+                        select(GTFSCalendarDate.date).where(
+                            and_(
+                                GTFSCalendarDate.data_source == data_source,
+                                GTFSCalendarDate.exception_type == 1,
+                                GTFSCalendarDate.service_id.in_(retained_services),
+                            )
+                        )
+                    )
+                ).scalars()
+            )
+            start_candidates = [row[0] for row in calendar_rows] + addition_dates
+            end_candidates = [row[1] for row in calendar_rows] + addition_dates
+            if start_candidates:
+                stats["start_date"] = min(start_candidates)
+            if end_candidates:
+                stats["end_date"] = max(end_candidates)
 
         await db.flush()
         return stats
@@ -2036,10 +2407,14 @@ class GTFSService:
         stale. Absence of a feed is a worse state than an old feed, not a
         missing data point to be skipped over.
 
-        ``days_until_feed_end`` is resolved here rather than inside
-        :attr:`GTFSFeedStatus.is_lapsed` so the dataclass stays a pure value
-        object with no hidden clock read — the same reason ``age_hours`` is
-        precomputed.
+        ``days_until_feed_end`` and ``days_until_feed_start`` are resolved here
+        rather than inside :attr:`GTFSFeedStatus.is_lapsed` /
+        :attr:`GTFSFeedStatus.is_not_yet_active` so the dataclass stays a pure
+        value object with no hidden clock read — the same reason ``age_hours``
+        is precomputed. "Today" is deliberately the Eastern date for every
+        source — the serving path asks ``get_active_service_ids`` for the ET
+        date regardless of agency timezone, so it is the clock that decides
+        whether departures are actually served; see the comment in the loop.
         """
         rows = (
             (
@@ -2055,12 +2430,24 @@ class GTFSService:
         by_source = {row.data_source: row for row in rows}
 
         now = now_et()
+        # One Eastern date for every source, deliberately. GTFS calendar dates
+        # are agency-local, so a per-source date (utils/time.now_for_provider)
+        # would be the spec-correct reading — but it is not what this check is
+        # for. `get_active_service_ids` is asked for the Eastern date on every
+        # source (services/departure.py), so the Eastern date is what decides
+        # whether departures are actually served. Judging the bundle by the
+        # agency's own date would report BART "not yet active" — and fail the
+        # deployment gate — for the three hours after Eastern midnight during
+        # which its departures are being served fine. The residual skew belongs
+        # to the serving path's ET dating, not here; every source that reaches
+        # this loop today is Eastern (BART and Metra are in the disabled set).
         today = now.date()
         statuses = []
         for source in data_sources:
             feed_info = by_source.get(source)
             parsed_at = feed_info.last_successful_parse_at if feed_info else None
             end_date = feed_info.feed_end_date if feed_info else None
+            start_date = feed_info.feed_start_date if feed_info else None
             statuses.append(
                 GTFSFeedStatus(
                     data_source=source,
@@ -2074,6 +2461,10 @@ class GTFSService:
                     error_message=feed_info.error_message if feed_info else None,
                     feed_end_date=end_date,
                     days_until_feed_end=((end_date - today).days if end_date else None),
+                    feed_start_date=start_date,
+                    days_until_feed_start=(
+                        (start_date - today).days if start_date else None
+                    ),
                 )
             )
         return statuses
