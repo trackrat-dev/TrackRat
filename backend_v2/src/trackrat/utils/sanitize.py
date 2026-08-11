@@ -12,6 +12,28 @@ from trackrat.config.station_configs import get_valid_tracks
 
 logger = get_logger(__name__)
 
+# (station_code, data_source, track) keys whose implausible-value warning has
+# already fired in this process.
+#
+# A rejected value is usually a permanent property of the feed rather than the
+# occasional bad frame this check was written to catch: LIRR reports tracks
+# "1"-"4" at Grand Central Madison on every poll, for every train. Logging per
+# stop per parse made `track_value_implausible` 46% of all warning volume on
+# production and buried the genuine feed-quality warnings this event exists to
+# surface (issue #1792). The feed is also re-parsed far more often than the
+# collection interval suggests — the JIT path builds a fresh client per API
+# request, so the volume scaled with traffic, not just with time.
+#
+# Mirrors ``GTFSService._empty_service_warned``: the first sighting of a given
+# bad value is the informative one, and repeats add nothing.
+_implausible_track_warned: set[tuple[str, str, str]] = set()
+
+# Ceiling on that memo so a feed emitting unbounded distinct junk cannot grow it
+# without limit. On overflow the memo is dropped and rebuilt: memory stays
+# fixed, and the worst case is that warnings repeat occasionally — still far
+# quieter than per-stop, and it fails toward visibility rather than silence.
+_MAX_IMPLAUSIBLE_TRACK_KEYS = 1024
+
 
 def bounded_text(text: str, limit: int) -> str:
     """Truncate text to ``limit`` chars, annotating how much was dropped.
@@ -102,7 +124,12 @@ def validate_track(
     avoiding false rejections where our list might be incomplete.
 
     On rejection, logs a structured ``track_value_implausible`` warning so feed
-    quality issues are visible.
+    quality issues are visible — but only once per
+    ``(station_code, data_source, track)`` per process (issue #1792). A feed
+    that reports the same bad value on every poll is one fact, not thousands,
+    and logging it per stop drowned out every other warning. ``train_id``
+    therefore identifies the *first* train seen with that value, not the only
+    one.
 
     Args:
         station_code: The station where the track is being reported.
@@ -120,11 +147,16 @@ def validate_track(
     valid = get_valid_tracks(station_code, data_source)
     if valid is None or track in valid:
         return track
-    logger.warning(
-        "track_value_implausible",
-        station_code=station_code,
-        track=track,
-        data_source=data_source,
-        train_id=train_id,
-    )
+    warn_key = (station_code, data_source, track)
+    if warn_key not in _implausible_track_warned:
+        if len(_implausible_track_warned) >= _MAX_IMPLAUSIBLE_TRACK_KEYS:
+            _implausible_track_warned.clear()
+        _implausible_track_warned.add(warn_key)
+        logger.warning(
+            "track_value_implausible",
+            station_code=station_code,
+            track=track,
+            data_source=data_source,
+            train_id=train_id,
+        )
     return None

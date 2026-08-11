@@ -19,8 +19,14 @@ from trackrat.utils.time import (
     safe_datetime_subtract,
     ET,
 )
+from trackrat.utils import sanitize as sanitize_module
 from trackrat.utils.sanitize import sanitize_track, validate_track
 from trackrat.config.station_configs import get_valid_tracks
+
+# NOTE: the once-per-process rejection memo these tests depend on
+# (``sanitize._implausible_track_warned``, issue #1792) is cleared around every
+# test by the suite-wide ``clear_implausible_track_memo`` fixture in
+# ``tests/conftest.py``, so the assertions below are order-independent.
 
 
 def test_now_et():
@@ -466,3 +472,159 @@ def test_validate_track_accepts_every_track_in_each_validated_set():
         assert tracks, f"Empty track set for {station}/{data_source}"
         for track in tracks:
             assert validate_track(station, track, data_source) == track
+
+
+# ---------------------------------------------------------------------------
+# validate_track — warning volume (issue #1792)
+#
+# LIRR reports tracks "1"-"4" at Grand Central Madison on every poll, for every
+# train, and the feed is re-parsed once per collection cycle *and* once per JIT
+# API request. Warning per rejection made this 46% of all production warning
+# volume. These pin the dedup without letting it hide genuinely new information.
+# ---------------------------------------------------------------------------
+
+
+def _implausible_warnings(caplog):
+    """The track_value_implausible records captured so far."""
+    return [r for r in caplog.records if "track_value_implausible" in r.getMessage()]
+
+
+def test_repeated_identical_rejection_warns_only_once(caplog):
+    """The production case: the same bad value on every poll is one fact.
+
+    Simulates 50 stops reporting track "1" at GCT across several polls. Before
+    the fix this produced 50 warnings; it must now produce exactly one.
+    """
+    import logging
+
+    caplog.set_level(logging.WARNING)
+
+    for i in range(50):
+        assert validate_track("GCT", "1", "LIRR", train_id=f"L{1000 + i}") is None
+
+    warnings = _implausible_warnings(caplog)
+    assert len(warnings) == 1, (
+        f"Expected exactly 1 warning for 50 identical rejections, got "
+        f"{len(warnings)}: {[w.getMessage() for w in warnings]}"
+    )
+
+
+def test_each_distinct_bad_value_warns_once(caplog):
+    """Dedup must not hide a value we have not seen before.
+
+    "1"-"4" are four distinct facts about the feed, so all four are reported —
+    but each only once, even though every one repeats.
+    """
+    import logging
+
+    caplog.set_level(logging.WARNING)
+
+    for _poll in range(3):
+        for track in ("1", "2", "3", "4"):
+            assert validate_track("GCT", track, "LIRR") is None
+
+    warnings = _implausible_warnings(caplog)
+    assert len(warnings) == 4, (
+        f"Expected 1 warning per distinct value (4 total) across 3 polls, got "
+        f"{len(warnings)}: {[w.getMessage() for w in warnings]}"
+    )
+
+
+def test_dedup_is_keyed_per_station_and_data_source(caplog, monkeypatch):
+    """The same bad value at a new station, or from a new feed, is new information.
+
+    Guards against keying the memo on the track value alone, which would let the
+    first rejection anywhere silence every other station and source. GCT/LIRR is
+    the only configured pair today, so two more are added for the duration of
+    this test to give the key something real to distinguish.
+    """
+    import logging
+
+    from trackrat.config import station_configs
+
+    caplog.set_level(logging.WARNING)
+
+    monkeypatch.setitem(
+        station_configs.VALIDATED_TRACKS, ("GCT", "MNR"), frozenset({"101"})
+    )
+    monkeypatch.setitem(
+        station_configs.VALIDATED_TRACKS, ("ZZZ", "LIRR"), frozenset({"101"})
+    )
+
+    # Identical track value across three distinct (station, source) pairs.
+    for _repeat in range(3):
+        assert validate_track("GCT", "1", "LIRR") is None
+        assert validate_track("GCT", "1", "MNR") is None
+        assert validate_track("ZZZ", "1", "LIRR") is None
+
+    warnings = _implausible_warnings(caplog)
+    assert len(warnings) == 3, (
+        "Each (station, source) pair must warn once for the same value — "
+        f"keying on the track alone would give 1; got {len(warnings)}: "
+        f"{[w.getMessage() for w in warnings]}"
+    )
+    assert sanitize_module._implausible_track_warned == {
+        ("GCT", "LIRR", "1"),
+        ("GCT", "MNR", "1"),
+        ("ZZZ", "LIRR", "1"),
+    }
+
+
+def test_memo_is_bounded_and_keeps_warning_after_overflow(caplog):
+    """A feed emitting unbounded distinct junk must not grow the memo forever.
+
+    Memory stays fixed, and — importantly — rejections keep being reported
+    after the reset rather than going silent.
+    """
+    import logging
+
+    caplog.set_level(logging.WARNING)
+
+    cap = sanitize_module._MAX_IMPLAUSIBLE_TRACK_KEYS
+    for i in range(cap + 10):
+        assert validate_track("GCT", f"J{i}", "LIRR") is None
+
+    assert len(sanitize_module._implausible_track_warned) <= cap, (
+        f"Memo grew past its {cap}-key ceiling: "
+        f"{len(sanitize_module._implausible_track_warned)}"
+    )
+    # Every value was distinct, so every one is genuinely new and must be logged.
+    warnings = _implausible_warnings(caplog)
+    assert len(warnings) == cap + 10, (
+        f"Distinct values must always warn, including after the memo reset; "
+        f"expected {cap + 10}, got {len(warnings)}"
+    )
+
+
+def test_valid_track_never_populates_the_memo():
+    """Accepted values must not consume memo space (or suppress later warnings)."""
+    for track in ("201", "302", "404"):
+        assert validate_track("GCT", track, "LIRR") == track
+    assert sanitize_module._implausible_track_warned == set()
+
+
+def test_unconfigured_pair_never_populates_the_memo():
+    """Pass-through pairs skip validation entirely, so they cannot fill the memo."""
+    assert validate_track("GCT", "13", "MNR") == "13"
+    assert validate_track("S631", "1", "SUBWAY") == "1"
+    assert sanitize_module._implausible_track_warned == set()
+
+
+def test_rejection_still_returns_none_when_warning_is_suppressed(caplog):
+    """Dedup is a logging concern only — it must never change what is served.
+
+    The rider-visible behaviour (no track rather than a bogus one) has to be
+    identical on the first rejection and the thousandth, and the suppression
+    has to be real while that holds.
+    """
+    import logging
+
+    caplog.set_level(logging.WARNING)
+
+    for _ in range(1000):
+        assert validate_track("GCT", "1", "LIRR") is None
+
+    assert len(_implausible_warnings(caplog)) == 1, (
+        "999 of the 1000 rejections must be suppressed while every one still "
+        "returns None"
+    )
