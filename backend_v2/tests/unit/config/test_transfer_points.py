@@ -25,12 +25,12 @@ from trackrat.config.transfer_points import (
     WALK_THRESHOLD_METERS,
     TransferPoint,
     _estimate_walk_minutes,
-    _haversine_meters,
     get_intra_subway_transfers,
     get_subway_lines_at_station,
     get_systems_serving_station,
     get_transfer_points,
     get_transfers_from_station,
+    haversine_meters,
 )
 
 
@@ -38,23 +38,23 @@ class TestHaversine:
     """Test haversine distance calculation."""
 
     def test_same_point_is_zero(self):
-        assert _haversine_meters(40.75, -73.99, 40.75, -73.99) == 0.0
+        assert haversine_meters(40.75, -73.99, 40.75, -73.99) == 0.0
 
     def test_known_distance(self):
         # NY Penn (40.750046, -73.992358) to PATH 33rd St (40.7491, -73.9882)
-        dist = _haversine_meters(40.750046, -73.992358, 40.7491, -73.9882)
+        dist = haversine_meters(40.750046, -73.992358, 40.7491, -73.9882)
         # Should be roughly 350-400m
         assert 300 < dist < 500, f"Expected ~350-400m, got {dist:.0f}m"
 
     def test_far_apart(self):
         # NY Penn to Newark Penn — should be many km
-        dist = _haversine_meters(40.750046, -73.992358, 40.734221, -74.164554)
+        dist = haversine_meters(40.750046, -73.992358, 40.734221, -74.164554)
         assert dist > 10_000, f"Expected >10km, got {dist:.0f}m"
 
     def test_short_distance(self):
         """Two nearby points (~100m apart) should be within expected range."""
         lat, lon = 40.7128, -74.0060
-        dist = _haversine_meters(lat, lon, lat + 0.0009, lon)
+        dist = haversine_meters(lat, lon, lat + 0.0009, lon)
         assert 90 < dist < 110, f"Expected ~100m, got {dist:.0f}m"
 
 
@@ -696,7 +696,7 @@ class TestSeptaMetroStationComplexes:
                 for code_b in codes[i + 1 :]:
                     a = SEPTA_METRO_STATION_COORDINATES[code_a]
                     b = SEPTA_METRO_STATION_COORDINATES[code_b]
-                    dist = _haversine_meters(a["lat"], a["lon"], b["lat"], b["lon"])
+                    dist = haversine_meters(a["lat"], a["lon"], b["lat"], b["lon"])
                     assert dist <= WALK_THRESHOLD_METERS, (
                         f"{code_a} <-> {code_b} are {dist:.0f}m apart, beyond the "
                         f"{WALK_THRESHOLD_METERS}m walk threshold"

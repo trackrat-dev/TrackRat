@@ -10,11 +10,17 @@ import pytest
 from trackrat.config.stations import (
     AMTRAK_TO_INTERNAL_STATION_MAP,
     CROSS_MODAL_HUBS,
+    DISPLAY_MERGE_METERS,
+    DISPLAY_STATION_GROUPS,
+    DISTINCT_NEARBY_STATIONS,
     INTERNAL_TO_MNR_GTFS_STOP_MAP,
     INTERNAL_TO_SUBWAY_GTFS_STOP_MAP,
     MNR_GTFS_STOP_TO_INTERNAL_MAP,
     MNR_STATION_NAMES,
     NJT_GTFS_STOP_TO_INTERNAL_MAP,
+    SAME_STATION_GUARD_METERS,
+    SAME_STATION_GUARD_PROVIDERS,
+    SEPTA_METRO_STATION_COMPLEXES,
     STATION_COORDINATES,
     STATION_EQUIVALENCE_GROUPS,
     STATION_EQUIVALENTS,
@@ -23,12 +29,15 @@ from trackrat.config.stations import (
     SUBWAY_STATION_COMPLEXES,
     SUBWAY_STATION_NAMES,
     canonical_station_code,
+    display_station_code,
     expand_station_codes,
+    get_path_stops_by_origin_destination,
     get_station_name,
     map_amtrak_station_code,
     map_gtfs_stop_to_station_code,
     map_subway_gtfs_stop,
-    get_path_stops_by_origin_destination,
+    station_distance_meters,
+    station_provider,
 )
 
 
@@ -580,7 +589,9 @@ class TestStationEquivalences:
 
     def test_expand_station_codes_without_equivalent(self):
         """expand_station_codes returns single-element list for non-shared stations."""
-        non_shared_codes = ["TR", "PCH", "MWPL", "JAM"]
+        # TR is deliberately absent: Trenton is shared with SEPTA Regional Rail
+        # (TR / SEPR90701) and now expands to both codes.
+        non_shared_codes = ["MP", "PCH", "MWPL", "JAM"]
         for code in non_shared_codes:
             result = expand_station_codes(code)
             assert result == [
@@ -612,7 +623,8 @@ class TestStationEquivalences:
 
     def test_canonical_station_code_non_shared(self):
         """canonical_station_code returns the code itself for non-shared stations."""
-        non_shared_codes = ["NY", "NP", "TR", "PCH", "MWPL"]
+        # TR now shares Trenton Transit Center with SEPTA RR (SEPR90701).
+        non_shared_codes = ["NY", "NP", "MP", "PCH", "MWPL"]
         for code in non_shared_codes:
             assert (
                 canonical_station_code(code) == code
@@ -839,6 +851,302 @@ class TestStationEquivalences:
         ], f"Standalone station S101 should expand to ['S101'], got {result}"
 
 
+class TestSameStationGuard:
+    """Catch one physical rail station described twice under two providers.
+
+    STATION_EQUIVALENCE_GROUPS is hand-maintained, and every provider added to
+    TrackRat has arrived carrying its own code for stations another provider
+    already described. SEPTA Regional Rail shipped that way: 30th Street Station,
+    Trenton, Wilmington and six Keystone stops each appeared twice in the picker,
+    and each code served only half of that station's trains.
+
+    ``test_no_duplicate_coordinates`` could never catch this — it compares
+    coordinates for *exact* equality, and each provider publishes the station
+    from its own feed, so the values always differ by metres.
+    """
+
+    @staticmethod
+    def _guarded_codes() -> list[str]:
+        return [
+            code
+            for code in STATION_COORDINATES
+            if code in STATION_NAMES
+            and station_provider(code) in SAME_STATION_GUARD_PROVIDERS
+        ]
+
+    @staticmethod
+    def _same_station_allowed() -> dict[str, set[str]]:
+        """code -> codes already declared same-station or deliberately distinct."""
+        allowed: dict[str, set[str]] = {}
+        declared = (
+            list(STATION_EQUIVALENCE_GROUPS)
+            + [set(group) for group in SEPTA_METRO_STATION_COMPLEXES]
+            + [{rail} | set(subway) for rail, subway in CROSS_MODAL_HUBS]
+            + list(DISTINCT_NEARBY_STATIONS)
+        )
+        for group in declared:
+            for code in group:
+                allowed.setdefault(code, set()).update(group)
+        return allowed
+
+    def test_nearby_rail_stations_are_grouped_or_allowlisted(self):
+        """Two rail providers within SAME_STATION_GUARD_METERS must be reconciled.
+
+        Either they are the same station (add to STATION_EQUIVALENCE_GROUPS) or
+        they are not (add to DISTINCT_NEARBY_STATIONS). Silence is the bug.
+        """
+        allowed = self._same_station_allowed()
+        codes = self._guarded_codes()
+
+        # Bucket on a ~500 m grid so only plausibly-close codes are compared.
+        buckets: dict[tuple[int, int], list[str]] = {}
+        for code in codes:
+            coords = STATION_COORDINATES[code]
+            key = (round(coords["lat"] * 200), round(coords["lon"] * 200))
+            buckets.setdefault(key, []).append(code)
+
+        violations: list[str] = []
+        compared: set[tuple[str, str]] = set()
+        for (lat_key, lon_key), members in buckets.items():
+            neighbours: list[str] = []
+            for d_lat in (-1, 0, 1):
+                for d_lon in (-1, 0, 1):
+                    neighbours.extend(
+                        buckets.get((lat_key + d_lat, lon_key + d_lon), [])
+                    )
+            for code_a in members:
+                for code_b in neighbours:
+                    if code_a >= code_b or (code_a, code_b) in compared:
+                        continue
+                    compared.add((code_a, code_b))
+                    if station_provider(code_a) == station_provider(code_b):
+                        continue
+                    if code_b in allowed.get(code_a, set()):
+                        continue
+                    distance = station_distance_meters(code_a, code_b)
+                    if distance is None or distance > SAME_STATION_GUARD_METERS:
+                        continue
+                    violations.append(
+                        f"{code_a} ({station_provider(code_a)}) "
+                        f"{STATION_NAMES[code_a]!r} and "
+                        f"{code_b} ({station_provider(code_b)}) "
+                        f"{STATION_NAMES[code_b]!r} are {distance:.0f} m apart"
+                    )
+
+        assert not violations, (
+            "Rail stations close enough to be the same physical station are "
+            "neither grouped nor declared distinct. Add each pair to "
+            "STATION_EQUIVALENCE_GROUPS (same station) or "
+            "DISTINCT_NEARBY_STATIONS (different stations):\n  "
+            + "\n  ".join(sorted(violations))
+        )
+
+    def test_distinct_nearby_stations_are_not_also_equivalent(self):
+        """The two lists must not contradict each other."""
+        for pair in DISTINCT_NEARBY_STATIONS:
+            for code in pair:
+                group = STATION_EQUIVALENTS.get(code, set())
+                overlap = (group & pair) - {code}
+                assert not overlap, (
+                    f"{code} is listed in DISTINCT_NEARBY_STATIONS with "
+                    f"{sorted(overlap)} but is also in its equivalence group"
+                )
+
+    def test_distinct_nearby_station_codes_exist(self):
+        """Allowlist entries must be real codes, or they silence nothing."""
+        for pair in DISTINCT_NEARBY_STATIONS:
+            for code in pair:
+                assert (
+                    code in STATION_NAMES
+                ), f"DISTINCT_NEARBY_STATIONS references unknown code {code}"
+
+
+class TestSeptaSharedStations:
+    """SEPTA Regional Rail shares NEC / Keystone stations with Amtrak and NJT."""
+
+    # (SEPTA RR code, Amtrak/NJT code) — one physical station, two feeds.
+    SHARED_STATIONS = [
+        ("SEPR90004", "PH"),  # Philadelphia 30th Street Station
+        ("SEPR90203", "WI"),  # Wilmington, DE
+        ("SEPR90701", "TR"),  # Trenton Transit Center
+        ("SEPR90518", "ARD"),  # Ardmore
+        ("SEPR90706", "CWH"),  # Cornwells Heights
+        ("SEPR90502", "DOW"),  # Downingtown
+        ("SEPR90504", "EXT"),  # Exton
+        ("SEPR90201", "NRK"),  # Newark, DE
+        ("SEPR90506", "PAO"),  # Paoli
+        ("SEPR90711", "PHN"),  # North Philadelphia (Amtrak platforms)
+    ]
+
+    @pytest.mark.parametrize("septa_code,rail_code", SHARED_STATIONS)
+    def test_shared_station_codes_expand_to_each_other(self, septa_code, rail_code):
+        """A board for either code must serve both providers' trains."""
+        assert rail_code in expand_station_codes(septa_code), (
+            f"{septa_code} ({STATION_NAMES[septa_code]!r}) does not expand to "
+            f"{rail_code} ({STATION_NAMES[rail_code]!r}) — a departure board for "
+            f"the SEPTA code would omit Amtrak/NJT trains at the same station"
+        )
+        assert septa_code in expand_station_codes(rail_code), (
+            f"{rail_code} ({STATION_NAMES[rail_code]!r}) does not expand to "
+            f"{septa_code} ({STATION_NAMES[septa_code]!r}) — a departure board "
+            f"for the Amtrak/NJT code would omit SEPTA trains"
+        )
+
+    @pytest.mark.parametrize("septa_code,rail_code", SHARED_STATIONS)
+    def test_shared_stations_share_a_cache_key(self, septa_code, rail_code):
+        """Equivalent codes must not warm two separate caches for one station."""
+        assert canonical_station_code(septa_code) == canonical_station_code(rail_code)
+
+    @pytest.mark.parametrize("septa_code,rail_code", SHARED_STATIONS)
+    def test_shared_stations_collapse_to_one_picker_entry(self, septa_code, rail_code):
+        assert display_station_code(septa_code) == display_station_code(rail_code)
+
+    def test_north_philadelphia_septa_stays_separate(self):
+        """SEPTA runs two North Philadelphia stations 156 m apart.
+
+        SEPR90711 is the Trenton Line platform at Amtrak's station; SEPR90810 is
+        SEPTA's own Chestnut Hill West station. Merging them would pool two
+        stations' boards and hide a real choice from the rider.
+        """
+        assert "SEPR90810" not in expand_station_codes("PHN")
+        assert "SEPR90810" not in expand_station_codes("SEPR90711")
+        assert display_station_code("SEPR90810") != display_station_code("PHN")
+
+
+class TestDisplayStationGrouping:
+    """One physical station should occupy one row in a station picker."""
+
+    def test_drexel_station_platform_codes_collapse(self):
+        """SEPTA splits Drexel Station at 30th St across three codes.
+
+        All three carry the same name, so the picker rendered it three times
+        (iOS uniquified two of them into "Drexel Station at 30th St (SEPM20643)").
+        """
+        codes = ["SEPM20643", "SEPM20662", "SEPM21532"]
+        keys = {display_station_code(code) for code in codes}
+        assert len(keys) == 1, f"Expected one display key for {codes}, got {keys}"
+
+    def test_directional_trolley_platforms_collapse(self):
+        """SEPTA publishes most surface stops once per direction, same name."""
+        assert display_station_code("SEPM20722") == display_station_code("SEPM20744")
+
+    def test_subway_complex_collapses_to_one_entry(self):
+        """Times Sq-42 St spans five platform codes."""
+        codes = ["S127", "S725", "SA27", "SR16", "S902"]
+        keys = {display_station_code(code) for code in codes}
+        assert len(keys) == 1, f"Expected one display key for {codes}, got {keys}"
+
+    @pytest.mark.parametrize(
+        "rail_code,subway_code,description",
+        [
+            ("NY", "S128", "NY Penn vs 34 St-Penn Station"),
+            ("GCT", "S631", "Grand Central Terminal vs Grand Central-42 St"),
+            ("PWC", "S138", "PATH World Trade Center vs WTC Cortlandt"),
+        ],
+    )
+    def test_cross_modal_hubs_stay_separate(self, rail_code, subway_code, description):
+        """Rail and subway sides of a mega-hub are a real choice, not a duplicate.
+
+        30th Street Station vs "Drexel Station at 30th St" is the same shape:
+        one complex, two modes, two legitimate picker entries.
+        """
+        assert display_station_code(rail_code) != display_station_code(subway_code), (
+            f"{description}: cross-modal hub sides must remain separately "
+            f"selectable — CROSS_MODAL_HUBS is deliberately excluded from "
+            f"DISPLAY_STATION_GROUPS"
+        )
+
+    def test_thirtieth_street_and_drexel_stay_separate(self):
+        """The rail station and the Market-Frankford station below it."""
+        assert display_station_code("PH") != display_station_code("SEPM20643")
+
+    def test_display_groups_have_no_overlap(self):
+        """Every code belongs to at most one physical station."""
+        seen: dict[str, int] = {}
+        for index, group in enumerate(DISPLAY_STATION_GROUPS):
+            for code in group:
+                assert code not in seen, (
+                    f"Code {code} appears in display groups {seen[code]} and "
+                    f"{index}; _merge_overlapping_groups should have merged them"
+                )
+                seen[code] = index
+
+    def test_display_groups_contain_every_equivalence_group(self):
+        """Codes that pool onto one board must also render as one entry."""
+        for group in STATION_EQUIVALENCE_GROUPS:
+            keys = {display_station_code(code) for code in group}
+            assert len(keys) == 1, (
+                f"Equivalence group {sorted(group)} spans display keys {keys}; "
+                f"it would render as several picker rows serving one board"
+            )
+
+    def test_ungrouped_station_is_its_own_display_code(self):
+        assert display_station_code("MP") == "MP"
+        assert display_station_code("NOT_A_STATION") == "NOT_A_STATION"
+
+    def test_display_code_is_a_member_of_its_own_group(self):
+        """The representative must be a real code clients can resolve."""
+        for group in DISPLAY_STATION_GROUPS:
+            representative = display_station_code(next(iter(group)))
+            assert representative in group
+            assert representative in STATION_NAMES
+
+    def test_every_display_group_is_justified(self):
+        """Every merge must trace back to a curated group or a valid derived pair.
+
+        A derived pair is same-provider, same-name and within
+        DISPLAY_MERGE_METERS. Without this the derived rule could merge two
+        genuinely different places that happen to share a name — MBTA's
+        Wilmington, MA and SEPTA's Wilmington, DE are 500 km apart.
+
+        Checks connectivity rather than every pairwise distance, because a
+        curated group is allowed to be geographically wide (the WTC / Oculus
+        complex spans 435 m) while a derived pair never is.
+        """
+        explicit = [set(group) for group in STATION_EQUIVALENCE_GROUPS] + [
+            set(group) for group in SEPTA_METRO_STATION_COMPLEXES
+        ]
+
+        for group in DISPLAY_STATION_GROUPS:
+            adjacency: dict[str, set[str]] = {code: set() for code in group}
+            for curated in explicit:
+                if curated <= group:
+                    for code in curated:
+                        adjacency[code] |= curated - {code}
+
+            members = sorted(group)
+            for index, code_a in enumerate(members):
+                for code_b in members[index + 1 :]:
+                    if station_provider(code_a) != station_provider(code_b):
+                        continue
+                    if STATION_NAMES.get(code_a) != STATION_NAMES.get(code_b):
+                        continue
+                    distance = station_distance_meters(code_a, code_b)
+                    if distance is not None and distance <= DISPLAY_MERGE_METERS:
+                        adjacency[code_a].add(code_b)
+                        adjacency[code_b].add(code_a)
+
+            reached = {members[0]}
+            stack = [members[0]]
+            while stack:
+                current = stack.pop()
+                for neighbour in adjacency[current]:
+                    if neighbour not in reached:
+                        reached.add(neighbour)
+                        stack.append(neighbour)
+
+            unjustified = sorted(set(group) - reached)
+            assert not unjustified, (
+                f"Display group {members} includes {unjustified} with no curated "
+                f"group or valid derived pair joining them to the rest — the "
+                f"merge is unexplained and may span different stations"
+            )
+
+    def test_wilmington_de_and_wilmington_ma_stay_separate(self):
+        """Same name, 500 km apart — the derived rule must not merge them."""
+        assert display_station_code("SEPR90203") != display_station_code("BWLM")
+
+
 class TestSubwayGTFSStopMapping:
     """Tests for Subway GTFS stop_id to internal station code mapping.
 
@@ -977,8 +1285,8 @@ class TestSubwayGTFSStopMapping:
                 violations.append(f"{code}: {name}")
 
         assert not violations, (
-            f"Station names contain raw station codes as labels instead of route "
-            f"letters/numbers:\n" + "\n".join(f"  {v}" for v in violations)
+            "Station names contain raw station codes as labels instead of route "
+            "letters/numbers:\n" + "\n".join(f"  {v}" for v in violations)
         )
 
     def test_subway_station_names_no_parenthetical_route_suffix(self):

@@ -27,6 +27,7 @@ from trackrat.config.stations.common import (
     STATION_EQUIVALENCE_GROUPS,
     STATION_EQUIVALENTS,
     get_station_name,
+    haversine_meters,
 )
 from trackrat.config.stations.subway import SUBWAY_STATION_COMPLEXES
 
@@ -38,19 +39,6 @@ MIN_TRANSFER_MINUTES = 5
 
 # Walking speed: ~80 meters per minute (brisk urban walk)
 WALK_SPEED_METERS_PER_MINUTE = 80
-
-
-def _haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Haversine distance between two points in meters."""
-    R = 6_371_000  # Earth radius in meters
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlam = math.radians(lon2 - lon1)
-    a = (
-        math.sin(dphi / 2) ** 2
-        + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
-    )
-    return 2 * R * math.atan2(math.sqrt(a), math.sqrt(1 - a))
 
 
 @dataclass(frozen=True)
@@ -239,7 +227,7 @@ def _generate_transfer_points() -> tuple[TransferPoint, ...]:
                 continue
             if code_a == code_b:
                 continue  # Already handled as shared code
-            dist = _haversine_meters(lat_a, lon_a, lat_b, lon_b)
+            dist = haversine_meters(lat_a, lon_a, lat_b, lon_b)
             if dist <= WALK_THRESHOLD_METERS:
                 _add(code_a, sys_a, code_b, sys_b, dist, False)
 

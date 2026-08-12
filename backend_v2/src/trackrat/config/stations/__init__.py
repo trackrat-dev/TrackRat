@@ -155,6 +155,12 @@ __all__ = [
     # Common
     "STATION_COORDINATES",
     "CROSS_MODAL_HUBS",
+    "DISPLAY_MERGE_METERS",
+    "DISPLAY_STATION_CODES",
+    "DISPLAY_STATION_GROUPS",
+    "DISTINCT_NEARBY_STATIONS",
+    "SAME_STATION_GUARD_METERS",
+    "SAME_STATION_GUARD_PROVIDERS",
     "SEPTA_METRO_STATION_COMPLEXES",
     "STATION_EQUIVALENCE_GROUPS",
     "STATION_EQUIVALENTS",
@@ -162,12 +168,16 @@ __all__ = [
     "_build_name_to_code_map",
     "_normalize_station_name",
     "canonical_station_code",
+    "display_station_code",
     "expand_station_codes",
     "get_all_stations",
     "get_station_code_by_name",
     "get_station_coordinates",
     "get_station_name",
+    "haversine_meters",
     "map_gtfs_stop_to_station_code",
+    "station_distance_meters",
+    "station_provider",
 ]
 
 # NJT
@@ -195,6 +205,12 @@ from trackrat.config.stations.bart import (
 # Common (unified data + shared functions)
 from trackrat.config.stations.common import (
     CROSS_MODAL_HUBS,
+    DISPLAY_MERGE_METERS,
+    DISPLAY_STATION_CODES,
+    DISPLAY_STATION_GROUPS,
+    DISTINCT_NEARBY_STATIONS,
+    SAME_STATION_GUARD_METERS,
+    SAME_STATION_GUARD_PROVIDERS,
     SEPTA_METRO_STATION_COMPLEXES,
     STATION_COORDINATES,
     STATION_EQUIVALENCE_GROUPS,
@@ -203,12 +219,16 @@ from trackrat.config.stations.common import (
     _build_name_to_code_map,
     _normalize_station_name,
     canonical_station_code,
+    display_station_code,
     expand_station_codes,
     get_all_stations,
     get_station_code_by_name,
     get_station_coordinates,
     get_station_name,
+    haversine_meters,
     map_gtfs_stop_to_station_code,
+    station_distance_meters,
+    station_provider,
 )
 
 # LIRR

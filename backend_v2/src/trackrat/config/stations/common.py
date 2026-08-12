@@ -4,6 +4,9 @@ Contains the unified STATION_NAMES dict (built from all per-system modules),
 STATION_EQUIVALENTS, STATION_COORDINATES, and shared lookup functions.
 """
 
+import math
+from collections import defaultdict
+
 from trackrat.config.stations.amtrak import (
     AMTRAK_STATION_NAMES,
     map_amtrak_station_code,
@@ -175,10 +178,44 @@ STATION_EQUIVALENCE_GROUPS: list[set[str]] = [
     {"NP", "PNK"},  # Newark Penn Station / Newark PATH
     {"HB", "PHO"},  # Hoboken (NJT) / Hoboken PATH
     {"SE", "TS", "SC"},  # Secaucus Upper Lvl / Lower Lvl / Concourse
-    {"NF", "PHN"},  # North Philadelphia (NJT NF / Amtrak PHN)
+    {"NF", "PHN", "SEPR90711"},  # North Philadelphia (NJT / Amtrak / SEPTA RR)
     {"JES", "JSP"},  # Jesup, GA (Amtrak aliases)
     {"SEL", "SSM"},  # Selma-Smithfield / Selma (Amtrak aliases)
     {"CHI", "CUS"},  # Chicago Union Station (Amtrak CHI / Metra CUS)
+    # SEPTA Regional Rail runs over the NEC and the Keystone Corridor, so it
+    # shares these stations outright with Amtrak and NJT — one building, one
+    # set of platforms, one code per provider feed. Without these groups each
+    # station appears twice in the picker and each code serves a partial board
+    # (pick "Philadelphia" and SEPTA's trains are missing; pick "Gray 30th St
+    # Station" and Amtrak's are). The distances below are between the two
+    # feeds' own published coordinates for the same station.
+    {"PH", "SEPR90004"},  # Philadelphia 30th Street Station (58 m)
+    {"WI", "SEPR90203"},  # Wilmington, DE — Joseph R. Biden Jr. (103 m)
+    {"TR", "SEPR90701"},  # Trenton Transit Center (1 m)
+    {"ARD", "SEPR90518"},  # Ardmore (2 m)
+    {"CWH", "SEPR90706"},  # Cornwells Heights (201 m)
+    {"DOW", "SEPR90502"},  # Downingtown (2 m)
+    {"EXT", "SEPR90504"},  # Exton (1 m)
+    {"NRK", "SEPR90201"},  # Newark, DE (1 m)
+    {"PAO", "SEPR90506"},  # Paoli (6 m)
+    # NJT's Atlantic City Line and PATCO share the Lindenwold platforms (34 m).
+    {"LW", "LND"},
+    # Amtrak shares these Chicago-area stations with Metra and these Boston-area
+    # stations with MBTA Commuter Rail — same platforms, one code per feed.
+    # (Where both feeds already use the same code, as at BOS / BBY / PVD / RTE /
+    # WOR, there is nothing to group.) Listed now rather than when those sources
+    # leave TRACKRAT_DISABLED_DATA_SOURCES, so re-enabling one cannot quietly
+    # reintroduce the duplicate-station bug SEPTA shipped with.
+    {"GLN", "GLENVIEW"},  # Glenview, IL (4 m)
+    {"HMW", "HOMEWOOD"},  # Homewood, IL (21 m)
+    {"JOL", "JOLIET"},  # Joliet, IL (16 m)
+    {"LAG", "LAGRANGE"},  # LaGrange Road, IL (26 m)
+    {"NPV", "NAPERVILLE"},  # Naperville, IL (25 m)
+    {"SMT", "SUMMIT"},  # Summit, IL (11 m)
+    {"BON", "BNST"},  # Boston North Station (34 m)
+    {"FRA", "BFRM"},  # Framingham, MA (13 m)
+    {"HHL", "BHAV"},  # Haverhill, MA (23 m)
+    {"WOB", "BAWB"},  # Anderson/Woburn, MA (60 m)
     *SUBWAY_STATION_COMPLEXES,
     # Subway platforms at the multimodal mega-hubs (Penn, GCT, WTC) stay
     # equivalent to each other — they connect inside fare control. The adjacent
@@ -189,6 +226,35 @@ STATION_EQUIVALENCE_GROUPS: list[set[str]] = [
     *[set(subway_codes) for _, subway_codes in CROSS_MODAL_HUBS],
     # WMATA transfer stations (dual-platform codes for the same physical station)
     *[{a, b} for a, b in WMATA_TRANSFER_STATIONS],
+]
+
+# Providers whose feeds describe scheduled intercity / commuter rail. Two of
+# these publishing a station at the same coordinates means one physical station
+# described twice — the defect this module keeps re-acquiring, most recently when
+# SEPTA Regional Rail arrived carrying its own code for every NEC and Keystone
+# station Amtrak and NJT already had. Rapid-transit providers are excluded: a
+# subway platform metres from a rail terminal is a genuine second choice for a
+# rider, modeled as a transfer (see CROSS_MODAL_HUBS).
+SAME_STATION_GUARD_PROVIDERS: frozenset[str] = frozenset(
+    {"NJT", "AMTRAK", "SEPTA_RR", "LIRR", "MNR", "METRA", "MBTA"}
+)
+
+# How close two of those providers' stations must be before they are presumed to
+# be the same station and must be either grouped above or listed as distinct.
+SAME_STATION_GUARD_METERS = 250.0
+
+# Rail stations that sit inside SAME_STATION_GUARD_METERS of each other and are
+# nonetheless separate stations a rider must be able to choose between. Every
+# entry is a deliberate decision rather than an oversight, which is the whole
+# point of listing them: test_nearby_rail_stations_are_grouped_or_allowlisted
+# fails on anything close-by that appears in neither this list nor a group above.
+DISTINCT_NEARBY_STATIONS: list[set[str]] = [
+    # SEPTA runs two separate North Philadelphia stations 156 m apart: the
+    # Trenton Line platforms at Amtrak's station (SEPR90711, grouped with
+    # NF/PHN above) and its own Chestnut Hill West platforms on the Main Line.
+    {"NF", "SEPR90810"},
+    {"PHN", "SEPR90810"},
+    {"SEPR90711", "SEPR90810"},
 ]
 
 # Derived lookup: code -> full equivalence group
@@ -1392,6 +1458,158 @@ def get_station_coordinates(code: str) -> dict[str, float] | None:
         Dict with lat/lon or None if not found
     """
     return STATION_COORDINATES.get(code)
+
+
+def haversine_meters(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Great-circle distance between two coordinates, in metres."""
+    radius = 6_371_000
+    phi1, phi2 = math.radians(lat1), math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlam = math.radians(lon2 - lon1)
+    a = (
+        math.sin(dphi / 2) ** 2
+        + math.cos(phi1) * math.cos(phi2) * math.sin(dlam / 2) ** 2
+    )
+    return 2 * radius * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+
+
+def station_distance_meters(code_a: str, code_b: str) -> float | None:
+    """Distance between two station codes, or None if either lacks coordinates."""
+    coords_a = STATION_COORDINATES.get(code_a)
+    coords_b = STATION_COORDINATES.get(code_b)
+    if coords_a is None or coords_b is None:
+        return None
+    return haversine_meters(
+        coords_a["lat"], coords_a["lon"], coords_b["lat"], coords_b["lon"]
+    )
+
+
+# =============================================================================
+# Display identity
+# =============================================================================
+
+# One physical station legitimately carries several codes: cross-provider codes
+# for a shared building (STATION_EQUIVALENCE_GROUPS), the platform codes of a
+# SEPTA Metro complex (SEPTA_METRO_STATION_COMPLEXES), and SEPTA's per-direction
+# surface stops, which the feed splits into two codes sharing one name a few
+# metres apart.
+#
+# For *queries* those are three different things — see the note on
+# SEPTA_METRO_STATION_COMPLEXES for why pooling directional platforms onto one
+# board would put outbound trolleys on the inbound board. For *display* they are
+# one entry: a rider scanning a picker should see "Drexel Station at 30th St"
+# once, not three times.
+#
+# Deliberately excludes CROSS_MODAL_HUBS. NY Penn and 34 St-Penn — or 30th
+# Street Station and Drexel Station at 30th St — share a complex but not a mode,
+# and which one a rider boards at is a real choice, not a duplicate.
+#
+# Clients dedupe *search results* by this key rather than dropping the
+# non-representative codes from their lists, so every code keeps its own
+# searchable name: "42 St-Port Authority Bus Terminal" still finds the Times Sq
+# complex even though "Times Sq-42 St" is the key that represents it.
+
+DISPLAY_MERGE_METERS = 150.0
+
+# Which provider's feed defines each code. First writer wins, matching the merge
+# order of STATION_NAMES, so a code shared across feeds (e.g. NY) resolves to the
+# same provider both places.
+_STATION_PROVIDERS: dict[str, str] = {}
+for _provider, _provider_names in (
+    ("NJT", NJT_STATION_NAMES),
+    ("AMTRAK", AMTRAK_STATION_NAMES),
+    ("PATCO", PATCO_STATION_NAMES),
+    ("PATH", PATH_STATION_NAMES),
+    ("LIRR", LIRR_STATION_NAMES),
+    ("MNR", MNR_STATION_NAMES),
+    ("SUBWAY", SUBWAY_STATION_NAMES),
+    ("METRA", METRA_STATION_NAMES),
+    ("WMATA", WMATA_STATION_NAMES),
+    ("BART", BART_STATION_NAMES),
+    ("MBTA", MBTA_STATION_NAMES),
+    ("SEPTA_RR", SEPTA_RR_STATION_NAMES),
+    ("SEPTA_METRO", SEPTA_METRO_STATION_NAMES),
+):
+    for _station_code in _provider_names:
+        _STATION_PROVIDERS.setdefault(_station_code, _provider)
+
+
+def station_provider(code: str) -> str | None:
+    """Return the data source whose station list defines `code`."""
+    return _STATION_PROVIDERS.get(code)
+
+
+def _merge_overlapping_groups(groups: list[set[str]]) -> list[frozenset[str]]:
+    """Collapse groups that share any code into single groups."""
+    group_by_code: dict[str, set[str]] = {}
+    merged: list[set[str]] = []
+    for group in groups:
+        targets = [group_by_code[c] for c in group if c in group_by_code]
+        # Deduplicate by identity — several codes can point at the same set.
+        unique: list[set[str]] = []
+        for target in targets:
+            if not any(target is existing for existing in unique):
+                unique.append(target)
+        if not unique:
+            new_group = set(group)
+            merged.append(new_group)
+            for code in new_group:
+                group_by_code[code] = new_group
+            continue
+        primary = unique[0]
+        for other in unique[1:]:
+            primary |= other
+            merged = [g for g in merged if g is not other]
+        primary |= group
+        for code in primary:
+            group_by_code[code] = primary
+    return [frozenset(g) for g in merged]
+
+
+def _build_display_station_groups() -> list[frozenset[str]]:
+    """Codes that a station picker should present as a single entry."""
+    groups: list[set[str]] = [set(g) for g in STATION_EQUIVALENCE_GROUPS]
+    groups.extend(set(g) for g in SEPTA_METRO_STATION_COMPLEXES)
+
+    # SEPTA splits most surface stops into one code per direction, sharing a
+    # single name metres apart. There are ~200 such pairs and the generator adds
+    # more with every feed regeneration, so they are derived, not listed. Keyed
+    # by (provider, name) first so the distance check only runs within a handful
+    # of same-named codes instead of over every pair of stations.
+    codes_by_name: dict[tuple[str | None, str], list[str]] = defaultdict(list)
+    for code, name in STATION_NAMES.items():
+        codes_by_name[(_STATION_PROVIDERS.get(code), name)].append(code)
+    for same_named in codes_by_name.values():
+        if len(same_named) < 2:
+            continue
+        for index, code_a in enumerate(same_named):
+            for code_b in same_named[index + 1 :]:
+                distance = station_distance_meters(code_a, code_b)
+                if distance is not None and distance <= DISPLAY_MERGE_METERS:
+                    groups.append({code_a, code_b})
+
+    return _merge_overlapping_groups(groups)
+
+
+DISPLAY_STATION_GROUPS: list[frozenset[str]] = _build_display_station_groups()
+
+# Derived lookup: code -> the code representing its physical station. Only the
+# dedupe key matters, so the representative is simply the lowest code in the
+# group; clients still render whichever entry actually matched the query.
+DISPLAY_STATION_CODES: dict[str, str] = {}
+for _display_group in DISPLAY_STATION_GROUPS:
+    _representative = min(_display_group)
+    for _grouped_code in _display_group:
+        DISPLAY_STATION_CODES[_grouped_code] = _representative
+
+
+def display_station_code(code: str) -> str:
+    """Return the code representing `code`'s physical station for display.
+
+    Two codes with the same result are the same station to a rider and should
+    collapse to one row in a station picker.
+    """
+    return DISPLAY_STATION_CODES.get(code, code)
 
 
 # =============================================================================
