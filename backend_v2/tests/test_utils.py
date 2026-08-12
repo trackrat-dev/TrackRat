@@ -55,6 +55,43 @@ def test_parse_njt_time():
     assert result.minute == 30
 
 
+def test_parse_njt_time_across_dst_transitions_never_reads_earlier():
+    """Pin the offset-free round-trip skew that clock-anchored fixtures rely on.
+
+    ``NJT_TIME_FORMAT`` carries no UTC offset, and ``parse_njt_time`` localizes a
+    naive value with pytz's ``is_dst=False`` default — i.e. it resolves an
+    ambiguous or nonexistent wall time to *standard* time. So formatting an EDT
+    instant inside a DST transition and parsing it back yields an instant exactly
+    one hour LATER, never earlier.
+
+    Tests that build NJT fixture strings from ``now_et()`` depend on that
+    direction and magnitude: a reading meant to be in the past must sit more than
+    an hour behind the clock to stay past under the skew (a future one stays
+    future for free). If pytz's default changed, or the format gained an offset,
+    those margins would be over-wide rather than wrong — but the assumption
+    should fail loudly here rather than surface as one red CI run a year.
+    """
+    njt_format = "%d-%b-%Y %I:%M:%S %p"
+
+    # 2026-11-01 01:30 — the ambiguous hour on the November fallback.
+    # 2026-03-08 02:30 — the nonexistent hour on the March spring-forward.
+    for naive in (datetime(2026, 11, 1, 1, 30), datetime(2026, 3, 8, 2, 30)):
+        intended_edt = ET.localize(naive, is_dst=True)
+        round_tripped = parse_njt_time(naive.strftime(njt_format))
+
+        skew = round_tripped - intended_edt
+        assert skew == timedelta(hours=1), (
+            f"{naive} formatted as {naive.strftime(njt_format)!r} should reparse "
+            f"one hour later than the EDT reading {intended_edt} (pytz "
+            f"is_dst=False picks standard time), got {round_tripped} "
+            f"(skew {skew})"
+        )
+        assert round_tripped >= intended_edt, (
+            "The round trip must never read earlier than intended — a past "
+            "fixture reading could otherwise be pushed into the future"
+        )
+
+
 def test_parse_date():
     """Test parsing date strings."""
     # Test ISO format
