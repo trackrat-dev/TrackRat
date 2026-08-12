@@ -25,7 +25,7 @@ from tests.fixtures.njt_api_responses import NJT_TIME_FORMAT, StopBuilder
 from trackrat.collectors.njt.client import NJTransitClient
 from trackrat.collectors.njt.journey import JourneyCollector
 from trackrat.models.database import Base, JourneyStop, TrainJourney
-from trackrat.utils.time import now_et
+from trackrat.utils.time import now_et, parse_njt_time
 
 # ---------------------------------------------------------------------------
 # SQLite in-memory fixtures (avoids PostgreSQL requirement)
@@ -540,11 +540,24 @@ class TestArrivalTimeFreezing:
         producing erroneous delay readings (e.g., +99m or -13m)."""
         # Anchor relative to the clock, not a fixed 08:00: the #1768 write guard
         # only admits an arrival reading that has already happened, so a fixed
-        # hour made this test fail on any run starting before 08:20 ET. NP's
-        # arrival (+20) and departure (+22) must be past for the first cycle to
-        # record anything; NY (+38/+40) must stay future so it remains the
-        # not-yet-reached stop.
-        base_time = now_et().replace(second=0, microsecond=0) - timedelta(minutes=30)
+        # hour made this test fail on any run starting before 08:20 ET. NP must
+        # be past for the first cycle to record anything; NY must stay future so
+        # it remains the not-yet-reached stop.
+        #
+        # Both margins clear a full hour, and every expectation is the round-trip
+        # of the exact string the fixture carries, because NJT_TIME_FORMAT has no
+        # UTC offset while parse_njt_time re-localizes with pytz's is_dst=False
+        # default. On the November fold a 01:xx EDT value therefore comes back as
+        # 01:xx EST — an hour later than written — and a March-gap value skews the
+        # same way; neither ever skews earlier. A 30-minute anchor put both the
+        # guard's past/future verdict and the equality assertion inside that
+        # skew, which is a once-a-year red CI run on a correct backend.
+        now = now_et().replace(second=0, microsecond=0)
+        tr_dep_str = (now - timedelta(minutes=100)).strftime(NJT_TIME_FORMAT)
+        np_arr_str_1 = (now - timedelta(minutes=80)).strftime(NJT_TIME_FORMAT)
+        np_dep_str = (now - timedelta(minutes=78)).strftime(NJT_TIME_FORMAT)
+        ny_arr_str = (now + timedelta(minutes=60)).strftime(NJT_TIME_FORMAT)
+        ny_dep_str = (now + timedelta(minutes=62)).strftime(NJT_TIME_FORMAT)
 
         # Create a journey
         journey = TrainJourney(
@@ -557,7 +570,7 @@ class TestArrivalTimeFreezing:
             terminal_station_code="NY",
             data_source="NJT",
             observation_type="OBSERVED",
-            scheduled_departure=base_time,
+            scheduled_departure=parse_njt_time(tr_dep_str),
             is_cancelled=False,
             is_completed=False,
         )
@@ -565,14 +578,14 @@ class TestArrivalTimeFreezing:
         await sqlite_session.flush()
 
         # First collection: train at NP, NP has arrived and departed
-        np_arr_time_1 = base_time + timedelta(minutes=20)
+        np_arr_time_1 = parse_njt_time(np_arr_str_1)
         builder = StopBuilder()
         stops_cycle_1 = [
             _make_stop_with_sched_fields(
                 builder,
                 "TR",
                 "Trenton",
-                dep_time=base_time.strftime(NJT_TIME_FORMAT),
+                dep_time=tr_dep_str,
                 departed=True,
                 track="2",
             ),
@@ -580,8 +593,8 @@ class TestArrivalTimeFreezing:
                 builder,
                 "NP",
                 "Newark Penn",
-                dep_time=(base_time + timedelta(minutes=22)).strftime(NJT_TIME_FORMAT),
-                arr_time=np_arr_time_1.strftime(NJT_TIME_FORMAT),
+                dep_time=np_dep_str,
+                arr_time=np_arr_str_1,
                 departed=True,
                 track="1",
             ),
@@ -589,8 +602,8 @@ class TestArrivalTimeFreezing:
                 builder,
                 "NY",
                 "New York Penn",
-                dep_time=(base_time + timedelta(minutes=40)).strftime(NJT_TIME_FORMAT),
-                arr_time=(base_time + timedelta(minutes=38)).strftime(NJT_TIME_FORMAT),
+                dep_time=ny_dep_str,
+                arr_time=ny_arr_str,
                 departed=False,
             ),
         ]
@@ -613,14 +626,17 @@ class TestArrivalTimeFreezing:
         )
         assert np_stop.has_departed_station is True
 
-        # Second collection: NJT revises NP's TIME to a different value
-        np_arr_time_2 = base_time + timedelta(minutes=25)  # revised by NJT
+        # Second collection: NJT revises NP's TIME to a different value. Still
+        # over an hour in the past, so the guard would admit it if the freeze
+        # did not hold — the revision is what must be rejected, not the clock.
+        np_arr_str_2 = (now - timedelta(minutes=75)).strftime(NJT_TIME_FORMAT)
+        assert np_arr_str_2 != np_arr_str_1, "The revised reading must differ"
         stops_cycle_2 = [
             _make_stop_with_sched_fields(
                 builder,
                 "TR",
                 "Trenton",
-                dep_time=base_time.strftime(NJT_TIME_FORMAT),
+                dep_time=tr_dep_str,
                 departed=True,
                 track="2",
             ),
@@ -628,8 +644,8 @@ class TestArrivalTimeFreezing:
                 builder,
                 "NP",
                 "Newark Penn",
-                dep_time=(base_time + timedelta(minutes=22)).strftime(NJT_TIME_FORMAT),
-                arr_time=np_arr_time_2.strftime(NJT_TIME_FORMAT),  # revised!
+                dep_time=np_dep_str,
+                arr_time=np_arr_str_2,  # revised!
                 departed=True,
                 track="1",
             ),
@@ -637,8 +653,8 @@ class TestArrivalTimeFreezing:
                 builder,
                 "NY",
                 "New York Penn",
-                dep_time=(base_time + timedelta(minutes=40)).strftime(NJT_TIME_FORMAT),
-                arr_time=(base_time + timedelta(minutes=38)).strftime(NJT_TIME_FORMAT),
+                dep_time=ny_dep_str,
+                arr_time=ny_arr_str,
                 departed=False,
             ),
         ]
