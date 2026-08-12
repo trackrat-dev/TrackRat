@@ -727,4 +727,134 @@ class StationsTests: XCTestCase {
         XCTAssertEqual(result, "Lorimer St",
                        "Unrelated picked origin/destination should not relabel the stop")
     }
+
+    // MARK: - Display Identity (one row per physical station)
+
+    func testDisplayStationKeyFallsBackToTheCodeItself() {
+        XCTAssertEqual(Stations.displayStationKey(forCode: "MP"), "MP",
+                       "A station with a single code represents itself")
+        XCTAssertEqual(Stations.displayStationKey(forCode: "NOT_A_STATION"), "NOT_A_STATION",
+                       "An unknown code must pass through rather than collapse")
+    }
+
+    func testDrexelStationPlatformCodesShareOneDisplayKey() {
+        // SEPTA splits Drexel Station at 30th St across three codes carrying the
+        // same name, so the picker listed it three times — two of them
+        // disambiguated with a code suffix because stationCodes is keyed by name.
+        let keys = Set(["SEPM20643", "SEPM20662", "SEPM21532"]
+            .map { Stations.displayStationKey(forCode: $0) })
+        XCTAssertEqual(keys.count, 1,
+                       "All three Drexel Station codes should share one display key")
+    }
+
+    func testThirtiethStreetStationSharesOneDisplayKeyAcrossProviders() {
+        XCTAssertEqual(Stations.displayStationKey(forCode: "PH"),
+                       Stations.displayStationKey(forCode: "SEPR90004"),
+                       "\"Philadelphia\" (NJT/Amtrak) and \"Gray 30th St Station\" (SEPTA) "
+                       + "are one station")
+    }
+
+    func testWilmingtonSharesOneDisplayKeyAcrossProviders() {
+        XCTAssertEqual(Stations.displayStationKey(forCode: "WI"),
+                       Stations.displayStationKey(forCode: "SEPR90203"),
+                       "\"Wilmington DE\" (NJT/Amtrak) and \"Wilmington\" (SEPTA) are one station")
+    }
+
+    func testThirtiethStreetAndDrexelStayDistinct() {
+        // One complex, two modes. Which side a rider boards on is a real choice,
+        // exactly as with NY Penn and the 34 St-Penn subway platforms.
+        XCTAssertNotEqual(Stations.displayStationKey(forCode: "PH"),
+                          Stations.displayStationKey(forCode: "SEPM20643"),
+                          "The rail station and the Market-Frankford station below it "
+                          + "must stay separately selectable")
+    }
+
+    func testCrossModalHubsStayDistinct() {
+        XCTAssertNotEqual(Stations.displayStationKey(forCode: "NY"),
+                          Stations.displayStationKey(forCode: "S128"),
+                          "NY Penn and 34 St-Penn Station are a transfer, not a duplicate")
+    }
+
+    func testNorthPhiladelphiaSeptaStaysDistinctFromAmtrakStation() {
+        // SEPTA runs two North Philadelphia stations 156 m apart.
+        XCTAssertNotEqual(Stations.displayStationKey(forCode: "SEPR90810"),
+                          Stations.displayStationKey(forCode: "PHN"),
+                          "SEPTA's Chestnut Hill West station is not Amtrak's station")
+    }
+
+    func testWilmingtonDelawareDoesNotMergeWithWilmingtonMassachusetts() {
+        XCTAssertNotEqual(Stations.displayStationKey(forCode: "SEPR90203"),
+                          Stations.displayStationKey(forCode: "BWLM"),
+                          "Same name, different states — these must not merge")
+    }
+
+    func testDisplayStationKeysAreIdempotent() {
+        for key in Stations.displayStationKeys.values {
+            XCTAssertEqual(Stations.displayStationKey(forCode: key), key,
+                           "Key \(key) should be its own key")
+        }
+    }
+
+    func testDisplayStationKeysNeverMapACodeToItself() {
+        for (code, key) in Stations.displayStationKeys {
+            XCTAssertNotEqual(code, key,
+                              "\(code) maps to itself; the mirror carries only "
+                              + "non-representative codes")
+        }
+    }
+
+    // MARK: - Search deduplication
+
+    func testSearchReturnsOneResultPerPhysicalStation() {
+        for query in ["30th", "Philadelphia", "Wilmington", "Trenton", "Times Sq"] {
+            let results = Stations.search(query, limit: 50)
+            var keys = Set<String>()
+            for name in results {
+                guard let code = Stations.stationCodes[name] else { continue }
+                let key = Stations.displayStationKey(forCode: code)
+                XCTAssertTrue(keys.insert(key).inserted,
+                              "Query \"\(query)\" returned \(name) duplicating a station "
+                              + "already in the results")
+            }
+        }
+    }
+
+    func testSearchShowsDrexelStationOnce() {
+        let results = Stations.search("Drexel Station at 30th", limit: 50)
+        let drexel = results.filter { $0.hasPrefix("Drexel Station at 30th") }
+        XCTAssertEqual(drexel.count, 1,
+                       "Drexel Station at 30th St should appear once, not once per code")
+    }
+
+    func testSearchKeepsSiblingNamesFindable() {
+        // Deduping keeps the first match rather than one canonical name, so each
+        // platform of a complex stays findable under the name it carries.
+        XCTAssertFalse(Stations.search("Gray 30th St", limit: 50).isEmpty,
+                       "30th Street Station must stay findable under SEPTA's name")
+        XCTAssertFalse(Stations.search("Philadelphia", limit: 50).isEmpty,
+                       "30th Street Station must stay findable under the NJT/Amtrak name")
+    }
+
+    func testSearchKeepsNamesWithNoKnownCode() {
+        // Names that resolve to no code are passed through rather than dropped,
+        // so deduplication can never silently hide a station.
+        let unknownNames = Stations.all.filter { Stations.stationCodes[$0] == nil }
+        for name in unknownNames.prefix(5) {
+            XCTAssertTrue(Stations.search(name, limit: 200).contains(name),
+                          "\(name) has no code and must still be searchable")
+        }
+    }
+
+    func testEquivalentStationsCoverSeptaSharedStations() {
+        let sharedPairs = [
+            ("PH", "SEPR90004"), ("WI", "SEPR90203"), ("TR", "SEPR90701"),
+            ("ARD", "SEPR90518"), ("CWH", "SEPR90706"), ("DOW", "SEPR90502"),
+            ("EXT", "SEPR90504"), ("NRK", "SEPR90201"), ("PAO", "SEPR90506"),
+            ("PHN", "SEPR90711"), ("LW", "LND"),
+        ]
+        for (railCode, otherCode) in sharedPairs {
+            XCTAssertTrue(Stations.areEquivalentStations(railCode, otherCode),
+                          "\(railCode) and \(otherCode) are the same physical station")
+        }
+    }
 }

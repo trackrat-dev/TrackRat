@@ -15,7 +15,33 @@ struct Stations {
         let substringMatches = all.filter {
             !$0.lowercased().hasPrefix(q) && $0.lowercased().contains(q)
         }
-        return Array((prefixMatches + substringMatches).prefix(limit))
+        return Array(
+            deduplicatingByPhysicalStation(prefixMatches + substringMatches).prefix(limit)
+        )
+    }
+
+    /// Drops names that repeat a physical station already in the list.
+    ///
+    /// One station can carry several codes, and the picker showed one row per
+    /// code: Philadelphia 30th Street Station appeared as "Philadelphia" (NJT)
+    /// and "Gray 30th St Station" (SEPTA), and SEPTA's three codes for Drexel
+    /// Station at 30th St appeared as "Drexel Station at 30th St" plus two
+    /// entries this list disambiguates with a code suffix, because `stationCodes`
+    /// is keyed by name and needs the keys to be unique.
+    ///
+    /// Keeps the *first* match rather than a fixed canonical name so every name
+    /// stays searchable: subway complexes name each platform differently on
+    /// purpose ("42 St-Port Authority Bus Terminal" and "Times Sq-42 St" are one
+    /// station), and collapsing to one name would make the others unfindable.
+    ///
+    /// Names with no known code are kept — dropping them would silently hide
+    /// stations rather than deduplicate them.
+    private static func deduplicatingByPhysicalStation(_ names: [String]) -> [String] {
+        var seenKeys = Set<String>()
+        return names.filter { name in
+            guard let code = stationCodes[name] else { return true }
+            return seenKeys.insert(displayStationKey(forCode: code)).inserted
+        }
     }
 
    static func getStationCode(_ stationName: String) -> String? { 

@@ -11,6 +11,8 @@ import {
   DISABLED_SYSTEMS,
   ALERT_CAPABLE_SYSTEMS,
   SYSTEM_NAMES,
+  DISPLAY_STATION_KEYS,
+  displayStationKey,
 } from './stations';
 
 describe('STATIONS', () => {
@@ -322,6 +324,124 @@ describe('ALERT_CAPABLE_SYSTEMS', () => {
     // guarding against typos that would silently gate the banner off.
     for (const system of ALERT_CAPABLE_SYSTEMS) {
       expect(SYSTEM_ORDER).toContain(system);
+    }
+  });
+});
+
+describe('displayStationKey', () => {
+  it('returns the code itself when the station has only one code', () => {
+    expect(displayStationKey('MP')).toBe('MP');
+    expect(displayStationKey('NOT_A_STATION')).toBe('NOT_A_STATION');
+  });
+
+  it('collapses the three SEPTA codes for Drexel Station at 30th St', () => {
+    const keys = new Set(
+      ['SEPM20643', 'SEPM20662', 'SEPM21532'].map(displayStationKey),
+    );
+    expect(keys.size).toBe(1);
+  });
+
+  it('collapses 30th Street Station across NJT/Amtrak and SEPTA', () => {
+    expect(displayStationKey('SEPR90004')).toBe(displayStationKey('PH'));
+  });
+
+  it('collapses Wilmington across NJT/Amtrak and SEPTA', () => {
+    expect(displayStationKey('SEPR90203')).toBe(displayStationKey('WI'));
+  });
+
+  it('keeps 30th Street Station and Drexel Station at 30th St separate', () => {
+    // One complex, two modes — like NY Penn vs 34 St-Penn, which side a rider
+    // boards on is a real choice rather than a duplicate.
+    expect(displayStationKey('PH')).not.toBe(displayStationKey('SEPM20643'));
+  });
+
+  it('keeps NY Penn separate from the 34 St-Penn subway platforms', () => {
+    expect(displayStationKey('NY')).not.toBe(displayStationKey('S128'));
+  });
+
+  it('keeps SEPTA North Philadelphia separate from the Amtrak station', () => {
+    // SEPTA runs two North Philadelphia stations 156 m apart.
+    expect(displayStationKey('SEPR90810')).not.toBe(displayStationKey('PHN'));
+  });
+
+  it('does not merge Wilmington DE with MBTA Wilmington MA', () => {
+    expect(displayStationKey('SEPR90203')).not.toBe(displayStationKey('BWLM'));
+  });
+
+  it('never maps a code to itself', () => {
+    // The mirror only carries non-representative codes; displayStationKey falls
+    // back to the code, so self-entries would just be dead weight.
+    for (const [code, key] of Object.entries(DISPLAY_STATION_KEYS)) {
+      expect(key, `${code} maps to itself`).not.toBe(code);
+    }
+  });
+
+  it('gives every rendered station a key', () => {
+    // Keys themselves need not be rendered: the mirror is generated from the
+    // backend, whose station list is a superset of this one (it carries every
+    // Amtrak long-distance code, and PNK/PHO were dropped from search here).
+    // A key is an opaque grouping identifier, not necessarily a visible row.
+    for (const station of STATIONS) {
+      expect(typeof displayStationKey(station.code)).toBe('string');
+      expect(displayStationKey(station.code).length).toBeGreaterThan(0);
+    }
+  });
+
+  it('is idempotent — a key is always its own key', () => {
+    for (const key of Object.values(DISPLAY_STATION_KEYS)) {
+      expect(displayStationKey(key)).toBe(key);
+    }
+  });
+});
+
+describe('searchStations deduplication', () => {
+  it('returns one result per physical station', () => {
+    for (const query of ['30th', 'philadelphia', 'wilmington', 'times sq', 'trenton']) {
+      const results = searchStations(query, undefined, 50);
+      const keys = results.map(s => displayStationKey(s.code));
+      expect(new Set(keys).size, `"${query}" returned duplicate stations`).toBe(
+        keys.length,
+      );
+    }
+  });
+
+  it('shows Drexel Station at 30th St once instead of three times', () => {
+    const results = searchStations('Drexel Station at 30th', undefined, 50);
+    const drexel = results.filter(s => s.name.startsWith('Drexel Station at 30th'));
+    expect(drexel).toHaveLength(1);
+  });
+
+  it('still finds a station under a sibling code name', () => {
+    // Deduping keeps the first match rather than one canonical name, so each
+    // platform of a complex stays findable under the name it actually carries.
+    const portAuthority = searchStations('Port Authority Bus Terminal', undefined, 50);
+    expect(portAuthority.length).toBeGreaterThan(0);
+    const timesSq = searchStations('Times Sq-42 St', undefined, 50);
+    expect(timesSq.length).toBeGreaterThan(0);
+  });
+
+  it('finds 30th Street Station under either name', () => {
+    expect(searchStations('Gray 30th St', undefined, 50).length).toBeGreaterThan(0);
+    expect(searchStations('Philadelphia', undefined, 50).length).toBeGreaterThan(0);
+  });
+});
+
+describe('searchStationsPartitioned deduplication', () => {
+  it('does not repeat a physical station across both buckets', () => {
+    // "Philadelphia" (NJT PH) and "Gray 30th St Station" (SEPTA) are one
+    // station; with only NJT enabled it must appear once, in `matched`.
+    const { matched, other } = searchStationsPartitioned('30th', ['NJT'], 50);
+    const matchedKeys = new Set(matched.map(s => displayStationKey(s.code)));
+    for (const station of other) {
+      expect(matchedKeys.has(displayStationKey(station.code))).toBe(false);
+    }
+  });
+
+  it('returns one result per physical station within each bucket', () => {
+    const { matched, other } = searchStationsPartitioned('30th', ['SEPTA_METRO'], 50);
+    for (const bucket of [matched, other]) {
+      const keys = bucket.map(s => displayStationKey(s.code));
+      expect(new Set(keys).size).toBe(keys.length);
     }
   });
 });

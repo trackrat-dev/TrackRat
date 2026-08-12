@@ -16,6 +16,10 @@ on:
       # file. Without it here, an iOS-only topology edit runs ios-ci.yml alone
       # (Xcode only) and the drift the test exists to catch merges unnoticed.
       - 'ios/TrackRat/Shared/RouteTopology.swift'
+      # Same reasoning for the display-station mirror: it is generated from the
+      # backend, so a hand-edit here must be caught by the --check step below.
+      - 'ios/TrackRat/Shared/StationData.swift'
+      - 'scripts/generate_display_station_keys.py'
   pull_request:
     branches: [main]
     paths:
@@ -24,6 +28,10 @@ on:
       - 'webpage_v2/**'
       - '.github/workflows/ci-cd-v2.yml'
       - 'ios/TrackRat/Shared/RouteTopology.swift'
+      # Same reasoning for the display-station mirror: it is generated from the
+      # backend, so a hand-edit here must be caught by the --check step below.
+      - 'ios/TrackRat/Shared/StationData.swift'
+      - 'scripts/generate_display_station_keys.py'
 
 jobs:
   # ============================================
@@ -73,6 +81,13 @@ jobs:
       - name: Install dependencies
         working-directory: backend_v2
         run: poetry install --no-interaction
+
+      # The iOS and web station pickers mirror the backend's display-station
+      # grouping. A stale mirror silently reintroduces duplicate picker rows,
+      # and neither client's own tests can see the backend to notice.
+      - name: Check client station mirrors are current
+        working-directory: backend_v2
+        run: poetry run python ../scripts/generate_display_station_keys.py --check
 
       - name: Run tests
         working-directory: backend_v2

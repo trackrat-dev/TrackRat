@@ -4124,6 +4124,19 @@ extension Stations {
             ["STS", "MNSS"],   // New Haven-State St
             ["NP", "PNK"],     // Newark Penn Station / Newark PATH
             ["HB", "PHO"],     // Hoboken / Hoboken PATH
+            // SEPTA Regional Rail runs over the NEC and the Keystone Corridor,
+            // sharing these stations outright with Amtrak and NJT.
+            ["PH", "SEPR90004"],   // Philadelphia 30th Street Station
+            ["WI", "SEPR90203"],   // Wilmington, DE
+            ["TR", "SEPR90701"],   // Trenton Transit Center
+            ["ARD", "SEPR90518"],  // Ardmore
+            ["CWH", "SEPR90706"],  // Cornwells Heights
+            ["DOW", "SEPR90502"],  // Downingtown
+            ["EXT", "SEPR90504"],  // Exton
+            ["NRK", "SEPR90201"],  // Newark, DE
+            ["PAO", "SEPR90506"],  // Paoli
+            ["NF", "PHN", "SEPR90711"],  // North Philadelphia (Amtrak platforms)
+            ["LW", "LND"],         // Lindenwold (NJT Atlantic City Line / PATCO)
         ]
 
         // Subway station complexes: build groups from (alternate, canonical) pairs
@@ -4178,4 +4191,680 @@ extension Stations {
         }
         return result
     }()
+
+    // MARK: - Display Identity
+
+    // DISPLAY_STATION_KEYS GENERATED — do not edit by hand
+    // Regenerate: cd backend_v2 && poetry run python \
+    //   ../scripts/generate_display_station_keys.py
+    //
+    // Maps a station code to the code representing its physical station,
+    // for codes that are not their own representative. Search results are
+    // deduped by this key so one station occupies one row.
+    static let displayStationKeys: [String: String] = [
+        // Metro Center (A01)
+        "C01": "A01",
+        // Ardmore, PA (ARD)
+        "SEPR90518": "ARD",
+        // Gallery Pl-Chinatown (B01)
+        "F01": "B01",
+        // Fort Totten (B06)
+        "E06": "B06",
+        // Anderson/Woburn (BAWB)
+        "WOB": "BAWB",
+        // Framingham (BFRM)
+        "FRA": "BFRM",
+        // Haverhill (BHAV)
+        "HHL": "BHAV",
+        // North Station (BNST)
+        "BON": "BNST",
+        // Bridgeport (BRP)
+        "MBGP": "BRP",
+        // Chicago Union Station (CHI)
+        "CUS": "CHI",
+        // Croton-Harmon (CRT)
+        "MCRH": "CRT",
+        // Cornwells Heights (CWH)
+        "SEPR90706": "CWH",
+        // L'Enfant Plaza (D03)
+        "F03": "D03",
+        // Downingtown (DOW)
+        "SEPR90502": "DOW",
+        // Exton (EXT)
+        "SEPR90504": "EXT",
+        // Glenview (GLENVIEW)
+        "GLN": "GLENVIEW",
+        // Hoboken (HB)
+        "PHO": "HB",
+        // Homewood (HMW)
+        "HOMEWOOD": "HMW",
+        // Jesup (JES)
+        "JSP": "JES",
+        // Joliet Gateway Center (JOL)
+        "JOLIET": "JOL",
+        // La Grange (LAG)
+        "LAGRANGE": "LAG",
+        // Lindenwold (LND)
+        "LW": "LND",
+        // New Haven (MNHV)
+        "NHV": "MNHV",
+        // New Rochelle (MNRC)
+        "NRO": "MNRC",
+        // New Haven-State St (MNSS)
+        "STS": "MNSS",
+        // Poughkeepsie (MPOK)
+        "POU": "MPOK",
+        // Stamford (MSTM)
+        "STM": "MSTM",
+        // Yonkers (MYON)
+        "YNY": "MYON",
+        // Naperville (NAPERVILLE)
+        "NPV": "NAPERVILLE",
+        // North Philadelphia (NF)
+        "PHN": "NF",
+        "SEPR90711": "NF",
+        // Newark Penn Station (NP)
+        "PNK": "NP",
+        // Newark, DE (NRK)
+        "SEPR90201": "NRK",
+        // Paoli (PAO)
+        "SEPR90506": "PAO",
+        // Philadelphia (PH)
+        "SEPR90004": "PH",
+        // Dyckman St (S109)
+        "SA03": "S109",
+        // 181 St (S111)
+        "SA06": "S111",
+        // 168 St-Washington Hts (S112)
+        "SA09": "S112",
+        // 145 St (S114)
+        "S302": "S114",
+        "SA12": "S114",
+        "SD13": "S114",
+        // 125 St (S116)
+        "S225": "S116",
+        "S621": "S116",
+        "SA15": "S116",
+        // Cathedral Pkwy (110 St) (S118)
+        "SA17": "S118",
+        // 103 St (S119)
+        "SA18": "S119",
+        // 96 St (S120)
+        "SA19": "S120",
+        // 59 St-Columbus Circle (S125)
+        "SA24": "S125",
+        // 50 St (S126)
+        "SA25": "S126",
+        // Times Sq-42 St (S127)
+        "S725": "S127",
+        "S902": "S127",
+        "SA27": "S127",
+        "SR16": "S127",
+        // 34 St-Penn Station (S128)
+        "SA28": "S128",
+        // 14 St (S132)
+        "SD19": "S132",
+        "SL02": "S132",
+        // Canal St (S135)
+        "S639": "S135",
+        "SA34": "S135",
+        "SM20": "S135",
+        "SQ01": "S135",
+        "SR23": "S135",
+        // WTC Cortlandt (S138)
+        "S228": "S138",
+        "SA36": "S138",
+        "SE01": "S138",
+        "SR25": "S138",
+        // Rector St (S139)
+        "SR26": "S139",
+        // Gun Hill Rd (S208)
+        "S503": "S208",
+        // Pelham Pkwy (S211)
+        "S504": "S211",
+        // 149 St-Grand Concourse (S222)
+        "S415": "S222",
+        // Fulton St (S229)
+        "S418": "S229",
+        "SA38": "S229",
+        "SM22": "S229",
+        // Borough Hall (S232)
+        "S423": "S232",
+        "SR28": "S232",
+        // Atlantic Av-Barclays Ctr (S235)
+        "SD24": "S235",
+        "SR31": "S235",
+        // Franklin Av-Medgar Evers College (S239)
+        "SS04": "S239",
+        // 161 St-Yankee Stadium (S414)
+        "SD11": "S414",
+        // 59 St (S629)
+        "SB08": "S629",
+        "SR11": "S629",
+        // 51 St (S630)
+        "SF11": "S630",
+        // Grand Central-42 St (S631)
+        "S723": "S631",
+        "S901": "S631",
+        // 14 St-Union Sq (S635)
+        "SL03": "S635",
+        "SR20": "S635",
+        // Bleecker St (S637)
+        "SD21": "S637",
+        // Brooklyn Bridge-City Hall (S640)
+        "SM21": "S640",
+        // 74 St-Broadway (S710)
+        "SG14": "S710",
+        // Queensboro Plaza (S718)
+        "SR09": "S718",
+        // Court Sq (S719)
+        "SF09": "S719",
+        "SG22": "S719",
+        // 5 Av (S724)
+        "SD16": "S724",
+        // 155 St (SA11)
+        "SD12": "SA11",
+        // 14 St (SA31)
+        "SL01": "SA31",
+        // W 4 St-Wash Sq (SA32)
+        "SD20": "SA32",
+        // Jay St-MetroTech (SA41)
+        "SR29": "SA41",
+        // Franklin Av (SA45)
+        "SS01": "SA45",
+        // Broadway Junction (SA51)
+        "SJ27": "SA51",
+        "SL22": "SA51",
+        // 62 St (SB16)
+        "SN04": "SB16",
+        // Secaucus Concourse (SC)
+        "SE": "SC",
+        "TS": "SC",
+        // 34 St-Herald Sq (SD17)
+        "SR17": "SD17",
+        // 7 Av (SD25)
+        "SF24": "SD25",
+        // Selma-Smithfield (SEL)
+        "SSM": "SEL",
+        // Magnolia Av (SEPM10011)
+        "SEPM18843": "SEPM10011",
+        // Woodlawn-Providence (SEPM12048)
+        "SEPM18844": "SEPM12048",
+        // Richmond St & Allegheny Av (SEPM12196)
+        "SEPM21114": "SEPM12196",
+        // Richmond St & Somerset St (SEPM12218)
+        "SEPM21109": "SEPM12218",
+        // 15th St/City Hall - B2 (SEPM1281)
+        "SEPM1392": "SEPM1281",
+        "SEPM20659": "SEPM1281",
+        "SEPM31140": "SEPM1281",
+        "SEPM33029": "SEPM1281",
+        // Lansdowne Av & 60th St (SEPM15271)
+        "SEPM20689": "SEPM15271",
+        // Fairfield Av (SEPM15319)
+        "SEPM15348": "SEPM15319",
+        // Congress Av (SEPM15322)
+        "SEPM15344": "SEPM15322",
+        // Garrettford (SEPM15325)
+        "SEPM15341": "SEPM15325",
+        // Drexel Manor (SEPM15326)
+        "SEPM18846": "SEPM15326",
+        // Marshall Rd (SEPM15327)
+        "SEPM15340": "SEPM15327",
+        // Creek Rd (SEPM15328)
+        "SEPM15339": "SEPM15328",
+        // Penn St (SEPM15329)
+        "SEPM30375": "SEPM15329",
+        // Springfield-Madison (SEPM15330)
+        "SEPM30544": "SEPM15330",
+        // Andrews Av (SEPM15333)
+        "SEPM15334": "SEPM15333",
+        // Huey Av (SEPM15349)
+        "SEPM15376": "SEPM15349",
+        // Saxer Av (SEPM15355)
+        "SEPM15370": "SEPM15355",
+        // Pine Ridge (SEPM15358)
+        "SEPM15366": "SEPM15358",
+        // Monroe St (SEPM15379)
+        "SEPM15380": "SEPM15379",
+        // 69th St Transit Center (SEPM15497)
+        "SEPM416": "SEPM15497",
+        // Aronimink (SEPM16395)
+        "SEPM16402": "SEPM16395",
+        // Walnut St (SEPM18597)
+        "SEPM18632": "SEPM18597",
+        // Hilltop Rd (SEPM18598)
+        "SEPM18631": "SEPM18598",
+        // Beverly Blvd (SEPM18599)
+        "SEPM18630": "SEPM18599",
+        // Drexel Park (SEPM18600)
+        "SEPM18629": "SEPM18600",
+        // Irvington Rd (SEPM18601)
+        "SEPM18628": "SEPM18601",
+        // School Ln (SEPM18602)
+        "SEPM18627": "SEPM18602",
+        // Anderson Av (SEPM18603)
+        "SEPM18626": "SEPM18603",
+        // Drexelbrook (SEPM18604)
+        "SEPM18625": "SEPM18604",
+        // Drexeline (SEPM18605)
+        "SEPM18624": "SEPM18605",
+        // Brookside-Springfield (SEPM18606)
+        "SEPM18623": "SEPM18606",
+        // Thomson Av (SEPM18607)
+        "SEPM18621": "SEPM18607",
+        // Beatty Rd (SEPM18608)
+        "SEPM18620": "SEPM18608",
+        // Manchester Av (SEPM18609)
+        "SEPM18619": "SEPM18609",
+        // Edgmont St (SEPM18610)
+        "SEPM18618": "SEPM18610",
+        // Jackson St (SEPM18611)
+        "SEPM18617": "SEPM18611",
+        // Olive St (SEPM18612)
+        "SEPM18616": "SEPM18612",
+        // Veterans Sq (SEPM18613)
+        "SEPM18615": "SEPM18613",
+        // Leamy Av (SEPM18614)
+        "SEPM18622": "SEPM18614",
+        // Clifton-Aldan (SEPM18636)
+        "SEPM30374": "SEPM18636",
+        // Bartram Av (SEPM18842)
+        "SEPM4726": "SEPM18842",
+        // Avon Rd (SEPM1938)
+        "SEPM1957": "SEPM1938",
+        // Lansdowne Av (SEPM1939)
+        "SEPM30494": "SEPM1939",
+        // Drexel Hill Junction (SEPM1940)
+        "SEPM1955": "SEPM1940",
+        // Woodland Av (SEPM1943)
+        "SEPM1952": "SEPM1943",
+        // Springfield Mall (SEPM1944)
+        "SEPM1951": "SEPM1944",
+        // Providence Rd/Media (SEPM1946)
+        "SEPM1949": "SEPM1946",
+        // Orange St/Media (SEPM1947)
+        "SEPM1948": "SEPM1947",
+        // Scenic Rd (SEPM1953)
+        "SEPM30607": "SEPM1953",
+        // Baltimore Av (SEPM1959)
+        "SEPM30376": "SEPM1959",
+        // North St (SEPM1961)
+        "SEPM1964": "SEPM1961",
+        // Paper Mill Rd (SEPM20024)
+        "SEPM20025": "SEPM20024",
+        // 63rd St & Jefferson St (SEPM20612)
+        "SEPM20693": "SEPM20612",
+        // Lansdowne Av & 62nd St (SEPM20614)
+        "SEPM20691": "SEPM20614",
+        // Lansdowne Av & 61st St (SEPM20615)
+        "SEPM20690": "SEPM20615",
+        // Lansdowne Av & 59th St (SEPM20616)
+        "SEPM20688": "SEPM20616",
+        // Lansdowne Av & 58th St (SEPM20617)
+        "SEPM20687": "SEPM20617",
+        // Lansdowne Av & 57th St (SEPM20618)
+        "SEPM20686": "SEPM20618",
+        // Lansdowne Av & 56th St (SEPM20619)
+        "SEPM20685": "SEPM20619",
+        // Lansdowne Av & 55th St (SEPM20622)
+        "SEPM20684": "SEPM20622",
+        // Lansdowne Av & 54th St (SEPM20623)
+        "SEPM20683": "SEPM20623",
+        // Lancaster Av & 50th St (SEPM20626)
+        "SEPM20679": "SEPM20626",
+        // Lancaster Av & 47th St (SEPM20628)
+        "SEPM20677": "SEPM20628",
+        // Lancaster Av & 42nd St (SEPM20633)
+        "SEPM20672": "SEPM20633",
+        // Lancaster Av & 41st St (SEPM20634)
+        "SEPM20671": "SEPM20634",
+        // Lancaster Av & Spring Garden St (SEPM20636)
+        "SEPM20668": "SEPM20636",
+        // Lancaster Av & 38th St (SEPM20638)
+        "SEPM20663": "SEPM20638",
+        // 36th St & Market St (SEPM20640)
+        "SEPM20664": "SEPM20640",
+        // 36th St Portal (SEPM20641)
+        "SEPM287": "SEPM20641",
+        // 33rd St (SEPM20642)
+        "SEPM20658": "SEPM20642",
+        // Drexel Station at 30th St (SEPM20643)
+        "SEPM20662": "SEPM20643",
+        "SEPM21532": "SEPM20643",
+        // 22nd St (SEPM20645)
+        "SEPM20661": "SEPM20645",
+        // 19th St (SEPM20646)
+        "SEPM20660": "SEPM20646",
+        // Main St & Summit St (SEPM20697)
+        "SEPM20767": "SEPM20697",
+        // Main St & 6th St (SEPM20698)
+        "SEPM20766": "SEPM20698",
+        // Main St & 5th St (SEPM20699)
+        "SEPM20765": "SEPM20699",
+        // Main St & 4th St (SEPM20700)
+        "SEPM20764": "SEPM20700",
+        // Main St & 3rd St (SEPM20701)
+        "SEPM20763": "SEPM20701",
+        // Main St & 2nd St (SEPM20702)
+        "SEPM20762": "SEPM20702",
+        // Main St & Front St (SEPM20703)
+        "SEPM20761": "SEPM20703",
+        // Woodland Av & Island Av (SEPM20704)
+        "SEPM304": "SEPM20704",
+        // Woodland Av & 72nd St (SEPM20705)
+        "SEPM20760": "SEPM20705",
+        // Woodland Av & 71st St (SEPM20706)
+        "SEPM20759": "SEPM20706",
+        // Woodland Av & 70th St (SEPM20707)
+        "SEPM20758": "SEPM20707",
+        // Woodland Av & 69th St (SEPM20708)
+        "SEPM20757": "SEPM20708",
+        // Woodland Av & 68th St (SEPM20709)
+        "SEPM20756": "SEPM20709",
+        // Woodland Av & 67th St (SEPM20710)
+        "SEPM20755": "SEPM20710",
+        // Woodland Av & 66th St (SEPM20711)
+        "SEPM20754": "SEPM20711",
+        // Woodland Av & 65th St (SEPM20712)
+        "SEPM20753": "SEPM20712",
+        // Woodland Av & 64th St (SEPM20713)
+        "SEPM20752": "SEPM20713",
+        // Woodland Av & 63rd St (SEPM20714)
+        "SEPM20751": "SEPM20714",
+        // Woodland Av & 62nd St (SEPM20715)
+        "SEPM303": "SEPM20715",
+        // Woodland Av & 60th St (SEPM20716)
+        "SEPM20749": "SEPM20716",
+        // Woodland Av & 61st St (SEPM20717)
+        "SEPM20750": "SEPM20717",
+        // Woodland Av & 58th St (SEPM20718)
+        "SEPM20748": "SEPM20718",
+        // Woodland Av & 57th St (SEPM20719)
+        "SEPM20747": "SEPM20719",
+        // Woodland Av & 56th St (SEPM20720)
+        "SEPM20746": "SEPM20720",
+        // Woodland Av & 55th St (SEPM20721)
+        "SEPM20745": "SEPM20721",
+        // Woodland Av & 54th St (SEPM20722)
+        "SEPM20744": "SEPM20722",
+        // Woodland Av & 52nd St (SEPM20723)
+        "SEPM20742": "SEPM20723",
+        // Woodland Av & 51st St (SEPM20724)
+        "SEPM20741": "SEPM20724",
+        // Woodland Av & 50th St (SEPM20725)
+        "SEPM317": "SEPM20725",
+        // Woodland Av & 48th St (SEPM20726)
+        "SEPM20740": "SEPM20726",
+        // Woodland Av & 46th St (SEPM20727)
+        "SEPM20739": "SEPM20727",
+        // Woodland Av & 42nd St (SEPM20729)
+        "SEPM20736": "SEPM20729",
+        // 37th-Spruce (SEPM20731)
+        "SEPM20734": "SEPM20731",
+        // 36th-Sansom (SEPM20732)
+        "SEPM20733": "SEPM20732",
+        // Woodland Av & 53rd St (SEPM20743)
+        "SEPM21208": "SEPM20743",
+        // Chester Av & Alfred Av (SEPM20773)
+        "SEPM20835": "SEPM20773",
+        // Yeadon (SEPM20774)
+        "SEPM325": "SEPM20774",
+        // Chester Av & Stetser Av (SEPM20775)
+        "SEPM20834": "SEPM20775",
+        // Chester Av & Duncan Av (SEPM20776)
+        "SEPM20833": "SEPM20776",
+        // Chester Av & Yeadon Av (SEPM20777)
+        "SEPM30865": "SEPM20777",
+        // Chester Av & Church Ln (SEPM20778)
+        "SEPM20831": "SEPM20778",
+        // Kingsessing Av & 61st St (SEPM20784)
+        "SEPM20824": "SEPM20784",
+        // Kingsessing Av & 62nd St (SEPM20785)
+        "SEPM20825": "SEPM20785",
+        // Chester Av & 59th St (SEPM20788)
+        "SEPM20821": "SEPM20788",
+        // Chester Av & 48th St (SEPM20789)
+        "SEPM20812": "SEPM20789",
+        // Chester Av & 47th St (SEPM20790)
+        "SEPM20811": "SEPM20790",
+        // Chester Av & 57th St (SEPM20791)
+        "SEPM20820": "SEPM20791",
+        // Chester Av & 56th St (SEPM20792)
+        "SEPM20819": "SEPM20792",
+        // Chester Av & 55th St (SEPM20793)
+        "SEPM20818": "SEPM20793",
+        // Chester Av & 54th St (SEPM20794)
+        "SEPM20817": "SEPM20794",
+        // Chester Av & 53rd St (SEPM20795)
+        "SEPM20816": "SEPM20795",
+        // Chester Av & 52nd St (SEPM20796)
+        "SEPM20815": "SEPM20796",
+        // Chester Av & 51st St (SEPM20797)
+        "SEPM20814": "SEPM20797",
+        // Chester Av & 46th St (SEPM20799)
+        "SEPM20810": "SEPM20799",
+        // Chester Av & 45th St (SEPM20800)
+        "SEPM20809": "SEPM20800",
+        // Chester Av & 43rd St (SEPM20801)
+        "SEPM20808": "SEPM20801",
+        // Chester Av & 42nd St (SEPM20802)
+        "SEPM20807": "SEPM20802",
+        // 40th St Portal (SEPM20804)
+        "SEPM301": "SEPM20804",
+        // Baltimore Av & 60th St (SEPM20859)
+        "SEPM20896": "SEPM20859",
+        // Baltimore Av & 59th St (SEPM20860)
+        "SEPM20895": "SEPM20860",
+        // Baltimore Av & 58th St (SEPM20861)
+        "SEPM20894": "SEPM20861",
+        // Baltimore Av & 57th St (SEPM20862)
+        "SEPM20893": "SEPM20862",
+        // Baltimore Av & 56th St (SEPM20863)
+        "SEPM20892": "SEPM20863",
+        // Baltimore Av & 55th St (SEPM20864)
+        "SEPM20891": "SEPM20864",
+        // Baltimore Av & 54th St (SEPM20865)
+        "SEPM20890": "SEPM20865",
+        // Baltimore Av & 53rd St (SEPM20866)
+        "SEPM20889": "SEPM20866",
+        // Baltimore Av & 51st St (SEPM20868)
+        "SEPM20887": "SEPM20868",
+        // Baltimore Av & 50th St (SEPM20869)
+        "SEPM20886": "SEPM20869",
+        // Baltimore Av & 47th St (SEPM20871)
+        "SEPM20884": "SEPM20871",
+        // Baltimore Av & 46th St (SEPM20872)
+        "SEPM20883": "SEPM20872",
+        // Baltimore Av & 45th St (SEPM20873)
+        "SEPM20882": "SEPM20873",
+        // Baltimore Av & 44th St (SEPM20874)
+        "SEPM20881": "SEPM20874",
+        // Baltimore Av & 43rd St (SEPM20875)
+        "SEPM20880": "SEPM20875",
+        // Baltimore Av & 42nd St (SEPM20876)
+        "SEPM20879": "SEPM20876",
+        // 49th St & Paschall Av (SEPM20897)
+        "SEPM20955": "SEPM20897",
+        // Lindbergh Blvd & 54th St (SEPM20901)
+        "SEPM20951": "SEPM20901",
+        // Elmwood Av & 56th St (SEPM20902)
+        "SEPM20949": "SEPM20902",
+        // Elmwood Av & 57th St (SEPM20903)
+        "SEPM20948": "SEPM20903",
+        // Elmwood Av & 58th St (SEPM20904)
+        "SEPM20947": "SEPM20904",
+        // Elmwood Av & 59th St (SEPM20905)
+        "SEPM20946": "SEPM20905",
+        // Elmwood Av & 61st St (SEPM20907)
+        "SEPM20944": "SEPM20907",
+        // Elmwood Av & 62nd St (SEPM20908)
+        "SEPM20943": "SEPM20908",
+        // Elmwood Av & 63rd St (SEPM20909)
+        "SEPM20942": "SEPM20909",
+        // Elmwood Av & 64th St (SEPM20910)
+        "SEPM20941": "SEPM20910",
+        // Elmwood Av & 65th St (SEPM20911)
+        "SEPM20940": "SEPM20911",
+        // Elmwood Av & 66th St (SEPM20912)
+        "SEPM20939": "SEPM20912",
+        // Elmwood Av & 67th St (SEPM20913)
+        "SEPM20938": "SEPM20913",
+        // Elmwood Av & 68th St (SEPM20914)
+        "SEPM20937": "SEPM20914",
+        // Elmwood Av & 69th St (SEPM20915)
+        "SEPM20936": "SEPM20915",
+        // Elmwood Av & 70th St (SEPM20916)
+        "SEPM20935": "SEPM20916",
+        // Elmwood Av & 71st St (SEPM20917)
+        "SEPM20934": "SEPM20917",
+        // Elmwood Av & 72nd St (SEPM20918)
+        "SEPM20933": "SEPM20918",
+        // Island Av & Lindbergh Blvd - FS (SEPM20923)
+        "SEPM20927": "SEPM20923",
+        // Elmwood Av & 73rd St (SEPM20932)
+        "SEPM610": "SEPM20932",
+        // Grays Av & 51st St (SEPM20954)
+        "SEPM30595": "SEPM20954",
+        // Girard Av & Front St (SEPM20978)
+        "SEPM342": "SEPM20978",
+        // Richmond St & Clearfield St (SEPM20979)
+        "SEPM21113": "SEPM20979",
+        // Richmond St & Ann St (SEPM20981)
+        "SEPM21111": "SEPM20981",
+        // Richmond St & Cambria St (SEPM20982)
+        "SEPM21110": "SEPM20982",
+        // Richmond St & Lehigh Av (SEPM20983)
+        "SEPM21108": "SEPM20983",
+        // Richmond St & Huntingdon St (SEPM20984)
+        "SEPM21107": "SEPM20984",
+        // Girard Av & Berks St (SEPM20986)
+        "SEPM21103": "SEPM20986",
+        // Girard Av & Palmer St (SEPM20988)
+        "SEPM21101": "SEPM20988",
+        // Girard Av & Columbia Av (SEPM20989)
+        "SEPM21100": "SEPM20989",
+        // MacDade Blvd (SEPM2099)
+        "SEPM29523": "SEPM2099",
+        // Girard Av & 2nd St (SEPM20993)
+        "SEPM21096": "SEPM20993",
+        // Girard Av & 3rd St (SEPM20994)
+        "SEPM21095": "SEPM20994",
+        // Girard Av & 5th St (SEPM20996)
+        "SEPM21093": "SEPM20996",
+        // Girard Av & 7th St (SEPM20998)
+        "SEPM21091": "SEPM20998",
+        // Girard Av & 8th St (SEPM20999)
+        "SEPM21090": "SEPM20999",
+        // Girard Av & 11th St (SEPM21001)
+        "SEPM21087": "SEPM21001",
+        // Girard Av & 12th St (SEPM21002)
+        "SEPM21086": "SEPM21002",
+        // Girard Av & 16th St (SEPM21005)
+        "SEPM21083": "SEPM21005",
+        // Girard Av & 17th St (SEPM21006)
+        "SEPM21082": "SEPM21006",
+        // Girard Av & Ridge Av (SEPM21008)
+        "SEPM21081": "SEPM21008",
+        // Girard Av & 20th St (SEPM21009)
+        "SEPM21079": "SEPM21009",
+        // Girard Av & Corinthian Av (SEPM21010)
+        "SEPM21078": "SEPM21010",
+        // Girard Av & 26th St (SEPM21016)
+        "SEPM21071": "SEPM21016",
+        // Girard Av & 27th St (SEPM21017)
+        "SEPM21070": "SEPM21017",
+        // Girard Av & 28th St (SEPM21018)
+        "SEPM21069": "SEPM21018",
+        // Girard Av & 29th St (SEPM21019)
+        "SEPM21068": "SEPM21019",
+        // Girard Av & 31st St (SEPM21021)
+        "SEPM21067": "SEPM21021",
+        // Girard Av & 39th St (SEPM21025)
+        "SEPM21063": "SEPM21025",
+        // Girard Av & 41st St (SEPM21026)
+        "SEPM21062": "SEPM21026",
+        // Girard Av & 42nd St (SEPM21027)
+        "SEPM21061": "SEPM21027",
+        // Girard Av & 51st St (SEPM21032)
+        "SEPM21056": "SEPM21032",
+        // Girard Av & 52nd St (SEPM21033)
+        "SEPM21055": "SEPM21033",
+        // Girard Av & 54th St (SEPM21035)
+        "SEPM21053": "SEPM21035",
+        // Girard Av & 56th St (SEPM21037)
+        "SEPM21051": "SEPM21037",
+        // Girard Av & 57th St (SEPM21038)
+        "SEPM21050": "SEPM21038",
+        // Girard Av & 60th St (SEPM21040)
+        "SEPM21048": "SEPM21040",
+        // Girard Av & 19th St (SEPM21080)
+        "SEPM30290": "SEPM21080",
+        // 40th-Market (SEPM21248)
+        "SEPM2452": "SEPM21248",
+        // 42nd St & Pine St (SEPM21431)
+        "SEPM30820": "SEPM21431",
+        // 42nd St & Baltimore Av (SEPM21432)
+        "SEPM21456": "SEPM21432",
+        // Spruce St & 41st St (SEPM22127)
+        "SEPM22147": "SEPM22127",
+        // Frankford Av & Richmond St (SEPM23992)
+        "SEPM24038": "SEPM23992",
+        // 13th St (SEPM2455)
+        "SEPM283": "SEPM2455",
+        // Woodland Av & 49th St (SEPM297)
+        "SEPM302": "SEPM297",
+        // Girard Av & 34th St - MBFS (SEPM30291)
+        "SEPM30292": "SEPM30291",
+        // Girard Av & Merion Av (SEPM30550)
+        "SEPM30605": "SEPM30550",
+        // Lancaster Av & Powelton Av (SEPM31488)
+        "SEPM32722": "SEPM31488",
+        // Mt. Moriah (SEPM319)
+        "SEPM324": "SEPM319",
+        // Chester Av & 58th St (SEPM320)
+        "SEPM323": "SEPM320",
+        // Chester Av & 49th St (SEPM321)
+        "SEPM322": "SEPM321",
+        // Olney Transit Center - B1 (SEPM33027)
+        "SEPM82": "SEPM33027",
+        // Girard Av & Broad St (SEPM343)
+        "SEPM352": "SEPM343",
+        // Girard Av & 59th St (SEPM345)
+        "SEPM349": "SEPM345",
+        // Baltimore Av & 49th St (SEPM600)
+        "SEPM601": "SEPM600",
+        // Richmond St & Cumberland St (SEPM649)
+        "SEPM650": "SEPM649",
+        // Wilmington (SEPR90203)
+        "WI": "SEPR90203",
+        // Trenton Transit Center (SEPR90701)
+        "TR": "SEPR90701",
+        // Delancey St-Essex St (SF15)
+        "SM18": "SF15",
+        // 4 Av-9 St (SF23)
+        "SR33": "SF23",
+        // Metropolitan Av (SG29)
+        "SL10": "SG29",
+        // Myrtle-Wyckoff Avs (SL17)
+        "SM08": "SL17",
+        // Summit, IL (SMT)
+        "SUMMIT": "SMT",
+    ]
+    // END DISPLAY_STATION_KEYS GENERATED
+
+    /// The code representing a station code's physical station.
+    ///
+    /// One station can carry several codes: cross-provider codes for a shared
+    /// building (30th Street Station is NJT/Amtrak `PH` and SEPTA `SEPR90004`),
+    /// a SEPTA Metro complex's platform codes (Drexel Station at 30th St is
+    /// three, which the picker rendered as three rows), and SEPTA's
+    /// per-direction surface stops. Two codes with the same key are the same
+    /// station to a rider.
+    ///
+    /// Mirrors the backend's `display_station_code` — see
+    /// `scripts/generate_display_station_keys.py`.
+    static func displayStationKey(forCode code: String) -> String {
+        return displayStationKeys[code] ?? code
+    }
 }

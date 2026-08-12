@@ -328,6 +328,13 @@ python3 scripts/generate_septa_data.py
 # Generate route shape coordinates from GTFS for iOS map rendering
 cd backend_v2 && poetry run python3 ../scripts/generate_route_shapes.py
 
+# Regenerate the iOS/web mirrors of the display-station grouping (which codes
+# are one physical station, so a picker shows one row per station rather than
+# one per code). Writes into the marked block in webpage_v2/src/data/stations.ts
+# and ios/TrackRat/Shared/StationData.swift; --check fails instead of writing
+# (wired into ci-cd-v2.yml so a stale mirror can't merge)
+cd backend_v2 && poetry run python3 ../scripts/generate_display_station_keys.py
+
 # Create DB backup, restore, and train ML model
 bash scripts/create-and-restore-db-then-train-model.sh
 ```
