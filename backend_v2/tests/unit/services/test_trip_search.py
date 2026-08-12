@@ -2469,3 +2469,128 @@ class TestSeptaMetroComplexEndpoint:
         )
         assert trips == []
         assert stub.calls == []
+
+
+class TestInlineJitOptOut:
+    """Issue #1793: a trip search must not pay the inline NJT refresh per board.
+
+    ``DepartureService.get_departures`` can block a request for up to 10s
+    promoting imminent SCHEDULED NJT trains. That is sized for one station
+    board, but a transfer search issues the direct query plus up to two per
+    transfer point, and the waits stack — the measured p95 was ~20s with a 24s
+    max. Every board a search issues must therefore carry
+    ``skip_inline_refresh=True``.
+
+    Hermetic: ``DepartureService`` and ``get_session`` are both stubbed, so the
+    assertions are about the arguments trip search chooses, not about the DB.
+    """
+
+    class _StubResponse:
+        def __init__(self, deps: list[TrainDeparture]):
+            self.departures = deps
+
+    class _StubSession:
+        async def __aenter__(self):
+            return None
+
+        async def __aexit__(self, *exc):
+            return False
+
+    class _StubDepartureService:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+
+        async def get_departures(self, **kwargs):  # noqa: ANN003 - test stub
+            self.calls.append(kwargs)
+            return TestInlineJitOptOut._StubResponse([])
+
+    def _patch(self, monkeypatch, stub):
+        from trackrat.services import trip_search as ts_mod
+
+        monkeypatch.setattr(ts_mod, "DepartureService", lambda: stub)
+        monkeypatch.setattr(ts_mod, "get_session", lambda: self._StubSession())
+
+    def _assert_all_opted_out(self, calls: list[dict]):
+        blocking = [
+            {
+                "from": c.get("from_station"),
+                "to": c.get("to_station"),
+                "data_sources": c.get("data_sources"),
+            }
+            for c in calls
+            if c.get("skip_inline_refresh") is not True
+        ]
+        assert not blocking, (
+            f"{len(blocking)} of {len(calls)} boards can still block up to 10s "
+            f"on the inline NJT refresh: {blocking}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_direct_query_opts_out(self, monkeypatch):
+        """Step 1 is the single query every search makes, transfer or not."""
+        stub = self._StubDepartureService()
+        self._patch(monkeypatch, stub)
+
+        await search_trips(
+            db=None,  # type: ignore[arg-type]
+            from_station="NY",
+            to_station="TR",
+            data_sources=["NJT"],
+        )
+
+        assert stub.calls, "Expected at least the direct query"
+        direct = stub.calls[0]
+        assert direct["from_station"] == "NY" and direct["to_station"] == "TR"
+        self._assert_all_opted_out(stub.calls)
+
+    @pytest.mark.asyncio
+    async def test_every_transfer_leg_opts_out(self, monkeypatch):
+        """The reported slow case: a multi-leg search over NJT.
+
+        NY->AC needs a transfer (NEC + Atlantic City Line) and was measured at
+        11s live. Both leg phases must opt out, not just the direct query —
+        phase 1 and phase 2 each run their own fan-out, so a single missed call
+        site restores a third of the latency.
+
+        ``data_sources`` is left unset deliberately: that is what the web client
+        sends (it polls with fully default params every 30s), and narrowing to
+        ``["NJT"]`` makes the shared-line shortcut return after the direct query
+        without ever reaching the fan-out this test is about.
+        """
+        stub = self._StubDepartureService()
+        self._patch(monkeypatch, stub)
+
+        await search_trips(
+            db=None,  # type: ignore[arg-type]
+            from_station="NY",
+            to_station="AC",
+        )
+
+        assert len(stub.calls) > 1, (
+            "Expected the transfer fan-out to issue more than the direct "
+            f"query; got {len(stub.calls)} call(s). If trip search stopped "
+            "reaching transfer search for NY->AC this test is no longer "
+            "exercising the stacked-wait path."
+        )
+        self._assert_all_opted_out(stub.calls)
+
+    @pytest.mark.asyncio
+    async def test_station_complex_legs_opt_out(self, monkeypatch):
+        """The complex-substitution fan-out (up to MAX_TRANSFER_QUERIES boards).
+
+        These legs are scoped to a single non-NJT system today, so they cannot
+        block yet — the flag is asserted because that scoping is not a property
+        of this call site, and a future NJT-serving complex would inherit the
+        stacking silently.
+        """
+        from trackrat.services import trip_search as ts_mod
+
+        stub = self._StubDepartureService()
+        monkeypatch.setattr(ts_mod, "get_session", lambda: self._StubSession())
+
+        await _station_complex_direct_trips(
+            stub, "PWC", "S635", None, None, None, False, None, 10
+        )
+
+        assert stub.calls, "Expected the complex substitution to issue queries"
+        self._assert_all_opted_out(stub.calls)
