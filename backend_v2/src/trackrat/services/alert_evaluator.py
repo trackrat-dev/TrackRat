@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 if TYPE_CHECKING:
     from trackrat.services.summary import SummaryService
 
-from sqlalchemy import Time, and_, cast, extract, or_, select
+from sqlalchemy import Time, and_, cast, delete, extract, or_, select
 from sqlalchemy import func as sqla_func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -35,7 +35,7 @@ from trackrat.models.database import (
     ServiceAlert,
     TrainJourney,
 )
-from trackrat.services.apns import SimpleAPNSService
+from trackrat.services.apns import ApnsSendResult, SimpleAPNSService
 from trackrat.services.congestion_types import (
     FREQ_THRESHOLD_REDUCED,
     FREQUENCY_FIRST_SOURCES,
@@ -193,6 +193,36 @@ def _get_gtfs_route_ids_for_subscription(
     return set()
 
 
+async def _prune_dead_device(db: AsyncSession, device_id: str | None) -> None:
+    """Delete a device registration whose APNS token is permanently invalid.
+
+    APNS reports 410 (Unregistered / ExpiredToken) or 400 (BadDeviceToken /
+    DeviceTokenNotForTopic) when the app has been uninstalled or push
+    disabled. That is permanent, and nothing else in the codebase prunes
+    these rows, so without this every evaluation cycle re-sends to the same
+    dead token forever (issue #1794).
+
+    Keyed on ``device_id`` rather than the token: ``apns_token`` carries no
+    unique constraint, so two registrations could share one token and a
+    token-keyed delete would remove more than the device that failed.
+
+    Issued as a Core statement rather than ``db.delete(obj)`` because the
+    morning-digest caller works from a detached snapshot where reading an
+    ORM attribute is unsafe. ``RouteAlertSubscription`` and
+    ``RoutePreference`` both hold ``ondelete="CASCADE"`` on their
+    ``device_id`` foreign key, so the database removes them with the parent.
+    ``LiveActivityToken`` is an independent table and is unaffected.
+
+    ``device_id`` is non-nullable in the database; the None guard is for the
+    column's ``str | None`` static type, and refuses to issue a DELETE with a
+    NULL predicate rather than casting the type away.
+    """
+    if not device_id:
+        return
+    await db.execute(delete(DeviceToken).where(DeviceToken.device_id == device_id))
+    logger.info("alert_device_token_pruned", device_id=device_id)
+
+
 async def evaluate_route_alerts(
     db: AsyncSession, apns_service: SimpleAPNSService
 ) -> int:
@@ -232,12 +262,18 @@ async def evaluate_route_alerts(
 
             # Train-ID subscriptions: single-train alert logic
             if sub.train_id:
-                sent = await _evaluate_train_subscription(
+                outcome = await _evaluate_train_subscription(
                     db, sub, device, today, now, apns_service
                 )
-                if sent:
+                if outcome is ApnsSendResult.SUCCESS:
                     alerts_sent += 1
                     state_changed = True
+                elif outcome is ApnsSendResult.INVALID_TOKEN:
+                    # The registration is gone, and the DB cascade took this
+                    # device's remaining subscriptions with it. Touching them
+                    # would flush an UPDATE against deleted rows.
+                    state_changed = True
+                    break
                 continue
 
             # Build query for relevant journeys (line / station-pair / system-wide modes)
@@ -331,14 +367,17 @@ async def evaluate_route_alerts(
                     and sub.last_alert_hash
                     and (sub.notify_cancellation or sub.notify_delay)
                 ):
-                    sent = await _send_recovery_notification(
-                        sub, device, now, apns_service
+                    outcome = await _send_recovery_notification(
+                        db, sub, device, now, apns_service
                     )
-                    if sent:
+                    if outcome is ApnsSendResult.SUCCESS:
                         sub.last_alert_hash = None
                         sub.last_alerted_at = now
                         alerts_sent += 1
                         state_changed = True
+                    elif outcome is ApnsSendResult.INVALID_TOKEN:
+                        state_changed = True
+                        break
                 continue
 
             # Dedup via hash
@@ -376,11 +415,16 @@ async def evaluate_route_alerts(
                     "train_id": sub.train_id,
                 }
             }
-            sent = await apns_service.send_alert_notification(
+            send_result = await apns_service.send_alert_notification(
                 device.apns_token, title, body, custom_data=custom_data
             )
 
-            if sent:
+            if send_result is ApnsSendResult.INVALID_TOKEN:
+                await _prune_dead_device(db, device.device_id)
+                state_changed = True
+                break
+
+            if send_result is ApnsSendResult.SUCCESS:
                 sub.last_alerted_at = now
                 sub.last_alert_hash = alert_hash
                 alerts_sent += 1
@@ -416,7 +460,7 @@ async def _evaluate_train_subscription(
     today: date,
     now: datetime,
     apns_service: SimpleAPNSService,
-) -> bool:
+) -> ApnsSendResult | None:
     """
     Evaluate a train_id subscription and send notification if warranted.
 
@@ -424,7 +468,10 @@ async def _evaluate_train_subscription(
     - Cancellation
     - Delay >= DELAY_THRESHOLD_MINUTES
 
-    Returns True if an alert was sent.
+    Returns the APNS outcome, or None when no push was attempted. Callers
+    must compare against ``ApnsSendResult.SUCCESS`` rather than testing
+    truthiness — every enum member is truthy, so a bare ``if`` would treat a
+    failed send as delivered and suppress the real alert via hash dedup.
     """
     # Find today's journey for this specific train
     result = await db.execute(
@@ -439,7 +486,7 @@ async def _evaluate_train_subscription(
     journey = result.scalar_one_or_none()
 
     if not journey:
-        return False
+        return None
 
     # Per-subscription delay threshold (or system default)
     delay_threshold = sub.delay_threshold_minutes or DELAY_THRESHOLD_MINUTES
@@ -461,12 +508,14 @@ async def _evaluate_train_subscription(
             and sub.last_alert_hash
             and (sub.notify_cancellation or sub.notify_delay)
         ):
-            sent = await _send_recovery_notification(sub, device, now, apns_service)
-            if sent:
+            outcome = await _send_recovery_notification(
+                db, sub, device, now, apns_service
+            )
+            if outcome is ApnsSendResult.SUCCESS:
                 sub.last_alert_hash = None
                 sub.last_alerted_at = now
-            return sent
-        return False
+            return outcome
+        return None
 
     # Compute delay for message
     delay_minutes = 0
@@ -485,13 +534,13 @@ async def _evaluate_train_subscription(
         sub.train_id or "", alert_type, delay_minutes
     )
     if sub.last_alert_hash == alert_hash:
-        return False
+        return None
 
     # Build notification
     title, body = _build_train_alert_message(sub, journey, alert_type, delay_minutes)
 
     if not device.apns_token:
-        return False
+        return None
 
     custom_data = {
         "route_alert": {
@@ -503,11 +552,15 @@ async def _evaluate_train_subscription(
             "to_station_code": sub.to_station_code,
         }
     }
-    sent = await apns_service.send_alert_notification(
+    send_result = await apns_service.send_alert_notification(
         device.apns_token, title, body, custom_data=custom_data
     )
 
-    if sent:
+    if send_result is ApnsSendResult.INVALID_TOKEN:
+        await _prune_dead_device(db, device.device_id)
+        return send_result
+
+    if send_result is ApnsSendResult.SUCCESS:
         sub.last_alerted_at = now
         sub.last_alert_hash = alert_hash
 
@@ -520,7 +573,7 @@ async def _evaluate_train_subscription(
             delay_minutes=delay_minutes,
         )
 
-    return sent
+    return send_result
 
 
 async def _query_journeys_for_subscription(
@@ -809,14 +862,20 @@ def _is_within_time_window(sub: RouteAlertSubscription, now: datetime) -> bool:
 
 
 async def _send_recovery_notification(
+    db: AsyncSession,
     sub: RouteAlertSubscription,
     device: DeviceToken,
     now: datetime,
     apns_service: SimpleAPNSService,
-) -> bool:
-    """Send an 'all clear' recovery notification when conditions normalize."""
+) -> ApnsSendResult | None:
+    """Send an 'all clear' recovery notification when conditions normalize.
+
+    Returns the APNS outcome, or None when no push was attempted. Takes ``db``
+    so a permanently invalid token prunes the registration here too, rather
+    than leaving recovery as the one path that keeps a dead token alive.
+    """
     if not device.apns_token:
-        return False
+        return None
 
     route_name = _get_route_name(sub)
     title = "Route Clear"
@@ -833,11 +892,15 @@ async def _send_recovery_notification(
             "alert_type": "recovery",
         }
     }
-    sent = await apns_service.send_alert_notification(
+    send_result = await apns_service.send_alert_notification(
         device.apns_token, title, body, custom_data=custom_data
     )
 
-    if sent:
+    if send_result is ApnsSendResult.INVALID_TOKEN:
+        await _prune_dead_device(db, device.device_id)
+        return send_result
+
+    if send_result is ApnsSendResult.SUCCESS:
         logger.info(
             "recovery_alert_sent",
             device_id=device.device_id,
@@ -846,7 +909,7 @@ async def _send_recovery_notification(
             direction=sub.direction,
         )
 
-    return sent
+    return send_result
 
 
 def _get_route_name(sub: RouteAlertSubscription) -> str:
@@ -1066,8 +1129,15 @@ async def evaluate_morning_digests(
 
     summary_service = SummaryService()
     digests_sent = 0
+    # Device registrations pruned mid-loop. Their remaining work items must be
+    # skipped: the DB cascade already removed those subscription rows, so the
+    # `sub.last_digest_at` write below would flush an UPDATE matching no rows.
+    pruned_device_ids: set[str | None] = set()
 
     for sub, snap in work_items:
+        if snap.device_id in pruned_device_ids:
+            continue
+
         if snap.digest_time_minutes is None or not snap.timezone:
             continue
 
@@ -1122,11 +1192,20 @@ async def evaluate_morning_digests(
             }
         }
         body = f"Daily digest: {summary}"
-        sent = await apns_service.send_alert_notification(
+        send_result = await apns_service.send_alert_notification(
             snap.apns_token, snap.route_name, body, custom_data=custom_data
         )
 
-        if sent:
+        if send_result is ApnsSendResult.INVALID_TOKEN:
+            # Prune from the snapshot's device_id — no ORM attribute is read,
+            # which matters here because a prior _generate_digest_summary
+            # rollback may have expired every instance in this session.
+            await _prune_dead_device(db, snap.device_id)
+            await db.commit()
+            pruned_device_ids.add(snap.device_id)
+            continue
+
+        if send_result is ApnsSendResult.SUCCESS:
             # Assignment is safe on an expired ORM instance: it sets the
             # pending value without triggering a refresh.
             #
@@ -1393,11 +1472,24 @@ async def evaluate_service_alerts(
 
             title, body = _build_service_alert_message(sub, batch)
             custom_data = {"service_alert": _build_service_alert_payload(sub, batch)}
-            sent = await apns_service.send_alert_notification(
+            send_result = await apns_service.send_alert_notification(
                 device.apns_token, title, body, custom_data=custom_data
             )
 
-            if sent:
+            if send_result is ApnsSendResult.INVALID_TOKEN:
+                logger.warning(
+                    "service_alert_device_token_invalid",
+                    device_id=device.device_id,
+                    data_source=sub.data_source,
+                    alert_count=len(batch),
+                )
+                await _prune_dead_device(db, device.device_id)
+                # The cascade removed this device's other subscriptions, and
+                # _record_notified_alert_ids writes to every one of them on
+                # each cycle — stop before that hits a deleted row.
+                break
+
+            if send_result is ApnsSendResult.SUCCESS:
                 for a in batch:
                     sent_device_alerts.add((device.apns_token, str(a.alert_id)))
                 alerts_sent += 1

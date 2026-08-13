@@ -37,11 +37,19 @@ from trackrat.services.alert_evaluator import (
     evaluate_morning_digests,
     evaluate_route_alerts,
 )
+from trackrat.services.apns import ApnsSendResult
 from trackrat.utils.time import ET, now_et
 
 
-def _make_apns(send_returns: bool = True) -> AsyncMock:
-    """Create a mock APNS service that records calls."""
+def _make_apns(
+    send_returns: ApnsSendResult = ApnsSendResult.SUCCESS,
+) -> AsyncMock:
+    """Create a mock APNS service that records calls.
+
+    Returns an `ApnsSendResult` rather than a bool: every enum member is
+    truthy, so a mock still returning True/False would let a bare `if sent:`
+    regression pass silently (issue #1794).
+    """
     apns = AsyncMock()
     apns.send_alert_notification = AsyncMock(return_value=send_returns)
     return apns
@@ -508,7 +516,7 @@ class TestAlertEvaluator:
 
     async def test_apns_failure_does_not_update_state(self, db_session: AsyncSession):
         """If APNS send fails, last_alerted_at should NOT be updated."""
-        apns = _make_apns(send_returns=False)
+        apns = _make_apns(send_returns=ApnsSendResult.TRANSIENT_FAILURE)
         _make_device_and_sub(
             db_session,
             data_source="NJT",
@@ -2606,3 +2614,342 @@ class TestMorningDigestRollback:
             sub_b_after.last_digest_at is None
         ), "sub B never sent a digest; last_digest_at must remain None"
         print("  Verified: earlier digest timestamp survives later rollback")
+
+
+@pytest.mark.asyncio
+class TestDeadDeviceTokenPruning:
+    """A permanently invalid APNS token must delete the device registration
+    (issue #1794).
+
+    APNS 410 means the app was uninstalled or push was disabled. Nothing else
+    in the codebase prunes `device_tokens` — there is no cleanup job for that
+    table — so before this fix every evaluation cycle re-sent to the same dead
+    token forever, at ~13-minute intervals, indefinitely.
+
+    The paired invariant matters as much as the prune itself: a TRANSIENT
+    failure (5xx, timeout, network blip, unconfigured APNS) must NOT delete
+    anything, or one bad minute of connectivity silently unsubscribes live
+    users. Every test below therefore has a transient twin.
+
+    These run against the real PostgreSQL session, so the `ondelete="CASCADE"`
+    on RouteAlertSubscription.device_id is genuinely exercised rather than
+    assumed — an ORM-only test would pass even if the DB constraint were wrong.
+    """
+
+    async def test_invalid_token_prunes_device_and_cascades_subscriptions(
+        self, db_session: AsyncSession
+    ):
+        """410 on the route-alert path deletes the device and its subscriptions."""
+        apns = _make_apns(send_returns=ApnsSendResult.INVALID_TOKEN)
+        _make_device_and_sub(
+            db_session,
+            device_id="dead-device",
+            apns_token="dead-token",
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+        )
+        _make_journey(db_session, train_id="7001", is_cancelled=True, minutes_ago=20)
+        await db_session.commit()
+
+        count = await evaluate_route_alerts(db_session, apns)
+
+        assert count == 0, "A rejected push must not be counted as an alert sent"
+        apns.send_alert_notification.assert_called_once()
+
+        devices = (await db_session.execute(select(DeviceToken))).scalars().all()
+        assert devices == [], "Device registration must be deleted on a 410"
+
+        subs = (
+            (await db_session.execute(select(RouteAlertSubscription))).scalars().all()
+        )
+        assert subs == [], (
+            "The DB cascade on device_id must remove the subscriptions too; "
+            f"{len(subs)} orphan(s) survived"
+        )
+        print("  Verified: 410 pruned the device and cascaded its subscriptions")
+
+    async def test_transient_failure_retains_device_and_subscription(
+        self, db_session: AsyncSession
+    ):
+        """The paired invariant: a retryable failure must never prune."""
+        apns = _make_apns(send_returns=ApnsSendResult.TRANSIENT_FAILURE)
+        _make_device_and_sub(
+            db_session,
+            device_id="live-device",
+            apns_token="live-token",
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+        )
+        _make_journey(db_session, train_id="7002", is_cancelled=True, minutes_ago=20)
+        await db_session.commit()
+
+        count = await evaluate_route_alerts(db_session, apns)
+
+        assert count == 0
+        devices = (await db_session.execute(select(DeviceToken))).scalars().all()
+        assert len(devices) == 1, (
+            "A transient failure must leave the registration intact — "
+            "otherwise a network blip unsubscribes a live user"
+        )
+        assert devices[0].device_id == "live-device"
+
+        subs = (
+            (await db_session.execute(select(RouteAlertSubscription))).scalars().all()
+        )
+        assert len(subs) == 1
+        assert subs[0].last_alerted_at is None, (
+            "State must not advance on a failed send, or the real alert is "
+            "suppressed by the cooldown"
+        )
+        print("  Verified: transient failure retained device, subscription and state")
+
+    async def test_successful_send_retains_device(self, db_session: AsyncSession):
+        """Sanity anchor: the happy path must not prune anything."""
+        apns = _make_apns()
+        _make_device_and_sub(
+            db_session,
+            device_id="ok-device",
+            apns_token="ok-token",
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+        )
+        _make_journey(db_session, train_id="7003", is_cancelled=True, minutes_ago=20)
+        await db_session.commit()
+
+        count = await evaluate_route_alerts(db_session, apns)
+
+        assert count == 1
+        devices = (await db_session.execute(select(DeviceToken))).scalars().all()
+        assert len(devices) == 1
+        print("  Verified: successful send left the registration intact")
+
+    async def test_invalid_token_does_not_touch_other_devices(
+        self, db_session: AsyncSession
+    ):
+        """Only the failing registration is pruned.
+
+        The prune is keyed on device_id rather than the token because
+        `apns_token` carries no unique constraint — a token-keyed delete could
+        take an unrelated device with it.
+        """
+        apns = AsyncMock()
+        results = {
+            "dead-token": ApnsSendResult.INVALID_TOKEN,
+            "good-token": ApnsSendResult.SUCCESS,
+        }
+        apns.send_alert_notification = AsyncMock(
+            side_effect=lambda token, *a, **kw: results[token]
+        )
+
+        _make_device_and_sub(
+            db_session,
+            device_id="dead-device",
+            apns_token="dead-token",
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+        )
+        _make_device_and_sub(
+            db_session,
+            device_id="good-device",
+            apns_token="good-token",
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+        )
+        _make_journey(db_session, train_id="7004", is_cancelled=True, minutes_ago=20)
+        await db_session.commit()
+
+        count = await evaluate_route_alerts(db_session, apns)
+
+        assert count == 1, "The healthy device's alert must still be delivered"
+        remaining = (await db_session.execute(select(DeviceToken))).scalars().all()
+        assert [d.device_id for d in remaining] == ["good-device"]
+        print("  Verified: prune is scoped to the failing device only")
+
+    async def test_invalid_token_with_multiple_subscriptions_does_not_error(
+        self, db_session: AsyncSession
+    ):
+        """A device with several subscriptions must not raise after pruning.
+
+        The cascade deletes every subscription row at once. If the loop kept
+        iterating that device's remaining subscriptions and wrote
+        `last_alerted_at`, SQLAlchemy would flush an UPDATE matching zero rows
+        and raise StaleDataError — so this test fails loudly on a regression
+        rather than silently.
+        """
+        apns = _make_apns(send_returns=ApnsSendResult.INVALID_TOKEN)
+        device = DeviceToken(device_id="multi-device", apns_token="multi-token")
+        db_session.add(device)
+        for from_st, to_st in (("NY", "TR"), ("NY", "NP"), ("NP", "TR")):
+            db_session.add(
+                RouteAlertSubscription(
+                    device_id="multi-device",
+                    data_source="NJT",
+                    from_station_code=from_st,
+                    to_station_code=to_st,
+                    active_days=127,
+                    notify_cancellation=True,
+                    notify_delay=True,
+                )
+            )
+        _make_journey(db_session, train_id="7005", is_cancelled=True, minutes_ago=20)
+        await db_session.commit()
+
+        count = await evaluate_route_alerts(db_session, apns)
+
+        assert count == 0
+        assert apns.send_alert_notification.await_count == 1, (
+            "Evaluation must stop after the first rejection rather than "
+            "re-sending to the same dead token for every remaining "
+            f"subscription; got {apns.send_alert_notification.await_count} sends"
+        )
+        devices = (await db_session.execute(select(DeviceToken))).scalars().all()
+        assert devices == []
+        subs = (
+            (await db_session.execute(select(RouteAlertSubscription))).scalars().all()
+        )
+        assert subs == [], f"{len(subs)} subscription(s) survived the cascade"
+        print("  Verified: multi-subscription device pruned once, without error")
+
+    async def test_invalid_token_on_train_subscription_prunes_device(
+        self, db_session: AsyncSession
+    ):
+        """The train_id path prunes too — it is a separate send call site."""
+        apns = _make_apns(send_returns=ApnsSendResult.INVALID_TOKEN)
+        _make_device_and_sub(
+            db_session,
+            device_id="train-dead-device",
+            apns_token="train-dead-token",
+            data_source="NJT",
+            train_id="7100",
+        )
+        _make_journey(db_session, train_id="7100", is_cancelled=True, minutes_ago=20)
+        await db_session.commit()
+
+        count = await evaluate_route_alerts(db_session, apns)
+
+        assert count == 0
+        apns.send_alert_notification.assert_called_once()
+        devices = (await db_session.execute(select(DeviceToken))).scalars().all()
+        assert devices == [], "train_id subscriptions must prune on a 410 as well"
+        print("  Verified: train_id alert path pruned the dead registration")
+
+    async def test_invalid_token_on_recovery_notification_prunes_device(
+        self, db_session: AsyncSession
+    ):
+        """The recovery ('all clear') path prunes too.
+
+        Recovery was the one send site with no `db` handle, so it is the
+        easiest to leave behind — and leaving it behind would keep a dead
+        token alive for any subscription that recovers.
+        """
+        apns = _make_apns(send_returns=ApnsSendResult.INVALID_TOKEN)
+        _, sub = _make_device_and_sub(
+            db_session,
+            device_id="recovery-dead-device",
+            apns_token="recovery-dead-token",
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+            notify_recovery=True,
+        )
+        # A previous alert must exist for recovery to be considered, and a
+        # healthy on-time journey so no new alert fires.
+        sub.last_alert_hash = "previous-alert-hash"
+        _make_journey(db_session, train_id="7200", is_cancelled=False, minutes_ago=20)
+        await db_session.commit()
+
+        count = await evaluate_route_alerts(db_session, apns)
+
+        assert count == 0
+        apns.send_alert_notification.assert_called_once()
+        devices = (await db_session.execute(select(DeviceToken))).scalars().all()
+        assert devices == [], "the recovery path must prune on a 410"
+        print("  Verified: recovery notification path pruned the dead registration")
+
+    async def test_invalid_token_on_morning_digest_prunes_device(
+        self, db_session: AsyncSession
+    ):
+        """The digest path prunes from its detached snapshot.
+
+        This path cannot read ORM attributes — `_generate_digest_summary`
+        rolls back on error, expiring every instance in the session — so the
+        prune must be keyed on the snapshot's device_id via a Core statement.
+        """
+        now_local = datetime.now(ZoneInfo("America/New_York"))
+        current_minutes = now_local.hour * 60 + now_local.minute
+        weekday_mask = 1 << now_local.weekday()
+
+        _make_device_and_sub(
+            db_session,
+            device_id="digest-dead-device",
+            apns_token="digest-dead-token",
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+            digest_time_minutes=current_minutes,
+            active_days=weekday_mask,
+            timezone="America/New_York",
+        )
+        await db_session.commit()
+
+        apns = _make_apns(send_returns=ApnsSendResult.INVALID_TOKEN)
+        ok_result = AsyncMock()
+        ok_result.body = "Service running normally."
+        ok_result.headline = "On time"
+
+        with patch("trackrat.services.summary.SummaryService") as MockSvc:
+            MockSvc.return_value.get_route_summary = AsyncMock(return_value=ok_result)
+            sent = await evaluate_morning_digests(db_session, apns)
+
+        assert sent == 0, "A rejected digest must not count as sent"
+        apns.send_alert_notification.assert_called_once()
+        devices = (await db_session.execute(select(DeviceToken))).scalars().all()
+        assert devices == [], "the digest path must prune on a 410"
+        print("  Verified: morning digest path pruned the dead registration")
+
+    async def test_transient_digest_failure_retains_device(
+        self, db_session: AsyncSession
+    ):
+        """Digest transient twin: a retryable digest failure must not prune."""
+        now_local = datetime.now(ZoneInfo("America/New_York"))
+        current_minutes = now_local.hour * 60 + now_local.minute
+        weekday_mask = 1 << now_local.weekday()
+
+        _make_device_and_sub(
+            db_session,
+            device_id="digest-live-device",
+            apns_token="digest-live-token",
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+            digest_time_minutes=current_minutes,
+            active_days=weekday_mask,
+            timezone="America/New_York",
+        )
+        await db_session.commit()
+
+        apns = _make_apns(send_returns=ApnsSendResult.TRANSIENT_FAILURE)
+        ok_result = AsyncMock()
+        ok_result.body = "Service running normally."
+        ok_result.headline = "On time"
+
+        with patch("trackrat.services.summary.SummaryService") as MockSvc:
+            MockSvc.return_value.get_route_summary = AsyncMock(return_value=ok_result)
+            sent = await evaluate_morning_digests(db_session, apns)
+
+        assert sent == 0
+        devices = (await db_session.execute(select(DeviceToken))).scalars().all()
+        assert len(devices) == 1
+        subs = (
+            (await db_session.execute(select(RouteAlertSubscription))).scalars().all()
+        )
+        assert subs[0].last_digest_at is None, (
+            "A failed digest must not stamp last_digest_at, or the digest is "
+            "skipped for the whole day"
+        )
+        print("  Verified: transient digest failure retained device and state")

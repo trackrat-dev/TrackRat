@@ -286,7 +286,7 @@ class SimpleAPNSService:
         title: str,
         body: str,
         custom_data: dict[str, Any] | None = None,
-    ) -> bool:
+    ) -> ApnsSendResult:
         """
         Send a standard alert push notification to an iOS device.
 
@@ -297,11 +297,15 @@ class SimpleAPNSService:
             custom_data: Optional dict merged into payload root alongside aps
 
         Returns:
-            True if successful, False otherwise
+            ApnsSendResult.SUCCESS, .INVALID_TOKEN (410 Unregistered/
+            ExpiredToken, or 400 BadDeviceToken/DeviceTokenNotForTopic), or
+            .TRANSIENT_FAILURE. Callers must prune the device registration on
+            INVALID_TOKEN and retry on TRANSIENT_FAILURE; collapsing the two
+            leaves dead tokens in rotation forever (issue #1794).
         """
         if not self.is_configured:
             logger.warning("apns_alert_skipped", reason="Not configured")
-            return False
+            return ApnsSendResult.TRANSIENT_FAILURE
 
         payload: dict[str, Any] = {
             "aps": {
@@ -335,23 +339,29 @@ class SimpleAPNSService:
                         "apns_alert_sent",
                         device_token=device_token[:10] + "...",
                     )
-                    return True
+                    return ApnsSendResult.SUCCESS
 
-                if response.status_code == 410:
+                reason = _parse_apns_reason(response)
+                if (
+                    response.status_code == 410
+                    or reason in _APNS_PERMANENT_TOKEN_REASONS
+                ):
                     logger.warning(
                         "apns_alert_token_invalid",
                         device_token=device_token[:10] + "...",
-                        status_code=410,
+                        status_code=response.status_code,
+                        reason=reason,
                     )
-                    return False
+                    return ApnsSendResult.INVALID_TOKEN
 
                 logger.error(
                     "apns_alert_error",
                     device_token=device_token[:10] + "...",
                     status_code=response.status_code,
+                    reason=reason,
                     response=response.text,
                 )
-                return False
+                return ApnsSendResult.TRANSIENT_FAILURE
 
         except Exception as e:
             logger.exception(
@@ -359,7 +369,7 @@ class SimpleAPNSService:
                 device_token=device_token[:10] + "...",
                 error=str(e),
             )
-            return False
+            return ApnsSendResult.TRANSIENT_FAILURE
 
     async def send_live_activity_end(
         self,

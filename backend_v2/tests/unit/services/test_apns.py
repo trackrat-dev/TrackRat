@@ -49,7 +49,7 @@ class TestAPNSAlertPayload:
                 "device-token", "Title", "Body"
             )
 
-        assert result is True
+        assert result is ApnsSendResult.SUCCESS
         assert "aps" in captured_payload
         assert captured_payload["aps"]["alert"]["title"] == "Title"
         assert captured_payload["aps"]["alert"]["body"] == "Body"
@@ -86,7 +86,7 @@ class TestAPNSAlertPayload:
                 "device-token", "Title", "Body", custom_data=custom
             )
 
-        assert result is True
+        assert result is ApnsSendResult.SUCCESS
         assert "aps" in captured_payload
         assert "route_alert" in captured_payload
         assert captured_payload["route_alert"]["data_source"] == "NJT"
@@ -118,7 +118,7 @@ class TestAPNSAlertPayload:
                 "device-token", "Title", "Body", custom_data=custom
             )
 
-        assert result is True
+        assert result is ApnsSendResult.SUCCESS
         # aps should still have original title, not the injected one
         assert captured_payload["aps"]["alert"]["title"] == "Title"
         assert captured_payload["aps"]["alert"]["body"] == "Body"
@@ -127,15 +127,19 @@ class TestAPNSAlertPayload:
         # The injected aps key should have been filtered out
         assert "Evil" not in str(captured_payload["aps"])
 
-    async def test_not_configured_returns_false(self):
-        """When APNS is not configured, send returns False without hitting network."""
+    async def test_not_configured_returns_transient_failure(self):
+        """Unconfigured APNS is a deployment problem, not a dead token.
+
+        It must report TRANSIENT_FAILURE — matching the Live Activity paths —
+        so a missing credential never prunes a live device registration.
+        """
         service = _make_configured_apns()
         service.is_configured = False
 
         result = await service.send_alert_notification(
             "device-token", "Title", "Body", custom_data={"key": "val"}
         )
-        assert result is False
+        assert result is ApnsSendResult.TRANSIENT_FAILURE
 
 
 def _mock_apns_response(*, status_code: int, body: dict | None = None) -> AsyncMock:
@@ -299,3 +303,128 @@ class TestLiveActivityResultClassification:
         ):
             result = await service.send_live_activity_end("token", {"k": "v"})
         assert result is ApnsSendResult.INVALID_TOKEN
+
+
+@pytest.mark.asyncio
+class TestAlertNotificationResultClassification:
+    """`send_alert_notification` must classify APNS responses into the same
+    `ApnsSendResult` values as the Live Activity paths (issue #1794).
+
+    Before this, the alert path collapsed every non-200 into a bare `False`,
+    so a 410 (app uninstalled) was indistinguishable from a network blip and
+    the dead device registration was retried on every evaluation cycle
+    forever. These tests pin the distinction at the source, since everything
+    the evaluator does about pruning hangs off it.
+
+    Critical invariants (identical to the Live Activity contract):
+    - 200 => SUCCESS
+    - 410 (any/no body) => INVALID_TOKEN (Unregistered/ExpiredToken)
+    - 400 with reason in {BadDeviceToken, DeviceTokenNotForTopic} => INVALID_TOKEN
+    - 400 with any other reason (e.g., BadCollapseId) => TRANSIENT_FAILURE
+    - 5xx, 429, network errors => TRANSIENT_FAILURE
+    """
+
+    async def test_200_returns_success(self):
+        service = _make_configured_apns()
+        with patch(
+            "httpx.AsyncClient",
+            return_value=_mock_apns_response(status_code=200),
+        ):
+            result = await service.send_alert_notification("token", "T", "B")
+        assert result is ApnsSendResult.SUCCESS
+
+    async def test_410_returns_invalid_token_even_without_body(self):
+        """A 410 with an unparseable body is still permanent.
+
+        APNS does not always return JSON here, and the status code alone is
+        conclusive — falling back to TRANSIENT_FAILURE would leave the dead
+        token in rotation, which is the bug.
+        """
+        service = _make_configured_apns()
+        with patch(
+            "httpx.AsyncClient",
+            return_value=_mock_apns_response(status_code=410),
+        ):
+            result = await service.send_alert_notification("token", "T", "B")
+        assert result is ApnsSendResult.INVALID_TOKEN
+
+    async def test_410_with_unregistered_reason_returns_invalid_token(self):
+        service = _make_configured_apns()
+        with patch(
+            "httpx.AsyncClient",
+            return_value=_mock_apns_response(
+                status_code=410, body={"reason": "Unregistered", "timestamp": 12345}
+            ),
+        ):
+            result = await service.send_alert_notification("token", "T", "B")
+        assert result is ApnsSendResult.INVALID_TOKEN
+
+    async def test_400_bad_device_token_returns_invalid_token(self):
+        """The gap the issue flagged as larger than 410: the alert path did no
+        reason parsing at all, so a permanent 400 was treated as retryable."""
+        service = _make_configured_apns()
+        with patch(
+            "httpx.AsyncClient",
+            return_value=_mock_apns_response(
+                status_code=400, body={"reason": "BadDeviceToken"}
+            ),
+        ):
+            result = await service.send_alert_notification("token", "T", "B")
+        assert result is ApnsSendResult.INVALID_TOKEN
+
+    async def test_400_device_token_not_for_topic_returns_invalid_token(self):
+        service = _make_configured_apns()
+        with patch(
+            "httpx.AsyncClient",
+            return_value=_mock_apns_response(
+                status_code=400, body={"reason": "DeviceTokenNotForTopic"}
+            ),
+        ):
+            result = await service.send_alert_notification("token", "T", "B")
+        assert result is ApnsSendResult.INVALID_TOKEN
+
+    async def test_400_with_other_reason_returns_transient_failure(self):
+        """Not every 400 is a dead token — a payload-level rejection must stay
+        retryable, or a transient server-side complaint would delete a live
+        user's registration."""
+        service = _make_configured_apns()
+        with patch(
+            "httpx.AsyncClient",
+            return_value=_mock_apns_response(
+                status_code=400, body={"reason": "BadCollapseId"}
+            ),
+        ):
+            result = await service.send_alert_notification("token", "T", "B")
+        assert result is ApnsSendResult.TRANSIENT_FAILURE
+
+    async def test_503_returns_transient_failure(self):
+        service = _make_configured_apns()
+        with patch(
+            "httpx.AsyncClient",
+            return_value=_mock_apns_response(
+                status_code=503, body={"reason": "ServiceUnavailable"}
+            ),
+        ):
+            result = await service.send_alert_notification("token", "T", "B")
+        assert result is ApnsSendResult.TRANSIENT_FAILURE
+
+    async def test_429_returns_transient_failure(self):
+        service = _make_configured_apns()
+        with patch(
+            "httpx.AsyncClient",
+            return_value=_mock_apns_response(
+                status_code=429, body={"reason": "TooManyRequests"}
+            ),
+        ):
+            result = await service.send_alert_notification("token", "T", "B")
+        assert result is ApnsSendResult.TRANSIENT_FAILURE
+
+    async def test_network_exception_returns_transient_failure(self):
+        service = _make_configured_apns()
+        mock_client = AsyncMock()
+        mock_client.post = AsyncMock(side_effect=ConnectionError("network blip"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+        with patch("httpx.AsyncClient", return_value=mock_client):
+            result = await service.send_alert_notification("token", "T", "B")
+        assert result is ApnsSendResult.TRANSIENT_FAILURE
