@@ -28,10 +28,26 @@ class ApnsSendResult(Enum):
     Treating transient failures as token death prematurely kills Live
     Activities; treating permanent token failures as transient leaves
     broken tokens in rotation forever.
+
+    The two permanent outcomes are reported separately because they are not
+    equally conclusive about *this* token:
+
+    - INVALID_TOKEN (410) is per-token proof. The token was valid for this
+      topic and environment and is now unregistered.
+    - TOKEN_REJECTED (400 BadDeviceToken / DeviceTokenNotForTopic) is what a
+      wrong `apns_environment` or `apns_bundle_id` returns for *every*
+      device at once, so it cannot be distinguished from a deployment-wide
+      misconfiguration by looking at one response.
+
+    Callers whose reaction is cheap and reversible (deactivating a Live
+    Activity row) should treat both alike. Callers whose reaction is
+    destructive (deleting a device registration and cascading its
+    subscriptions) must act only on INVALID_TOKEN — see issue #1794.
     """
 
     SUCCESS = "success"
     INVALID_TOKEN = "invalid_token"
+    TOKEN_REJECTED = "token_rejected"
     TRANSIENT_FAILURE = "transient_failure"
 
 
@@ -253,10 +269,7 @@ class SimpleAPNSService:
                     return ApnsSendResult.SUCCESS
 
                 reason = _parse_apns_reason(response)
-                if (
-                    response.status_code == 410
-                    or reason in _APNS_PERMANENT_TOKEN_REASONS
-                ):
+                if response.status_code == 410:
                     logger.warning(
                         "apns_token_invalid",
                         push_token=push_token[:10] + "...",
@@ -264,6 +277,15 @@ class SimpleAPNSService:
                         reason=reason,
                     )
                     return ApnsSendResult.INVALID_TOKEN
+
+                if reason in _APNS_PERMANENT_TOKEN_REASONS:
+                    logger.warning(
+                        "apns_token_rejected",
+                        push_token=push_token[:10] + "...",
+                        status_code=response.status_code,
+                        reason=reason,
+                    )
+                    return ApnsSendResult.TOKEN_REJECTED
 
                 logger.error(
                     "apns_error",
@@ -286,7 +308,7 @@ class SimpleAPNSService:
         title: str,
         body: str,
         custom_data: dict[str, Any] | None = None,
-    ) -> bool:
+    ) -> ApnsSendResult:
         """
         Send a standard alert push notification to an iOS device.
 
@@ -297,11 +319,15 @@ class SimpleAPNSService:
             custom_data: Optional dict merged into payload root alongside aps
 
         Returns:
-            True if successful, False otherwise
+            ApnsSendResult.SUCCESS, .INVALID_TOKEN (410 Unregistered/
+            ExpiredToken, or 400 BadDeviceToken/DeviceTokenNotForTopic), or
+            .TRANSIENT_FAILURE. Callers must prune the device registration on
+            INVALID_TOKEN and retry on TRANSIENT_FAILURE; collapsing the two
+            leaves dead tokens in rotation forever (issue #1794).
         """
         if not self.is_configured:
             logger.warning("apns_alert_skipped", reason="Not configured")
-            return False
+            return ApnsSendResult.TRANSIENT_FAILURE
 
         payload: dict[str, Any] = {
             "aps": {
@@ -335,23 +361,41 @@ class SimpleAPNSService:
                         "apns_alert_sent",
                         device_token=device_token[:10] + "...",
                     )
-                    return True
+                    return ApnsSendResult.SUCCESS
 
+                reason = _parse_apns_reason(response)
                 if response.status_code == 410:
                     logger.warning(
                         "apns_alert_token_invalid",
                         device_token=device_token[:10] + "...",
-                        status_code=410,
+                        status_code=response.status_code,
+                        reason=reason,
                     )
-                    return False
+                    return ApnsSendResult.INVALID_TOKEN
+
+                if reason in _APNS_PERMANENT_TOKEN_REASONS:
+                    # Logged at error, not warning: the identical response is
+                    # what a wrong apns_environment or apns_bundle_id returns
+                    # for every device, so a burst of these means the
+                    # deployment is misconfigured rather than that the users
+                    # uninstalled. The alert path deliberately does not prune
+                    # on this outcome (issue #1794).
+                    logger.error(
+                        "apns_alert_token_rejected",
+                        device_token=device_token[:10] + "...",
+                        status_code=response.status_code,
+                        reason=reason,
+                    )
+                    return ApnsSendResult.TOKEN_REJECTED
 
                 logger.error(
                     "apns_alert_error",
                     device_token=device_token[:10] + "...",
                     status_code=response.status_code,
+                    reason=reason,
                     response=response.text,
                 )
-                return False
+                return ApnsSendResult.TRANSIENT_FAILURE
 
         except Exception as e:
             logger.exception(
@@ -359,7 +403,7 @@ class SimpleAPNSService:
                 device_token=device_token[:10] + "...",
                 error=str(e),
             )
-            return False
+            return ApnsSendResult.TRANSIENT_FAILURE
 
     async def send_live_activity_end(
         self,
@@ -433,10 +477,7 @@ class SimpleAPNSService:
                     return ApnsSendResult.SUCCESS
 
                 reason = _parse_apns_reason(response)
-                if (
-                    response.status_code == 410
-                    or reason in _APNS_PERMANENT_TOKEN_REASONS
-                ):
+                if response.status_code == 410:
                     logger.warning(
                         "apns_token_invalid",
                         push_token=push_token[:10] + "...",
@@ -444,6 +485,15 @@ class SimpleAPNSService:
                         reason=reason,
                     )
                     return ApnsSendResult.INVALID_TOKEN
+
+                if reason in _APNS_PERMANENT_TOKEN_REASONS:
+                    logger.warning(
+                        "apns_token_rejected",
+                        push_token=push_token[:10] + "...",
+                        status_code=response.status_code,
+                        reason=reason,
+                    )
+                    return ApnsSendResult.TOKEN_REJECTED
 
                 logger.error(
                     "apns_end_error",
