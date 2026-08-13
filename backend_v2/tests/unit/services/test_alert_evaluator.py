@@ -2953,3 +2953,95 @@ class TestDeadDeviceTokenPruning:
             "skipped for the whole day"
         )
         print("  Verified: transient digest failure retained device and state")
+
+
+@pytest.mark.asyncio
+class TestPruningIsRestrictedToConclusiveFailures:
+    """Pruning is destructive and irreversible, so it must fire only on a
+    signal that is conclusive about *this specific token*.
+
+    Both cases below were raised in review of #1802 and are the reason
+    `_prune_dead_device` matches on `device_id` AND `apns_token`, and why
+    `TOKEN_REJECTED` exists separately from `INVALID_TOKEN`.
+    """
+
+    async def test_token_rejected_does_not_prune(self, db_session: AsyncSession):
+        """A permanent 400 must NOT delete anything.
+
+        `BadDeviceToken` / `DeviceTokenNotForTopic` is exactly what a wrong
+        `apns_environment` or `apns_bundle_id` returns for *every* device at
+        once. Pruning on it would let a single bad config value erase every
+        registration and cascade away every user's alert settings — an
+        unrecoverable outage caused by a recoverable mistake.
+        """
+        apns = _make_apns(send_returns=ApnsSendResult.TOKEN_REJECTED)
+        _make_device_and_sub(
+            db_session,
+            device_id="rejected-device",
+            apns_token="rejected-token",
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+        )
+        _make_journey(db_session, train_id="7301", is_cancelled=True, minutes_ago=20)
+        await db_session.commit()
+
+        count = await evaluate_route_alerts(db_session, apns)
+
+        assert count == 0, "A rejected push is not a delivered alert"
+        devices = (await db_session.execute(select(DeviceToken))).scalars().all()
+        assert len(devices) == 1, (
+            "A permanent 400 must not prune — it is indistinguishable from a "
+            "deployment-wide APNS misconfiguration"
+        )
+        subs = (
+            (await db_session.execute(select(RouteAlertSubscription))).scalars().all()
+        )
+        assert len(subs) == 1, "Subscriptions must survive a TOKEN_REJECTED"
+        print("  Verified: permanent 400 did not prune the registration")
+
+    async def test_stale_410_does_not_delete_a_re_registered_device(
+        self, db_session: AsyncSession
+    ):
+        """A 410 for a token the device has since replaced must not delete it.
+
+        `/devices/register` upserts a new `apns_token` onto the same
+        `device_id`. If a device re-registers while an evaluation is still
+        awaiting APNS, the late 410 refers to the *old* token — deleting on
+        `device_id` alone would take the freshly-registered row and every
+        subscription with it.
+        """
+        device, _ = _make_device_and_sub(
+            db_session,
+            device_id="rereg-device",
+            apns_token="old-token",
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+        )
+        _make_journey(db_session, train_id="7302", is_cancelled=True, minutes_ago=20)
+        await db_session.commit()
+
+        # APNS rejects the old token, but the device re-registers with a new
+        # one before the result is handled — exactly the in-flight race.
+        async def reject_then_rereg(token, *args, **kwargs):
+            device.apns_token = "new-token"
+            await db_session.flush()
+            return ApnsSendResult.INVALID_TOKEN
+
+        apns = AsyncMock()
+        apns.send_alert_notification = AsyncMock(side_effect=reject_then_rereg)
+
+        count = await evaluate_route_alerts(db_session, apns)
+
+        assert count == 0
+        devices = (await db_session.execute(select(DeviceToken))).scalars().all()
+        assert (
+            len(devices) == 1
+        ), "The re-registered device must survive a 410 aimed at its old token"
+        assert devices[0].apns_token == "new-token"
+        subs = (
+            (await db_session.execute(select(RouteAlertSubscription))).scalars().all()
+        )
+        assert len(subs) == 1, "The re-registered device keeps its subscriptions"
+        print("  Verified: stale 410 left the re-registered device intact")

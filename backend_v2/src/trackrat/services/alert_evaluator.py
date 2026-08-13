@@ -11,6 +11,7 @@ import json
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
 from typing import TYPE_CHECKING
+from typing import cast as typing_cast
 from zoneinfo import ZoneInfo
 
 if TYPE_CHECKING:
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 
 from sqlalchemy import Time, and_, cast, delete, extract, or_, select
 from sqlalchemy import func as sqla_func
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
@@ -193,18 +195,33 @@ def _get_gtfs_route_ids_for_subscription(
     return set()
 
 
-async def _prune_dead_device(db: AsyncSession, device_id: str | None) -> None:
+async def _prune_dead_device(
+    db: AsyncSession, device_id: str | None, apns_token: str | None
+) -> None:
     """Delete a device registration whose APNS token is permanently invalid.
 
-    APNS reports 410 (Unregistered / ExpiredToken) or 400 (BadDeviceToken /
-    DeviceTokenNotForTopic) when the app has been uninstalled or push
-    disabled. That is permanent, and nothing else in the codebase prunes
+    Called only for `ApnsSendResult.INVALID_TOKEN` — a 410, meaning the app
+    was uninstalled or push disabled. Nothing else in the codebase prunes
     these rows, so without this every evaluation cycle re-sends to the same
     dead token forever (issue #1794).
 
-    Keyed on ``device_id`` rather than the token: ``apns_token`` carries no
-    unique constraint, so two registrations could share one token and a
-    token-keyed delete would remove more than the device that failed.
+    Deliberately NOT called for `TOKEN_REJECTED` (a permanent 400). That
+    response is indistinguishable from what a wrong ``apns_environment`` or
+    ``apns_bundle_id`` returns for *every* device, so acting on it would let
+    one bad config value erase every registration and cascade away every
+    user's alert settings. Only the per-token-conclusive 410 authorizes a
+    destructive delete.
+
+    Matched on ``device_id`` **and** ``apns_token`` together, for two
+    different reasons:
+
+    - ``device_id`` alone is unsafe across time. ``/devices/register``
+      upserts a new token onto the same ``device_id``, so if a device
+      re-registers while this evaluation is still awaiting APNS, a 410 for
+      the *old* token would otherwise delete the freshly-registered row.
+    - ``apns_token`` alone is unsafe across devices. It carries no unique
+      constraint, so two registrations could share a token and a
+      token-keyed delete would remove more than the device that failed.
 
     Issued as a Core statement rather than ``db.delete(obj)`` because the
     morning-digest caller works from a detached snapshot where reading an
@@ -213,14 +230,31 @@ async def _prune_dead_device(db: AsyncSession, device_id: str | None) -> None:
     ``device_id`` foreign key, so the database removes them with the parent.
     ``LiveActivityToken`` is an independent table and is unaffected.
 
-    ``device_id`` is non-nullable in the database; the None guard is for the
-    column's ``str | None`` static type, and refuses to issue a DELETE with a
+    Both columns are non-nullable in the database; the None guards are for
+    their ``str | None`` static types, and refuse to issue a DELETE with a
     NULL predicate rather than casting the type away.
     """
-    if not device_id:
+    if not device_id or not apns_token:
         return
-    await db.execute(delete(DeviceToken).where(DeviceToken.device_id == device_id))
-    logger.info("alert_device_token_pruned", device_id=device_id)
+    result = typing_cast(
+        CursorResult[tuple[()]],
+        await db.execute(
+            delete(DeviceToken).where(
+                and_(
+                    DeviceToken.device_id == device_id,
+                    DeviceToken.apns_token == apns_token,
+                )
+            )
+        ),
+    )
+    if result.rowcount:
+        logger.info("alert_device_token_pruned", device_id=device_id)
+    else:
+        # The registration changed under us — the device re-registered with a
+        # new token while this send was in flight. Leave the new row alone.
+        logger.info(
+            "alert_device_token_prune_skipped_token_changed", device_id=device_id
+        )
 
 
 async def evaluate_route_alerts(
@@ -415,12 +449,17 @@ async def evaluate_route_alerts(
                     "train_id": sub.train_id,
                 }
             }
+            # Capture the token actually sent to: `device.apns_token` may be
+            # a different value by the time the await returns if the device
+            # re-registered, and the prune below must key on the token that
+            # was rejected, not on whatever is current.
+            sent_token = device.apns_token
             send_result = await apns_service.send_alert_notification(
-                device.apns_token, title, body, custom_data=custom_data
+                sent_token, title, body, custom_data=custom_data
             )
 
             if send_result is ApnsSendResult.INVALID_TOKEN:
-                await _prune_dead_device(db, device.device_id)
+                await _prune_dead_device(db, device.device_id, sent_token)
                 state_changed = True
                 break
 
@@ -552,12 +591,15 @@ async def _evaluate_train_subscription(
             "to_station_code": sub.to_station_code,
         }
     }
+    # See the note in evaluate_route_alerts: prune on the token that was
+    # rejected, not on whatever `device.apns_token` holds after the await.
+    sent_token = device.apns_token
     send_result = await apns_service.send_alert_notification(
-        device.apns_token, title, body, custom_data=custom_data
+        sent_token, title, body, custom_data=custom_data
     )
 
     if send_result is ApnsSendResult.INVALID_TOKEN:
-        await _prune_dead_device(db, device.device_id)
+        await _prune_dead_device(db, device.device_id, sent_token)
         return send_result
 
     if send_result is ApnsSendResult.SUCCESS:
@@ -892,12 +934,15 @@ async def _send_recovery_notification(
             "alert_type": "recovery",
         }
     }
+    # See the note in evaluate_route_alerts: prune on the token that was
+    # rejected, not on whatever `device.apns_token` holds after the await.
+    sent_token = device.apns_token
     send_result = await apns_service.send_alert_notification(
-        device.apns_token, title, body, custom_data=custom_data
+        sent_token, title, body, custom_data=custom_data
     )
 
     if send_result is ApnsSendResult.INVALID_TOKEN:
-        await _prune_dead_device(db, device.device_id)
+        await _prune_dead_device(db, device.device_id, sent_token)
         return send_result
 
     if send_result is ApnsSendResult.SUCCESS:
@@ -1200,7 +1245,7 @@ async def evaluate_morning_digests(
             # Prune from the snapshot's device_id — no ORM attribute is read,
             # which matters here because a prior _generate_digest_summary
             # rollback may have expired every instance in this session.
-            await _prune_dead_device(db, snap.device_id)
+            await _prune_dead_device(db, snap.device_id, snap.apns_token)
             await db.commit()
             pruned_device_ids.add(snap.device_id)
             continue
@@ -1472,8 +1517,13 @@ async def evaluate_service_alerts(
 
             title, body = _build_service_alert_message(sub, batch)
             custom_data = {"service_alert": _build_service_alert_payload(sub, batch)}
+            # Capture the token actually sent to: `device.apns_token` may be
+            # a different value by the time the await returns if the device
+            # re-registered, and the prune below must key on the token that
+            # was rejected, not on whatever is current.
+            sent_token = device.apns_token
             send_result = await apns_service.send_alert_notification(
-                device.apns_token, title, body, custom_data=custom_data
+                sent_token, title, body, custom_data=custom_data
             )
 
             if send_result is ApnsSendResult.INVALID_TOKEN:
@@ -1483,7 +1533,7 @@ async def evaluate_service_alerts(
                     data_source=sub.data_source,
                     alert_count=len(batch),
                 )
-                await _prune_dead_device(db, device.device_id)
+                await _prune_dead_device(db, device.device_id, sent_token)
                 # The cascade removed this device's other subscriptions, and
                 # _record_notified_alert_ids writes to every one of them on
                 # each cycle — stop before that hits a deleted row.

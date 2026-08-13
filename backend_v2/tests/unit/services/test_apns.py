@@ -175,7 +175,9 @@ class TestLiveActivityResultClassification:
     Critical invariants:
     - 200 => SUCCESS
     - 410 (any/no body) => INVALID_TOKEN (Unregistered/ExpiredToken — token gone)
-    - 400 with reason in {BadDeviceToken, DeviceTokenNotForTopic} => INVALID_TOKEN
+    - 400 with reason in {BadDeviceToken, DeviceTokenNotForTopic} => TOKEN_REJECTED
+      (permanent for this token, but also what a wrong environment/topic returns
+      for every device — see ApnsSendResult)
     - 400 with any other reason (e.g., BadCollapseId, IdleTimeout) => TRANSIENT_FAILURE
     - 5xx, 429, network errors, timeouts, JWT failures => TRANSIENT_FAILURE
     """
@@ -221,7 +223,7 @@ class TestLiveActivityResultClassification:
             ),
         ):
             result = await service.send_live_activity_update("token", {"k": "v"})
-        assert result is ApnsSendResult.INVALID_TOKEN
+        assert result is ApnsSendResult.TOKEN_REJECTED
 
     async def test_400_device_token_not_for_topic_returns_invalid_token(self):
         """Regression for Codex P1: 400 DeviceTokenNotForTopic also means
@@ -234,7 +236,7 @@ class TestLiveActivityResultClassification:
             ),
         ):
             result = await service.send_live_activity_update("token", {"k": "v"})
-        assert result is ApnsSendResult.INVALID_TOKEN
+        assert result is ApnsSendResult.TOKEN_REJECTED
 
     async def test_400_bad_collapse_id_is_transient(self):
         """Other 400 reasons are not token-specific (request issue, not
@@ -293,7 +295,7 @@ class TestLiveActivityResultClassification:
             ),
         ):
             result = await service.send_live_activity_end("token", {"k": "v"})
-        assert result is ApnsSendResult.INVALID_TOKEN
+        assert result is ApnsSendResult.TOKEN_REJECTED
 
     async def test_end_410_returns_invalid_token(self):
         service = _make_configured_apns()
@@ -319,7 +321,9 @@ class TestAlertNotificationResultClassification:
     Critical invariants (identical to the Live Activity contract):
     - 200 => SUCCESS
     - 410 (any/no body) => INVALID_TOKEN (Unregistered/ExpiredToken)
-    - 400 with reason in {BadDeviceToken, DeviceTokenNotForTopic} => INVALID_TOKEN
+    - 400 with reason in {BadDeviceToken, DeviceTokenNotForTopic} => TOKEN_REJECTED
+      (permanent for this token, but also what a wrong environment/topic returns
+      for every device — see ApnsSendResult)
     - 400 with any other reason (e.g., BadCollapseId) => TRANSIENT_FAILURE
     - 5xx, 429, network errors => TRANSIENT_FAILURE
     """
@@ -370,7 +374,7 @@ class TestAlertNotificationResultClassification:
             ),
         ):
             result = await service.send_alert_notification("token", "T", "B")
-        assert result is ApnsSendResult.INVALID_TOKEN
+        assert result is ApnsSendResult.TOKEN_REJECTED
 
     async def test_400_device_token_not_for_topic_returns_invalid_token(self):
         service = _make_configured_apns()
@@ -381,7 +385,7 @@ class TestAlertNotificationResultClassification:
             ),
         ):
             result = await service.send_alert_notification("token", "T", "B")
-        assert result is ApnsSendResult.INVALID_TOKEN
+        assert result is ApnsSendResult.TOKEN_REJECTED
 
     async def test_400_with_other_reason_returns_transient_failure(self):
         """Not every 400 is a dead token — a payload-level rejection must stay

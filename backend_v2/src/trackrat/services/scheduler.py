@@ -3712,6 +3712,7 @@ class SchedulerService:
                                         if send_result in (
                                             ApnsSendResult.SUCCESS,
                                             ApnsSendResult.INVALID_TOKEN,
+                                            ApnsSendResult.TOKEN_REJECTED,
                                         ):
                                             token.is_active = False
                                             session.commit()
@@ -3888,13 +3889,24 @@ class SchedulerService:
                                     token.track_notified_at = now_et()
                                     session.commit()
 
-                                # Only deactivate the token when APNS reports it
-                                # is permanently invalid (410 BadDeviceToken).
-                                # Transient failures (5xx, timeouts, network
-                                # errors, JWT issues) must NOT kill the Live
-                                # Activity — they are routinely retried on the
-                                # next scheduler tick.
-                                if send_result == ApnsSendResult.INVALID_TOKEN:
+                                # Only deactivate the token when APNS reports a
+                                # permanent token failure — 410 Unregistered
+                                # (INVALID_TOKEN) or a permanent 400 such as
+                                # BadDeviceToken (TOKEN_REJECTED). Transient
+                                # failures (5xx, timeouts, network errors, JWT
+                                # issues) must NOT kill the Live Activity —
+                                # they are routinely retried on the next
+                                # scheduler tick.
+                                #
+                                # Both permanent outcomes act alike here
+                                # because deactivating one row is cheap and
+                                # reversible; the alert path, whose reaction is
+                                # a cascading delete, acts only on
+                                # INVALID_TOKEN (issue #1794).
+                                if send_result in (
+                                    ApnsSendResult.INVALID_TOKEN,
+                                    ApnsSendResult.TOKEN_REJECTED,
+                                ):
                                     token.is_active = False
                                     session.commit()
 
