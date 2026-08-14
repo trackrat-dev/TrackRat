@@ -424,8 +424,15 @@ ROUTES=(
   "SEPTA RR Center City|SEPR90004|SEPR90005|SEPTA_RR||"
   "SEPTA RR Trenton Line|SEPR90701|SEPR90004|SEPTA_RR||"
   # SEPTA Metro — NHSL is the real-time-upgraded Metro line (Broad St / MFL are
-  # schedule-first and covered by the line-coverage sweep instead)
-  "SEPTA Metro NHSL|SEPM30520|SEPM416|SEPTA_METRO||"
+  # schedule-first and covered by the line-coverage sweep instead).
+  # Probes Bridgeport, not Norristown TC: SEPTA has truncated NHSL at Bridgeport
+  # for construction through at least 2026-12-19, and its bundle carries zero M1
+  # stop_times at Norristown TC (SEPM30520) for any service, so the old
+  # terminal-to-terminal pair returned 0 trains against a correct backend. SEPTA
+  # rows carry no `lines`, so planned_work_note can never downgrade that to WARN
+  # (see above) — the pair itself has to track the service SEPTA runs. Restore
+  # SEPM30520 when through service returns (issue #1795).
+  "SEPTA Metro NHSL|SEPM1892|SEPM416|SEPTA_METRO||"
   # BART (San Francisco)
   "BART Red|BART_RICH|BART_SFIA|BART||"
   "BART Orange|BART_BERY|BART_RICH|BART||"
