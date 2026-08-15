@@ -19,7 +19,11 @@ from pathlib import Path
 
 import pytest
 
-from trackrat.config.route_topology import find_route_for_segment
+from trackrat.config.route_topology import (
+    find_route_for_segment,
+    is_directionally_reachable,
+    models_directions_separately,
+)
 from trackrat.config.stations import STATION_NAMES
 
 E2E_SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "e2e-api-test.sh"
@@ -145,7 +149,7 @@ def test_station_codes_resolve_in_the_station_config(line_no: int, entry: str) -
 
 @pytest.mark.parametrize("line_no,entry", ROUTES, ids=_ids(ROUTES))
 def test_pair_endpoints_share_a_route(line_no: int, entry: str) -> None:
-    """Both endpoints must lie on one common line in route_topology.
+    """Both endpoints must lie on one common line, reachable in one direction.
 
     Catches a pair wired across two lines that share no through service — the
     other way a hand-edited entry produces a permanent, misleading "0 trains".
@@ -154,6 +158,18 @@ def test_pair_endpoints_share_a_route(line_no: int, entry: str) -> None:
     from its station config rather than declared as literals), so a missing
     route is treated as a failure rather than skipped: an entry the topology
     cannot place is one the suite cannot meaningfully probe.
+
+    `find_route_for_segment` alone is not sufficient. It resolves via
+    `Route.contains_segment`, which tests membership of `_station_set` — the
+    *union* of `stations` and `reverse_stations` (route_topology.py:50-54) — so
+    it answers "both codes appear somewhere on this line", not "one train runs
+    from the first to the second". SEPTA_METRO is the one data source that
+    models directions separately, and its trolley curbs carry a distinct code
+    per direction, so a pair mixing an outbound curb with an inbound one would
+    resolve to a route and still never be served.
+    `is_directionally_reachable` closes that: it requires both codes in the
+    *same* sequence in the right order, and returns True unconditionally for
+    every non-directional source, so it costs nothing elsewhere.
     """
     fields = _fields(entry)
     source, frm, to = fields["data_source"], fields["from"], fields["to"]
@@ -167,6 +183,15 @@ def test_pair_endpoints_share_a_route(line_no: int, entry: str) -> None:
         f"{frm} ({STATION_NAMES[frm]}) with {to} ({STATION_NAMES[to]}) on "
         f"{source}, but route_topology has no single route carrying both. "
         f"A pair with no common line can never return a through departure."
+    )
+
+    assert is_directionally_reachable(source, frm, to), (
+        f"e2e-api-test.sh:{line_no}: {fields['label']} pairs "
+        f"{frm} ({STATION_NAMES[frm]}) with {to} ({STATION_NAMES[to]}) on "
+        f"{source}. Both codes lie on {route.name}, but no single direction of "
+        f"it runs {frm} -> {to} — they are opposite-direction codes for the "
+        f"same corridor. The probe would report 0 trains forever. Use the two "
+        f"codes that share one direction's sequence, or swap from/to."
     )
 
 
@@ -210,6 +235,45 @@ def test_lines_only_set_where_planned_work_alerts_exist(
         f"{source}, whose alerts are never typed 'planned_work'. The value can "
         f"never match the planned-work index, so it cannot downgrade a 0-train "
         f"board to WARN. Leave it empty (see e2e-api-test.sh:350-365)."
+    )
+
+
+def test_directional_guard_rejects_a_cross_direction_pair() -> None:
+    """Pin that the reachability check in test_pair_endpoints_share_a_route bites.
+
+    Every SEPTA_METRO entry in the table today is directionally reachable, so
+    that assertion passes whether or not it is doing any work — and a guard that
+    can only ever pass is indistinguishable from one that was never added.
+
+    SEPM20876 / SEPM20879 are the two curbs of Baltimore Av & 42nd St on Route
+    34 (config/stations/septa_metro.py), the repository's standing example of
+    direction-specific codes: the first appears only in the outbound sequence,
+    the second only in the inbound one. This asserts the exact gap the check
+    closes — `find_route_for_segment` resolves the pair to a route, while
+    `is_directionally_reachable` refuses it. If SEPTA's generated config ever
+    stops modelling directions separately, this fails loudly rather than
+    leaving a silently vacuous assertion behind.
+    """
+    outbound_curb, inbound_curb = "SEPM20876", "SEPM20879"
+
+    assert models_directions_separately("SEPTA_METRO"), (
+        "SEPTA_METRO no longer models directions separately, so the "
+        "reachability check in test_pair_endpoints_share_a_route is now a "
+        "no-op for every source. Re-derive whether it is still worth keeping."
+    )
+
+    route = find_route_for_segment("SEPTA_METRO", outbound_curb, inbound_curb)
+    assert route is not None, (
+        f"{outbound_curb}/{inbound_curb} no longer resolve to a shared route, "
+        f"so this pair no longer demonstrates the gap between union membership "
+        f"and directional reachability. Pick another cross-direction pair."
+    )
+
+    assert not is_directionally_reachable("SEPTA_METRO", outbound_curb, inbound_curb), (
+        f"{outbound_curb} -> {inbound_curb} resolved to {route.name} AND read "
+        f"as directionally reachable. They are opposite curbs of one corner, so "
+        f"no train runs between them; if this passes, the added assertion "
+        f"cannot catch a cross-direction entry."
     )
 
 
