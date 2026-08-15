@@ -872,7 +872,9 @@ class TestNjtLineCodeConsistency:
             ("Pascack Valley Line", "PV"),
             ("Bergen County Line", "BE"),
             ("Main Line", "MA"),
+            ("Port Jervis Line", "PJ"),
             ("Atlantic City Rail Line", "AC"),
+            ("Atl. City Line", "AC"),  # NJT's own abbreviation (issue #1796)
             ("Princeton Shuttle", "PR"),
         ]
         for name, expected_code in test_names:
@@ -884,6 +886,51 @@ class TestNjtLineCodeConsistency:
             assert route is not None, (
                 f"Code {code!r} from parse_njt_line_code({name!r}) "
                 f"not found in any NJT route's line_codes"
+            )
+
+    def test_every_alert_scope_name_parses_to_its_own_line(self):
+        """Cross-check the two NJT full-name tables against each other.
+
+        The list above is hand-maintained, which is precisely how issue #1796
+        survived: `Port Jervis Line` had no prefix entry at all and no test
+        named it, so it truncated to `Po` — a code no NJT route carries — and
+        resolved to nothing. A hand-written corpus cannot catch the line
+        nobody thought to write down.
+
+        `NJT_LINE_SCOPE_TO_CODES` is the independent corpus. It is keyed on
+        `MSG_LINE_SCOPE` names observed on NJT's alerts feed and covers all
+        twelve routes, so requiring every one of its names to parse to a code
+        belonging to the line the alerts table assigns it makes the two tables
+        police each other. Adding a line to either one now fails until both
+        agree.
+
+        The assertion is intersection rather than equality because the alerts
+        table maps one name to several codes where NJT's own naming is broader
+        than the topology (`Morris & Essex Line` covers Morristown and
+        Gladstone); `parse_njt_line_code` returns a single code and must land
+        inside that set.
+        """
+        from trackrat.collectors.njt.schedule import parse_njt_line_code
+        from trackrat.collectors.service_alerts import NJT_LINE_SCOPE_TO_CODES
+
+        for scope_name, alert_codes in NJT_LINE_SCOPE_TO_CODES.items():
+            code = parse_njt_line_code(scope_name)
+            route = get_route_by_line_code("NJT", code)
+
+            assert route is not None, (
+                f"parse_njt_line_code({scope_name!r}) = {code!r}, which is in "
+                f"no NJT route's line_codes. NJT emits this name on the alerts "
+                f"feed, so the schedule feed can send it too — add a prefix to "
+                f"_NJT_LINE_NAME_PREFIXES in collectors/njt/schedule.py."
+            )
+
+            assert route.line_codes & set(alert_codes), (
+                f"parse_njt_line_code({scope_name!r}) = {code!r} resolves to "
+                f"{route.name!r} (line_codes={sorted(route.line_codes)}), but "
+                f"NJT_LINE_SCOPE_TO_CODES maps that name to {alert_codes}. The "
+                f"two tables disagree about which line this name belongs to — "
+                f"a truncation fallback landing on another line's legacy alias "
+                f"looks exactly like this."
             )
 
     def test_gtfs_mapping_codes_match_topology(self):

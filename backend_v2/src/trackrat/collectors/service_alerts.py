@@ -248,6 +248,10 @@ NJT_LINE_SCOPE_TO_CODES: dict[str, list[str]] = {
     "Pascack Valley Line": ["PV"],
     "Atlantic City Line": ["AC"],
     "Atlantic City Rail Line": ["AC"],
+    # NJT's schedule API sends this abbreviation (issue #1796). This table is
+    # exact-match and an unknown name leaves the alert unscoped rather than
+    # mis-scoped, so a missing key fails more quietly than a wrong one.
+    "Atl. City Line": ["AC"],
     "Princeton Branch": ["PR"],
 }
 
