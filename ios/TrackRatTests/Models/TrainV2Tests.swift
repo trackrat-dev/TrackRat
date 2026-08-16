@@ -1886,4 +1886,67 @@ class TrainV2Tests: XCTestCase {
         XCTAssertEqual(train.getDepartureTime(fromStationCode: "PH"), arrivalEstimate,
             "The sort key must be the live arrival, not the next run's turnaround departure")
     }
+
+    func testNJTTerminalStopIndex_rejectsALoneUnsequencedPlaceholderStop() {
+        print("🚂 Testing a single-stop NJT journey is never treated as a terminal")
+
+        // The shape the coalesced null slips past the other two guards
+        // (PR #1814 review). A just-discovered or schedule-only NJT journey has
+        // one placeholder stop: dropLast() is empty so the strict-maximum test
+        // passes vacuously, and the destination test passes too because the
+        // adapter derives destinationStationCode from that same last stop.
+        //
+        // Getting this wrong is not merely a misclassification. A lone stop is
+        // the journey's ORIGIN, where NJT's semantics inverts again and the
+        // live estimate lives in updated_departure. Reading updated_arrival
+        // there finds nothing and falls back to the timetable — the #1768
+        // delay-hiding symptom, rebuilt inside the fix meant to remove it.
+        let scheduled = Date(timeIntervalSince1970: 1_700_000_000)
+        let liveEstimate = scheduled.addingTimeInterval(22 * 60)
+
+        let placeholder = makeStop(
+            stationCode: "PH",
+            sequence: 0,                       // the coalesced NULL
+            scheduledDeparture: scheduled,
+            updatedDeparture: liveEstimate,    // origin semantics: estimate HERE
+            updatedArrival: nil,
+            hasDepartedStation: true
+        )
+        let train = createTestTrainV2(destinationCode: "PH", stops: [placeholder])
+
+        XCTAssertNil(TrainV2.njtTerminalStopIndex(
+            dataSource: "NJT",
+            stops: [placeholder],
+            destinationStationCode: "PH"
+        ), "A single-stop journey has no collected terminal and must be rejected")
+
+        XCTAssertFalse(train.isNJTTerminal(placeholder),
+            "The lone placeholder stop must not be classified as the terminal")
+        XCTAssertEqual(train.bestKnownDeparture(at: placeholder), liveEstimate,
+            "The origin-side live estimate must survive; the terminal path would have dropped it for the schedule and hidden a 22-minute delay")
+    }
+
+    func testNJTTerminalStopIndex_acceptsASequencedTwoStopJourney() {
+        print("🚂 Testing the count guard does not reject a genuine short journey")
+
+        // The control for the guard above: two properly sequenced stops whose
+        // last matches the destination is a real, fully-collected journey and
+        // must still get the terminal exemption.
+        let scheduled = Date(timeIntervalSince1970: 1_700_000_000)
+        let stops = [
+            makeStop(stationCode: "NY", sequence: 1, scheduledDeparture: scheduled),
+            makeStop(
+                stationCode: "PH",
+                sequence: 2,
+                scheduledDeparture: nil,
+                scheduledArrival: scheduled.addingTimeInterval(3600)
+            )
+        ]
+
+        XCTAssertEqual(TrainV2.njtTerminalStopIndex(
+            dataSource: "NJT",
+            stops: stops,
+            destinationStationCode: "PH"
+        ), 1, "A sequenced two-stop journey ending at its destination has a real terminal")
+    }
 }

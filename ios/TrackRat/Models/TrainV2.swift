@@ -214,6 +214,19 @@ struct TrainV2: Identifiable, Codable {
     /// the null) still sorted to the end, so requiring the last stop to hold
     /// the strict maximum sequence rejects exactly that shape. Matching
     /// `destinationStationCode` is the second half of the backend's test.
+    ///
+    /// The count guard closes the one shape the coalesced null gets past the
+    /// other two. On a single-stop journey — a just-discovered or schedule-only
+    /// NJT row — `dropLast()` is empty so the sequence test passes vacuously,
+    /// and the destination test passes too because the adapter derives
+    /// `destinationStationCode` from that very stop. The backend rejects it
+    /// (`any(stop_sequence is None)`), and it must be rejected here for a
+    /// sharper reason than symmetry: a lone stop is the journey's *origin*,
+    /// where NJT's semantics inverts again and `updated_departure` holds the
+    /// live estimate. Treating it as a terminal would read `updated_arrival`,
+    /// find nothing, and fall back to the timetable — reintroducing the #1768
+    /// delay-hiding this whole family of fixes exists to remove. A genuine
+    /// terminal always has an origin ahead of it, so no real one is lost.
     static func njtTerminalStopIndex(
         dataSource: String,
         stops: [StopV2]?,
@@ -221,6 +234,7 @@ struct TrainV2: Identifiable, Codable {
     ) -> Int? {
         guard dataSource == TrainSystem.njt.dataSource,
               let stops,
+              stops.count > 1,
               let last = stops.last,
               let destination = destinationStationCode,
               Stations.areEquivalentStations(last.stationCode, destination),
