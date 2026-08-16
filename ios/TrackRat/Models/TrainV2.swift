@@ -197,6 +197,67 @@ struct TrainV2: Identifiable, Codable {
         return false
     }
     
+    /// Index of the stop that is genuinely this journey's terminal *and* whose
+    /// provider needs the #1492 turnaround exemption, or nil when neither
+    /// holds. The iOS twin of the backend's `utils/train.terminal_stop_index`.
+    ///
+    /// Only NJT gets an index: for every other provider both `updated_*` fields
+    /// are genuine live estimates and the later one is the dwell-end departure,
+    /// so exempting the terminal would discard real data.
+    ///
+    /// The positional guard mirrors the backend's. There, an unsequenced stop
+    /// (NJT discovery/schedule rows before full collection) sorts last and
+    /// `terminal_station_code` is still an origin placeholder, so trusting
+    /// `stops.last` would skip the `max()` at an ordinary intermediate stop and
+    /// re-expose the raw scheduled `DEP_TIME` — hiding that stop's delay. Those
+    /// rows reach the client as `stop_sequence = 0` (`api/trains.py` coalesces
+    /// the null) still sorted to the end, so requiring the last stop to hold
+    /// the strict maximum sequence rejects exactly that shape. Matching
+    /// `destinationStationCode` is the second half of the backend's test.
+    static func njtTerminalStopIndex(
+        dataSource: String,
+        stops: [StopV2]?,
+        destinationStationCode: String?
+    ) -> Int? {
+        guard dataSource == TrainSystem.njt.dataSource,
+              let stops,
+              let last = stops.last,
+              let destination = destinationStationCode,
+              Stations.areEquivalentStations(last.stationCode, destination),
+              stops.dropLast().allSatisfy({ $0.sequence < last.sequence })
+        else { return nil }
+        return stops.count - 1
+    }
+
+    /// Whether `stop` is this journey's NJT terminal (see `njtTerminalStopIndex`).
+    func isNJTTerminal(_ stop: StopV2) -> Bool {
+        guard let index = TrainV2.njtTerminalStopIndex(
+            dataSource: dataSource,
+            stops: stops,
+            destinationStationCode: destinationStationCode
+        ), let stops else { return false }
+        return stops[index].id == stop.id
+    }
+
+    /// Best known departure at `stop`, with NJT's terminal turnaround excluded.
+    ///
+    /// `StopV2.bestKnownDeparture` cannot make this call — it has neither
+    /// `dataSource` nor the journey's terminal — so at an NJT terminal it hands
+    /// back `max(updatedDeparture, updatedArrival)`, which is the later
+    /// turnaround departure whenever NJT publishes one. Rendered as a departure
+    /// that is the #1492 complaint on a different row: a fabricated `+Nm delay`
+    /// on a train that arrived on time, and a `minutesSinceDeparture` clamped
+    /// to 0 long after the train actually left (issue #1799).
+    func bestKnownDeparture(at stop: StopV2) -> Date? {
+        stop.actualDeparture
+            ?? StopV2.liveEstimatedDeparture(
+                updatedDeparture: stop.updatedDeparture,
+                updatedArrival: stop.updatedArrival,
+                isNJTTerminal: isNJTTerminal(stop)
+            )
+            ?? stop.scheduledDeparture
+    }
+
     // Get departure time from a specific station (see StopV2.bestKnownDeparture
     // for why the live estimate sits between the actual and the schedule).
     func getDepartureTime(fromStationCode: String) -> Date? {
@@ -205,7 +266,7 @@ struct TrainV2: Identifiable, Codable {
         }
 
         if let stop = stops?.first(where: { Stations.areEquivalentStations($0.stationCode, fromStationCode) }) {
-            return stop.bestKnownDeparture
+            return bestKnownDeparture(at: stop)
         }
         return nil
     }
@@ -338,7 +399,7 @@ struct TrainV2: Identifiable, Codable {
         // instantly lost filterUpcomingTrains' 10-minute grace window.
         let departureTime: Date?
         if let stop = stops?.first(where: { Stations.areEquivalentStations($0.stationCode, fromStationCode) }) {
-            departureTime = stop.bestKnownDeparture
+            departureTime = bestKnownDeparture(at: stop)
         } else if Stations.areEquivalentStations(fromStationCode, originStationCode) {
             departureTime = departure.actualTime ?? departure.updatedTime ?? departure.scheduledTime
         } else {
@@ -470,10 +531,29 @@ struct StopV2: Identifiable, Codable {
     /// departures`). Today the server normalizes NJT updated_* in PR #1271, so
     /// this method is defensive belt-and-suspenders, but it keeps the contract
     /// correct-by-construction independent of any single server endpoint.
+    ///
+    /// The `max()` is correct at intermediate stops and wrong at an NJT
+    /// **terminal**, which is what `isNJTTerminal` exists for. The train does
+    /// not continue onward there, so `DEP_TIME` is not a live departure
+    /// estimate — NJT can populate it with a later *turnaround* departure, and
+    /// the server deliberately hands the raw pair through at that stop
+    /// (`utils/train.effective_njt_updated_times` with `is_terminal=True`, the
+    /// #1492 exemption) precisely so the `max()` is not applied. Callers that
+    /// know the stop's position must say so; the caller that cannot is
+    /// `StopV2` itself, which carries neither `dataSource` nor the journey's
+    /// terminal — hence `TrainV2.bestKnownDeparture(at:)` (issue #1799).
+    ///
+    /// At the terminal the live reading is `TIME` (`updatedArrival`) alone,
+    /// with no fall back to `updatedDeparture`: the entire point is that that
+    /// value belongs to the next run, not this one.
     static func liveEstimatedDeparture(
         updatedDeparture: Date?,
-        updatedArrival: Date?
+        updatedArrival: Date?,
+        isNJTTerminal: Bool = false
     ) -> Date? {
+        if isNJTTerminal {
+            return updatedArrival
+        }
         switch (updatedDeparture, updatedArrival) {
         case let (departure?, arrival?):
             return max(departure, arrival)
@@ -487,6 +567,10 @@ struct StopV2: Identifiable, Codable {
     }
 
     /// Live estimated departure for this stop (see `liveEstimatedDeparture`).
+    ///
+    /// Terminal-unaware by construction — `StopV2` cannot tell whether it is a
+    /// journey's terminal. Anything rendering a *departure* at a stop that
+    /// might be one wants `TrainV2.bestKnownDeparture(at:)` instead.
     var liveEstimatedDeparture: Date? {
         StopV2.liveEstimatedDeparture(
             updatedDeparture: updatedDeparture,
@@ -506,6 +590,10 @@ struct StopV2: Identifiable, Codable {
     /// half of issue #1768, which the server's `resolve_actual_departure` fix
     /// would otherwise expose more often by (correctly) leaving
     /// `actual_departure` null rather than filling it with the schedule.
+    ///
+    /// Terminal-unaware, for the same reason `liveEstimatedDeparture` is: use
+    /// `TrainV2.bestKnownDeparture(at:)` wherever the stop could be the
+    /// journey's terminal (issue #1799).
     var bestKnownDeparture: Date? {
         actualDeparture ?? liveEstimatedDeparture ?? scheduledDeparture
     }

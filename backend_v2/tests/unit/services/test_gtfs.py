@@ -27,6 +27,7 @@ from trackrat.services.gtfs import (
     _gtfs_csv_rows,
     _lirr_train_id_from_gtfs,
     _mnr_train_id_from_gtfs,
+    _service_window_verdict,
     _strip_source_prefix,
     _subway_realtime_trip_id,
 )
@@ -2441,3 +2442,110 @@ class TestBundleServiceStatus:
         )
         assert self._status(zip_data, "SEPTA_METRO").in_force is False
         assert self._status(zip_data, "SEPTA_RR").in_force is True
+
+
+class TestServiceWindowVerdict:
+    """`_service_window_verdict`: the one definition of "has service begun?".
+
+    Two callers have to answer this identically from different inputs —
+    `_bundle_service_status` from a downloaded zip, `_parse_and_store_gtfs`
+    from the rows it just stored. A disagreement is either a source declined
+    without `/health` reporting it, or one adopted dark without `/health`
+    noticing (issue #1799), so the predicate is pinned directly here rather
+    than only through its two callers.
+    """
+
+    TODAY = date(2026, 8, 10)
+
+    def _verdict(self, windows=(), additions=()):
+        return _service_window_verdict(list(windows), list(additions), self.TODAY)
+
+    def test_a_window_covering_today_has_begun(self):
+        begun, begins_on = self._verdict([(date(2026, 8, 1), date(2026, 8, 30))])
+        assert begun is True
+        assert begins_on is None
+
+    def test_window_boundaries_are_inclusive_both_ends(self):
+        # GTFS defines start_date and end_date inclusive. A bundle whose only
+        # window opens today has begun; treating it as pending would report a
+        # live timetable as not-yet-active on its first morning.
+        starts_today, _ = self._verdict([(self.TODAY, date(2026, 8, 30))])
+        ends_today, _ = self._verdict([(date(2026, 8, 1), self.TODAY)])
+        assert starts_today is True
+        assert ends_today is True
+
+    def test_an_expired_row_does_not_vouch_for_an_all_future_timetable(self):
+        # The bug this helper exists to prevent, in its purest form: a bare
+        # min() over the start dates would answer 2025-01-01 and read as long
+        # since started, when in fact nothing runs until 2026-08-12.
+        begun, begins_on = self._verdict(
+            [
+                (date(2025, 1, 1), date(2025, 3, 1)),  # retained historical row
+                (date(2026, 8, 12), date(2026, 12, 31)),  # the real timetable
+            ]
+        )
+        assert begun is False
+        assert begins_on == date(2026, 8, 12)
+
+    def test_begun_and_future_are_independent_not_exclusive(self):
+        # A bundle can be serving today *and* name a later start (next
+        # season's service id shipped early alongside the running one). Both
+        # halves of the tuple must be populated: `begun` decides whether the
+        # start date reads as past, `begins_on` is only consulted when it
+        # doesn't. Reporting the future start here would make a live source
+        # look pending and fail every deploy.
+        begun, begins_on = self._verdict(
+            [
+                (date(2026, 8, 1), date(2026, 8, 30)),
+                (date(2026, 9, 1), date(2026, 12, 31)),
+            ]
+        )
+        assert begun is True
+        assert begins_on == date(2026, 9, 1)
+
+    def test_an_all_expired_bundle_is_neither_begun_nor_future(self):
+        # (False, None) is the lapse shape. `is_lapsed` owns it off
+        # end_candidates; the start derivation must not turn it into a
+        # pending bundle, and refresh_feed must not decline it.
+        begun, begins_on = self._verdict([(date(2025, 1, 1), date(2025, 6, 1))])
+        assert begun is False
+        assert begins_on is None
+
+    def test_a_row_that_started_but_has_ended_does_not_count_as_begun(self):
+        # start <= today but end < today. The row is squarely in the past, so
+        # it neither proves service today nor names a future start.
+        begun, begins_on = self._verdict([(date(2026, 1, 1), date(2026, 8, 9))])
+        assert begun is False
+        assert begins_on is None
+
+    def test_an_addition_today_or_earlier_has_begun(self):
+        # calendar_dates additions activate a service with no start-date
+        # constraint, so one dated today or earlier means the bundle is
+        # already serving — even with every calendar.txt window still future.
+        assert self._verdict(additions=[self.TODAY])[0] is True
+        assert self._verdict(additions=[date(2026, 7, 1)])[0] is True
+
+    def test_an_addition_bridges_a_future_calendar_window(self):
+        # The calendar_dates-bridged bundle (#1769): the window opens on the
+        # 12th but additions already serve today, so it has begun.
+        begun, begins_on = self._verdict(
+            [(date(2026, 8, 12), date(2026, 12, 31))],
+            [date(2026, 8, 9)],
+        )
+        assert begun is True
+        assert begins_on == date(2026, 8, 12)
+
+    def test_the_earliest_future_date_wins_across_both_sources(self):
+        # begins_on is a single minimum over window starts *and* additions,
+        # not two separately-tracked values.
+        _, begins_on = self._verdict(
+            [(date(2026, 9, 1), date(2026, 12, 31))],
+            [date(2026, 8, 15), date(2026, 10, 1)],
+        )
+        assert begins_on == date(2026, 8, 15)
+
+    def test_nothing_at_all_is_not_begun_and_names_no_start(self):
+        # Callers distinguish "no dated rows" from this verdict before asking
+        # (it reads as unknown, not as False), but the helper must not invent
+        # a start date from an empty input.
+        assert self._verdict() == (False, None)

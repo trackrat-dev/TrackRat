@@ -1588,4 +1588,302 @@ class TrainV2Tests: XCTestCase {
         XCTAssertEqual(minutes, 2,
             "minutesSinceDeparture must derive from the live estimate (2), not the schedule (37)")
     }
+
+    // MARK: - NJT terminal turnaround on the departure side (Issue #1799)
+
+    // NJT publishes TIME (updated_arrival) and DEP_TIME (updated_departure).
+    // At intermediate stops DEP_TIME is the immutable schedule and TIME the
+    // live estimate, so max() recovers the live estimate — that is #1289.
+    // At the TERMINAL the train does not continue onward, so DEP_TIME is not
+    // this train's departure at all: NJT can populate it with the later
+    // *turnaround* departure of the next run. The server hands the raw pair
+    // through at that stop on purpose (effective_njt_updated_times with
+    // is_terminal=True, the #1492 exemption), so the turnaround reaches the
+    // client and an unguarded max() promotes it into the displayed departure.
+    //
+    // StopV2 cannot make this call — it carries neither dataSource nor the
+    // journey's terminal — so the guard lives on TrainV2, which has both.
+
+    /// A terminal stop the train has already reached, on a fully-sequenced
+    /// NJT journey: on-time arrival at 10:00, turnaround departure at 10:25.
+    private func njtTerminalJourney(
+        arrivalEstimate: Date?,
+        turnaround: Date?,
+        scheduledArrival: Date,
+        dataSource: String = "NJT",
+        actualDeparture: Date? = nil,
+        terminalCode: String = "PH"
+    ) -> (train: TrainV2, terminal: StopV2) {
+        let origin = makeStop(
+            stationCode: "NY",
+            sequence: 1,
+            scheduledDeparture: scheduledArrival.addingTimeInterval(-60 * 60),
+            hasDepartedStation: true
+        )
+        let terminal = makeStop(
+            stationCode: terminalCode,
+            sequence: 2,
+            scheduledDeparture: nil,          // a terminal has no onward schedule
+            scheduledArrival: scheduledArrival,
+            updatedDeparture: turnaround,     // NJT: the NEXT run's departure
+            updatedArrival: arrivalEstimate,  // NJT: this train's live arrival
+            actualDeparture: actualDeparture,
+            hasDepartedStation: true
+        )
+        let train = createTestTrainV2(
+            destinationCode: terminalCode,
+            dataSource: dataSource,
+            stops: [origin, terminal]
+        )
+        return (train, terminal)
+    }
+
+    func testBestKnownDeparture_njtTerminal_ignoresTheTurnaroundDeparture() {
+        print("🚂 Testing TrainV2.bestKnownDeparture(at:) drops NJT's terminal turnaround")
+
+        // Train arrives Philadelphia on time at 10:00. NJT publishes the 10:25
+        // turnaround in DEP_TIME. max() would show 10:25 and compute a
+        // 25-minute delay on a train that was not late at all.
+        let scheduledArrival = Date(timeIntervalSince1970: 1_700_000_000)
+        let arrivalEstimate = scheduledArrival
+        let turnaround = scheduledArrival.addingTimeInterval(25 * 60)
+
+        let (train, terminal) = njtTerminalJourney(
+            arrivalEstimate: arrivalEstimate,
+            turnaround: turnaround,
+            scheduledArrival: scheduledArrival
+        )
+
+        print("  - scheduledArrival: \(scheduledArrival)")
+        print("  - live arrival (TIME):        \(arrivalEstimate)")
+        print("  - turnaround (DEP_TIME):      \(turnaround)")
+        print("  - stop.bestKnownDeparture:    \(String(describing: terminal.bestKnownDeparture))")
+        print("  - train.bestKnownDeparture:   \(String(describing: train.bestKnownDeparture(at: terminal)))")
+
+        XCTAssertTrue(train.isNJTTerminal(terminal),
+            "The last stop of a fully-sequenced NJT journey matching destinationStationCode is the terminal")
+        XCTAssertEqual(train.bestKnownDeparture(at: terminal), arrivalEstimate,
+            "The terminal must report TIME (the live arrival), never DEP_TIME (the next run's turnaround)")
+
+        // The delay badge the stop row renders, computed exactly as
+        // StopRowV2.departureDelayText does.
+        let shownDelay = Int(train.bestKnownDeparture(at: terminal)!
+            .timeIntervalSince(scheduledArrival) / 60)
+        XCTAssertEqual(shownDelay, 0,
+            "An on-time arrival must show no delay badge; the turnaround would have fabricated +25m")
+
+        // Pin what the unguarded path does, so this test fails loudly if the
+        // guard is ever removed rather than silently agreeing with itself.
+        XCTAssertEqual(terminal.bestKnownDeparture, turnaround,
+            "Precondition: the terminal-unaware StopV2 path really does take the turnaround")
+    }
+
+    func testBestKnownDeparture_njtTerminal_fallsToNilRatherThanTheTurnaround() {
+        print("🚂 Testing the NJT terminal never falls back to DEP_TIME when TIME is absent")
+
+        // With no live arrival, falling back to updatedDeparture would put the
+        // turnaround straight back — the whole point is that the value is not
+        // this train's. A terminal has no scheduledDeparture either, so the row
+        // renders its "--:--" placeholder, which is the honest answer.
+        let scheduledArrival = Date(timeIntervalSince1970: 1_700_000_000)
+        let turnaround = scheduledArrival.addingTimeInterval(25 * 60)
+
+        let (train, terminal) = njtTerminalJourney(
+            arrivalEstimate: nil,
+            turnaround: turnaround,
+            scheduledArrival: scheduledArrival
+        )
+
+        print("  - train.bestKnownDeparture: \(String(describing: train.bestKnownDeparture(at: terminal)))")
+        XCTAssertNil(train.bestKnownDeparture(at: terminal),
+            "No live arrival must yield nil, not the turnaround departure")
+    }
+
+    func testBestKnownDeparture_njtTerminal_stillPrefersARecordedActual() {
+        print("🚂 Testing a real observation still outranks everything at the terminal")
+
+        // The terminal exemption replaces the live-estimate rung of the chain,
+        // not the actual. If the server ever records a genuine actual_departure
+        // there, it must still win.
+        let scheduledArrival = Date(timeIntervalSince1970: 1_700_000_000)
+        let actual = scheduledArrival.addingTimeInterval(3 * 60)
+
+        let (train, terminal) = njtTerminalJourney(
+            arrivalEstimate: scheduledArrival,
+            turnaround: scheduledArrival.addingTimeInterval(25 * 60),
+            scheduledArrival: scheduledArrival,
+            actualDeparture: actual
+        )
+
+        XCTAssertEqual(train.bestKnownDeparture(at: terminal), actual,
+            "A recorded observation must outrank the terminal's live arrival estimate")
+    }
+
+    func testBestKnownDeparture_nonNJTTerminal_keepsTheDwellEndMax() {
+        print("🚂 Testing the non-NJT control: max() still wins at a terminal")
+
+        // The control that makes the guard meaningful. For every other provider
+        // both updated_* fields are genuine live estimates and the later one is
+        // the dwell-end departure, so applying the NJT exemption would discard
+        // real data. Same field layout, only dataSource differs.
+        let scheduledArrival = Date(timeIntervalSince1970: 1_700_000_000)
+        let arrivalEstimate = scheduledArrival
+        let dwellEndDeparture = scheduledArrival.addingTimeInterval(25 * 60)
+
+        let (train, terminal) = njtTerminalJourney(
+            arrivalEstimate: arrivalEstimate,
+            turnaround: dwellEndDeparture,
+            scheduledArrival: scheduledArrival,
+            dataSource: "LIRR"
+        )
+
+        print("  - dataSource: LIRR")
+        print("  - train.bestKnownDeparture: \(String(describing: train.bestKnownDeparture(at: terminal)))")
+
+        XCTAssertFalse(train.isNJTTerminal(terminal),
+            "Only NJT gets the turnaround exemption")
+        XCTAssertEqual(train.bestKnownDeparture(at: terminal), dwellEndDeparture,
+            "A non-NJT terminal must keep max(): the later value is a genuine dwell-end departure")
+    }
+
+    func testBestKnownDeparture_njtIntermediateStop_keepsTheInversionMax() {
+        print("🚂 Testing an NJT intermediate stop is untouched by the terminal guard")
+
+        // The #1289 behaviour must survive: at an intermediate stop DEP_TIME is
+        // the schedule and TIME the live estimate, so max() is still required.
+        // Narrowing that to the terminal is the entire change.
+        let scheduled = Date(timeIntervalSince1970: 1_700_000_000)
+        let liveEstimate = scheduled.addingTimeInterval(37 * 60)
+
+        let intermediate = makeStop(
+            stationCode: "NB",
+            sequence: 2,
+            scheduledDeparture: scheduled,
+            updatedDeparture: scheduled,
+            updatedArrival: liveEstimate,
+            hasDepartedStation: true
+        )
+        let terminal = makeStop(
+            stationCode: "PH",
+            sequence: 3,
+            scheduledDeparture: nil,
+            scheduledArrival: scheduled.addingTimeInterval(60 * 60)
+        )
+        let train = createTestTrainV2(destinationCode: "PH", stops: [intermediate, terminal])
+
+        XCTAssertFalse(train.isNJTTerminal(intermediate),
+            "An intermediate stop is not the terminal")
+        XCTAssertEqual(train.bestKnownDeparture(at: intermediate), liveEstimate,
+            "The intermediate stop must keep max(), or #1289 regresses and the delay disappears")
+    }
+
+    func testNJTTerminalStopIndex_rejectsAPartiallySequencedJourney() {
+        print("🚂 Testing the positional guard rejects unsequenced placeholder stops")
+
+        // The backend's terminal_stop_index refuses to trust the last stop
+        // until a journey is fully sequenced, because NJT discovery/schedule
+        // rows carry stop_sequence NULL, sort last, and terminal_station_code
+        // is still an origin placeholder. Those rows reach the client as
+        // stop_sequence = 0 (api/trains.py coalesces the null), still sorted to
+        // the end. Trusting that stop would skip max() at an ordinary stop and
+        // re-expose the raw scheduled DEP_TIME, hiding its delay.
+        let scheduled = Date(timeIntervalSince1970: 1_700_000_000)
+        let liveEstimate = scheduled.addingTimeInterval(37 * 60)
+
+        let sequenced = makeStop(
+            stationCode: "NY",
+            sequence: 1,
+            scheduledDeparture: scheduled.addingTimeInterval(-60 * 60),
+            hasDepartedStation: true
+        )
+        let unsequenced = makeStop(
+            stationCode: "PH",
+            sequence: 0,                  // the coalesced NULL
+            scheduledDeparture: scheduled,
+            updatedDeparture: scheduled,
+            updatedArrival: liveEstimate,
+            hasDepartedStation: true
+        )
+        let train = createTestTrainV2(destinationCode: "PH", stops: [sequenced, unsequenced])
+
+        print("  - last stop sequence: \(unsequenced.sequence) (placeholder)")
+        XCTAssertNil(TrainV2.njtTerminalStopIndex(
+            dataSource: "NJT",
+            stops: [sequenced, unsequenced],
+            destinationStationCode: "PH"
+        ), "A last stop not holding the strict maximum sequence must not be trusted as terminal")
+
+        XCTAssertEqual(train.bestKnownDeparture(at: unsequenced), liveEstimate,
+            "Falling back to max() on an untrusted journey keeps the stop's delay visible")
+    }
+
+    func testNJTTerminalStopIndex_rejectsALastStopThatIsNotTheDestination() {
+        print("🚂 Testing the terminal must also match destinationStationCode")
+
+        // Second half of the backend's test. A journey whose last collected
+        // stop is not the declared destination has not been fully collected,
+        // so its last stop is not known to be the terminal.
+        let scheduled = Date(timeIntervalSince1970: 1_700_000_000)
+        let stops = [
+            makeStop(stationCode: "NY", sequence: 1, scheduledDeparture: scheduled),
+            makeStop(stationCode: "NB", sequence: 2, scheduledDeparture: scheduled)
+        ]
+
+        XCTAssertNil(TrainV2.njtTerminalStopIndex(
+            dataSource: "NJT",
+            stops: stops,
+            destinationStationCode: "PH"
+        ), "The last stop is only the terminal when it is the journey's destination")
+    }
+
+    func testMinutesSinceDeparture_njtTerminal_doesNotClampToJustDeparted() {
+        print("🚂 Testing minutesSinceDeparture at an NJT terminal uses the arrival, not the turnaround")
+
+        // The TrainListView exposure. A rider whose own origin is where the
+        // train terminates (the #1773 shape) opens a board sorted and filtered
+        // on this value. With the turnaround still in the future, max(0, ...)
+        // clamps to 0, so a train that left 40 minutes ago reports "just
+        // departed" and filterUpcomingTrains' 10-minute grace window keeps it
+        // on the board indefinitely.
+        let now = Date()
+        let scheduledArrival = now.addingTimeInterval(-40 * 60)
+        let arrivalEstimate = now.addingTimeInterval(-40 * 60)
+        let turnaround = now.addingTimeInterval(15 * 60)   // still in the future
+
+        let (train, _) = njtTerminalJourney(
+            arrivalEstimate: arrivalEstimate,
+            turnaround: turnaround,
+            scheduledArrival: scheduledArrival
+        )
+
+        let minutes = train.minutesSinceDeparture(fromStationCode: "PH")
+
+        print("  - live arrival was 40 min ago; turnaround is 15 min ahead")
+        print("  - minutesSinceDeparture: \(String(describing: minutes))")
+
+        XCTAssertEqual(minutes, 40,
+            "Must measure from the live arrival (40), not the future turnaround (clamped to 0)")
+        XCTAssertFalse(minutes! <= 10,
+            "A train that left 40 minutes ago must fall outside filterUpcomingTrains' 10-minute grace window")
+    }
+
+    func testGetDepartureTime_njtTerminal_usesTheArrivalNotTheTurnaround() {
+        print("🚂 Testing getDepartureTime at an NJT terminal stop")
+
+        // The TrainListView sort key. Ordering a board by a turnaround time
+        // puts the train in the wrong place entirely.
+        let scheduledArrival = Date(timeIntervalSince1970: 1_700_000_000)
+        let arrivalEstimate = scheduledArrival
+        let turnaround = scheduledArrival.addingTimeInterval(25 * 60)
+
+        let (train, _) = njtTerminalJourney(
+            arrivalEstimate: arrivalEstimate,
+            turnaround: turnaround,
+            scheduledArrival: scheduledArrival
+        )
+
+        print("  - getDepartureTime(PH): \(String(describing: train.getDepartureTime(fromStationCode: "PH")))")
+        XCTAssertEqual(train.getDepartureTime(fromStationCode: "PH"), arrivalEstimate,
+            "The sort key must be the live arrival, not the next run's turnaround departure")
+    }
 }
