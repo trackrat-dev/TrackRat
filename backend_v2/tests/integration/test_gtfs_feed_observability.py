@@ -1398,6 +1398,152 @@ class TestRealRefreshPathWritesWhatTheSweepReads:
         assert status.is_not_yet_active is True
         assert status.days_until_feed_start == 1
 
+    async def test_a_retained_expired_row_cannot_hide_an_all_future_timetable(
+        self, db_session: AsyncSession
+    ):
+        """Issue #1799: `feed_start_date` was a bare `min()` over start dates.
+
+        Real bundles keep expired historical calendar rows. One of them, on a
+        service some retained trip still references, drags that minimum into
+        the past — so `days_until_feed_start` goes negative and
+        `is_not_yet_active` reports False for a bundle that describes no
+        service today. That is #1770's original symptom reached through the
+        very check built to catch it.
+
+        The route-type scoping fixed one level of this (a *bus* calendar
+        vouching for rail); this is the level below, where both services are
+        ingested and the aggregate itself is the wrong shape.
+
+        Driven through the first-ever-download path deliberately. #1769's guard
+        declines a not-yet-active bundle only when a usable one is stored, so
+        the two paths that adopt one anyway are the only ones where this
+        detection is the entire defence — and a freshly published bundle is
+        exactly where retained historical rows show up.
+        """
+        service = GTFSService()
+        today = now_et().date()
+        real_start = today + timedelta(days=5)
+
+        # Nothing stored: `gtfs_first_bundle_not_yet_active` adopts this.
+        assert await _stored_trip_ids(db_session, "SEPTA_RR") == set()
+
+        with _stub_download(
+            build_gtfs_zip(
+                trips=2,
+                start_date=real_start.strftime("%Y%m%d"),
+                end_date=(today + timedelta(days=90)).strftime("%Y%m%d"),
+                # A retained historical row: expired, but its service is
+                # referenced by a trip below, so it survives the retained-trips
+                # scoping and reaches the aggregate.
+                extra_calendar_rows=["HIST,1,1,1,1,1,0,0,20250106,20250301"],
+                extra_trip_rows=["TH1,HIST,R1,Test Terminal,0"],
+                extra_stop_time_rows=[
+                    "TH1,06:00:00,06:00:00,S1,1",
+                    "TH1,06:30:00,06:30:00,S2,2",
+                ],
+            )
+        ):
+            outcome = await service.refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+        # Both services really were ingested — otherwise the historical row
+        # never reaches the derivation and this test proves nothing.
+        assert await _stored_trip_ids(db_session, "SEPTA_RR") == {"T1", "T2", "TH1"}
+
+        # The ground truth the bounds have to agree with: the source is dark.
+        assert await service.get_active_service_ids(db_session, "SEPTA_RR", today) == (
+            set()
+        )
+
+        feed_info = (
+            await db_session.execute(
+                select(GTFSFeedInfo).where(GTFSFeedInfo.data_source == "SEPTA_RR")
+            )
+        ).scalar_one()
+        assert feed_info.feed_start_date == real_start, (
+            "feed_start_date was taken from an expired historical calendar row "
+            f"(got {feed_info.feed_start_date}, real service starts "
+            f"{real_start}), so /health reports the source active while it "
+            "serves nothing"
+        )
+
+        (status,) = await service.get_feed_statuses(db_session, ["SEPTA_RR"])
+        assert status.is_not_yet_active is True, (
+            "A bundle serving no trains today read as active: "
+            "not_yet_active_sources stays empty, verify-deployment.sh passes, "
+            "and the source is dark until the start date arrives"
+        )
+        assert status.days_until_feed_start == 5
+        # The end bound is a separate max() and must be untouched by this.
+        assert status.is_lapsed is False
+
+    async def test_a_retained_expired_row_does_not_make_a_live_bundle_pending(
+        self, db_session: AsyncSession
+    ):
+        """The companion no-false-pending case, and the reason the derivation
+        is not simply "the earliest *future* start".
+
+        Almost every real bundle carries historical rows next to the service
+        that is actually running. If the fix above reported the earliest future
+        start unconditionally, a perfectly healthy source with next season's
+        calendar already shipped would read as pending — degrading /health and
+        failing `verify-deployment.sh` on every deploy, forever. Service having
+        begun is what decides, and then the past minimum is the honest answer.
+        """
+        service = GTFSService()
+        today = now_et().date()
+
+        with _stub_download(
+            build_gtfs_zip(
+                trips=2,
+                start_date=(today - timedelta(days=7)).strftime("%Y%m%d"),
+                end_date=(today + timedelta(days=30)).strftime("%Y%m%d"),
+                extra_calendar_rows=[
+                    # Expired historical row...
+                    "HIST,1,1,1,1,1,0,0,20250106,20250301",
+                    # ...and next season's, shipped early. Neither may unseat
+                    # the window covering today.
+                    f"NEXT,1,1,1,1,1,0,0,{(today + timedelta(days=31)).strftime('%Y%m%d')},"
+                    f"{(today + timedelta(days=120)).strftime('%Y%m%d')}",
+                    # Runs all seven days, so "this bundle serves today" is
+                    # true whatever weekday CI runs on. The fixture's default
+                    # WKDY row is weekday-only, which would make the ground
+                    # truth below pass Mon-Fri and fail at the weekend.
+                    f"DAILY,1,1,1,1,1,1,1,{(today - timedelta(days=7)).strftime('%Y%m%d')},"
+                    f"{(today + timedelta(days=30)).strftime('%Y%m%d')}",
+                ],
+                extra_trip_rows=[
+                    "TH1,HIST,R1,Test Terminal,0",
+                    "TN1,NEXT,R1,Test Terminal,0",
+                    "TD1,DAILY,R1,Test Terminal,0",
+                ],
+                extra_stop_time_rows=[
+                    "TH1,06:00:00,06:00:00,S1,1",
+                    "TH1,06:30:00,06:30:00,S2,2",
+                    "TN1,07:00:00,07:00:00,S1,1",
+                    "TN1,07:30:00,07:30:00,S2,2",
+                    "TD1,08:00:00,08:00:00,S1,1",
+                    "TD1,08:30:00,08:30:00,S2,2",
+                ],
+            )
+        ):
+            outcome = await service.refresh_feed(db_session, "PATCO", force=True)
+
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+        # The bundle genuinely runs trains today.
+        assert "DAILY" in await service.get_active_service_ids(
+            db_session, "PATCO", today
+        )
+
+        (status,) = await service.get_feed_statuses(db_session, ["PATCO"])
+        assert status.is_not_yet_active is False, (
+            "A source serving trains right now read as pending, which degrades "
+            "/health and fails verify-deployment.sh on a correct deployment"
+        )
+        assert status.feed_start_date == date(2025, 1, 6)
+        assert status.days_until_feed_start is not None
+        assert status.days_until_feed_start < 0
+
 
 @pytest.mark.asyncio
 class TestNightlyRefreshJobSurfacesFailures:

@@ -1202,6 +1202,24 @@ final class APIService: ObservableObject {
         // Use StopV2.liveEstimatedDeparture (max(updated_*) when both present)
         // to survive NJT's TIME/DEP_TIME inversion at intermediate stops, in
         // case a future endpoint stops normalizing on the server side.
+        //
+        // The requested stop can *be* the train's terminal — a rider whose own
+        // origin is where the train terminates, the #1773 shape — and there
+        // the max() would take NJT's turnaround departure. TrainV2 is not built
+        // yet, so ask the same predicate it uses (issue #1799). This value
+        // becomes TrainV2.departureTime, which getDepartureTime returns
+        // directly for the origin station without consulting any stop.
+        let njtTerminalIndex = TrainV2.njtTerminalStopIndex(
+            dataSource: details.dataSource,
+            stops: stops,
+            destinationStationCode: arrivalStop?.station.code
+        )
+        func isTerminal(_ stop: V2StopDetails) -> Bool {
+            guard let index = njtTerminalIndex else { return false }
+            return stops[index].stationCode == stop.station.code
+                && stops[index].sequence == stop.stopSequence
+        }
+
         let departureTiming: StationTiming
         if let fromCode = fromStationCode,
            let requestedStop = details.stops.first(where: { Stations.areEquivalentStations($0.station.code, fromCode) }) {
@@ -1211,7 +1229,8 @@ final class APIService: ObservableObject {
                 scheduledTime: requestedStop.scheduledDeparture,
                 updatedTime: StopV2.liveEstimatedDeparture(
                     updatedDeparture: requestedStop.updatedDeparture,
-                    updatedArrival: requestedStop.updatedArrival
+                    updatedArrival: requestedStop.updatedArrival,
+                    isNJTTerminal: isTerminal(requestedStop)
                 ),
                 actualTime: requestedStop.actualDeparture,
                 track: requestedStop.track
@@ -1223,7 +1242,8 @@ final class APIService: ObservableObject {
                 scheduledTime: firstStop.scheduledDeparture,
                 updatedTime: StopV2.liveEstimatedDeparture(
                     updatedDeparture: firstStop.updatedDeparture,
-                    updatedArrival: firstStop.updatedArrival
+                    updatedArrival: firstStop.updatedArrival,
+                    isNJTTerminal: isTerminal(firstStop)
                 ),
                 actualTime: firstStop.actualDeparture,
                 track: firstStop.track
