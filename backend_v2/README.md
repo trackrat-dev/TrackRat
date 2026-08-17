@@ -93,7 +93,9 @@ poetry run uvicorn trackrat.main:app --reload
 - **Every 5 minutes**: Update checks for active journeys
 - **Every 15 minutes**: NJT journey maintenance (silent-cancellation reconcile + old-journey expiry sweeps)
 - **Every 5 minutes**: Route alert evaluation and push notifications
-- **Hourly at :05**: Validation across key routes
+- **Every 15 minutes**: Service alerts collection (MTA + SEPTA GTFS-RT feeds, NJT `getStationMSG`, WMATA Rail Incidents)
+- **Hourly**: Validation across key routes
+- **Daily 3:00 AM ET**: GTFS static schedule refresh
 - **Daily 3:30 AM ET**: Data retention cleanup (deletes journeys, discovery runs, validation results, and inactive service alerts older than `TRACKRAT_RETENTION_DAYS`, default 60 days; active service alerts are kept regardless of age)
 - Monitor scheduler status at `/scheduler/status` endpoint
 
@@ -321,7 +323,7 @@ Sync route alert subscriptions for delay/cancellation push notifications
 ```
 GET /api/v2/alerts/service
 ```
-MTA service alerts (planned work, delays) for Subway, LIRR, Metro-North, and SEPTA (Regional Rail + Metro)
+Service alerts (planned work, delays, elevator outages) for Subway, LIRR, Metro-North, NJT, SEPTA (Regional Rail + Metro), and WMATA. Filter with `?data_source=` and `?alert_type=`
 
 ### Feedback
 ```
