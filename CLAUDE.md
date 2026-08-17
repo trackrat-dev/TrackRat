@@ -103,6 +103,8 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --env sta
 
 When E2E fails, correlate with logs using the route and timestamp from the failure output.
 The E2E script prints response bodies on HTTP errors and flags slow responses (>5s).
+A failure in the random-route phase is reproducible with `--seed N` (same N picks the
+same routes), which `validate-staging.sh` does not expose — call the script directly.
 
 The suite reads `/api/v2/alerts/service` at startup and indexes planned work that is
 active right now. A route or trip pair serving 0 trains is reported as WARN with the
@@ -406,9 +408,9 @@ bash scripts/create-and-restore-db-then-train-model.sh
 - Frequency-first; served **schedule-first** (kept out of `REAL_TIME_DATA_SOURCES`) so Broad St / Market-Frankford — which SEPTA does not feed in real time — show from the timetable like PATCO, while the collector upgrades to OBSERVED whatever lines SEPTA does feed (NHSL, trolleys). No config change is needed if that real-time coverage grows (`collectors/septa_metro/`)
 - Two data sources: `SEPTA_RR` and `SEPTA_METRO`
 
-**MTA Service Alerts Collection:**
+**Service Alerts Collection:**
 - Collector in `backend_v2/src/trackrat/collectors/service_alerts.py`
-- Fetches GTFS-RT service alert feeds for Subway, LIRR, and Metro-North
+- Fetches GTFS-RT service alert feeds for Subway, LIRR, Metro-North (`MTA_ALERT_FEEDS`) and SEPTA Regional Rail + Metro (`SEPTA_ALERT_FEEDS`, remapped to TrackRat line codes with bus-only alerts dropped); NJT comes from its `getStationMSG` API and WMATA from the Rail Incidents REST API, both parsed into the same `ParsedAlert` shape
 - Three alert types: `planned_work`, `alert` (real-time), `elevator` (outages)
 - Upserts into `service_alerts` table; marks missing alerts as inactive
 - Used to send planned work / service change push notifications to subscribed users
@@ -433,7 +435,7 @@ bash scripts/create-and-restore-db-then-train-model.sh
 **Disabled Train Systems (feature flag):**
 - `TRACKRAT_DISABLED_DATA_SOURCES` (comma-separated) fully disables a data source: collection, schedule generation, GTFS refresh, service-alert polling, and API serving
 - iOS mirrors the set in `TrainSystem.disabledSystems` (use `TrainSystem.availableCases` for user-facing lists); web mirrors it in `DISABLED_SYSTEMS` in `webpage_v2/src/data/stations.ts`
-- `BART,WMATA,MBTA,METRA` are disabled in both workspaces' committed config; SEPTA (RR + Metro) was cleared in both after its staging soak (issue #1634), matching the iOS and web mirrors. **Staging serves SEPTA today; production does not yet** — each workspace applies only on a push to its own branch, so **the next promotion of `main` to the `production` branch is the SEPTA production cutover**: production has never held a SEPTA GTFS bundle, so expect a short API restart and a few minutes of SEPTA serving nothing while it downloads and parses. Promote outside peak hours and confirm with `/health` `data_sources`. Set per environment via `infra_v2/terraform/variables.tf` (resolved by `local.disabled_data_sources` in `main.tf`), so a staging soak cannot arm the next production apply — see `infra_v2/RUNBOOK-data-source-flags.md`
+- `BART,WMATA,MBTA,METRA` are disabled in both workspaces' committed config; SEPTA (RR + Metro) was cleared in both after its staging soak (issue #1634), matching the iOS and web mirrors. **The SEPTA production cutover happened on 2026-08-09** (PR #1789, `main` → `production`); both environments now serve `SEPTA_RR` and `SEPTA_METRO`. Set per environment via `infra_v2/terraform/variables.tf` (resolved by `local.disabled_data_sources` in `main.tf`), so a staging soak cannot arm the next production apply — see `infra_v2/RUNBOOK-data-source-flags.md`. Each workspace applies only on a push to its own branch, so enabling a source in production still means a MIG instance replace: a source with no GTFS bundle there yet serves nothing for the few minutes the startup refresh takes. Promote outside peak hours and confirm with `/health` `data_sources`
 
 **iOS Architecture:**
 - MVVM embedded within view files (no separate ViewModel files)

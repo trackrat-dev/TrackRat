@@ -103,6 +103,29 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --env sta
 
 When E2E fails, correlate with logs using the route and timestamp from the failure output.
 The E2E script prints response bodies on HTTP errors and flags slow responses (>5s).
+A failure in the random-route phase is reproducible with `--seed N` (same N picks the
+same routes), which `validate-staging.sh` does not expose — call the script directly.
+
+The suite reads `/api/v2/alerts/service` at startup and indexes planned work that is
+active right now. A route or trip pair serving 0 trains is reported as WARN with the
+agency's own headline — rather than FAIL — when **every** line serving that pair is
+closed for planned work; weekend GO work otherwise makes hardcoded terminal-to-terminal
+pairs fail while the backend is entirely correct (#1771). Requiring *all* the pair's
+lines is deliberate: many lines carry some planned work at any hour, so excusing a pair
+because one of its lines is touched would suppress real outages. The `lines` field is
+left empty for LIRR/MNR (MTA publishes numeric route ids in alerts that don't match
+`route_topology`), for many-line trunks, and for sources that never emit `planned_work`
+alerts — an empty field means the route keeps its original strictness. Codes are
+restricted to what the alert parser actually emits: `route_topology.line_codes` carries
+pre-2026-03 Title-case database aliases (`Ra`, `Mo`, …) that never appear in an alert,
+and since every listed line must match, including them would silently make a pair
+unexcusable. The tradeoff: on planned-work-heavy weekends the 0-trains check on
+single-line pairs frequently downgrades to WARN even though an alert's presence doesn't
+prove the line is actually closed — `--coverage --fail-empty` is the backstop for a line
+going genuinely dark. Amtrak is likewise exempt from the "0 SCHEDULED trains" assertion
+after 20:00 ET when at least one train is OBSERVED: the 00:45 job generates SCHEDULED
+rows for today *and* tomorrow, but the departures query window ends at 02:00 ET
+tomorrow, so an all-OBSERVED evening board is expected.
 
 **Ground Truth Validation:**
 
@@ -198,6 +221,42 @@ still returns 200 for a lapsed bundle, `verify-deployment.sh` asserts on
 and is served anyway per #1419) is excluded from `lapsed_sources`: for those an
 expired calendar is the accepted steady state, and reporting it would fail every
 deploy forever. Their `feed_end_date` / `days_until_feed_end` are still reported.
+
+The mirror image is `not_yet_active_sources`, with per-feed `feed_start_date` /
+`days_until_feed_start`. An agency publishes next week's bundle early, the refresh job
+adopts it, and the source serves *nothing* until its start date — freshly downloaded,
+weeks from expiry, and completely dark, so neither `stale_sources` nor `lapsed_sources`
+can see it. SEPTA Regional Rail served zero departures for a day and a half this way
+while `/health` reported `healthy` (#1770). `verify-deployment.sh` asserts on this list
+too. Unlike the lapse check, `GTFS_EXPIRY_EXEMPT_SOURCES` is *not* excluded here: an
+exempt feed's calendar has already expired, so its start date is firmly in the past and
+it cannot trip this check anyway — carving it out would only mask a future regression.
+
+**Future-dated GTFS bundles are declined, not adopted (#1769).** Agencies publish the
+next bundle before it takes effect, and storing one is destructive — `_parse_and_store_gtfs`
+clears the source's rows first. So `refresh_feed` decides *before* parsing whether the
+prospective bundle's service has begun (`_bundle_service_status`) and returns
+`GTFSRefreshOutcome.SKIPPED_NOT_YET_ACTIVE` when it has not and a usable bundle is
+stored; the daily refresh retries and adopts it once it applies. "Has begun" is
+per-service, not `min(calendar.start_date)`: a retained `calendar.txt` row covering
+today (dates inclusive, so a bundle starting today is adopted) or a retained
+`calendar_dates.txt` addition dated today or earlier counts — expired historical
+calendar rows don't mask an all-future timetable, calendar_dates-bridged bundles are
+not wrongly declined, and "retained" honors `GTFS_ROUTE_TYPE_FILTER` so SEPTA's bus
+calendar can't vouch for its Metro rail services. An unknown window (neither calendar
+file, as with NJT; no dated retained rows; unreadable archive) fails **open** and is
+adopted — the guard can only decline, so treating unknown as not-in-force would pin a
+source to its current bundle forever. Two paths still adopt a future-dated bundle: a
+first-ever download with nothing stored (`gtfs_first_bundle_not_yet_active` at error —
+exactly how SEPTA went dark on 2026-08-08), and a stored bundle that has itself lapsed
+(`gtfs_adopting_future_bundle_over_lapsed` — both serve nothing today, and the future
+one self-heals on its start date). A decline is a skip, not a failure — it stays out of
+`failed_sources` but is named in `declined_sources` on `gtfs_feed_refresh_complete` so
+it cannot be mistaken for a routine rate-limited skip. One interplay to know when paged:
+declines deliberately do not advance `last_successful_parse_at`, so an agency publishing
+3+ days early crosses `GTFS_STALE_FEED_HOURS` (48) mid-wait — the nightly log escalates
+to error via `stale_sources` and /health degrades until the start date arrives, with
+`declined_sources` on the same log line saying why.
 
 **Server Usage Report:**
 
@@ -349,9 +408,9 @@ bash scripts/create-and-restore-db-then-train-model.sh
 - Frequency-first; served **schedule-first** (kept out of `REAL_TIME_DATA_SOURCES`) so Broad St / Market-Frankford — which SEPTA does not feed in real time — show from the timetable like PATCO, while the collector upgrades to OBSERVED whatever lines SEPTA does feed (NHSL, trolleys). No config change is needed if that real-time coverage grows (`collectors/septa_metro/`)
 - Two data sources: `SEPTA_RR` and `SEPTA_METRO`
 
-**MTA Service Alerts Collection:**
+**Service Alerts Collection:**
 - Collector in `backend_v2/src/trackrat/collectors/service_alerts.py`
-- Fetches GTFS-RT service alert feeds for Subway, LIRR, and Metro-North
+- Fetches GTFS-RT service alert feeds for Subway, LIRR, Metro-North (`MTA_ALERT_FEEDS`) and SEPTA Regional Rail + Metro (`SEPTA_ALERT_FEEDS`, remapped to TrackRat line codes with bus-only alerts dropped); NJT comes from its `getStationMSG` API and WMATA from the Rail Incidents REST API, both parsed into the same `ParsedAlert` shape
 - Three alert types: `planned_work`, `alert` (real-time), `elevator` (outages)
 - Upserts into `service_alerts` table; marks missing alerts as inactive
 - Used to send planned work / service change push notifications to subscribed users
@@ -376,7 +435,7 @@ bash scripts/create-and-restore-db-then-train-model.sh
 **Disabled Train Systems (feature flag):**
 - `TRACKRAT_DISABLED_DATA_SOURCES` (comma-separated) fully disables a data source: collection, schedule generation, GTFS refresh, service-alert polling, and API serving
 - iOS mirrors the set in `TrainSystem.disabledSystems` (use `TrainSystem.availableCases` for user-facing lists); web mirrors it in `DISABLED_SYSTEMS` in `webpage_v2/src/data/stations.ts`
-- `BART,WMATA,MBTA,METRA` are disabled in both workspaces' committed config; SEPTA (RR + Metro) was cleared in both after its staging soak (issue #1634), matching the iOS and web mirrors. **Staging serves SEPTA today; production does not yet** — each workspace applies only on a push to its own branch, so **the next promotion of `main` to the `production` branch is the SEPTA production cutover**: production has never held a SEPTA GTFS bundle, so expect a short API restart and a few minutes of SEPTA serving nothing while it downloads and parses. Promote outside peak hours and confirm with `/health` `data_sources`. Set per environment via `infra_v2/terraform/variables.tf` (resolved by `local.disabled_data_sources` in `main.tf`), so a staging soak cannot arm the next production apply — see `infra_v2/RUNBOOK-data-source-flags.md`
+- `BART,WMATA,MBTA,METRA` are disabled in both workspaces' committed config; SEPTA (RR + Metro) was cleared in both after its staging soak (issue #1634), matching the iOS and web mirrors. **The SEPTA production cutover happened on 2026-08-09** (PR #1789, `main` → `production`); both environments now serve `SEPTA_RR` and `SEPTA_METRO`. Set per environment via `infra_v2/terraform/variables.tf` (resolved by `local.disabled_data_sources` in `main.tf`), so a staging soak cannot arm the next production apply — see `infra_v2/RUNBOOK-data-source-flags.md`. Each workspace applies only on a push to its own branch, so enabling a source in production still means a MIG instance replace: a source with no GTFS bundle there yet serves nothing for the few minutes the startup refresh takes. Promote outside peak hours and confirm with `/health` `data_sources`
 
 **iOS Architecture:**
 - MVVM embedded within view files (no separate ViewModel files)
