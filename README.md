@@ -35,7 +35,7 @@ TrackRat tracks trains across thirteen transit systems in real time, predicts pl
 - **Delay Forecasting** — Delay and cancellation probability predictions
 - **Live Activities** — Real-time iOS Lock Screen and Dynamic Island updates
 - **Route Alerts** — Push notifications for delays, cancellations, and service changes on subscribed routes, with customizable schedules, thresholds, and per-type toggles
-- **Service Alerts** — Planned work and service change notifications for Subway, LIRR, Metro-North, NJ Transit, SEPTA (Regional Rail + Metro), and WMATA
+- **Service Alerts** — Planned work and service change notifications for Subway, LIRR, Metro-North, NJ Transit, and SEPTA (Regional Rail + Metro). WMATA incidents are also collected and served on `/api/v2/alerts/service`, but do not yet trigger notifications
 - **Congestion Maps** — Live network congestion monitoring
 - **1,500+ Stations** across the US
 
