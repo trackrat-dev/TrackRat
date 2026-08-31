@@ -5,7 +5,7 @@
 ## Technology Stack
 
 - **Framework**: React 19.2 + TypeScript 7.0 + PWA (vite-plugin-pwa)
-- **Build Tool**: Vite 8.1 (fast dev server, optimized builds)
+- **Build Tool**: Vite 8.2 (fast dev server, optimized builds)
 - **Styling**: Tailwind CSS 4.3 (utility-first, custom design system)
 - **State Management**: Zustand 5.0 (lightweight, no boilerplate)
 - **Routing**: React Router DOM 7.18
@@ -46,6 +46,7 @@ API Service (fetch + cache)
   - `trackrat:systems` - enabled transit systems (entries in `DISABLED_SYSTEMS` are stripped on load)
   - `trackrat:homeStation` - home station for quick access
   - `trackrat:workStation` - work station for quick access
+  - `trackrat:homeWorkNudgeDismissed` - whether the Home/Work setup nudge was dismissed
   - `trackrat:tripHistory` - trip search history
   - `trackrat:mapExpanded` - route map expand/collapse preference (default collapsed)
 - **Pattern**: Store serializes/deserializes, handles errors gracefully

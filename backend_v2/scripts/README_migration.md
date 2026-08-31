@@ -2,6 +2,11 @@
 
 This script migrates historical train data from the old PostgreSQL database dump to the new SQLite backend_v2 database.
 
+> **Legacy, one-time tool.** It dates from the period when backend_v2 ran on SQLite
+> (`sqlite3` is still what `migrate_historical_data.py` writes to). The backend is
+> PostgreSQL-only now — see `backend_v2/CLAUDE.md` — so this is kept for reference
+> against an archived SQLite database, not for use against a live deployment.
+
 ## Usage
 
 ```bash
