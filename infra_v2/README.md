@@ -415,7 +415,8 @@ infra_v2/
 ├── functions/
 │   ├── feedback_notifier/       # Slack notification function
 │   │   ├── main.py
-│   │   └── requirements.txt
+│   │   ├── requirements.txt
+│   │   └── test_main.py
 │   └── train_follow_notifier/   # Train follow push notification service
 ├── terraform-webpage/
 │   └── main.tf                  # Webpage hosting (staging + production): GCS buckets, LB, SSL certs, CDN, Cloud Build triggers
