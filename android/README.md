@@ -21,7 +21,7 @@
 #### Data Models
 - **Complete V2 Models**: TrainV2, StatusV2, Progress, PredictionData, Stop models matching backend
 - **Response Models**: DeparturesResponse, TrainDetailsResponse for API responses
-- **Station Data**: Major NJ Transit stations (NY, NP, TR, PJ, MP) plus Amtrak, PATH, and PATCO stations
+- **Station Data**: Major NJ Transit stations (NY, NP, TR, PJ, MP) plus Amtrak stations (`data/Stations.kt` for coordinates, `data/models/Stations.kt` for the picker lists). PATH, PATCO and the other systems the backend serves are not in the Android tree yet.
 - **Proper Field Mapping**: JSON annotations for snake_case to camelCase conversion
 
 #### User Interface
@@ -43,7 +43,6 @@
   - Journey visualization with stops
   - Real-time status updates
   - Progress indicators
-  - Historical data modal (bottom sheet)
   - Support for both train IDs and numbers
 
 #### User Experience
@@ -105,18 +104,21 @@
 
 3. **Configure local development (optional)**
    
-   For local backend testing, update `NetworkModule.kt`:
+   `NetworkModule.kt` has no hardcoded base URL — it resolves one at runtime from
+   `EnvironmentManager`, and the cases live in `data/models/ServerEnvironment.kt`
+   (`LOCAL` is already `http://10.0.2.2:8000/api/v2/`, the emulator's host loopback).
+   Debug builds set `ALLOW_ENVIRONMENT_SWITCHING = true`, so switch environments in
+   the app. For anything else (a physical device on the same network, say), edit the
+   `API_BASE_URL` buildConfigField in `app/build.gradle.kts`:
    ```kotlin
-   // For emulator connecting to localhost
-   val BASE_URL = "http://10.0.2.2:8000/api/v2/"
-   
-   // For physical device on same network
-   val BASE_URL = "http://YOUR_LOCAL_IP:8000/api/v2/"
+   buildConfigField("String", "API_BASE_URL", "\"http://YOUR_LOCAL_IP:8000/api/v2/\"")
    ```
    
 4. ** Add Google Maps API Key **
     - Navigate to local.properties
-    - Add a key `mapsApiKey=`
+    - Add a key `maps.apiKey=` (the Gradle property name; `mapsApiKey` is only the
+      manifest placeholder it feeds, and a `local.properties` entry by that name is
+      silently ignored)
     - Set the value equal to your Google Maps SDK API Key
 
 ### Building and Running
@@ -137,15 +139,13 @@
 
 #### Running Tests
 ```bash
-# Unit tests
+# Unit tests (app/src/test/ — the only test source set that exists today)
 ./gradlew test
-
-# Instrumented tests (requires device/emulator)
-./gradlew connectedAndroidTest
-
-# All tests with coverage
-./gradlew testDebugUnitTest jacocoTestReport
+./gradlew testDebugUnitTest
 ```
+
+There is no `app/src/androidTest/` source set and no JaCoCo plugin, so
+`connectedAndroidTest` and `jacocoTestReport` have nothing to run.
 
 ### Common Development Tasks
 
@@ -263,11 +263,14 @@ android/
 
 The Android app uses the TrackRat V2 API. Key endpoints:
 
+The five endpoints declared in `TrackRatApiService.kt` are the whole surface the app
+calls today:
+
 - `GET /api/v2/trains/departures` - Get departures between stations
 - `GET /api/v2/trains/{trainId}` - Get train details
-- `GET /api/v2/routes/history` - Historical route performance
+- `GET /api/v2/predictions/track` - Track/platform predictions
 - `GET /api/v2/routes/congestion` - Real-time congestion data
-- `POST /api/v2/live-activities/register` - Register for notifications
+- `GET /health` - Backend health check
 
 See `backend_v2/CLAUDE.md` for complete API documentation.
 

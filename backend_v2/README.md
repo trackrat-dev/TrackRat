@@ -307,15 +307,25 @@ GET /admin/stats.json  # Server usage statistics (JSON)
 #### Register Device
 ```
 POST /api/v2/devices/register
-{"device_token": "...", "platform": "ios"}
+{"device_id": "...", "apns_token": "..."}
 ```
 
 #### Sync Alert Subscriptions
 ```
 PUT /api/v2/alerts/subscriptions
-{"device_token": "...", "subscriptions": [...]}
+{"device_id": "...", "subscriptions": [...]}
 ```
-Sync route alert subscriptions for delay/cancellation push notifications
+Full-replace sync of a device's route alert subscriptions for delay/cancellation push
+notifications. Each subscription carries `data_source` plus at most one of `line_id`,
+both `from_station_code`/`to_station_code`, or `train_id` (none = system-wide), along
+with its schedule (`active_days` bitmask, `active_start_minutes`/`active_end_minutes`,
+`timezone`), thresholds, per-type toggles, and `digest_time_minutes`.
+
+#### Get Subscriptions
+```
+GET /api/v2/alerts/subscriptions/{device_id}
+```
+Current subscriptions for a device
 
 #### Service Alerts
 ```

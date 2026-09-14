@@ -26,7 +26,7 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metr
 - **WMATA (DC Metro)**: All 6 lines, 98 stations via WMATA REST API
 - **SEPTA Regional Rail**: All lines via SEPTA GTFS-RT (delay-based)
 - **SEPTA Metro**: Broad St, Market-Frankford, Norristown HSL, and trolleys via SEPTA GTFS-RT (schedule-first)
-- **Total Coverage**: 1,500+ stations across the United States
+- **Total Coverage**: 2,300+ stations across the United States
 - **Train Services**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA, SEPTA (Regional Rail + Metro)
 
 ### Route Alerts
@@ -197,9 +197,10 @@ TrackRat/
 │   ├── Extensions.swift         # Swift extensions
 │   └── Logger.swift            # Debug logging framework
 │
-└── TrainLiveActivityExtension/  # Widget extension
-    ├── TrainLiveActivityBundle.swift
-    └── LiveActivityWidget.swift
+
+TrainLiveActivityExtension/      # Widget extension (sibling of TrackRat/, not inside it)
+├── TrainLiveActivityBundle.swift
+└── LiveActivityWidget.swift
 
 TrackRatTests/                   # Test suite
 ├── BuildTests.swift            # Build verification
@@ -207,6 +208,7 @@ TrackRatTests/                   # Test suite
 ├── Services/                   # Service tests
 ├── ViewModels/                 # ViewModel tests
 ├── Views/                      # View tests (AlertConfiguration, LineSelection, ServiceAlertsSection, CongestionMapKitView, StationPickerSheet)
+├── Shared/                     # Shared-code tests (RouteShapes)
 ├── TestUtilities/              # Test helpers
 └── TestFixtures/               # Swift test data (TrainTestData)
 ```
@@ -244,9 +246,11 @@ TrackRatTests/                   # Test suite
 ### Configuration
 
 #### API Endpoints
-The app connects to the TrackRat backend API. Configure in `APIService.swift`:
-- **Production**: `https://apiv2.trackrat.net/api`
-- **Development**: `http://localhost:8000/api`
+The app connects to the TrackRat backend API. Base URLs live in the `ServerEnvironment`
+enum in `Services/StorageService.swift` (`APIService` only reads `environment.baseURL`):
+- **`.production`**: `https://apiv2.trackrat.net/api`
+- **`.staging`**: `https://staging-api.trackrat.net/api`
+- **`.local`**: `http://localhost:8000/api`
 
 #### Push Notifications
 For Live Activities with push updates:
