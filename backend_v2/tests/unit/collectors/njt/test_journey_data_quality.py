@@ -538,7 +538,12 @@ class TestArrivalTimeFreezing:
 
         This prevents the anomaly where NJT revises TIME values for past stops,
         producing erroneous delay readings (e.g., +99m or -13m)."""
-        base_time = now_et().replace(hour=8, minute=0, second=0, microsecond=0)
+        # Anchor to the past, not a fixed hour: `departed_stop_time` (#1768)
+        # only admits a reading that has already happened, so a fixed 08:00 ET
+        # base made this test fail on every CI run starting before 08:20 ET.
+        # Two hours back keeps cycle 2's revision (base + 25m) admissible too,
+        # so the freeze is what rejects it rather than the past-only guard.
+        base_time = now_et().replace(second=0, microsecond=0) - timedelta(minutes=120)
 
         # Create a journey
         journey = TrainJourney(
