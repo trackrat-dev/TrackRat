@@ -108,11 +108,19 @@
    `EnvironmentManager`, and the cases live in `data/models/ServerEnvironment.kt`
    (`LOCAL` is already `http://10.0.2.2:8000/api/v2/`, the emulator's host loopback).
    Debug builds set `ALLOW_ENVIRONMENT_SWITCHING = true`, so switch environments in
-   the app. For anything else (a physical device on the same network, say), edit the
-   `API_BASE_URL` buildConfigField in `app/build.gradle.kts`:
+   the app. For anything else, edit the `API_BASE_URL` buildConfigField in
+   `app/build.gradle.kts`:
    ```kotlin
    buildConfigField("String", "API_BASE_URL", "\"http://YOUR_LOCAL_IP:8000/api/v2/\"")
    ```
+   A cleartext `http://` host other than the ones already listed will be **blocked**:
+   `res/xml/network_security_config.xml` sets `cleartextTrafficPermitted="false"` in its
+   `base-config`, and only names `localhost`, `10.0.2.2` and `127.0.0.1` as cleartext
+   exceptions. The `10.0.0.0/8` and `192.168.0.0/16` entries beside them are `<domain>`
+   values, which Android matches as literal hostnames, not CIDR ranges — they do **not**
+   whitelist a real LAN address like `192.168.1.10`. To reach a physical device on the
+   LAN, either serve the backend over HTTPS or add that exact IP as its own `<domain>`
+   entry in the cleartext `domain-config`.
    
 4. ** Add Google Maps API Key **
     - Navigate to local.properties
