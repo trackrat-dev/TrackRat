@@ -54,11 +54,11 @@ android/app/src/main/java/com/trackrat/android/
 ├── data/
 │   ├── api/                    # Retrofit API interface, adapters (HtmlEntityDecoder, ZonedDateTimeAdapter)
 │   ├── mappers/                # TrainMappers
-│   ├── models/                 # Data models (TrainV2, StatusV2, etc.)
+│   ├── models/                 # Data models (TrainV2, StatusV2, ServerEnvironment, Station, Stations.kt = DEPARTURE_STATIONS/ALL_STATIONS)
 │   ├── preferences/            # DataStore preferences, EnvironmentManager
 │   ├── repository/             # Data repository pattern
 │   ├── services/               # TrackPrediction, BackendHealth
-│   └── Stations.kt             # Station data
+│   └── Stations.kt             # Station coordinates (distinct from data/models/Stations.kt)
 ├── di/                         # Hilt DI modules
 ├── navigation/                 # TrackRatDestinations, Navigator
 ├── services/                   # TrainTrackingService, RatSense, Notifications, TrackingStateRepository, TrainUpdateReceiver

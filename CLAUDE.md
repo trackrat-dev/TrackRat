@@ -95,6 +95,7 @@ The individual steps can still be run separately if needed:
 bash scripts/verify-deployment.sh https://staging-api.trackrat.net [--no-wait]
 
 # 2. Run E2E API tests (mimics iOS app call sequence across all providers)
+# --no-random skips the random-route phase; --seed N makes that phase reproducible
 bash scripts/e2e-api-test.sh https://staging-api.trackrat.net --no-random
 
 # 3. Check backend logs for errors
@@ -433,7 +434,7 @@ bash scripts/create-and-restore-db-then-train-model.sh
 **Disabled Train Systems (feature flag):**
 - `TRACKRAT_DISABLED_DATA_SOURCES` (comma-separated) fully disables a data source: collection, schedule generation, GTFS refresh, service-alert polling, and API serving
 - iOS mirrors the set in `TrainSystem.disabledSystems` (use `TrainSystem.availableCases` for user-facing lists); web mirrors it in `DISABLED_SYSTEMS` in `webpage_v2/src/data/stations.ts`
-- `BART,WMATA,MBTA,METRA` are disabled in both workspaces' committed config; SEPTA (RR + Metro) was cleared in both after its staging soak (issue #1634), matching the iOS and web mirrors. **Staging serves SEPTA today; production does not yet** — each workspace applies only on a push to its own branch, so **the next promotion of `main` to the `production` branch is the SEPTA production cutover**: production has never held a SEPTA GTFS bundle, so expect a short API restart and a few minutes of SEPTA serving nothing while it downloads and parses. Promote outside peak hours and confirm with `/health` `data_sources`. Set per environment via `infra_v2/terraform/variables.tf` (resolved by `local.disabled_data_sources` in `main.tf`), so a staging soak cannot arm the next production apply — see `infra_v2/RUNBOOK-data-source-flags.md`
+- `BART,WMATA,MBTA,METRA` are disabled in both workspaces' committed config; SEPTA (RR + Metro) was cleared in both after its staging soak (issue #1634), matching the iOS and web mirrors. **The SEPTA production cutover has happened** — production `/health` `data_sources.active` now carries `SEPTA_RR` and `SEPTA_METRO`, and `disabled` is `BART,MBTA,METRA,WMATA` in both environments. Set per environment via `infra_v2/terraform/variables.tf` (resolved by `local.disabled_data_sources` in `main.tf`), so a staging soak cannot arm the next production apply — see `infra_v2/RUNBOOK-data-source-flags.md`. Each workspace applies only on a push to its own branch, so when a *new* source is cleared expect the same pattern SEPTA showed: production has never held that source's GTFS bundle, so the promotion brings a short API restart and a few minutes of it serving nothing while the feed downloads and parses. Promote outside peak hours and confirm with `/health` `data_sources`
 
 **iOS Architecture:**
 - MVVM embedded within view files (no separate ViewModel files)
@@ -549,7 +550,7 @@ terraform apply -var="environment=production"
 
 **Deployment Triggers**: Push to `main` → staging, push to `production` → production.
 
-**CI (GitHub Actions)**: `.github/workflows/ci-cd-v2.yml` runs backend tests, terraform validation, and web/Docker builds on `backend_v2/`, `infra_v2/`, or `webpage_v2/` changes; `.github/workflows/ios-ci.yml` builds and tests the iOS app on `ios/` changes (dynamically selects an available simulator).
+**CI (GitHub Actions)**: `.github/workflows/ci-cd-v2.yml` runs backend tests, terraform validation, and web/Docker builds on `backend_v2/`, `infra_v2/`, or `webpage_v2/` changes — plus `ios/TrackRat/Shared/RouteTopology.swift`, because the route-topology parity test lives in `backend_v2` but reads that Swift file, and an iOS-only topology edit would otherwise run `ios-ci.yml` (Xcode only) and merge the drift unnoticed. `.github/workflows/ios-ci.yml` builds and tests the iOS app on `ios/` changes (runs on `macos-26` for the iOS 26 SDK; dynamically selects an available simulator).
 
 ## GCP Log Viewing (Cloud Environment)
 
@@ -647,6 +648,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Backend utilities: `backend_v2/src/trackrat/utils/` (logging, metrics, request_stats, locks, time, train, sanitize, scheduler_utils, system_stats)
 - Backend database: `backend_v2/src/trackrat/db/` (database.py, engine.py, migrations_runner.py, partitioning.py, migrations/)
 - Backend tests: `backend_v2/tests/`
+- Backend reference docs: `backend_v2/docs/journey-lifecycle.md` (journey state machine, lifecycle-flag invariants, NJT/Amtrak field semantics — read before changing a collector)
 - iOS app: `ios/TrackRat/App/` (TrackRatApp.swift, ContentView.swift)
 - iOS views: `ios/TrackRat/Views/Screens/`, `ios/TrackRat/Views/Components/`, `ios/TrackRat/Views/Paywall/`
 - iOS services: `ios/TrackRat/Services/`

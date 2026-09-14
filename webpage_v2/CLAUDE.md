@@ -5,7 +5,7 @@
 ## Technology Stack
 
 - **Framework**: React 19.2 + TypeScript 7.0 + PWA (vite-plugin-pwa)
-- **Build Tool**: Vite 8.1 (fast dev server, optimized builds)
+- **Build Tool**: Vite 8.2 (fast dev server, optimized builds; needs Node 20.19+ / 22.12+)
 - **Styling**: Tailwind CSS 4.3 (utility-first, custom design system)
 - **State Management**: Zustand 5.0 (lightweight, no boilerplate)
 - **Routing**: React Router DOM 7.18
@@ -47,6 +47,7 @@ API Service (fetch + cache)
   - `trackrat:homeStation` - home station for quick access
   - `trackrat:workStation` - work station for quick access
   - `trackrat:tripHistory` - trip search history
+  - `trackrat:homeWorkNudgeDismissed` - home/work station setup nudge dismissed
   - `trackrat:mapExpanded` - route map expand/collapse preference (default collapsed)
 - **Pattern**: Store serializes/deserializes, handles errors gracefully
 
@@ -105,10 +106,10 @@ usePolling(async (signal) => {
 
 ### Endpoints Used
 1. `GET /trips/search?from={code}&to={code}&limit=50&hide_departed=true&date={YYYY-MM-DD}` (departure/trip list, optional date)
-   - `GET /trains/departures?from={code}&to={code}&limit={n}&data_sources={src}&lines={a,b}&hide_departed=true` (station board + Route Status upcoming departures; uncached, 30s polling)
+   - `GET /trains/departures?from={code}&to={code}&limit={n}&data_sources={src}&lines={a,b}&date={YYYY-MM-DD}&hide_departed=true` (station board + Route Status upcoming departures; uncached, 30s polling). Only `from` and `limit` are always sent — the rest are set when the caller supplies them.
    - `GET /trains/recent-departures?from={code}&to={code}&window_minutes=120&data_sources={src}&lines={a,b}&limit={n}` (recently-departed trains for the Route Status timeline; uncached, 30s polling)
    - `lines` scopes a shared-terminal route to specific line codes on the line-detail view; filtered server-side before the limit
-2. `GET /trains/{trainId}?date={YYYY-MM-DD}` (train details, polled every 30s)
+2. `GET /trains/{trainId}?date={YYYY-MM-DD}&data_source={src}&from_station={code}` (train details, polled every 30s; `data_source`/`from_station` disambiguate a train number shared across systems)
 3. `GET /trains/{trainId}/history?days=365&from_station={code}&to_station={code}` (historical performance)
 4. `GET /predictions/track?station_code={code}&train_id={id}&journey_date={date}` (optional, fail-silent)
 5. `GET /predictions/supported-stations` (cached, determines which stations show predictions)
@@ -170,7 +171,7 @@ webpage_v2/
 │   ├── store/
 │   │   └── appStore.ts     # Zustand global state
 │   ├── data/
-│   │   ├── stations.ts     # Static station list (1500+ stations, 13 transit systems); DISABLED_SYSTEMS / AVAILABLE_SYSTEMS hide app-wide-disabled systems (currently BART, WMATA, MBTA, Metra — mirrors backend TRACKRAT_DISABLED_DATA_SOURCES). SEPTA is enabled for the #1634 rollout and the production backend flag is now cleared to match, so main → production is safe to promote — that promotion is the SEPTA production cutover
+│   │   ├── stations.ts     # Static station list (2300+ stations, 13 transit systems); DISABLED_SYSTEMS / AVAILABLE_SYSTEMS hide app-wide-disabled systems (currently BART, WMATA, MBTA, Metra — mirrors backend TRACKRAT_DISABLED_DATA_SOURCES). SEPTA is enabled here and the production backend flag is cleared to match (#1634), so SEPTA now serves in both staging and production
 │   │   ├── routeTopology.ts # Route topology for smart search and filtering
 │   │   └── subwayLines.ts  # Subway line definitions and color mappings
 │   ├── types/
@@ -208,6 +209,7 @@ webpage_v2/
 - `/status` - Network-wide congestion overview by system (each system links to `/system/:system`)
 - `/favorites` - Manage favorite stations
 - `/history` - Trip search history
+- `*` - Any unmatched path redirects to `/departures`
 
 **Base Path**: `/` (hosted at `trackrat.net`)
 
@@ -275,7 +277,7 @@ Use `getStatusBadgeClass()` from `utils/formatting.ts`:
 ### What This App Does NOT Have
 - **No WebSocket** - Simple 30-second polling instead
 - **No Push Notifications** - Browser notifications not implemented
-- **Minimal Maps** - Inline route map via MapLibre GL JS on TrainListPage (CARTO Positron light tiles, no API key; collapsed by default)
+- **Minimal Maps** - MapLibre GL JS, lazy-loaded, CARTO Positron light tiles, no API key: `RouteMap` inline on TrainListPage (collapsed by default) and `CongestionMap` on NetworkStatusPage and SystemDetailPage
 - **No Backend Auth** - Stateless, no user accounts
 
 ### Intentional Simplifications
@@ -424,7 +426,7 @@ npm run test:watch  # Watch mode for development
 | **Notifications** | APNs/FCM push | None |
 | **Live Activities** | WidgetKit/Widgets | None |
 | **Offline Mode** | Core Data cache | PWA service worker (Workbox) |
-| **Maps** | MapKit/Google Maps | MapLibre GL (inline route map) |
+| **Maps** | MapKit/Google Maps | MapLibre GL (inline route map + congestion map) |
 | **Background Refresh** | Yes | No |
 | **Install** | App Store | PWA install prompt |
 | **Auth** | Potential | None |
