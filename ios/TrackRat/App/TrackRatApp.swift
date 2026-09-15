@@ -48,6 +48,8 @@ struct TrackRatApp: App {
                 switch newPhase {
                 case .active:
                     print("📱 Scene Phase Active: Triggering backend wake-up...")
+                    // A foregrounded app refreshes itself; drop any queued background work.
+                    appDelegate.cancelAllPendingBackgroundTasks()
                     Task {
                         BackendWakeupService.shared.wakeupBackend()
                     }
@@ -68,6 +70,11 @@ struct TrackRatApp: App {
                     print("📱 Scene Phase Inactive")
                 case .background:
                     print("📱 Scene Phase Background")
+                    // Scene phase — not applicationDidEnterBackground(_:) — is the only
+                    // backgrounding signal a scene-based app is guaranteed to get. The
+                    // UIApplicationDelegate UI-state callbacks are deprecated as of iOS 26
+                    // and are not delivered once the scene life cycle is enforced.
+                    appDelegate.scheduleAppRefresh()
                 @unknown default:
                     break
                 }
@@ -82,13 +89,11 @@ struct TrackRatApp: App {
 
 // Create a new AppDelegate class to handle notification delegate methods
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
-    // Store device token for Live Activity registration
-    private static var storedDeviceToken: String?
-
-    @MainActor static var deviceToken: String? {
-        get { storedDeviceToken }
-        set { storedDeviceToken = newValue }
-    }
+    // Store device token for Live Activity registration.
+    // Isolated to the main actor directly: a `@MainActor` computed wrapper does not
+    // isolate its backing storage, which Swift 6 rejects as nonisolated global
+    // shared mutable state.
+    @MainActor static var deviceToken: String?
 
     /// Weak reference to AppState, set by TrackRatApp on launch
     @MainActor static weak var appState: AppState?
@@ -543,37 +548,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     func cancelAllPendingBackgroundTasks() {
         BGTaskScheduler.shared.cancelAllTaskRequests()
         print("All pending background tasks cancelled.")
-    }
-    
-    func applicationDidEnterBackground(_ application: UIApplication) {
-        // Schedule background refresh when app enters background
-        scheduleAppRefresh()
-    }
-    
-    func applicationWillEnterForeground(_ application: UIApplication) {
-        // Cancel background tasks when returning to foreground
-        BGTaskScheduler.shared.cancelAllTaskRequests()
-        
-        // Wake up backend when coming from background
-        print("📱 App Foreground: Triggering backend wake-up...")
-        Task {
-            BackendWakeupService.shared.wakeupBackend()
-        }
-        
-        // Resume timer-based updates if there's an active Live Activity
-        Task {
-            await LiveActivityService.shared.refreshCurrentActivity()
-        }
-    }
-    
-    func applicationDidBecomeActive(_ application: UIApplication) {
-        // This is called more reliably when app becomes active
-        print("📱 App Active: Checking if backend wake-up needed...")
-        
-        // Wake up backend when app becomes active
-        Task {
-            BackendWakeupService.shared.wakeupBackend()
-        }
     }
 }
 

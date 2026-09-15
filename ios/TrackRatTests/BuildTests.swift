@@ -509,3 +509,95 @@ class StationNameWithBadgesLayoutTests: XCTestCase {
         return host.sizeThatFits(in: CGSize(width: width, height: CGFloat.greatestFiniteMagnitude)).height
     }
 }
+
+/// Asserts the bundle configuration and delegate shape that background refresh depends on.
+/// Both are invisible at compile time and fail silently at runtime, so they are pinned here.
+final class AppLifecycleConfigurationTests: XCTestCase {
+
+    // MARK: - Background refresh configuration
+    //
+    // BGAppRefreshTaskRequest has two independent prerequisites, and missing either one
+    // fails silently — submit() throws BGTaskSchedulerErrorCodeNotPermitted, which
+    // scheduleAppRefresh() only prints. The app shipped with the second one missing, so
+    // these assert the bundle really carries both. The test target is app-hosted
+    // (TEST_HOST = TrackRat.app), so Bundle.main here is the app bundle.
+
+    func testBackgroundFetchModeIsDeclaredSoAppRefreshCanBeSubmitted() {
+        let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String]
+
+        XCTAssertNotNil(modes, "Info.plist must declare UIBackgroundModes")
+        XCTAssertTrue(
+            modes?.contains("fetch") ?? false,
+            """
+            UIBackgroundModes must contain "fetch" for BGAppRefreshTaskRequest. \
+            Without it BGTaskScheduler.submit throws BGTaskSchedulerErrorCodeNotPermitted \
+            and background refresh never runs. Declared modes: \(modes ?? [])
+            """
+        )
+        XCTAssertTrue(
+            modes?.contains("remote-notification") ?? false,
+            "UIBackgroundModes must keep \"remote-notification\" for push-driven Live Activity updates. Declared modes: \(modes ?? [])"
+        )
+    }
+
+    func testBackgroundRefreshIdentifierIsPermittedByTheBundle() {
+        let permitted = Bundle.main.object(forInfoDictionaryKey: "BGTaskSchedulerPermittedIdentifiers") as? [String]
+
+        XCTAssertNotNil(permitted, "Info.plist must declare BGTaskSchedulerPermittedIdentifiers")
+        XCTAssertTrue(
+            permitted?.contains(BACKGROUND_REFRESH_TASK_ID) ?? false,
+            """
+            BGTaskSchedulerPermittedIdentifiers must contain the identifier the app registers \
+            and submits (\(BACKGROUND_REFRESH_TASK_ID)), or registration traps at launch. \
+            Permitted identifiers: \(permitted ?? [])
+            """
+        )
+    }
+
+    // MARK: - Scene life cycle
+    //
+    // The UIApplicationDelegate UI-state callbacks are deprecated as of iOS 26 and are not
+    // delivered to a scene-based app — which a SwiftUI WindowGroup app is. Re-adding one
+    // looks harmless and silently breaks whatever it is wired to (scheduleAppRefresh() was
+    // reachable only from applicationDidEnterBackground(_:)). This fails the moment one
+    // comes back, because satisfying an @objc protocol requirement implicitly exposes the
+    // method to the Objective-C runtime.
+
+    func testAppDelegateDoesNotImplementDeprecatedLifecycleCallbacks() {
+        let deprecated = [
+            "applicationDidEnterBackground:",
+            "applicationWillEnterForeground:",
+            "applicationDidBecomeActive:",
+            "applicationWillResignActive:"
+        ]
+
+        for name in deprecated {
+            XCTAssertFalse(
+                AppDelegate.instancesRespond(to: Selector(name)),
+                """
+                AppDelegate implements \(name), which iOS does not call for scene-based apps. \
+                Put the work in the matching arm of .onChange(of: scenePhase) in TrackRatApp \
+                instead — see ios/CLAUDE.md.
+                """
+            )
+        }
+    }
+
+    func testAppDelegateKeepsProcessLevelCallbacks() {
+        // The counterpart to the assertion above: process-level callbacks are NOT deprecated
+        // and must stay on AppDelegate. This guards against over-correcting and deleting the
+        // push-registration plumbing along with the UI-state methods.
+        let required = [
+            "application:didFinishLaunchingWithOptions:",
+            "application:didRegisterForRemoteNotificationsWithDeviceToken:",
+            "application:didFailToRegisterForRemoteNotificationsWithError:"
+        ]
+
+        for name in required {
+            XCTAssertTrue(
+                AppDelegate.instancesRespond(to: Selector(name)),
+                "AppDelegate must keep \(name); it is a process-level callback unaffected by the scene life cycle."
+            )
+        }
+    }
+}
