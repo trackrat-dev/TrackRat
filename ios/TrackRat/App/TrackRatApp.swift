@@ -507,6 +507,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         } catch {
             print("Could not schedule app refresh: \(error)")
         }
+
+        // True on both paths above: the return value reports the scheduling decision, not
+        // whether submit(_:) accepted it, exactly as documented. Only the guard returns false.
+        return true
     }
 
     func handleAppRefresh(task: BGAppRefreshTask) {
