@@ -4,7 +4,6 @@ import UserNotifications
 struct OnboardingView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var subscriptionService = SubscriptionService.shared
 
     @State private var homeStation: Station? = nil
     @State private var workStation: Station? = nil
@@ -17,7 +16,6 @@ struct OnboardingView: View {
     @State private var isCompletingOnboarding = false
     @State private var hasClearedPreviousData = false
     @State private var showSystemSelection = true
-    @State private var showingPaywall = false
     @State private var showingTrainSystemSettings = false
     @State private var showConfetti = false
     @State private var welcomeTextScale: CGFloat = 0.8
@@ -146,9 +144,6 @@ struct OnboardingView: View {
                     }
                 }
             )
-        }
-        .sheet(isPresented: $showingPaywall) {
-            PaywallView(context: .trainSystems)
         }
         .sheet(isPresented: $showingTrainSystemSettings) {
             SettingsView(editTrainSystems: true)

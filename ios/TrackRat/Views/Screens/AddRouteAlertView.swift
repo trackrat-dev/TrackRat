@@ -64,7 +64,7 @@ struct AddRouteAlertView: View {
         }
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showingPaywall) {
-            PaywallView(context: .routeAlerts)
+            PaywallView()
         }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {

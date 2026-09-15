@@ -18,7 +18,6 @@ struct SettingsView: View {
 
     @State private var showingPaywall = false
     @State private var feedbackRequest: FeedbackSheetRequest?
-    @State private var paywallContext: PaywallContext = .generic
     @State private var navigationPath = NavigationPath()
     @State private var releaseDebugSectionsEnabled = false
 
@@ -90,7 +89,6 @@ struct SettingsView: View {
                         subscriptionService: subscriptionService,
                         navigationPath: $navigationPath,
                         showingPaywall: $showingPaywall,
-                        paywallContext: $paywallContext,
                         onReportIssue: {
                             feedbackRequest = FeedbackSheetRequest(
                                 screen: "settings",
@@ -128,7 +126,7 @@ struct SettingsView: View {
             .edgeSwipeBack(path: $navigationPath)
         }
         .sheet(isPresented: $showingPaywall) {
-            PaywallView(context: paywallContext)
+            PaywallView()
         }
         .feedbackSheet(request: $feedbackRequest)
         .interactiveDismissDisabled(appState.selectedSystems.isEmpty)
@@ -180,7 +178,6 @@ struct SettingsSection: View {
     @ObservedObject var subscriptionService: SubscriptionService
     @Binding var navigationPath: NavigationPath
     @Binding var showingPaywall: Bool
-    @Binding var paywallContext: PaywallContext
     let onReportIssue: () -> Void
     var showDebugSections: Bool
     var initialEditTrainSystems: Bool = false
@@ -252,21 +249,12 @@ struct SettingsSection: View {
                         return $0.displayName < $1.displayName
                     }
                     ForEach(sortedSystems, id: \.self) { system in
-                        let isSelected = appState.isSystemSelected(system)
-                        let atFreeLimit = !subscriptionService.isPro
-                            && !isSelected
-                            && appState.selectedSystems.count >= SubscriptionService.freeTrainSystemLimit
                         TrainSystemRow(
                             system: system,
-                            isSelected: isSelected,
+                            isSelected: appState.isSystemSelected(system),
                             isLast: system == sortedSystems.last
                         ) {
-                            if atFreeLimit {
-                                paywallContext = .trainSystems
-                                showingPaywall = true
-                            } else {
-                                appState.toggleSystem(system, allowEmpty: true)
-                            }
+                            appState.toggleSystem(system, allowEmpty: true)
                             UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         }
                     }
@@ -373,7 +361,6 @@ struct SettingsSection: View {
                     Button {
                         if !subscriptionService.isPro
                             && alertService.subscriptions.count >= SubscriptionService.freeRouteAlertLimit {
-                            paywallContext = .routeAlerts
                             showingPaywall = true
                         } else {
                             showAddRouteAlert = true

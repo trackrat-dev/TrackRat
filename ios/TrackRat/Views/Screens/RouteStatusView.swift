@@ -150,7 +150,7 @@ struct RouteStatusView: View {
                 .presentationDragIndicator(.visible)
             }
             .sheet(isPresented: $showingPaywall) {
-                PaywallView(context: .routeAlerts)
+                PaywallView()
             }
             .feedbackSheet(request: $feedbackRequest)
             .onChange(of: viewModel.isLoadingServiceAlerts) { _, isLoading in

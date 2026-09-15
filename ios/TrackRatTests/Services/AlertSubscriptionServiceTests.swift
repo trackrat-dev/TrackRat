@@ -331,23 +331,33 @@ class AlertSubscriptionServiceTests: XCTestCase {
 
     // MARK: - Free Tier Limit Behavior
 
-    func testSubscriptionCount_atFreeLimit_afterOneSubscription() {
-        let sub = RouteAlertSubscription(
+    func testRoundTrip_fitsWithinFreeLimit() {
+        // Both directions of a route are configurable for free, and each is
+        // stored as its own subscription, so a round-trip commute must not by
+        // itself put a free user at the paywall.
+        let outbound = RouteAlertSubscription(
             dataSource: "NJT", lineId: "NEC", lineName: "Northeast Corridor", direction: "NY"
         )
-        service.addSubscriptions([sub])
+        let inbound = RouteAlertSubscription(
+            dataSource: "NJT", lineId: "NEC", lineName: "Northeast Corridor", direction: "TRE"
+        )
+        service.addSubscriptions([outbound, inbound])
 
-        XCTAssertEqual(service.subscriptions.count, 1,
-                       "Should have exactly one subscription")
-        XCTAssertTrue(service.subscriptions.count >= SubscriptionService.freeRouteAlertLimit,
-                      "One subscription should meet or exceed the free limit of \(SubscriptionService.freeRouteAlertLimit)")
+        XCTAssertEqual(service.subscriptions.count, 2,
+                       "Both directions should be stored as separate subscriptions")
+        XCTAssertLessThan(service.subscriptions.count, SubscriptionService.freeRouteAlertLimit,
+                          """
+                          A round trip is \(service.subscriptions.count) subscriptions and the free \
+                          limit is \(SubscriptionService.freeRouteAlertLimit); a free user must still \
+                          be able to add one more before hitting the paywall.
+                          """)
     }
 
     func testSubscriptionCount_belowFreeLimit_whenEmpty() {
         XCTAssertEqual(service.subscriptions.count, 0,
                        "Should have zero subscriptions")
-        XCTAssertFalse(service.subscriptions.count >= SubscriptionService.freeRouteAlertLimit,
-                       "Zero subscriptions should be below the free limit")
+        XCTAssertLessThan(service.subscriptions.count, SubscriptionService.freeRouteAlertLimit,
+                          "Zero subscriptions should be below the free limit")
     }
 
     // MARK: - subscriptions(for:) Direction Matching

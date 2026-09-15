@@ -114,7 +114,7 @@ struct TrainSystemDetailView: View {
             alertService.syncIfPossible()
         }
         .sheet(isPresented: $showingPaywall) {
-            PaywallView(context: .routeAlerts)
+            PaywallView()
         }
         .sheet(item: $routeStatusContext) { context in
             RouteStatusView(context: context)
