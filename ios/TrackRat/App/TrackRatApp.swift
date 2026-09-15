@@ -473,7 +473,25 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         print("📱 Notification categories configured")
     }
 
+    /// Submits a background refresh request, but only while a Live Activity is running.
+    ///
+    /// The guard lives here rather than at the call sites because there are two of them and
+    /// they have to agree: the `.background` scene phase, and `handleAppRefresh(task:)`
+    /// rescheduling its own successor. Without it, every backgrounding queues a wake — even
+    /// for a user who has never started a Live Activity — and each wake reschedules before
+    /// discovering it has nothing to do, so the chain re-arms itself for as long as the app
+    /// stays backgrounded. Foregrounding cancels the pending request, so the waste is bounded
+    /// by the next launch, but a wake that exists only to schedule the next wake is pure cost.
+    ///
+    /// Gating on `currentActivity` rather than the `isActivityActive` mirror keeps this in
+    /// step with the guard in `handleAppRefresh(task:)`, which reads the same property: if the
+    /// two disagreed, we would either schedule wakes that do nothing or skip ones that would.
     func scheduleAppRefresh() {
+        guard LiveActivityService.shared.currentActivity != nil else {
+            print("No active Live Activity — skipping background refresh scheduling.")
+            return
+        }
+
         let request = BGAppRefreshTaskRequest(identifier: BACKGROUND_REFRESH_TASK_ID)
         request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60) // 15 minutes from now
         do {

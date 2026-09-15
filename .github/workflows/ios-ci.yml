@@ -50,10 +50,28 @@ jobs:
       - name: Select simulator destination
         id: sim
         run: |
-          # Newest available iOS runtime, preferring an iPhone. A runner can carry more
-          # than one runtime, and an arbitrary pick would silently test against the
-          # previous SDK's simulator instead of iOS 27.
-          NAME=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(select(.key | contains("iOS"))) | sort_by(.key) | reverse | map(.value) | flatten | (map(select(.name | startswith("iPhone"))) + .) | .[0].name // empty')
+          # Newest available iOS runtime, preferring an iPhone *within that runtime*. A
+          # runner can carry more than one runtime, and an arbitrary pick would silently
+          # test against the previous SDK's simulator instead of iOS 27.
+          #
+          # Two things this expression has to get right, both of which a simpler one gets
+          # wrong. Runtime recency outranks device family: collecting every iPhone across
+          # every runtime first would pick an iOS 26 iPhone over an iOS 27 iPad and quietly
+          # defeat the point of this job. And the runtime is ordered by parsed version
+          # numbers, not by its identifier string -- "iOS-9-3" sorts above "iOS-27-0"
+          # lexicographically, so a string sort can hand back an ancient runtime outright.
+          # Runtimes carrying no available devices are dropped so the newest one is a
+          # runtime we can actually boot.
+          NAME=$(xcrun simctl list devices available -j | jq -r '
+            .devices
+            | to_entries
+            | map(select(.key | test("SimRuntime[.]iOS-[0-9]")))
+            | map(select(.value | length > 0))
+            | sort_by(.key | capture("iOS-(?<v>[0-9-]+)$").v | split("-") | map(tonumber))
+            | (last // {})
+            | (.value // [])
+            | (map(select(.name | startswith("iPhone"))) + .)
+            | .[0].name // empty')
           if [ -z "$NAME" ]; then
             echo "::error::No available iOS simulator found on this runner"
             xcrun simctl list
