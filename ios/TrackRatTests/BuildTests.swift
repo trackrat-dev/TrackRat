@@ -1,4 +1,3 @@
-import BackgroundTasks
 import StoreKit
 import XCTest
 import SwiftUI
@@ -560,45 +559,17 @@ final class AppLifecycleConfigurationTests: XCTestCase {
     // Background refresh exists only to update a running Live Activity. Scheduling one
     // without an activity queues a wake that reschedules its own successor before it
     // discovers it has no work, so the app re-arms the chain for as long as it stays
-    // backgrounded. These pin the guard in scheduleAppRefresh() against that regression.
+    // backgrounded. This pins the guard in scheduleAppRefresh() against that regression.
 
-    /// The pending background refresh requests, waiting out BGTaskScheduler's async callback.
-    private func pendingRefreshRequests() -> [BGTaskRequest] {
-        let received = expectation(description: "getPendingTaskRequests returned")
-        var pending: [BGTaskRequest] = []
-        BGTaskScheduler.shared.getPendingTaskRequests { requests in
-            pending = requests.filter { $0.identifier == BACKGROUND_REFRESH_TASK_ID }
-            received.fulfill()
-        }
-        wait(for: [received], timeout: 5)
-        return pending
-    }
-
-    func testSchedulerAcceptsASubmissionInThisEnvironment() {
-        // Control for the assertion below. If BGTaskScheduler refused every submission on
-        // this runner, "nothing was scheduled" would pass whether or not the guard works —
-        // an assertion that can only ever pass is indistinguishable from one never written.
-        // This one fails loudly instead, so the other test's silence stays meaningful.
-        BGTaskScheduler.shared.cancelAllTaskRequests()
-
-        let request = BGAppRefreshTaskRequest(identifier: BACKGROUND_REFRESH_TASK_ID)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
-
-        XCTAssertNoThrow(
-            try BGTaskScheduler.shared.submit(request),
-            """
-            BGTaskScheduler rejected a submission for a permitted identifier, so \
-            testBackgroundRefreshIsNotScheduledWithoutALiveActivity cannot distinguish a \
-            working guard from a scheduler that refuses everything.
-            """
-        )
-        XCTAssertEqual(
-            pendingRefreshRequests().count, 1,
-            "A submitted request must read back as pending, or the guard assertion is vacuous."
-        )
-
-        BGTaskScheduler.shared.cancelAllTaskRequests()
-    }
+    // This asserts on scheduleAppRefresh()'s own return value rather than on
+    // BGTaskScheduler.getPendingTaskRequests(). Reading the pending list back looks like the
+    // stronger test and is in fact a vacuous one here: the simulator accepts no submissions
+    // at all, so "nothing is pending" holds whether the guard works or was never written.
+    // Touching BGTaskScheduler from a test is also actively harmful — submitting under the
+    // test host killed the app process, and xcodebuild then spent 600s collecting simulator
+    // diagnostics, turning an 18-minute job into a 30-minute timeout. The return value
+    // reports the scheduling decision, which is the thing the guard exists to make, and it
+    // flips the moment the guard is removed.
 
     @MainActor
     func testBackgroundRefreshIsNotScheduledWithoutALiveActivity() {
@@ -607,11 +578,8 @@ final class AppLifecycleConfigurationTests: XCTestCase {
             "Precondition: no Live Activity should be running in a fresh test host."
         )
 
-        BGTaskScheduler.shared.cancelAllTaskRequests()
-        AppDelegate().scheduleAppRefresh()
-
-        XCTAssertTrue(
-            pendingRefreshRequests().isEmpty,
+        XCTAssertFalse(
+            AppDelegate().scheduleAppRefresh(),
             """
             scheduleAppRefresh() queued a background wake with no Live Activity to update. \
             Each such wake reschedules its successor before finding it has no work, so the \

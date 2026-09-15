@@ -486,10 +486,17 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     /// Gating on `currentActivity` rather than the `isActivityActive` mirror keeps this in
     /// step with the guard in `handleAppRefresh(task:)`, which reads the same property: if the
     /// two disagreed, we would either schedule wakes that do nothing or skip ones that would.
-    func scheduleAppRefresh() {
+    ///
+    /// - Returns: whether a Live Activity was running and a request was therefore submitted.
+    ///   This reports the scheduling *decision*, not the submission's fate — `submit` can still
+    ///   throw, which is logged. The distinction matters for testing: BGTaskScheduler accepts
+    ///   no submissions under the simulator, so asserting on its pending list cannot tell a
+    ///   working guard from a scheduler that refuses everything, while this can.
+    @discardableResult
+    func scheduleAppRefresh() -> Bool {
         guard LiveActivityService.shared.currentActivity != nil else {
             print("No active Live Activity — skipping background refresh scheduling.")
-            return
+            return false
         }
 
         let request = BGAppRefreshTaskRequest(identifier: BACKGROUND_REFRESH_TASK_ID)
