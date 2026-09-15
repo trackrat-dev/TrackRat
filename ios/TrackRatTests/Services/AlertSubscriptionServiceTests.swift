@@ -353,6 +353,105 @@ class AlertSubscriptionServiceTests: XCTestCase {
                           """)
     }
 
+    // MARK: - newSubscriptionCount (free-tier cap accounting)
+
+    func testNewSubscriptionCount_countsEveryNonDuplicateInBatch() {
+        let outbound = RouteAlertSubscription(
+            dataSource: "NJT", fromStationCode: "NY", toStationCode: "TRE"
+        )
+        let inbound = RouteAlertSubscription(
+            dataSource: "NJT", fromStationCode: "TRE", toStationCode: "NY"
+        )
+
+        XCTAssertEqual(
+            service.newSubscriptionCount(for: [outbound, inbound]), 2,
+            "A round trip stores two subscriptions, so the cap check must see 2, not 1"
+        )
+    }
+
+    func testNewSubscriptionCount_ignoresDuplicatesOfExisting() {
+        let outbound = RouteAlertSubscription(
+            dataSource: "NJT", fromStationCode: "NY", toStationCode: "TRE"
+        )
+        let inbound = RouteAlertSubscription(
+            dataSource: "NJT", fromStationCode: "TRE", toStationCode: "NY"
+        )
+        service.addSubscriptions([outbound])
+
+        XCTAssertEqual(
+            service.newSubscriptionCount(for: [outbound, inbound]), 1,
+            "Only the return leg is new; re-saving the outbound leg must not count against the cap"
+        )
+    }
+
+    func testNewSubscriptionCount_ignoresDuplicatesWithinTheBatch() {
+        let sub = RouteAlertSubscription(
+            dataSource: "NJT", fromStationCode: "NY", toStationCode: "TRE"
+        )
+
+        XCTAssertEqual(
+            service.newSubscriptionCount(for: [sub, sub]), 1,
+            "The same route twice in one batch stores once, so it must count once"
+        )
+    }
+
+    func testNewSubscriptionCount_matchesWhatAddSubscriptionsActuallyStores() {
+        // The cap check is only trustworthy if its projection agrees with the
+        // real mutation. Assert the two against each other rather than against
+        // a hardcoded number.
+        let existing = RouteAlertSubscription(
+            dataSource: "NJT", fromStationCode: "NY", toStationCode: "TRE"
+        )
+        service.addSubscriptions([existing])
+
+        let batch = [
+            existing,
+            RouteAlertSubscription(dataSource: "NJT", fromStationCode: "TRE", toStationCode: "NY"),
+            RouteAlertSubscription(dataSource: "PATH", fromStationCode: "HOB", toStationCode: "WTC"),
+        ]
+        let predicted = service.newSubscriptionCount(for: batch)
+        let before = service.subscriptions.count
+
+        service.addSubscriptions(batch)
+
+        XCTAssertEqual(
+            service.subscriptions.count - before, predicted,
+            """
+            newSubscriptionCount predicted \(predicted) new rows but addSubscriptions stored \
+            \(service.subscriptions.count - before). A cap check built on this projection would \
+            let a free user past the limit.
+            """
+        )
+    }
+
+    func testRoundTripSave_wouldExceedCap_whenTwoAlertsAlreadyExist() {
+        // The regression Codex caught on #1819: the pre-save check only asked
+        // whether the user was ALREADY at the cap. With 2 existing alerts and a
+        // free limit of 3, a round trip (2 more) lands the user on 4.
+        service.addSubscriptions([
+            RouteAlertSubscription(dataSource: "NJT", fromStationCode: "NY", toStationCode: "TRE"),
+            RouteAlertSubscription(dataSource: "PATH", fromStationCode: "HOB", toStationCode: "WTC"),
+        ])
+        XCTAssertEqual(service.subscriptions.count, 2, "Precondition: two existing alerts")
+        XCTAssertLessThan(service.subscriptions.count, SubscriptionService.freeRouteAlertLimit,
+                          "Precondition: the old pre-save check would have allowed this save")
+
+        let roundTrip = [
+            RouteAlertSubscription(dataSource: "LIRR", fromStationCode: "NYK", toStationCode: "JAM"),
+            RouteAlertSubscription(dataSource: "LIRR", fromStationCode: "JAM", toStationCode: "NYK"),
+        ]
+        let projected = service.subscriptions.count + service.newSubscriptionCount(for: roundTrip)
+
+        XCTAssertGreaterThan(
+            projected, SubscriptionService.freeRouteAlertLimit,
+            """
+            Projected total is \(projected) against a limit of \
+            \(SubscriptionService.freeRouteAlertLimit); the save path must show the paywall \
+            rather than storing the batch.
+            """
+        )
+    }
+
     func testSubscriptionCount_belowFreeLimit_whenEmpty() {
         XCTAssertEqual(service.subscriptions.count, 0,
                        "Should have zero subscriptions")
