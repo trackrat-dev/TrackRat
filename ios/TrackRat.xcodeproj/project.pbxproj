@@ -163,6 +163,7 @@
 		B1SVCALRT01000000000000A1 /* ServiceAlertsSectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SVCALRT01000000000000A1 /* ServiceAlertsSectionTests.swift */; };
 		B1CGMKTST01000000000000A1 /* CongestionMapKitViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1CGMKTST01000000000000A1 /* CongestionMapKitViewTests.swift */; };
 		B1RTSHPTST010000000000A1 /* RouteShapesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1RTSHPTST010000000000A1 /* RouteShapesTests.swift */; };
+		B1SUBSCTST010000000000A1 /* SubscriptionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SUBSCTST010000000000A1 /* SubscriptionServiceTests.swift */; };
 		B1SHIMR001000000000000A1 /* ShimmerRect.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SHIMR001000000000000A1 /* ShimmerRect.swift */; };
 		B1SHIMR002000000000000A1 /* ShimmerRect.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SHIMR001000000000000A1 /* ShimmerRect.swift */; };
 		B1SUBCHP01000000000000A1 /* SubwayLineChips.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SUBCHP01000000000000A1 /* SubwayLineChips.swift */; };
@@ -386,6 +387,7 @@
 		F1SVCALRT01000000000000A1 /* ServiceAlertsSectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ServiceAlertsSectionTests.swift; path = TrackRatTests/Views/ServiceAlertsSectionTests.swift; sourceTree = "<group>"; };
 		F1CGMKTST01000000000000A1 /* CongestionMapKitViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CongestionMapKitViewTests.swift; path = TrackRatTests/Views/CongestionMapKitViewTests.swift; sourceTree = "<group>"; };
 		F1RTSHPTST010000000000A1 /* RouteShapesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RouteShapesTests.swift; path = TrackRatTests/Shared/RouteShapesTests.swift; sourceTree = "<group>"; };
+		F1SUBSCTST010000000000A1 /* SubscriptionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionServiceTests.swift; sourceTree = "<group>"; };
 		F1SHIMR001000000000000A1 /* ShimmerRect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShimmerRect.swift; path = TrackRat/Views/Components/ShimmerRect.swift; sourceTree = "<group>"; };
 		F1SUBCHP01000000000000A1 /* SubwayLineChips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SubwayLineChips.swift; path = TrackRat/Views/Components/SubwayLineChips.swift; sourceTree = "<group>"; };
 		F1SUBLNS01000000000000A1 /* SubwayLines.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SubwayLines.swift; path = TrackRat/Shared/SubwayLines.swift; sourceTree = "<group>"; };
@@ -603,6 +605,7 @@
 			children = (
 				A1BA60E72DFC73650002FB39 /* APIServiceTests.swift */,
 				A1BA60E82DFC73650002FB39 /* StorageServiceTests.swift */,
+				F1SUBSCTST010000000000A1 /* SubscriptionServiceTests.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -913,6 +916,7 @@
 				B1SVCALRT01000000000000A1 /* ServiceAlertsSectionTests.swift in Sources */,
 				B1CGMKTST01000000000000A1 /* CongestionMapKitViewTests.swift in Sources */,
 				B1RTSHPTST010000000000A1 /* RouteShapesTests.swift in Sources */,
+				B1SUBSCTST010000000000A1 /* SubscriptionServiceTests.swift in Sources */,
 				A16C81EF2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */,
 				A198994A2E8063F90079E596 /* HistoricalDataViewModelTests.swift in Sources */,
 				B1RSVMTST01000000000000A1 /* RouteStatusViewModelTests.swift in Sources */,

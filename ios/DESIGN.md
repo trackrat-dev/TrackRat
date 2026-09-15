@@ -77,7 +77,6 @@ This document contains detailed design specifications, screen documentation, and
 - Time window filtering (1-24 hours)
 - Map layer controls: Congestion (Off/Summary/Trains), Routes, Stations
 - Route topology overlay for NJT, Amtrak, PATH, PATCO, LIRR, MNR, Subway lines
-- Pro-only congestion map feature with paywall prompt
 
 ### 10. **OnboardingView**
 - Multi-step user onboarding flow

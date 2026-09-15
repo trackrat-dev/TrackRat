@@ -126,28 +126,17 @@ class LineDiscoveryModel: ObservableObject {
 }
 
 /// Sheet that shows both directions of a route with independent alert settings.
-/// Each direction is shown inline with its own configuration section.
-/// For free users, only the first direction is configurable; the second shows a Pro upsell.
+/// Each direction is shown inline with its own configuration section. Both
+/// directions are configurable — a round trip is one route, not two upsells.
 struct DirectionalAlertConfigurationSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var subscriptionService = SubscriptionService.shared
     @StateObject private var lineDiscovery = LineDiscoveryModel()
     @State private var directions: [DirectionDraft]
-    @State private var showingPaywall = false
-    /// Snapshot of `isPro` taken on first appearance. Stabilizes the i>0 branch against transient
-    /// StoreKit refreshes (e.g., scenePhase=.active triggers refreshOnForeground which can briefly
-    /// reset subscriptionStatus to .notSubscribed). Only upgrades (false→true) are honored so a
-    /// mid-flow paywall purchase still unlocks the second direction.
-    @State private var isProSticky: Bool? = nil
     private let onSave: ([RouteAlertSubscription]) -> Void
 
     init(directions: [DirectionDraft], onSave: @escaping ([RouteAlertSubscription]) -> Void) {
         _directions = State(initialValue: directions)
         self.onSave = onSave
-    }
-
-    private var effectiveIsPro: Bool {
-        isProSticky ?? subscriptionService.isPro
     }
 
     /// Station pair from the first non-subscribed direction (for line discovery).
@@ -188,8 +177,6 @@ struct DirectionalAlertConfigurationSheet: View {
                         ForEach(0..<directions.count, id: \.self) { i in
                             if directions[i].alreadySubscribed {
                                 alreadySubscribedBanner(label: directions[i].label)
-                            } else if i > 0 && !effectiveIsPro {
-                                proLockedDirectionBanner(label: directions[i].label)
                             } else {
                                 AlertConfigurationSection(
                                     subscription: $directions[i].subscription,
@@ -210,13 +197,9 @@ struct DirectionalAlertConfigurationSheet: View {
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Save") {
-                            let enabledSubs = directions.enumerated()
-                                .filter { index, draft in
-                                    !draft.alreadySubscribed
-                                    && draft.subscription.activeDays != 0
-                                    && (index == 0 || effectiveIsPro)
-                                }
-                                .map(\.element.subscription)
+                            let enabledSubs = directions
+                                .filter { !$0.alreadySubscribed && $0.subscription.activeDays != 0 }
+                                .map(\.subscription)
                             onSave(enabledSubs)
                             // Save line selection preference
                             if let pair = stationPair {
@@ -229,16 +212,6 @@ struct DirectionalAlertConfigurationSheet: View {
                         .disabled(!canSave)
                     }
                 }
-                .onAppear {
-                    if isProSticky == nil {
-                        isProSticky = subscriptionService.isPro
-                    }
-                }
-                .onChange(of: subscriptionService.isPro) { _, newValue in
-                    if newValue {
-                        isProSticky = true
-                    }
-                }
                 .task(id: stationPairKey) {
                     if let pair = stationPair {
                         await lineDiscovery.discover(from: pair.from, to: pair.to)
@@ -246,9 +219,6 @@ struct DirectionalAlertConfigurationSheet: View {
                 }
             }
             .preferredColorScheme(.dark)
-            .sheet(isPresented: $showingPaywall) {
-                PaywallView(context: .routeAlerts)
-            }
         }
     }
 
@@ -267,37 +237,6 @@ struct DirectionalAlertConfigurationSheet: View {
             .padding()
             .frame(maxWidth: .infinity)
             .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
-        }
-    }
-
-    // MARK: - Pro Locked Direction Banner
-
-    private func proLockedDirectionBanner(label: String) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(label)
-                .font(.headline)
-            Button {
-                showingPaywall = true
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            } label: {
-                HStack {
-                    Image(systemName: "lock.fill")
-                        .foregroundColor(.orange)
-                    Text("Start a free trial and upgrade to Pro to add more than one route alert")
-                        .foregroundColor(.white.opacity(0.7))
-                    Spacer()
-                    Text("PRO")
-                        .font(.caption2.bold())
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(Capsule().fill(.orange))
-                }
-                .padding()
-                .frame(maxWidth: .infinity)
-                .background(RoundedRectangle(cornerRadius: 12).fill(.ultraThinMaterial))
-            }
-            .buttonStyle(.plain)
         }
     }
 }

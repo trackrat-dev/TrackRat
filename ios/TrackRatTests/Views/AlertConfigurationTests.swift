@@ -378,13 +378,6 @@ class AlertConfigurationTests: XCTestCase {
         }
     }
 
-    // MARK: - Free Tier Alert Limit
-
-    func testFreeRouteAlertLimit_isOne() {
-        XCTAssertEqual(SubscriptionService.freeRouteAlertLimit, 1,
-                       "Free tier should allow exactly 1 route alert subscription")
-    }
-
     func testIsSystemWide_trueWhenNoLineOrStationOrTrain() {
         let sub = RouteAlertSubscription(dataSource: "NJT")
         XCTAssertTrue(sub.isSystemWide,

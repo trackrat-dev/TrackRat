@@ -120,14 +120,14 @@
           },
           "localizations" : [
             {
-              "description" : "Full access to all TrackRat Pro features",
-              "displayName" : "TrackRat Pro Yearly",
+              "description" : "No longer sold. Existing subscribers keep Pro until they cancel.",
+              "displayName" : "TrackRat Pro Yearly (legacy)",
               "locale" : "en_US"
             }
           ],
           "productID" : "com.trackrat.pro.yearly",
           "recurringSubscriptionPeriod" : "P1Y",
-          "referenceName" : "TrackRat Pro Yearly",
+          "referenceName" : "TrackRat Pro Yearly (legacy, removed from sale)",
           "subscriptionGroupID" : "21612118",
           "type" : "RecurringSubscription"
         }

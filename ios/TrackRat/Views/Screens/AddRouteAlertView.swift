@@ -64,7 +64,7 @@ struct AddRouteAlertView: View {
         }
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showingPaywall) {
-            PaywallView(context: .routeAlerts)
+            PaywallView()
         }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
@@ -86,13 +86,24 @@ struct AddRouteAlertView: View {
 
     // MARK: - Save Subscriptions
 
+    /// True when the user is already at the cap, before any new subscription is
+    /// configured. Used to avoid opening a sheet that could not be saved.
     private var atAlertLimit: Bool {
         !SubscriptionService.shared.isPro
             && alertService.subscriptions.count >= SubscriptionService.freeRouteAlertLimit
     }
 
+    /// True when saving `subs` would carry a free user past the cap. A round trip
+    /// saves both directions at once, so a pre-save count under the limit does
+    /// not mean the result stays under it — the batch has to be counted too.
+    private func exceedsAlertLimit(_ subs: [RouteAlertSubscription]) -> Bool {
+        guard !SubscriptionService.shared.isPro else { return false }
+        let projected = alertService.subscriptions.count + alertService.newSubscriptionCount(for: subs)
+        return projected > SubscriptionService.freeRouteAlertLimit
+    }
+
     private func saveDirectionalSubscriptions(_ subs: [RouteAlertSubscription]) {
-        guard !atAlertLimit else {
+        guard !exceedsAlertLimit(subs) else {
             activeSheet = nil
             showingPaywall = true
             return
@@ -108,7 +119,7 @@ struct AddRouteAlertView: View {
     }
 
     private func saveSystemSubscription(_ subs: [RouteAlertSubscription]) {
-        guard !atAlertLimit else {
+        guard !exceedsAlertLimit(subs) else {
             activeSheet = nil
             showingPaywall = true
             return
