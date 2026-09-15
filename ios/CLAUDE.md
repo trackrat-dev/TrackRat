@@ -5,7 +5,20 @@
 SwiftUI app for tracking trains across 13 transit systems: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA (DC Metro), and SEPTA (Regional Rail + Metro). Features Live Activities, track predictions (Owl), route alerts with recurring train subscriptions, congestion maps, multi-leg trip search, and Pro subscription.
 
 - **iOS 18.0+** deployment target
-- **Xcode 26+** required — the app calls iOS 26 Liquid Glass APIs (`sharedBackgroundVisibility`, `containerBackground(.navigation)`) behind `#available(iOS 26, *)` runtime gates, but the symbols must exist at compile time. Xcode 16.x (iOS 18.5 SDK) fails to build.
+- **Xcode 26+** required — the app calls iOS 26 Liquid Glass APIs (`sharedBackgroundVisibility`, `containerBackground(.navigation)`) behind `#available(iOS 26, *)` runtime gates, but the symbols must exist at compile time. Xcode 16.x (iOS 18.5 SDK) fails to build. CI builds on the `xcode-27` runner image (iOS 27 SDK); note the label is `xcode-27`, not `macos-27`.
+- **App lifecycle hooks belong in `scenePhase`, never in `UIApplicationDelegate`.** The
+  UI-state callbacks (`applicationDidEnterBackground(_:)`, `applicationWillEnterForeground(_:)`,
+  `applicationDidBecomeActive(_:)`) are deprecated as of iOS 26 and are not delivered to a
+  scene-based app, which a SwiftUI `WindowGroup` app is. `scheduleAppRefresh()` hung off
+  `applicationDidEnterBackground(_:)` and was the only thing that ever queued a
+  `BGAppRefreshTaskRequest`; it now runs from the `.background` arm of
+  `.onChange(of: scenePhase)` in `TrackRatApp.swift`. Process-level callbacks
+  (`didFinishLaunchingWithOptions`, `didRegisterForRemoteNotificationsWithDeviceToken`) are
+  unaffected and stay on `AppDelegate`.
+- **`BGAppRefreshTaskRequest` needs `fetch` in `UIBackgroundModes`**, not just an entry in
+  `BGTaskSchedulerPermittedIdentifiers`. Without it `BGTaskScheduler.submit` throws
+  `BGTaskSchedulerErrorCodeNotPermitted` and background refresh silently never runs.
+  `BuildTests` asserts both keys.
 
 ## Architecture
 
