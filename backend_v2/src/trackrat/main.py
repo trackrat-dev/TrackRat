@@ -28,6 +28,7 @@ from trackrat.api import (
     route_preferences,
     routes,
     share,
+    telemetry,
     trains,
     trips,
     validation,
@@ -320,8 +321,16 @@ async def request_stats_middleware(
     route = request.scope.get("route")
     path_template = route.path if route and hasattr(route, "path") else request.url.path
 
-    # Skip noisy internal paths
-    if path_template not in {"/health", "/health/live", "/health/ready", "/metrics"}:
+    # Skip noisy internal paths, plus the onboarding beacon — recording it here
+    # would retain a client IP alongside the very event telemetry.py keeps
+    # IP-free on purpose, and it is instrumentation rather than rider traffic.
+    if path_template not in {
+        "/health",
+        "/health/live",
+        "/health/ready",
+        "/metrics",
+        telemetry.ONBOARDING_PATH,
+    }:
         query_params = dict(request.query_params)
         client_ip = get_client_ip(request)
         get_request_stats().record_request(
@@ -346,6 +355,7 @@ app.include_router(predictions.router)
 app.include_router(route_preferences.router, include_in_schema=False)
 app.include_router(routes.router)
 app.include_router(share.router)
+app.include_router(telemetry.router, include_in_schema=False)
 app.include_router(trains.router)
 app.include_router(trips.router)
 app.include_router(validation.router, include_in_schema=False)

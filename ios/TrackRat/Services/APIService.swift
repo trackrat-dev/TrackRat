@@ -1435,6 +1435,54 @@ final class APIService: ObservableObject {
 
         print("✅ Feedback submitted successfully")
     }
+
+    /// Reports the shape of a finished onboarding so the setup funnel can be
+    /// measured. Deliberately carries no station codes — only whether each step
+    /// was completed. Best effort: telemetry must never break setup, so failures
+    /// are logged and swallowed.
+    func reportOnboardingCompleted(
+        systems: String,
+        homeStationSet: Bool,
+        workStationSet: Bool,
+        favoritesCount: Int,
+        usedLocation: Bool,
+        skipped: Bool
+    ) async {
+        let endpoint = "/v2/telemetry/onboarding"
+        guard let url = URL(string: "\(baseURL)\(endpoint)") else { return }
+
+        struct OnboardingCompletedRequest: Encodable {
+            let systems: String
+            let home_station_set: Bool
+            let work_station_set: Bool
+            let favorites_count: Int
+            let used_location: Bool
+            let skipped: Bool
+            let app_version: String?
+        }
+
+        let body = OnboardingCompletedRequest(
+            systems: systems,
+            home_station_set: homeStationSet,
+            work_station_set: workStationSet,
+            favorites_count: favoritesCount,
+            used_location: usedLocation,
+            skipped: skipped,
+            app_version: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String
+        )
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        do {
+            request.httpBody = try JSONEncoder().encode(body)
+            let (_, response) = try await session.data(for: request)
+            try validate(response)
+        } catch {
+            Log.warning("Onboarding telemetry failed: \(error.localizedDescription)")
+        }
+    }
 }
 
 // MARK: - API Errors
