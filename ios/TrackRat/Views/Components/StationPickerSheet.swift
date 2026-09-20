@@ -1,3 +1,4 @@
+import CoreLocation
 import SwiftUI
 
 // MARK: - Station Model
@@ -15,8 +16,10 @@ struct StationPickerSheet: View {
     var onInactiveStationSelected: ((Station) -> Void)? = nil
     let onStationSelected: (Station) -> Void
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var locationService = LocationService.shared
 
     @State private var searchText = ""
+    @State private var nearbyStations: [Station] = []
     @FocusState private var isSearchFocused: Bool
 
     /// All visible stations filtered by selected systems.
@@ -188,6 +191,66 @@ struct StationPickerSheet: View {
         return Station(code: code, name: name)
     }
 
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.caption.weight(.semibold))
+            .foregroundColor(.white.opacity(0.6))
+            .textCase(nil)
+    }
+
+    /// Stations closest to the user, so the common case isn't a search through
+    /// hundreds of rows. Only offered while browsing — search speaks for itself.
+    @ViewBuilder
+    private var nearbySection: some View {
+        if !nearbyStations.isEmpty {
+            Section {
+                ForEach(nearbyStations) { station in
+                    stationRow(station)
+                }
+            } header: {
+                sectionHeader("Nearest to you")
+            }
+        } else if locationService.isLocating {
+            Section {
+                HStack(spacing: 10) {
+                    ProgressView()
+                        .tint(.white)
+                    Text("Finding stations near you…")
+                        .foregroundColor(.white.opacity(0.7))
+                }
+                .listRowBackground(Color.clear)
+            }
+        } else if locationService.canRequestFix {
+            Section {
+                Button {
+                    locationService.requestFix()
+                } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: "location.fill")
+                        Text("Use my location")
+                        Spacer()
+                    }
+                    .foregroundColor(.orange)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(PlainButtonStyle())
+                .listRowBackground(Color.clear)
+            }
+        }
+    }
+
+    private func refreshNearbyStations() {
+        guard let fix = locationService.fix else {
+            nearbyStations = []
+            return
+        }
+
+        nearbyStations = Stations.nearestCodes(to: fix.coordinate, systems: selectedSystems)
+            .map { code in
+                Station(code: code, name: Stations.stationName(forCode: code) ?? code)
+            }
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -214,16 +277,15 @@ struct StationPickerSheet: View {
 
                 if searchText.isEmpty {
                     List {
+                        nearbySection
+
                         ForEach(groupedStations, id: \.system) { group in
                             Section {
                                 ForEach(group.stations) { station in
                                     stationRow(station)
                                 }
                             } header: {
-                                Text(group.system)
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundColor(.white.opacity(0.6))
-                                    .textCase(nil)
+                                sectionHeader(group.system)
                             }
                         }
                     }
@@ -241,10 +303,7 @@ struct StationPickerSheet: View {
                                     inactiveSystemStationRow(station)
                                 }
                             } header: {
-                                Text("Other systems")
-                                    .font(.caption.weight(.semibold))
-                                    .foregroundColor(.white.opacity(0.6))
-                                    .textCase(nil)
+                                sectionHeader("Other systems")
                             }
                         }
                     }
@@ -269,6 +328,12 @@ struct StationPickerSheet: View {
             }
         }
         .preferredColorScheme(.dark)
-        .onAppear { isSearchFocused = true }
+        .onAppear {
+            isSearchFocused = true
+            refreshNearbyStations()
+        }
+        .onChange(of: locationService.fix) { _, _ in
+            refreshNearbyStations()
+        }
     }
 }

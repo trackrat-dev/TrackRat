@@ -1,6 +1,5 @@
 import Foundation
 import ActivityKit
-import UserNotifications
 import UIKit
 
 @MainActor
@@ -48,11 +47,11 @@ class LiveActivityService: ObservableObject {
         // Record Live Activity start for Rat Sense
         RatSenseService.shared.recordLiveActivityStart(from: originCode, to: destinationCode)
 
-        // Request notification permissions
-        do {
-            try await requestNotificationPermissions()
-        } catch {
-            throw error
+        // Live Activities are gated by their own system setting, not by alert
+        // permission — pushing updates to one needs only the APNs token, which
+        // registerForRemoteNotifications() provides without prompting.
+        guard ActivityAuthorizationInfo().areActivitiesEnabled else {
+            throw LiveActivityError.activitiesDisabled
         }
 
         // Get estimated times for the user's journey using existing train data
@@ -472,17 +471,6 @@ class LiveActivityService: ObservableObject {
         }
     }
     
-    // MARK: - Permissions
-    
-    private func requestNotificationPermissions() async throws {
-        let center = UNUserNotificationCenter.current()
-        let granted = try await center.requestAuthorization(options: [.alert, .sound, .badge])
-        
-        if !granted {
-            throw LiveActivityError.permissionDenied
-        }
-    }
-    
     // MARK: - Activity State Observation
 
     /// Watch for the user dismissing the Live Activity (Lock Screen swipe) or the
@@ -686,13 +674,13 @@ class LiveActivityService: ObservableObject {
 // MARK: - Errors
 
 enum LiveActivityError: LocalizedError {
-    case permissionDenied
+    case activitiesDisabled
     case invalidData(String)
-    
+
     var errorDescription: String? {
         switch self {
-        case .permissionDenied:
-            return "Notification permissions are required for Live Activities"
+        case .activitiesDisabled:
+            return "Turn on Live Activities for TrackRat in Settings to track a train"
         case .invalidData(let message):
             return "Invalid data: \(message)"
         }

@@ -53,6 +53,9 @@ struct TrackRatApp: App {
                     }
                     // Refresh subscription status in case user cancelled in Settings
                     SubscriptionService.shared.refreshOnForeground()
+                    // Same for notification permission, which the user may have
+                    // just changed in Settings after following the alerts banner
+                    Task { await NotificationPermissionService.shared.refreshStatus() }
                     // Re-sync route alert subscriptions if stale (e.g. after server DB restore)
                     AlertSubscriptionService.shared.syncIfNeeded()
                     // Refresh Live Activity's cached train data on foreground.
@@ -102,12 +105,13 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         setupNotificationCategories()
         registerBackgroundTasks()
 
-        // Request notification permissions after onboarding (don't prompt on first launch)
-        if UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
-            Task {
-                await requestNotificationPermissions()
-            }
-            application.registerForRemoteNotifications()
+        // Registering for remote notifications never prompts the user: it yields
+        // the APNs token that Live Activity updates and silent pushes ride on.
+        // The alert prompt is deliberately NOT requested here — it is asked for
+        // in context, when the user first sets up a route alert.
+        application.registerForRemoteNotifications()
+        Task { @MainActor in
+            await NotificationPermissionService.shared.refreshStatus()
         }
 
         // Wake up backend on app launch
@@ -119,25 +123,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         return true
     }
     
-    /// Request notification permissions (required for Live Activities)
-    private func requestNotificationPermissions() async {
-        do {
-            let granted = try await UNUserNotificationCenter.current().requestAuthorization(
-                options: [.alert, .sound, .badge]
-            )
-            print("🔔 Notification permission granted: \(granted)")
-            
-            if granted {
-                print("✅ Notifications enabled - Live Activities should work")
-            } else {
-                print("❌ Notifications denied - Live Activities will not work")
-                print("💡 User needs to enable notifications in Settings for Live Activities")
-            }
-        } catch {
-            print("❌ Failed to request notification permissions: \(error)")
-        }
-    }
-
     func registerBackgroundTasks() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: BACKGROUND_REFRESH_TASK_ID, using: nil) { task in
             guard let bgTask = task as? BGAppRefreshTask else {

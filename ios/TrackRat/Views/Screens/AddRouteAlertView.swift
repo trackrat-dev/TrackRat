@@ -27,6 +27,7 @@ struct AddRouteAlertView: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var alertService = AlertSubscriptionService.shared
+    @ObservedObject private var notificationService = NotificationPermissionService.shared
 
     // Paywall
     @State private var showingPaywall = false
@@ -91,16 +92,28 @@ struct AddRouteAlertView: View {
             && alertService.subscriptions.count >= SubscriptionService.freeRouteAlertLimit
     }
 
-    private func saveDirectionalSubscriptions(_ subs: [RouteAlertSubscription]) {
+    /// Stores the subscriptions, or sends a capped user to the paywall.
+    /// Returns whether the subscriptions were saved.
+    @discardableResult
+    private func saveSubscriptions(_ subs: [RouteAlertSubscription]) -> Bool {
         guard !atAlertLimit else {
             activeSheet = nil
             showingPaywall = true
-            return
+            return false
         }
         alertService.addSubscriptions(subs)
         alertService.syncIfPossible()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         activeSheet = nil
+
+        // Alerts are delivered by push, so this is the first moment the app has
+        // anything to notify the user about — and the right moment to ask.
+        Task { await notificationService.requestIfNeeded() }
+        return true
+    }
+
+    private func saveDirectionalSubscriptions(_ subs: [RouteAlertSubscription]) {
+        guard saveSubscriptions(subs) else { return }
         withAnimation {
             fromStation = nil
             toStation = nil
@@ -108,21 +121,17 @@ struct AddRouteAlertView: View {
     }
 
     private func saveSystemSubscription(_ subs: [RouteAlertSubscription]) {
-        guard !atAlertLimit else {
-            activeSheet = nil
-            showingPaywall = true
-            return
-        }
-        alertService.addSubscriptions(subs)
-        alertService.syncIfPossible()
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        activeSheet = nil
+        saveSubscriptions(subs)
     }
 
     // MARK: - Alert Content
 
     private var alertContent: some View {
         VStack(spacing: 16) {
+            if notificationService.isDenied {
+                notificationsOffBanner
+            }
+
             Picker("Alert Type", selection: $alertMode) {
                 ForEach(AlertMode.allCases, id: \.self) { mode in
                     Text(mode.rawValue).tag(mode)
@@ -154,6 +163,46 @@ struct AddRouteAlertView: View {
             }
         }
         .padding(.top)
+        .task {
+            await notificationService.refreshStatus()
+        }
+    }
+
+    /// iOS never re-prompts after a refusal, so a denied user needs the way back
+    /// spelled out — otherwise their alerts silently go nowhere.
+    private var notificationsOffBanner: some View {
+        Button {
+            notificationService.openSystemSettings()
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "bell.slash.fill")
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Notifications are off")
+                        .font(.subheadline.weight(.semibold))
+                    Text("Alerts can't reach you. Tap to turn them on in Settings.")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.7))
+                        .multilineTextAlignment(.leading)
+                }
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(.caption)
+                    .foregroundColor(.white.opacity(0.5))
+            }
+            .foregroundColor(.white)
+            .padding(12)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.yellow.opacity(0.15))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 10)
+                            .stroke(Color.yellow.opacity(0.4), lineWidth: 1)
+                    )
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal)
     }
 
     // MARK: - System Mode
