@@ -12,7 +12,8 @@ import logging
 
 from starlette.testclient import TestClient
 
-from trackrat.api.telemetry import OnboardingCompletedRequest
+from trackrat.api.telemetry import ONBOARDING_PATH, OnboardingCompletedRequest
+from trackrat.utils.request_stats import get_request_stats, reset_request_stats
 
 
 class TestKeepKnownSources:
@@ -98,6 +99,32 @@ class TestReportOnboardingCompleted:
         )
 
         assert resp.status_code == 422
+
+    def test_is_excluded_from_request_statistics(self, client: TestClient) -> None:
+        """The privacy contract has to hold past the endpoint: request_stats
+        retains a client IP per request, which would re-attach one to every
+        setup completion the log event deliberately leaves out."""
+        reset_request_stats()
+        client.post(ONBOARDING_PATH, json={"systems": "NJT"})
+
+        recorded_paths = [r.path_template for r in get_request_stats()._records]
+        assert (
+            ONBOARDING_PATH not in recorded_paths
+        ), f"Onboarding beacon was recorded with a client IP: {recorded_paths}"
+
+    def test_a_normal_endpoint_is_still_recorded(self, client: TestClient) -> None:
+        """Guards the exclusion above: proves the middleware runs under the test
+        client at all, so that assertion can't pass vacuously."""
+        reset_request_stats()
+        client.post(
+            "/api/v2/feedback",
+            json={"message": "hello", "screen": "train_details"},
+        )
+
+        recorded_paths = [r.path_template for r in get_request_stats()._records]
+        assert (
+            "/api/v2/feedback" in recorded_paths
+        ), f"request_stats recorded nothing; the exclusion guard is vacuous: {recorded_paths}"
 
     def test_accepts_empty_body(self, client: TestClient, caplog) -> None:
         """Every field has a default, so a minimal client still records a run."""

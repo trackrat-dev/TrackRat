@@ -10,6 +10,9 @@ jsonPayload.logger="trackrat.api.telemetry"
 
 Deliberately carries no station codes (a home station says where someone lives)
 and no client IP: this is an aggregate metric, not a report anyone follows up on.
+``ONBOARDING_PATH`` is excluded from ``request_stats_middleware`` in ``main.py``
+for the same reason — that middleware retains a client IP per request, which
+would re-attach one to every setup completion the log event leaves out.
 """
 
 from datetime import UTC, datetime
@@ -25,6 +28,10 @@ from trackrat.services.departure import ALL_DATA_SOURCES
 logger = get_logger("trackrat.api.telemetry")
 
 router = APIRouter(prefix="/api/v2/telemetry", tags=["telemetry"])
+
+# Route path of the onboarding beacon, single-sourced here so main.py can
+# exclude it from request statistics without restating the prefix.
+ONBOARDING_PATH = f"{router.prefix}/onboarding"
 
 
 class OnboardingCompletedRequest(BaseModel):

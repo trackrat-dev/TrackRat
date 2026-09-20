@@ -35,6 +35,55 @@ final class OnboardingViewTests: XCTestCase {
         XCTAssertEqual(Set(ordered), Set(TrainSystem.availableCases))
     }
 
+    // MARK: - Changing systems
+
+    func testKeepsStationsTheSelectedSystemServes() {
+        let newark = Station(code: "NP", name: "Newark Penn Station")
+        let trenton = Station(code: "TR", name: "Trenton Transit Center")
+
+        let served = OnboardingView.stationsServed(
+            by: [.njt],
+            home: trenton,
+            work: newark,
+            favorites: [newark]
+        )
+
+        XCTAssertEqual(served.home?.code, "TR")
+        XCTAssertEqual(served.work?.code, "NP")
+        XCTAssertEqual(served.favorites.map(\.code), ["NP"])
+    }
+
+    func testDropsStationsTheNewlySelectedSystemDoesNotServe() {
+        // Stepping back and switching NJ Transit → PATH must not carry Trenton
+        // forward: the picker wouldn't offer it, and PATH doesn't run there.
+        let trenton = Station(code: "TR", name: "Trenton Transit Center")
+        let newark = Station(code: "NP", name: "Newark Penn Station")  // NJT + PATH
+
+        let served = OnboardingView.stationsServed(
+            by: [.path],
+            home: trenton,
+            work: newark,
+            favorites: [trenton, newark]
+        )
+
+        XCTAssertNil(served.home, "Trenton is not on PATH and should not survive the switch")
+        XCTAssertEqual(served.work?.code, "NP", "Newark Penn is served by PATH and should stay")
+        XCTAssertEqual(served.favorites.map(\.code), ["NP"])
+    }
+
+    func testEmptySelectionsSurviveUnchanged() {
+        let served = OnboardingView.stationsServed(
+            by: [.njt],
+            home: nil,
+            work: nil,
+            favorites: []
+        )
+
+        XCTAssertNil(served.home)
+        XCTAssertNil(served.work)
+        XCTAssertTrue(served.favorites.isEmpty)
+    }
+
     func testIgnoresASuggestionThatIsNotSelectable() {
         // A disabled system can never be suggested, but if one ever leaked
         // through it must not be added to the list as a selectable option.

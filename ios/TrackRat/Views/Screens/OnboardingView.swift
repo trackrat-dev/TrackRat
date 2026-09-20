@@ -212,6 +212,7 @@ struct OnboardingView: View {
                             caption: system == suggestedSystem ? "Closest to you" : nil,
                             onTap: {
                                 appState.selectSystem(system)
+                                dropStationsOutsideSelection()
                                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
                                 withAnimation(.easeInOut(duration: 0.3)) {
@@ -417,6 +418,40 @@ struct OnboardingView: View {
         case .work: return homeStation
         case nil: return nil
         }
+    }
+
+    /// Drops selections the given systems don't serve.
+    ///
+    /// Stepping back to the system picker and choosing a different system would
+    /// otherwise carry stations forward that the picker itself no longer offers,
+    /// and save them under a system that doesn't run there.
+    static func stationsServed(
+        by systems: Set<TrainSystem>,
+        home: Station?,
+        work: Station?,
+        favorites: [Station]
+    ) -> (home: Station?, work: Station?, favorites: [Station]) {
+        func isServed(_ station: Station) -> Bool {
+            Stations.isStationVisible(station.code, withSystems: systems)
+        }
+
+        return (
+            home: home.flatMap { isServed($0) ? $0 : nil },
+            work: work.flatMap { isServed($0) ? $0 : nil },
+            favorites: favorites.filter(isServed)
+        )
+    }
+
+    private func dropStationsOutsideSelection() {
+        let served = Self.stationsServed(
+            by: appState.selectedSystems,
+            home: homeStation,
+            work: workStation,
+            favorites: otherFavorites
+        )
+        homeStation = served.home
+        workStation = served.work
+        otherFavorites = served.favorites
     }
 
     private func applyLocationFix(_ fix: LocationFix?) {
