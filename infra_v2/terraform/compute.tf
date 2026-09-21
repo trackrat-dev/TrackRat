@@ -48,7 +48,17 @@ resource "google_compute_instance_template" "trackrat" {
     startup-script = <<-EOF
       #!/bin/bash
       set -e
-      exec > /var/log/startup.log 2>&1
+      # Tee, do not redirect. GCE ships startup-script stdout to the serial
+      # console and to Cloud Logging automatically (google-logging-enabled is
+      # set on this template), so `exec > FILE` opted every step of the boot out
+      # of remote observability: on 2026-09-20 the instance was visibly up and
+      # the API visibly down while Cloud Logging held only kernel/systemd noise,
+      # and the one line that explained it — a failed docker-compose.yml
+      # download — was reachable only by SSH. Teeing keeps the on-disk copy for
+      # forensics AND makes the same output queryable remotely and available to
+      # log-based metrics. The shutdown script below already does this (issue
+      # #1829).
+      exec > >(tee -a /var/log/startup.log) 2>&1
 
       echo "=== TrackRat ${var.environment} startup script ==="
       echo "Started at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
