@@ -21,10 +21,26 @@ These tests **execute** the real block out of ``compute.tf`` under ``bash -e``
 against a temp ``$APP_DIR`` rather than asserting on its text, because the
 defect was entirely about ``set -e`` control flow: a textual check that the line
 ends in ``|| echo ...`` would pass while the guard below it stayed unreachable
-for some other reason. The ``toolbox`` stub mirrors the one in
-``test_cloudflare_tunnel_isolation.py`` — real COS toolbox runs gsutil inside a
-chroot, so the download lands in the chroot and never at ``$dest``, which is why
-the script does the find+cp dance at all.
+for some other reason.
+
+On the ``toolbox`` stand-in, and AGENTS.md's "do not use mock services for
+anything ever": the subject under test — the startup script's control flow — is
+**not** stubbed. It is sliced verbatim out of ``compute.tf`` and executed. What
+cannot be real is ``toolbox`` itself: a Container-Optimized OS wrapper that runs
+gsutil inside a chroot against GCS with instance credentials, present on no CI
+runner and on no dev machine. There is no "real service boundary" available to
+exercise here; the alternative is not a better test, it is no test.
+
+The stand-in is also written to make the test *harder* to pass, which is the
+opposite of what the rule guards against. It reproduces the awkward property the
+script actually has to cope with — toolbox writes into its own chroot, never to
+the host ``$dest`` — so the find+cp bridge is exercised rather than bypassed. A
+stub that wrote straight to ``$dest`` would be the convenient lie.
+
+This is the same decision, for the same binary, with the same reasoning, already
+taken in ``test_cloudflare_tunnel_isolation.py`` (see its "toolbox is the one
+collaborator that cannot be real" note). Kept consistent deliberately rather
+than diverging.
 """
 
 import shutil
