@@ -190,7 +190,17 @@ resource "google_compute_instance_template" "trackrat" {
       # Note: toolbox writes to its internal mount, not the actual host path.
       # We must find and copy from toolbox mount to the real host path.
       # Always overwrite to ensure we're running the latest version (persistent disk may have stale copy).
-      toolbox --quiet gsutil cp "gs://$DEPLOY_BUCKET/docker-compose.yml" "$APP_DIR/docker-compose.yml"
+      #
+      # Non-fatal on purpose (issue #1824). Under `set -e` a failed download
+      # aborted the script ON THIS LINE — before the "Verify download" guard
+      # below, which exists precisely for this case, and before the copy the
+      # persistent data disk already holds could be used. On 2026-09-20 a usable
+      # docker-compose.yml was sitting at $APP_DIR while the VM served nothing
+      # for 33 minutes. Booting on the previous config beats not booting: this
+      # file changes only on deploy, and the guard below still hard-fails when
+      # there is genuinely no file anywhere.
+      toolbox --quiet gsutil cp "gs://$DEPLOY_BUCKET/docker-compose.yml" "$APP_DIR/docker-compose.yml" \
+        || echo "WARN: docker-compose.yml download failed — falling back to the on-disk copy if present"
       TOOLBOX_FILE=$(find /var/lib/toolbox -name "docker-compose.yml" -path "*/mnt/disks/data/compose/*" 2>/dev/null | head -1)
       if [ -n "$TOOLBOX_FILE" ]; then
         echo "Copying from toolbox mount: $TOOLBOX_FILE"
