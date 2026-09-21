@@ -1,10 +1,20 @@
 """`var.disk_size_gb` is a one-way ratchet (issue #1828).
 
 ``google_compute_disk.data`` is the PostgreSQL data disk. GCP cannot shrink a
-persistent disk, and the google provider (pinned ``~> 5.0``) responds to a
-*decrease* by forcing **replacement** rather than by failing the plan — so
-lowering this number does not produce a tidy error, it produces a plan that
-destroys and recreates the production database disk.
+persistent disk, and the google provider responds to a *decrease* by forcing
+**replacement** rather than by failing the plan — so lowering this number does
+not produce a tidy error, it produces a plan that destroys and recreates the
+production database disk.
+
+That is measured, not assumed. Against the real provider (hashicorp/google
+v5.45.2) with ``terraform plan -refresh=false`` over a state holding
+``size = 50``::
+
+    50 -> 40    # google_compute_disk.data must be replaced
+                ~ size = 50 -> 40 # forces replacement
+                Plan: 1 to add, 0 to change, 1 to destroy.
+    50 -> 60    # google_compute_disk.data will be updated in-place
+    50 -> 50    No changes.
 
 Nothing else stands in the way:
 
@@ -18,9 +28,14 @@ The drift that prompted this: the production disk was grown 40 -> 50 GB out of
 band on 2026-09-20 during incident response while the variable still declared
 40, leaving a pending shrink queued behind the next production promotion.
 
-This test encodes the ratchet rather than pinning an exact number, so growing
-the disk later stays a one-line change while shrinking it — the dangerous
-direction — has to get past a failure that explains why.
+The guard keeps the declared size and the recorded provisioned size in lockstep
+rather than asserting a floor. A floor was the first attempt and it was not
+actually a ratchet: growing the disk by editing only ``variables.tf`` satisfies
+``declared >= 50`` without ever advancing the recorded value, so the guard stays
+pinned at 50 and a later reduction from 60 down to anything in 50..59 passes the
+very test written to stop it. Requiring both to move together costs one extra
+line when the disk genuinely grows, and in exchange the ratchet tracks reality
+instead of a stale high-water mark.
 
 A snapshot schedule exists (``infra_v2/terraform/backup.tf``), so the worst case
 is a restore rather than permanent loss. That is still an outage, and not
@@ -38,6 +53,15 @@ _STORAGE_TF = _TERRAFORM_DIR / "storage.tf"
 
 # What production actually has provisioned, as of the 2026-09-20 out-of-band
 # growth. Raise this only alongside a real disk growth; never lower it.
+#
+# This is asserted EQUAL to the declared size, not as a floor. A floor
+# (`declared >= 50`) looked like a ratchet but was not one: growing the disk to
+# 60 by editing only variables.tf would satisfy it without ever advancing this
+# constant, leaving the guard pinned at 50 — so a later reduction from 60 down
+# to anything in 50..59 would sail through the very test written to stop it.
+# Requiring the two to move together means a growth must record itself here, in
+# the same commit, and the ratchet tracks reality instead of a stale high-water
+# mark.
 _PROVISIONED_DISK_SIZE_GB = 50
 
 
@@ -51,18 +75,35 @@ def _declared_disk_size() -> int:
     return int(default.group(1))
 
 
-def test_declared_disk_size_is_not_a_shrink_of_the_provisioned_disk():
-    """The regression: a declared value below what is provisioned queues a
-    destroy-and-recreate of the Postgres data disk behind the next apply."""
+def test_declared_disk_size_matches_the_recorded_provisioned_size():
+    """The regression, and the ratchet that prevents it recurring.
+
+    Verified empirically against the real provider (hashicorp/google v5.45.2,
+    `terraform plan -refresh=false` over a state holding size = 50):
+
+        50 -> 40   # google_compute_disk.data must be replaced
+                   ~ size = 50 -> 40 # forces replacement
+                   Plan: 1 to add, 0 to change, 1 to destroy.
+        50 -> 60   # google_compute_disk.data will be updated in-place
+        50 -> 50   No changes.
+
+    So a shrink is not an apply that fails safely — it is a destroy and
+    recreate of the PostgreSQL data disk, on a resource with no
+    prevent_destroy, in a root auto-applied on every push to production.
+    """
     declared = _declared_disk_size()
-    assert declared >= _PROVISIONED_DISK_SIZE_GB, (
-        f"var.disk_size_gb is {declared} GB but the production data disk is "
-        f"{_PROVISIONED_DISK_SIZE_GB} GB. GCP cannot shrink a persistent disk, "
-        "and the provider forces REPLACEMENT on a shrink — so the next apply "
-        "(which fires on every push to the production branch, the terraform "
-        "trigger has no path filter) plans to destroy and recreate the "
-        "PostgreSQL data disk. If the disk genuinely shrank, update "
-        "_PROVISIONED_DISK_SIZE_GB deliberately and say why (issue #1828)."
+    assert declared == _PROVISIONED_DISK_SIZE_GB, (
+        f"var.disk_size_gb is {declared} GB but _PROVISIONED_DISK_SIZE_GB "
+        f"records {_PROVISIONED_DISK_SIZE_GB} GB.\n\n"
+        f"If {declared} < {_PROVISIONED_DISK_SIZE_GB}: this is a shrink. GCP "
+        "cannot shrink a persistent disk and the provider forces REPLACEMENT, "
+        "so the next apply plans to destroy and recreate the PostgreSQL data "
+        "disk (issue #1828).\n\n"
+        f"If {declared} > {_PROVISIONED_DISK_SIZE_GB}: this is a growth, which "
+        "is fine and applies in place — but _PROVISIONED_DISK_SIZE_GB must be "
+        "raised to match in the SAME commit. Leaving it behind would pin the "
+        "ratchet to a stale value and let a later shrink down to that value "
+        "pass unnoticed."
     )
 
 
@@ -95,10 +136,26 @@ def test_data_disk_does_not_ignore_size_changes():
     lifecycle = re.search(r"lifecycle\s*\{(.*?)\}", disk.group(1), re.DOTALL)
     if lifecycle is None:
         return  # no lifecycle block at all is fine
-    ignore = re.search(r"ignore_changes\s*=\s*\[(.*?)\]", lifecycle.group(1), re.DOTALL)
+    body = lifecycle.group(1)
+
+    # Terraform accepts a bare `ignore_changes = all` as well as a bracketed
+    # list. Checking only the list form would let the broadest possible version
+    # of this mistake through: `all` silences `size` too, and a guard that
+    # early-returns on it passes while claiming to protect the disk.
+    assert re.search(r"ignore_changes\s*=\s*all\b", body) is None, (
+        "google_compute_disk.data uses `ignore_changes = all`, which silences "
+        "`size` along with everything else — Terraform would stop reconciling "
+        "disk drift entirely while this guard reported green (issue #1828)"
+    )
+
+    ignore = re.search(r"ignore_changes\s*=\s*\[(.*?)\]", body, re.DOTALL)
     if ignore is None:
         return
-    ignored = {entry.strip() for entry in ignore.group(1).split(",") if entry.strip()}
+    ignored = {
+        entry.strip().strip('"')
+        for entry in ignore.group(1).split(",")
+        if entry.strip()
+    }
     assert "size" not in ignored, (
         "google_compute_disk.data ignores changes to `size`, which hides disk "
         "drift rather than fixing it and defeats this guard (issue #1828)"
