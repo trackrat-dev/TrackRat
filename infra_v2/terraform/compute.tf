@@ -29,7 +29,14 @@ resource "google_compute_instance_template" "trackrat" {
     source_image = data.google_compute_image.cos.self_link
     auto_delete  = true
     boot         = true
-    disk_size_gb = 10 # COS minimum; only container images live here (~0.6GB), all state is on the data disk
+    # COS minimum. Container images (~0.6GB) AND container logs live here
+    # (/var/lib/docker/containers); application *state* is on the data disk.
+    # The logs were the false premise in the original note: unrotated, they
+    # filled this disk in ~2 weeks and killed all log shipping for 19 days
+    # (issue #1825). They are bounded in backend_v2/docker-compose.yml now, so
+    # this stays at 10GB deliberately — growing it changes the instance
+    # template and forces another MIG rollout.
+    disk_size_gb = 10
   }
 
   network_interface {
