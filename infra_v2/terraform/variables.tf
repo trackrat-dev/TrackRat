@@ -100,10 +100,28 @@ variable "disabled_data_sources" {
   }
 }
 
+# RATCHET: may be increased, never decreased.
+#
+# GCP cannot shrink a persistent disk, and the google provider forces
+# REPLACEMENT rather than erroring when this value goes down — which for
+# google_compute_disk.data means destroying and recreating the Postgres data
+# disk. Nothing else guards it: that resource has no prevent_destroy, and its
+# lifecycle block ignores only `snapshot`.
+#
+# That matters because infra_v2/terraform/ is auto-applied by the
+# trackrat-terraform-production Cloud Build trigger, which has no path filter
+# and so fires on every push to the production branch.
+#
+# The production data disk was grown 40 -> 50 GB out of band on 2026-09-20
+# during incident response, leaving the declared 40 as a pending shrink
+# (issue #1828). Reconciled below. Staging shares this variable deliberately
+# (see the note above main.tf's locals block, which keeps staging a faithful
+# rehearsal of production), so staging grows to 50 on its next apply too — a
+# growth, which is permitted and applies in place.
 variable "disk_size_gb" {
-  description = "Persistent disk size in GB"
+  description = "Persistent data disk size in GB (google_compute_disk.data)"
   type        = number
-  default     = 40
+  default     = 50
 }
 
 variable "snapshot_retention_days" {
