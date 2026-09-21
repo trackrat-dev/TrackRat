@@ -15,6 +15,21 @@
 # a token secret is present — brings cloudflared up via a second, non-fatal
 # `compose -f docker-compose.yml -f docker-compose.tunnel.yml up -d cloudflared`.
 
+#
+# CONTAINER LOG ROTATION (issue #1825). Every service here sets an explicit
+# bounded `logging:` block. Docker's default json-file driver is unbounded and
+# writes to /var/lib/docker/containers on the 10 GB BOOT disk — not the data
+# disk where all other state lives. With no rotation the boot disk filled in
+# roughly two weeks, and once it was full Docker could no longer write container
+# logs at all, which silently stopped EVERY application log from reaching Cloud
+# Logging for 19 days (2026-09-01 to 09-20). Nothing alerted: /health only
+# inspects the data disk, so it reported healthy throughout, and the log-based
+# metrics that would have caught it had stopped receiving data points for the
+# same reason. 50m x 3 caps each service at ~150 MB.
+#
+# Any service added to this file (or to docker-compose.tunnel.yml) needs the
+# same block — it is enforced by tests/unit/test_container_log_rotation.py.
+
 services:
   db:
     image: postgres:17-alpine
@@ -48,6 +63,12 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+    # Bounded so container logs cannot fill the boot disk (see header; #1825).
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     restart: unless-stopped
     networks:
       - trackrat
@@ -85,6 +106,12 @@ services:
       - ${DATA_DIR:-/mnt/disks/data}:${DATA_DIR:-/mnt/disks/data}:ro
     ports:
       - "8000:8000"
+    # Bounded so container logs cannot fill the boot disk (see header; #1825).
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "3"
     restart: unless-stopped
     networks:
       - trackrat
