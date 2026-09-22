@@ -76,6 +76,19 @@ logger = get_logger(__name__)
 # dominate an oldest-updated-first batch (issue #1670).
 ACTIVE_JOURNEY_LOOKBACK_HOURS = 3
 
+# The container's boot filesystem, monitored alongside the mounted data disk by
+# check_resource_usage. `settings.data_disk_path` deliberately points at the
+# persistent disk and explicitly not at this one (issue #1344), so nothing was
+# watching the filesystem that actually filled on 2026-09-01 — for 19 days,
+# with /health reporting `healthy` throughout, because the data disk was fine
+# (~57% used) the entire time (issue #1826).
+#
+# On Container-Optimized OS the container's `/` is an overlay whose upper layer
+# lives under /var/lib/docker on the VM's 10 GB boot disk, so statvfs here
+# reports the filesystem that runs out — the same one `/health` and `/metrics`
+# read before #1344 moved them to the data disk.
+BOOT_DISK_PATH = "/"
+
 
 class SchedulerService:
     """Manages scheduled tasks for data collection."""
@@ -3105,15 +3118,25 @@ class SchedulerService:
     )
 
     async def check_resource_usage(self) -> None:
-        """Log data-disk utilization, Postgres database size, and per-table
+        """Log disk utilization, Postgres database size, and per-table
         vacuum/analyze staleness for the high-churn tables.
 
         Emits structured log events that Terraform log-based metrics
         (`infra_v2/terraform/metrics.tf`) turn into Cloud Monitoring alerts,
         so disk exhaustion is caught automatically instead of found by
-        manually SSHing in and running `df -h` (issue #1344). Checks
-        `settings.data_disk_path` (the mounted persistent disk), not the
-        container's boot filesystem.
+        manually SSHing in and running `df -h` (issue #1344).
+
+        **Both** filesystems are reported: `settings.data_disk_path` (the
+        mounted persistent disk) and `BOOT_DISK_PATH`. Only the first was
+        checked until issue #1826, which is how the boot disk filled on
+        2026-09-01 and stayed full for 19 days with no alert — the data disk
+        was healthy throughout, so `/metrics` reported
+        `system_disk_usage_percent 57.5` while `/` sat at 100%.
+
+        Note that this task's own reporting path runs through the logs the
+        full disk breaks, so it cannot be the only defence: the
+        "Application Logs Absent" policy in `monitoring.tf` alerts on these
+        metrics going silent, whatever the cause.
 
         The vacuum-staleness check exists because `journey_stops` (35M+ rows,
         updated continuously by every 4-min GTFS-RT collector) was found with
@@ -3140,6 +3163,25 @@ class SchedulerService:
                 logger.warning(
                     "data_disk_usage_check_unavailable",
                     path=settings.data_disk_path,
+                )
+
+            # Separate event, not an extra label on the one above: the alerts
+            # read these metrics as a mean over the window, so folding both
+            # filesystems into one series would let a healthy data disk average
+            # a full boot disk back under the threshold — which is exactly the
+            # shape of the 2026-09-01 miss.
+            boot_disk = get_disk_usage(BOOT_DISK_PATH)
+            if boot_disk:
+                logger.info(
+                    "boot_disk_usage_check",
+                    usage_percent=boot_disk["usage_percent"],
+                    used_gb=boot_disk["used_gb"],
+                    total_gb=boot_disk["total_gb"],
+                )
+            else:
+                logger.warning(
+                    "boot_disk_usage_check_unavailable",
+                    path=BOOT_DISK_PATH,
                 )
 
             async with get_session() as db:
