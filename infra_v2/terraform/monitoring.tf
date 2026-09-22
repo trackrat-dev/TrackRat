@@ -376,9 +376,32 @@ resource "google_monitoring_alert_policy" "application_logs_absent" {
 
   notification_channels = [google_monitoring_notification_channel.email[0].name]
 
-  # Deliberately no auto_close: the other policies here close after 30 minutes,
-  # which for an absence condition would mean silently forgetting an ongoing
-  # outage. This one stays open until logs actually return.
+  alert_strategy {
+    # 7 days, set explicitly because it is the longest Cloud Monitoring allows
+    # and because leaving the field unset would *not* mean "never": Monitoring
+    # applies the same 7-day default to an incident whose condition has stopped
+    # receiving data, which is every incident this policy can open. So an
+    # outage on the scale of the 19-day one that prompted this would close
+    # itself at day 7 with the logs still absent.
+    #
+    # The other policies here use 1800s, which suits a value that recovers. For
+    # absence it would mean forgetting an ongoing outage about as fast as it
+    # was noticed.
+    auto_close = "604800s"
+
+    # The 7-day ceiling is not configurable, so the defence against a long
+    # outage is re-notification rather than a longer incident: a daily reminder
+    # while it stays open. Frequent enough that an ongoing blackout cannot be
+    # quietly forgotten, rare enough that nobody mutes the policy — which for
+    # the one alert here that survives its own subject failing would be the
+    # worst outcome available.
+    notification_channel_strategy {
+      notification_channel_names = [
+        google_monitoring_notification_channel.email[0].name,
+      ]
+      renotify_interval = "86400s"
+    }
+  }
 
   depends_on = [
     google_project_service.apis["monitoring.googleapis.com"],

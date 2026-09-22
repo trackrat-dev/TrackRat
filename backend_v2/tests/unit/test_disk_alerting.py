@@ -184,20 +184,59 @@ class TestLogAbsenceAlert:
             "permanently for every instance the MIG has ever replaced"
         )
 
-    def test_absence_policy_does_not_auto_close(self, monitoring_tf):
-        """An absence incident must not close itself while still absent.
+    def test_absence_policy_holds_the_incident_as_long_as_possible(self, monitoring_tf):
+        """7 days, set explicitly — and explicitly is the point.
 
-        The threshold policies in this file auto_close after 30 minutes, which
-        is fine for a value that recovers. For absence it would mean quietly
-        forgetting an ongoing outage roughly as fast as it was noticed.
+        The threshold policies here close after 30 minutes, which suits a value
+        that recovers; for absence that would forget an ongoing outage about as
+        fast as it was noticed. But *omitting* the field does not mean "never":
+        Cloud Monitoring applies a 7-day default to an incident whose condition
+        has stopped receiving data, which is every incident this policy can
+        open. An outage on the scale of the 19-day one that prompted this would
+        have closed itself at day 7 with the logs still absent.
+
+        7 days is also the maximum, so this asserts the ceiling rather than a
+        preference — a smaller value is a regression and a larger one will be
+        rejected at apply time.
         """
         body = _extract_block(
             monitoring_tf,
             'resource "google_monitoring_alert_policy" "application_logs_absent"',
         )
-        assert "auto_close" not in body, (
-            "the absence policy auto-closes; an ongoing log outage would keep "
-            "resolving itself on a timer while nothing had actually recovered"
+        match = re.search(r'auto_close\s*=\s*"(\d+)s"', body)
+        assert match, (
+            "auto_close is unset, which reads as 'never' but means Cloud "
+            "Monitoring's 7-day default — the difference is invisible here and "
+            "decisive during a long outage"
+        )
+        assert int(match.group(1)) == 604800, (
+            f"auto_close is {match.group(1)}s; 604800s (7 days) is the maximum "
+            "Cloud Monitoring accepts, and anything shorter closes an ongoing "
+            "log blackout sooner than it has to"
+        )
+
+    def test_absence_policy_renotifies_while_the_outage_continues(self, monitoring_tf):
+        """The 7-day ceiling is not configurable, so re-notification covers it.
+
+        Without a reminder the policy sends one email at hour one and then goes
+        quiet for a week — which, for the one alert in this file that survives
+        its own subject failing, is close to not having it.
+        """
+        body = _extract_block(
+            monitoring_tf,
+            'resource "google_monitoring_alert_policy" "application_logs_absent"',
+        )
+        assert "notification_channel_strategy" in body, (
+            "no re-notification: a blackout longer than the first email is "
+            "silent until the incident auto-closes at day 7"
+        )
+        match = re.search(r'renotify_interval\s*=\s*"(\d+)s"', body)
+        assert match, "notification_channel_strategy has no renotify_interval"
+        interval = int(match.group(1))
+        assert 1800 <= interval <= 86400, (
+            f"renotify_interval is {interval}s; Cloud Monitoring accepts 30 "
+            "minutes to 24 hours, and anything at the noisy end of that gets "
+            "the policy muted, which is the worst outcome for this one"
         )
 
 
