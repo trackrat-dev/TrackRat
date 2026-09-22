@@ -17,6 +17,7 @@ from structlog import get_logger
 from trackrat.collectors.njt.client import NJTransitClient, TrainNotFoundError
 from trackrat.collectors.njt.journey import JourneyCollector as NJTJourneyCollector
 from trackrat.collectors.njt.journey import normalize_njt_stop_times
+from trackrat.collectors.njt.refresh_outcome import mark_refresh_attempted
 from trackrat.collectors.njt.schedule import parse_njt_line_code
 from trackrat.config.route_topology import find_route_for_segment
 from trackrat.config.stations import (
@@ -300,6 +301,43 @@ def _detect_at_station(journey: TrainJourney) -> str | None:
             return last_stop.station_code
 
     return None
+
+
+async def _stamp_refresh_after_rollback(
+    db: AsyncSession, journey_id: int, train_id: str | None
+) -> None:
+    """Advance a journey's freshness clock in a fresh transaction after a rollback.
+
+    The JIT second pass selects on ``last_updated_at < now - 60s``, and
+    ``collect_journey_details`` stamps the journey for every outcome it handles
+    — including the ones where NJT gave it nothing. Rolling back on a failure
+    therefore *undoes* the record that we asked, so the same journey is
+    re-selected by the next station-board view and asked again, driven by user
+    traffic with no ceiling: every page load and every 30-second web poll
+    re-attempts the same doomed refresh against NJT's 40,000/day quota
+    (issue #1827).
+
+    Stamping here records only "we asked", never a strike — an exception
+    reaching this point may be a local fault (deadlock, bad row) rather than
+    anything NJT said, and the NJT-attributable strikes have already been
+    applied inside ``collect_journey_details`` before it raised. Failures are
+    swallowed: one journey we could not stamp must not abort the refresh of the
+    rest of the board.
+    """
+    try:
+        journey = await db.get(TrainJourney, journey_id)
+        if journey is not None:
+            mark_refresh_attempted(journey)
+            await db.commit()
+    except Exception as e:  # pragma: no cover - defensive
+        await db.rollback()
+        logger.warning(
+            "stale_train_stamp_failed",
+            train_id=train_id,
+            journey_id=journey_id,
+            error=str(e) or repr(e),
+            error_type=type(e).__name__,
+        )
 
 
 class DepartureService:
@@ -1693,12 +1731,14 @@ class DepartureService:
                         # Train no longer in NJT system - this is expected for
                         # trains that completed their journey
                         await db.rollback()
+                        await _stamp_refresh_after_rollback(db, journey_id, train_id)
                         logger.debug(
                             "stale_train_not_found",
                             train_id=train_id,
                         )
                     except Exception as e:
                         await db.rollback()
+                        await _stamp_refresh_after_rollback(db, journey_id, train_id)
                         logger.warning(
                             "stale_train_refresh_failed",
                             train_id=train_id,
