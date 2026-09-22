@@ -1254,12 +1254,26 @@ class PathCollector:
         Returns:
             Matching journeys, oldest scheduled departure first
         """
+        # Either side of the group's own date, because the origin departure it
+        # is derived from is itself a back-calculation with minutes of spread
+        # (see MATCH_TOLERANCE_MINUTES). Two sightings of one train whose
+        # implied origins straddle midnight get different `group_key`s, and
+        # a date-exact lookup would then hide the row the first sighting
+        # created from the second, minting a duplicate — the residue of the
+        # nightly duplicate #1752 is mostly about, once the date is derived
+        # from the origin rather than the discovering arrival.
+        #
+        # Nothing distant leaks in: `time_min`/`time_max` already bound
+        # scheduled_departure to a ten-minute window around this group's
+        # departures, so the extra days are only reachable within minutes of
+        # the rollover.
         stmt = (
             select(TrainJourney)
             .where(
                 and_(
                     TrainJourney.data_source == "PATH",
-                    TrainJourney.journey_date == journey_date,
+                    TrainJourney.journey_date >= journey_date - timedelta(days=1),
+                    TrainJourney.journey_date <= journey_date + timedelta(days=1),
                     TrainJourney.line_code == line_code,
                     TrainJourney.origin_station_code == origin_station,
                     TrainJourney.scheduled_departure >= time_min,

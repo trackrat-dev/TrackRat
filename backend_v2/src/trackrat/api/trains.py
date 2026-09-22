@@ -322,6 +322,49 @@ async def get_recent_departures(
     )
 
 
+async def _load_journey_for_date(
+    db: AsyncSession,
+    train_id: str,
+    journey_date: date,
+    data_source: str | None,
+) -> TrainJourney | None:
+    """Load a journey by train id, preferring the requested date.
+
+    Falls back to the previous day when the requested date has no such row.
+    ``journey_date`` is a trip's *service* date, so one that departed before
+    midnight keeps yesterday's for its whole life (issue #1752) — while a
+    caller asking "what is this train doing right now" naturally sends today.
+    iOS Live Activities do exactly that: ``fetchAndUpdateTrain`` passes no date
+    at all, so ``APIService`` defaults to ``Date()``, and a cross-midnight trip
+    would otherwise 404 on every 30-second refresh for the rest of its run.
+
+    The requested date always wins, so this can only return a row where there
+    was none. That is what makes it safe for NJT and Amtrak, whose train
+    numbers repeat daily: the fallback is reached only when the requested date
+    genuinely has no journey under this id, never in preference to one.
+
+    Single-sourced because the same lookup is needed again on each of the two
+    post-rollback re-query paths below, where the ORM objects have been
+    expired.
+    """
+    for candidate_date in (journey_date, journey_date - timedelta(days=1)):
+        stmt = select(TrainJourney).where(
+            TrainJourney.train_id == train_id,
+            TrainJourney.journey_date == candidate_date,
+        )
+        if data_source:
+            stmt = stmt.where(TrainJourney.data_source == data_source)
+        journey = await db.scalar(
+            stmt.options(
+                selectinload(TrainJourney.stops),
+                selectinload(TrainJourney.progress_snapshots),
+            )
+        )
+        if journey is not None:
+            return journey
+    return None
+
+
 @router.get("/{train_id}", response_model=TrainDetailsResponse)
 @handle_errors
 async def get_train_details(
@@ -384,20 +427,7 @@ async def get_train_details(
         njt_client = NJTransitClient()
 
     # Pre-fetch existing journey so we can fall back to stale data on timeout
-    stale_conditions = [
-        TrainJourney.train_id == train_id,
-        TrainJourney.journey_date == date,
-    ]
-    if data_source:
-        stale_conditions.append(TrainJourney.data_source == data_source)
-    stale_journey = await db.scalar(
-        select(TrainJourney)
-        .where(and_(*stale_conditions))
-        .options(
-            selectinload(TrainJourney.stops),
-            selectinload(TrainJourney.progress_snapshots),
-        )
-    )
+    stale_journey = await _load_journey_for_date(db, train_id, date, data_source)
 
     try:
         async with JustInTimeUpdateService(njt_client) as jit_service:
@@ -423,20 +453,9 @@ async def get_train_details(
                 # Re-query after rollback: rollback expires all ORM objects,
                 # and async SQLAlchemy can't lazy-load (MissingGreenlet).
                 if stale_journey is not None:
-                    stmt = (
-                        select(TrainJourney)
-                        .where(
-                            TrainJourney.train_id == train_id,
-                            TrainJourney.journey_date == date,
-                        )
-                        .options(
-                            selectinload(TrainJourney.stops),
-                            selectinload(TrainJourney.progress_snapshots),
-                        )
+                    journey = await _load_journey_for_date(
+                        db, train_id, date, data_source
                     )
-                    if data_source:
-                        stmt = stmt.where(TrainJourney.data_source == data_source)
-                    journey = await db.scalar(stmt)
                 else:
                     journey = None
     finally:
@@ -470,20 +489,7 @@ async def get_train_details(
     except Exception:
         await db.rollback()
         # Re-query journey since rollback expires all ORM objects
-        stmt = (
-            select(TrainJourney)
-            .where(
-                TrainJourney.train_id == train_id,
-                TrainJourney.journey_date == date,
-            )
-            .options(
-                selectinload(TrainJourney.stops),
-                selectinload(TrainJourney.progress_snapshots),
-            )
-        )
-        if data_source:
-            stmt = stmt.where(TrainJourney.data_source == data_source)
-        journey = await db.scalar(stmt)
+        journey = await _load_journey_for_date(db, train_id, date, data_source)
         if not journey:
             raise HTTPException(
                 status_code=404,
@@ -516,7 +522,12 @@ async def get_train_details(
         stop_detail = StopDetails(
             station=SimpleStationInfo(
                 code=stop.station_code,
-                name=STATION_NAMES.get(stop.station_code)
+                # `or ""` only to satisfy the type checker: station_code is
+                # NOT NULL on journey_stops and SimpleStationInfo.code requires
+                # a non-empty string, so a None here could never have produced
+                # a valid response anyway. Previously invisible because this
+                # journey arrived through an untyped `db.scalar()` call.
+                name=STATION_NAMES.get(stop.station_code or "")
                 or stop.station_name
                 or stop.station_code,
             ),

@@ -38,8 +38,10 @@ from trackrat.collectors.path.collector import (
     PathCollector,
     _build_train_candidate,
 )
+from trackrat.api.trains import _load_journey_for_date
 from trackrat.collectors.path.ridepath_client import PathArrival
-from trackrat.models.database import TrainJourney
+from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.services.departure import DepartureService
 from trackrat.utils.time import normalize_to_et, now_et
 
 # PJS -> PGR is 3 minutes and PJS -> PNP is 6 on the JSQ-33 line, per the GTFS
@@ -359,4 +361,180 @@ class TestNoDuplicateAcrossMidnight:
         assert len(rows) == 1, (
             f"{len(rows)} journeys exist for one physical train: "
             f"{[(r.train_id, r.journey_date) for r in rows]}"
+        )
+
+
+class TestCrossMidnightConsumersCanStillFindTheJourney:
+    """Dating by the origin is only half the job — lookups have to agree.
+
+    ``journey_date`` is now a trip's *service* date, which for a cross-midnight
+    PATH trip is yesterday. Anything that matched on the calendar date the
+    caller is thinking about therefore stopped finding it, and in the departures
+    case that was worse than a miss: ``_get_path_cutoff_time`` *does* see the
+    journey, so it suppressed the timetable row for the same train and the board
+    showed neither.
+    """
+
+    @pytest.mark.asyncio
+    async def test_explicit_today_still_returns_a_cross_midnight_trip(self, db_session):
+        """iOS always sends a date, defaulting to today.
+
+        ``get_departures`` matched ``journey_date == date`` exactly when given
+        one, so just after the rollover the trip that is actually running fell
+        out of the board it belongs on.
+        """
+        now = now_et()
+        yesterday = now.date() - timedelta(days=1)
+        journey = await _persist_path_journey(
+            db_session,
+            train_id="PATH_PJS_33rd_dep",
+            journey_date=yesterday,
+            scheduled_departure=now - timedelta(minutes=4),
+        )
+        db_session.add(
+            JourneyStop(
+                journey=journey,
+                station_code="PJS",
+                station_name="Journal Square",
+                stop_sequence=0,
+                scheduled_departure=now + timedelta(minutes=6),
+            )
+        )
+        await db_session.commit()
+
+        service = DepartureService()
+        result = await service.get_departures(
+            db=db_session,
+            from_station="PJS",
+            date=now.date(),
+            time_from=now - timedelta(hours=1),
+            time_to=now + timedelta(hours=1),
+            data_sources=["PATH"],
+            # No NJT in this board, so the JIT pass has nothing to do; skipping
+            # the GTFS merge keeps the assertion about the real-time row alone.
+            skip_individual_refresh=True,
+            skip_gtfs_merge=True,
+        )
+
+        train_ids = [d.train_id for d in result.departures]
+        assert "PATH_PJS_33rd_dep" in train_ids, (
+            "a cross-midnight PATH trip is missing from an explicit-today "
+            f"board (got {train_ids}); its timetable row is suppressed by "
+            "_get_path_cutoff_time, so the rider sees neither"
+        )
+
+    @pytest.mark.asyncio
+    async def test_train_details_falls_back_to_the_service_date(self, db_session):
+        """Live Activities send today and would 404 for the rest of the trip.
+
+        ``LiveActivityService.fetchAndUpdateTrain`` passes no date, so
+        ``APIService`` defaults to ``Date()``. With the detail lookup matching
+        the date exactly, every 30-second refresh after midnight missed.
+        """
+        now = now_et()
+        yesterday = now.date() - timedelta(days=1)
+        await _persist_path_journey(
+            db_session,
+            train_id="PATH_PJS_33rd_la",
+            journey_date=yesterday,
+            scheduled_departure=now - timedelta(minutes=4),
+        )
+
+        found = await _load_journey_for_date(
+            db_session, "PATH_PJS_33rd_la", now.date(), "PATH"
+        )
+
+        assert found is not None, (
+            "the detail lookup could not find a trip that is still running; "
+            "the Live Activity 404s until the trip ends"
+        )
+        assert found.journey_date == yesterday
+
+    @pytest.mark.asyncio
+    async def test_the_requested_date_always_wins(self, db_session):
+        """The fallback must never shadow a journey on the requested date.
+
+        NJT and Amtrak train numbers repeat daily, so a fallback that competed
+        with an exact match would start serving yesterday's run. It is reached
+        only when the requested date has nothing under this id.
+        """
+        now = now_et()
+        today = now.date()
+        yesterday = today - timedelta(days=1)
+
+        for journey_date in (yesterday, today):
+            journey = TrainJourney(
+                train_id="3901",
+                journey_date=journey_date,
+                line_code="NE",
+                line_name="Northeast Corridor",
+                destination="New York",
+                origin_station_code="TR",
+                terminal_station_code="NY",
+                data_source="NJT",
+                observation_type="OBSERVED",
+                scheduled_departure=now - timedelta(minutes=30),
+                has_complete_journey=True,
+                stops_count=6,
+            )
+            db_session.add(journey)
+        await db_session.commit()
+
+        found = await _load_journey_for_date(db_session, "3901", today, "NJT")
+
+        assert found is not None
+        assert found.journey_date == today, (
+            f"the lookup returned the {found.journey_date} run for a request "
+            "about today; daily-repeating train numbers make that yesterday's "
+            "train shown as today's"
+        )
+
+    @pytest.mark.asyncio
+    async def test_a_genuinely_unknown_train_is_still_not_found(self, db_session):
+        """The fallback must not invent a journey out of an adjacent day."""
+        assert (
+            await _load_journey_for_date(
+                db_session, "PATH_PJS_33rd_ghost", now_et().date(), "PATH"
+            )
+            is None
+        )
+
+    @pytest.mark.asyncio
+    async def test_split_estimates_across_midnight_find_the_existing_row(
+        self, db_session
+    ):
+        """The residual duplicate: two origin estimates either side of 00:00.
+
+        The origin departure is itself a back-calculation with minutes of
+        spread, so near midnight two sightings of one train can still land on
+        different dates and so in different ``group_key``s. Widening
+        ``_find_active_journeys`` by a day means the second group still sees
+        the row the first created and matches it, instead of minting a second.
+        """
+        now = now_et()
+        today = now.date()
+        collector = PathCollector()
+
+        # A journey already on record, dated yesterday.
+        await _persist_path_journey(
+            db_session,
+            train_id="PATH_PJS_33rd_edge",
+            journey_date=today - timedelta(days=1),
+            scheduled_departure=now - timedelta(minutes=1),
+        )
+
+        found = await collector._find_active_journeys(
+            db_session,
+            journey_date=today,  # the other sighting's estimate landed today
+            line_code="JSQ-33",
+            origin_station="PJS",
+            destination="33rd Street",
+            time_min=now - timedelta(minutes=6),
+            time_max=now + timedelta(minutes=6),
+        )
+
+        assert [j.train_id for j in found] == ["PATH_PJS_33rd_edge"], (
+            "a group whose estimate landed on the other side of midnight "
+            "cannot see the journey already created for the same train, so "
+            "_discover_group creates a duplicate"
         )
