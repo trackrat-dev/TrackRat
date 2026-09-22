@@ -2233,25 +2233,24 @@ class SchedulerService:
                 # was re-asked on every 5-minute tick — 100 journeys × 288 ticks
                 # = 28,800 wasted calls/day against a 40,000/day quota, while
                 # the trains behind them went unrefreshed.
-                is_now_expired = False
-
+                #
+                # Stamp, no strike — same reasoning as the collector's arm in
+                # collectors/njt/journey.py: an HTTP error is evidence about
+                # NJT, not about this train, and striking would expire every
+                # in-flight journey minutes into a provider-wide outage while
+                # also priming the shared counter so the next genuine
+                # TrainNotFoundError expires on its first occurrence.
                 with SyncSession() as session:
                     journey = session.get(TrainJourney, journey_id)
                     if journey:
-                        is_now_expired = mark_refresh_failed(journey)
-                        if is_now_expired:
-                            journey.is_expired = True
+                        mark_refresh_attempted(journey)
                         commit_with_retry(session, log_context={"train_id": train_id})
                         error_count = journey.api_error_count
                     else:
                         error_count = journey_api_error_count
 
                 logger.warning(
-                    (
-                        "train_marked_expired_on_upstream_failure_sync"
-                        if is_now_expired
-                        else "train_upstream_error_incremented_sync"
-                    ),
+                    "train_upstream_error_skipped_sync",
                     train_id=train_id,
                     journey_id=journey_id,
                     error_count=error_count,
@@ -2263,7 +2262,7 @@ class SchedulerService:
                     "train_id": train_id,
                     "success": False,
                     "error": "NJT upstream error",
-                    "expired": is_now_expired,
+                    "expired": False,
                 }
 
             if not train_data:

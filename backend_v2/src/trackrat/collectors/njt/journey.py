@@ -706,25 +706,28 @@ class JourneyCollector:
                 # JSON. Ordering matters — this arm must stay *below* the two
                 # subclasses above, which carry their own semantics.
                 #
-                # This says nothing about the train, so unlike TrainNotFoundError
-                # there is no last-chance completion to attempt: the run did not
-                # end, NJT just stopped answering. But the strike still counts.
-                # Without it a sustained upstream failure pins every in-flight
-                # journey to the head of the oldest-first batch and re-asks for
-                # all of them on every tick, which is how a bad patch at NJT
-                # became 214% of the 40,000/day quota (issue #1827). Expiry is
-                # reversible: discovery re-activates the train as soon as it
-                # reappears, so the board degrades to the timetable and recovers
-                # on its own.
-                expired = mark_refresh_failed(journey)
-                if expired:
-                    journey.is_expired = True
+                # Stamp, no strike. `api_error_count` answers "is this train
+                # failing", and an HTTP error is evidence about NJT, not about
+                # the train — the run did not end, NJT just stopped answering.
+                # Striking here would do two wrong things: expire every
+                # in-flight journey about 15 minutes into any provider-wide
+                # outage, removing them from /departures (the query excludes
+                # expired rows) until a later discovery pass that needs the same
+                # broken API to succeed; and, because the counter is shared with
+                # the not-found path, leave a journey primed so the next genuine
+                # TrainNotFoundError expires it on the first occurrence instead
+                # of the third.
+                #
+                # The stamp alone is what #1827 needs. The storm came from
+                # journeys never leaving the head of the oldest-first batch and
+                # from the JIT path re-asking on every station-board view;
+                # advancing the clock ends both. Bounding total daily volume is
+                # a different problem — the quota guard / circuit breaker the
+                # issue raises separately — and expiring live trains is not a
+                # substitute for it.
+                mark_refresh_attempted(journey)
                 logger.warning(
-                    (
-                        "train_marked_expired_on_upstream_failure"
-                        if expired
-                        else "train_upstream_error_incremented"
-                    ),
+                    "train_upstream_error_skipped",
                     train_id=journey.train_id,
                     journey_id=journey.id,
                     api_error_count=journey.api_error_count,

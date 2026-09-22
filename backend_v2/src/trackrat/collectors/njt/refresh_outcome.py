@@ -19,27 +19,38 @@ lives here rather than being written out a third time.
 
 The split between the two helpers is the distinction #1725 established:
 ``last_updated_at`` answers "when did we last ask", ``api_error_count`` answers
-"is this train failing". Missing upstream coverage is only ever the first; a
-genuine failure is both.
+"is this train failing". Only evidence *about the train* belongs in the second.
+NJT having no stop-list coverage, and NJT failing to answer at all, are both
+facts about NJT — they stamp without striking. A train NJT has no record of is
+evidence about the train, and strikes.
+
+That boundary is load-bearing in two directions. A strike expires the journey at
+the threshold, and ``get_departures`` excludes expired rows, so striking on
+transport failures would clear the board of every in-flight NJT train a few
+minutes into any provider-wide outage — recovering only via a later discovery
+pass that needs the same broken API. And because the counter is shared, a couple
+of transport blips would leave a journey primed so that the next *genuine*
+``TrainNotFoundError`` expired it on the first occurrence instead of the third.
 """
 
 from trackrat.models.database import TrainJourney
 from trackrat.utils.time import now_et
 
-# Consecutive failed refreshes before a journey is expired. The counter is
-# reset to 0 by any successful collection (``_apply_train_data``), so this
-# counts a *run* of failures, and NJT discovery re-activates an expired train
-# the moment it reappears (``collectors/njt/discovery.py``) — an upstream
-# outage therefore degrades to the timetable and recovers on its own rather
-# than losing the day's journeys.
+# Consecutive strikes before a journey is expired. The counter is reset to 0 by
+# any successful collection (``_apply_train_data``), so this counts a *run* of
+# failures, and NJT discovery re-activates an expired train the moment it
+# reappears (``collectors/njt/discovery.py``).
 NJT_EXPIRY_THRESHOLD = 3
 
 
 def mark_refresh_attempted(journey: TrainJourney) -> None:
-    """Record that NJT was asked about this journey but had nothing to give.
+    """Record that NJT was asked about this journey but had nothing usable.
 
-    Advances the freshness clock *without* a strike, for the case where the
-    missing data is NJT's coverage gap rather than evidence about the train.
+    Advances the freshness clock *without* a strike: for missing stop-list
+    coverage, and for an outright upstream failure, the absence is a fact about
+    NJT rather than evidence about the train. The journey keeps its last known
+    data and stays on the board; it simply leaves the head of the oldest-first
+    queue, which is the whole of what #1748 and #1827 require.
     """
     journey.last_updated_at = now_et()
 

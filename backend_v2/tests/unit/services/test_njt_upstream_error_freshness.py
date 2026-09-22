@@ -30,7 +30,7 @@ boundary, since the whole point is what happens when upstream breaks.
 """
 
 from datetime import timedelta
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import pytest
 from sqlalchemy import select
@@ -43,21 +43,38 @@ from trackrat.collectors.njt.client import (
 from trackrat.collectors.njt.journey import JourneyCollector
 from trackrat.collectors.njt.refresh_outcome import NJT_EXPIRY_THRESHOLD
 from trackrat.models.database import JourneyStop, TrainJourney
-from trackrat.services.departure import DepartureService
+from trackrat.services.departure import (
+    DepartureService,
+    _stamp_refresh_after_rollback,
+)
 from trackrat.services.scheduler import SchedulerService
 from trackrat.utils.time import now_et
 
 
 class _UpstreamErrorNJTClient:
     """NJT answering with an HTTP error, a timeout, or an HTML error page — all
-    of which the client surfaces as a bare ``NJTransitAPIError``."""
+    of which the client surfaces as a bare ``NJTransitAPIError``.
 
-    def __init__(self, message: str = "NJT API returned 503") -> None:
+    ``with_schedule`` lets the station-board bulk pass return an empty board
+    rather than failing, so the JIT test reaches the individual-refresh pass it
+    is actually about. That mirrors a real partial outage: ``getTrainSchedule``
+    answering while ``getTrainStopList`` does not.
+    """
+
+    def __init__(
+        self, message: str = "NJT API returned 503", with_schedule: bool = False
+    ) -> None:
         self.message = message
+        self.with_schedule = with_schedule
         self.calls: list[str] = []
 
     async def get_train_stop_list(self, train_id: str) -> None:
         self.calls.append(train_id)
+        raise NJTransitAPIError(self.message)
+
+    async def get_train_schedule_with_stops(self, station_code: str) -> dict:
+        if self.with_schedule:
+            return {"ITEMS": []}
         raise NJTransitAPIError(self.message)
 
     async def close(self) -> None:
@@ -175,12 +192,18 @@ async def test_scheduler_upstream_error_stamps_last_updated_at(
 
 
 @pytest.mark.asyncio
-async def test_scheduler_upstream_error_records_a_strike(db_session, test_settings):
-    """The strike counter advances, so a sustained outage stops re-asking.
+async def test_scheduler_upstream_error_records_no_strike(db_session, test_settings):
+    """An upstream failure must not push a live train toward expiry.
 
-    Expiry is reversible here: NJT discovery re-activates an expired train the
-    moment it reappears, so this degrades the board to the timetable rather
-    than losing the day's journeys.
+    ``api_error_count`` answers "is this train failing", and an HTTP error is
+    evidence about NJT, not about the train. Striking here would clear the
+    board: ``get_departures`` excludes expired rows, so a provider-wide outage
+    would remove every in-flight NJT train about fifteen minutes in, and
+    recovery would then wait on a discovery pass that needs the same broken
+    API to succeed.
+
+    Seeded one below the threshold, so a strike would expire it immediately and
+    this test would catch it.
     """
     await _persist_journey(
         db_session,
@@ -195,14 +218,55 @@ async def test_scheduler_upstream_error_records_a_strike(db_session, test_settin
     result = await service._collect_single_njt_journey_safe("3902", now_et().date())
 
     journey = await _reload(db_session, "3902")
-    assert journey.api_error_count == NJT_EXPIRY_THRESHOLD
-    assert journey.is_expired is True, (
-        "the threshold-th consecutive upstream failure must take the journey "
-        "out of the candidate set; otherwise a sustained NJT outage holds the "
-        "system at max call rate indefinitely"
+    assert journey.api_error_count == NJT_EXPIRY_THRESHOLD - 1, (
+        f"api_error_count moved to {journey.api_error_count}; NJT failing to "
+        "answer was charged to the train"
+    )
+    assert journey.is_expired is False, (
+        "a running train was expired because NJT returned an HTTP error; it is "
+        "still on the departure boards and riders just lost it"
     )
     assert result is not None
-    assert result["expired"] is True
+    assert result["expired"] is False
+
+
+@pytest.mark.asyncio
+async def test_upstream_errors_do_not_prime_the_not_found_expiry(
+    db_session, test_settings
+):
+    """The strike counter is shared, so a false strike has a second victim.
+
+    If transport failures counted, two of them would leave a journey one short
+    of the threshold, and the next *genuine* ``TrainNotFoundError`` — the one
+    signal that really is about the train — would expire it on its first
+    occurrence instead of its third.
+    """
+    await _persist_journey(
+        db_session,
+        train_id="3912",
+        last_updated_at=now_et() - timedelta(hours=2),
+    )
+
+    service = SchedulerService(test_settings)
+    service.njt_client = _UpstreamErrorNJTClient()
+    for _ in range(NJT_EXPIRY_THRESHOLD - 1):
+        await service._collect_single_njt_journey_safe("3912", now_et().date())
+
+    # NJT recovers, and now genuinely has no record of this train.
+    service.njt_client = _TrainNotFoundNJTClient()
+    result = await service._collect_single_njt_journey_safe("3912", now_et().date())
+
+    journey = await _reload(db_session, "3912")
+    assert journey.api_error_count == 1, (
+        f"api_error_count is {journey.api_error_count} after one genuine "
+        "not-found; the earlier upstream failures were counted as strikes"
+    )
+    assert journey.is_expired is False, (
+        "the first genuine not-found expired the journey because upstream "
+        "errors had already primed the counter to the threshold"
+    )
+    assert result is not None
+    assert result["expired"] is False
 
 
 @pytest.mark.asyncio
@@ -262,7 +326,7 @@ async def test_scheduler_subclass_handlers_still_win(db_session, test_settings):
 
 
 @pytest.mark.asyncio
-async def test_collector_upstream_error_stamps_and_strikes(db_session):
+async def test_collector_upstream_error_stamps_without_striking(db_session):
     """``collect_journey_details`` handles the bare error instead of raising.
 
     Before the fix this propagated out of the collector entirely, which is what
@@ -283,35 +347,36 @@ async def test_collector_upstream_error_stamps_and_strikes(db_session):
     refreshed = await _reload(db_session, "3905")
     assert refreshed.last_updated_at is not None
     assert refreshed.last_updated_at >= before
-    assert refreshed.api_error_count == 1
-    assert refreshed.is_expired is False, (
-        "one upstream failure must not expire a running train; only "
-        f"{NJT_EXPIRY_THRESHOLD} consecutive ones do"
-    )
+    assert refreshed.api_error_count == 0
+    assert refreshed.is_expired is False
 
 
 @pytest.mark.asyncio
-async def test_collector_upstream_error_expires_at_threshold(db_session):
-    """Consecutive failures reach the existing 3-strike expiry.
+async def test_collector_survives_a_sustained_outage(db_session):
+    """Repeated failures must never accumulate into an expiry.
 
-    Unlike ``TrainNotFoundError``, no last-chance completion is attempted: an
-    HTTP error says nothing about whether the train finished its run, so
-    claiming completion would be inventing a fact.
+    The threshold is three, so running well past it is the test: a journey that
+    NJT has refused to answer for all day is still a train that is running, and
+    it keeps its last known data and its place on the board.
     """
     journey = await _persist_journey(
         db_session,
         train_id="3906",
         last_updated_at=now_et() - timedelta(hours=2),
-        api_error_count=NJT_EXPIRY_THRESHOLD - 1,
     )
 
     collector = JourneyCollector(_UpstreamErrorNJTClient())
-    await collector.collect_journey_details(db_session, journey)
-    await db_session.commit()
+    for _ in range(NJT_EXPIRY_THRESHOLD + 2):
+        await collector.collect_journey_details(db_session, journey)
+        await db_session.commit()
 
     refreshed = await _reload(db_session, "3906")
-    assert refreshed.api_error_count == NJT_EXPIRY_THRESHOLD
-    assert refreshed.is_expired is True
+    assert refreshed.is_expired is False, (
+        "a sustained NJT outage expired a running train, so /departures — "
+        "which filters expired rows — shows nothing until a discovery pass "
+        "succeeds against the same broken API"
+    )
+    assert refreshed.api_error_count == 0
     assert refreshed.is_completed is not True, (
         "an upstream HTTP failure was recorded as the train completing its "
         "journey; that is a fabricated arrival"
@@ -343,18 +408,20 @@ async def test_collector_null_data_still_takes_no_strike(db_session):
 
 
 @pytest.mark.asyncio
-async def test_jit_stamp_survives_the_rollback(db_session):
-    """The JIT path must not undo the record that we asked NJT.
+async def test_jit_commits_the_stamp_through_the_real_collector(db_session):
+    """NJT 503 during a station-board view: the stamp must be committed.
 
-    This site is uncapped and driven by user traffic: the second pass selects
-    on ``last_updated_at < now - 60s``, so a journey whose stamp is rolled back
-    is re-attempted by the *next* station-board view — every page load and
-    every 30-second web poll — which matches the observed bursty, rush-hour
-    weighted call profile.
+    This site is uncapped and driven by user traffic. The second pass selects
+    on ``last_updated_at < now - 60s``, so a journey whose stamp never lands is
+    re-attempted by the *next* board view — every page load and every
+    30-second web poll — which matches the observed bursty, rush-hour-weighted
+    call profile.
 
-    The failure is injected *after* the collector has done its bookkeeping, so
-    this asserts the recovery path specifically rather than re-testing the
-    collector's own handler.
+    Only the NJT client is stubbed, at the ``njt_client`` boundary, as
+    ``test_njt_null_data_freshness`` does: the real ``JourneyCollector``, the
+    real JIT loop and the real commit all run, because what is under test is
+    whether the stamp survives that whole path rather than whether a mock was
+    called.
     """
     stale_stamp = now_et() - timedelta(hours=2)
     await _persist_journey(
@@ -365,20 +432,11 @@ async def test_jit_stamp_survives_the_rollback(db_session):
     )
 
     service = DepartureService()
-
-    async def _explode(*args, **kwargs):
-        raise RuntimeError("write failed after the collector stamped the journey")
-
     before = now_et()
-    with (
-        patch(
-            "trackrat.services.departure.NJTJourneyCollector.collect_journey_details",
-            new=AsyncMock(side_effect=_explode),
-        ),
-        patch(
-            "trackrat.services.departure.NJTransitClient.get_train_schedule_with_stops",
-            new=AsyncMock(return_value={"ITEMS": []}),
-        ),
+
+    with patch(
+        "trackrat.services.departure.NJTransitClient",
+        return_value=_UpstreamErrorNJTClient(with_schedule=True),
     ):
         await service._ensure_fresh_station_data(db_session, "NP", now_et().date())
 
@@ -386,53 +444,65 @@ async def test_jit_stamp_survives_the_rollback(db_session):
     assert journey.last_updated_at is not None
     assert journey.last_updated_at >= before, (
         f"last_updated_at is still {journey.last_updated_at} (seeded at "
-        f"{stale_stamp}); the rollback discarded the stamp, so the very next "
-        "station-board view re-attempts this same doomed refresh — uncapped, "
-        "because user traffic drives it"
+        f"{stale_stamp}); the very next station-board view re-attempts this "
+        "same doomed refresh — uncapped, because user traffic drives it"
+    )
+    assert (
+        journey.api_error_count == 0
+    ), "NJT failing to answer was charged to the train as a strike"
+    assert journey.is_expired is False
+
+
+@pytest.mark.asyncio
+async def test_stamp_survives_a_rollback(db_session):
+    """``_stamp_refresh_after_rollback`` must write in a *fresh* transaction.
+
+    The JIT loop rolls back on any failure, which discards whatever the
+    collector had already written to the session — including the freshness
+    stamp. Recording it before the rollback is therefore not enough, and that
+    is precisely how this site defeated the #1748 null-data fix.
+
+    Exercised directly against a real session and a real rollback, with no
+    stand-ins at all: a pending stamp is discarded, and the helper has to put
+    one back.
+    """
+    stale_stamp = now_et() - timedelta(hours=2)
+    journey = await _persist_journey(
+        db_session, train_id="3909", last_updated_at=stale_stamp
+    )
+    journey_id = journey.id
+
+    # What the collector does before something later in the transaction fails.
+    journey.last_updated_at = now_et()
+    await db_session.flush()
+    await db_session.rollback()
+
+    assert (await _reload(db_session, "3909")).last_updated_at == stale_stamp, (
+        "the rollback did not discard the pending stamp, so this test is not "
+        "exercising the situation it describes"
+    )
+
+    before = now_et()
+    await _stamp_refresh_after_rollback(db_session, journey_id, "3909")
+
+    refreshed = await _reload(db_session, "3909")
+    assert refreshed.last_updated_at is not None
+    assert refreshed.last_updated_at >= before
+    assert refreshed.api_error_count == 0, (
+        "the rollback recovery recorded a strike; anything reaching it may be "
+        "a local fault rather than something NJT said, and the "
+        "NJT-attributable strikes are applied inside the collector"
     )
 
 
 @pytest.mark.asyncio
-async def test_jit_stamp_after_rollback_takes_no_strike(db_session):
-    """A local failure must not push a live train toward expiry.
+async def test_stamp_after_rollback_tolerates_a_missing_journey(db_session):
+    """One journey it cannot stamp must not abort the rest of the board.
 
-    Anything reaching the JIT handler may be our own fault — a deadlock, a bad
-    row — rather than something NJT said. NJT-attributable strikes are applied
-    inside ``collect_journey_details`` before it ever returns here, so counting
-    another one would double-count the real ones and invent strikes for the
-    rest.
+    The helper runs inside the per-journey loop, so raising here would strand
+    every remaining stale train at the station.
     """
-    await _persist_journey(
-        db_session,
-        train_id="3909",
-        last_updated_at=now_et() - timedelta(hours=2),
-        api_error_count=NJT_EXPIRY_THRESHOLD - 1,
-        with_stop_at="NP",
-    )
-
-    service = DepartureService()
-
-    async def _explode(*args, **kwargs):
-        raise RuntimeError("deadlock detected")
-
-    with (
-        patch(
-            "trackrat.services.departure.NJTJourneyCollector.collect_journey_details",
-            new=AsyncMock(side_effect=_explode),
-        ),
-        patch(
-            "trackrat.services.departure.NJTransitClient.get_train_schedule_with_stops",
-            new=AsyncMock(return_value={"ITEMS": []}),
-        ),
-    ):
-        await service._ensure_fresh_station_data(db_session, "NP", now_et().date())
-
-    journey = await _reload(db_session, "3909")
-    assert journey.api_error_count == NJT_EXPIRY_THRESHOLD - 1, (
-        f"api_error_count moved to {journey.api_error_count}; a local fault was "
-        "charged to the train and pushed it toward expiry"
-    )
-    assert journey.is_expired is False
+    await _stamp_refresh_after_rollback(db_session, 999_999_999, "nonexistent")
 
 
 # ---------------------------------------------------------------------------
