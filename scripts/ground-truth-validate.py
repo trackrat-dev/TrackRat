@@ -387,6 +387,9 @@ def fetch_amtrak_ground_truth() -> list[GroundTruthArrival]:
     (those with internal station code mappings).
     """
     from trackrat.collectors.amtrak.client import AmtrakClient
+    from trackrat.collectors.amtrak.journey import (
+        _generate_train_id as amtrak_train_id,
+    )
 
     arrivals: list[GroundTruthArrival] = []
 
@@ -468,7 +471,12 @@ def fetch_amtrak_ground_truth() -> list[GroundTruthArrival]:
                             line_color="",
                             headsign=headsign,
                             minutes_away=minutes_away,
-                            train_id=str(train.trainNum),
+                            # The collector's own generator, as the GTFS-RT
+                            # fetchers do. This used to be `str(train.trainNum)`
+                            # -> "2150" against TrackRat's "A2150", so the two
+                            # sides never intersected and `pair_by_train_id`
+                            # returned {} for every Amtrak run (issue #1797).
+                            train_id=amtrak_train_id(str(train.trainNum)),
                             track=platform,
                         )
                     )
@@ -493,6 +501,7 @@ def _fetch_gtfsrt_ground_truth(
             enabling strong-signal matching against TrackRat.
     """
     arrivals: list[GroundTruthArrival] = []
+    generator_failures: list[tuple[str, Exception]] = []
 
     async def _fetch() -> list[GroundTruthArrival]:
         async with client_class() as client:
@@ -532,8 +541,14 @@ def _fetch_gtfsrt_ground_truth(
                 try:
                     route_id = getattr(arr, "route_id", "")
                     train_id = generate_train_id(arr.trip_id, route_id)
-                except Exception:
-                    pass  # Fall back to empty train_id
+                except Exception as exc:
+                    # Falling back to an empty train_id is right — a bad ID is
+                    # worse than none, since pair_by_train_id would mispair on
+                    # it — but doing so *silently* is how ID matching can switch
+                    # itself off without any sign in the output. The whole
+                    # strong-signal pass just stops firing and every failure
+                    # reads as a data problem (issue #1797).
+                    generator_failures.append((arr.trip_id, exc))
 
             arrivals.append(
                 GroundTruthArrival(
@@ -551,7 +566,31 @@ def _fetch_gtfsrt_ground_truth(
 
         return arrivals
 
-    return asyncio.run(_fetch())
+    fetched = asyncio.run(_fetch())
+
+    # Say so when the strong-signal pass is not going to run. Without this the
+    # degradation is invisible: pair_by_train_id skips empty IDs, matching falls
+    # back to the greedy time-ordered pass, and the reintroduced #1703 failures
+    # look like real data problems for however long it takes someone to trace
+    # them back here (issue #1797).
+    if generate_train_id:
+        if generator_failures:
+            sample_trip, sample_exc = generator_failures[0]
+            log_warn(
+                f"train_id generation failed for {len(generator_failures)} of "
+                f"{len(fetched)} ground-truth arrivals "
+                f"(e.g. {sample_trip!r}: {type(sample_exc).__name__}: {sample_exc}); "
+                "those arrivals cannot be ID-paired and fall back to time matching"
+            )
+        if fetched and not any(gt.train_id for gt in fetched):
+            log_warn(
+                f"no ground-truth arrival got a train_id from "
+                f"{client_class.__name__} — ID-based pairing is disabled for this "
+                "provider and every comparison is greedy time matching, which is "
+                "exactly the failure mode #1703 introduced pair_by_train_id to fix"
+            )
+
+    return fetched
 
 
 def fetch_lirr_ground_truth() -> list[GroundTruthArrival]:
@@ -858,6 +897,35 @@ def _safe_parse_iso(value: str | None) -> datetime | None:
         return datetime.fromisoformat(value)
     except ValueError:
         return None
+
+
+def gt_label(gt: "GroundTruthArrival") -> str:
+    """How a ground-truth arrival is named in the report.
+
+    Leads with ``train_id`` — the field ``pair_by_train_id`` actually keys on —
+    so a GT line and a TrackRat line for the same train read as the same train.
+    Every GT report line used to print ``headsign`` instead, which for the
+    GTFS-RT fetchers is the raw ``trip_id``. The two halves of the output were
+    therefore printing *different fields*, and one physical train appeared as
+    ``GO201_26_717`` missing and ``L717`` phantom, two minutes apart:
+
+        FAIL Train "GO201_26_717" @ 06:50 (3 min away) not found in TrackRat
+        WARN TrackRat train L717 @ 06:52 has no ground truth match
+
+    which reads exactly like an ID-format mismatch in the pairing layer, even
+    though the pairing layer holds ``L717`` on both sides and never saw either
+    printed string. That cost a full investigation to resolve to a display
+    artifact (issue #1797), which is the cost this tool exists to remove.
+
+    The headsign is kept alongside when it differs and adds something: the raw
+    trip_id is what you need to grep the feed, and for the providers whose
+    headsign is a real destination it is the more readable half.
+    """
+    if not gt.train_id:
+        return gt.headsign
+    if gt.headsign and gt.headsign != gt.train_id:
+        return f"{gt.train_id} ({gt.headsign})"
+    return gt.train_id
 
 
 def format_delta(seconds: int) -> str:
@@ -1342,17 +1410,17 @@ def run_validation_loop(
                 )
                 if has_mismatch:
                     log_warn(
-                        f'Train "{m.gt.headsign}" @ {time_str} matched '
+                        f'Train "{gt_label(m.gt)}" @ {time_str} matched '
                         f"({chr(0x394)} {format_delta(m.delta_seconds)}){detail}{suffix}"
                     )
                 elif m.tr.is_cancelled:
                     log_warn(
-                        f'Train "{m.gt.headsign}" @ {time_str} matched but CANCELLED in TrackRat'
+                        f'Train "{gt_label(m.gt)}" @ {time_str} matched but CANCELLED in TrackRat'
                         f"{detail}{suffix}"
                     )
                 else:
                     log_pass(
-                        f'Train "{m.gt.headsign}" @ {time_str} matched '
+                        f'Train "{gt_label(m.gt)}" @ {time_str} matched '
                         f"({chr(0x394)} {format_delta(m.delta_seconds)}){detail}{suffix}"
                     )
 
@@ -1360,7 +1428,7 @@ def run_validation_loop(
             for gt in result.arriving_unmatched:
                 time_str = gt.expected_time.astimezone(et).strftime("%H:%M")
                 log_warn(
-                    f'Train "{gt.headsign}" @ {time_str} (arriving) not matched '
+                    f'Train "{gt_label(gt)}" @ {time_str} (arriving) not matched '
                     f"(may have already departed)"
                 )
 
@@ -1416,13 +1484,13 @@ def run_validation_loop(
                 # discovered them yet (e.g. PATH collects every 4 min).
                 if gt.minutes_away > far_future_minutes:
                     log_warn(
-                        f'Train "{gt.headsign}" @ {time_str} ({gt.minutes_away} min away) '
+                        f'Train "{gt_label(gt)}" @ {time_str} ({gt.minutes_away} min away) '
                         f"not yet in TrackRat (far-future)",
                         detail=detail,
                     )
                 else:
                     log_fail(
-                        f'Train "{gt.headsign}" @ {time_str} ({gt.minutes_away} min away) '
+                        f'Train "{gt_label(gt)}" @ {time_str} ({gt.minutes_away} min away) '
                         f"not found in TrackRat",
                         detail=detail,
                     )
