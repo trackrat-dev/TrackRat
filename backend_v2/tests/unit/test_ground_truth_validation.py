@@ -443,10 +443,13 @@ class TestRunValidationLoopEmptyGroundTruth:
 
     def _patch_single_direction(self, monkeypatch, from_st="NY", to_st="ALB"):
         """Stub the route topology so the loop processes exactly one direction."""
+
         class _FakeRoute:
             stations = (from_st, to_st)
 
-        monkeypatch.setattr(gtv, "get_routes_for_data_source", lambda _ds: [_FakeRoute()])
+        monkeypatch.setattr(
+            gtv, "get_routes_for_data_source", lambda _ds: [_FakeRoute()]
+        )
         monkeypatch.setattr(gtv, "get_station_name", lambda code: code)
         monkeypatch.setattr(gtv, "httpx", _StubHttpx())
 
@@ -470,7 +473,9 @@ class TestRunValidationLoopEmptyGroundTruth:
         # _deduplicated_route_directions yields both forward and reverse
         # directions for each route, so a single Route -> 2 tested directions.
         assert tested == 2
-        assert gtv.WARN_COUNT == 2, "expected WARN per direction when GT empty but TR has data"
+        assert (
+            gtv.WARN_COUNT == 2
+        ), "expected WARN per direction when GT empty but TR has data"
         assert gtv.SKIP_COUNT == 0, "must not SKIP when TR has departures"
         assert gtv.FAIL_COUNT == 0
 
@@ -577,16 +582,18 @@ class TestCompareRouteIdMatchOrdering:
         gt_b = _gt(minutes_offset=11, train_id="056800_7..N")
         tr_x = _tr(minutes_offset=11, train_id="056800_7..N")
 
-        result = compare_route([gt_a, gt_b], [tr_x], "NWK", "WTC", tolerance_minutes=2.0)
+        result = compare_route(
+            [gt_a, gt_b], [tr_x], "NWK", "WTC", tolerance_minutes=2.0
+        )
 
         assert len(result.matches) == 1, (
             f"expected exactly one match, got {len(result.matches)}: "
             f"{[(m.gt.train_id, m.tr.train_id, m.delta_seconds) for m in result.matches]}"
         )
         match = result.matches[0]
-        assert match.gt.train_id == "056800_7..N", (
-            f"the exact trip-ID pair must win; matched GT was {match.gt.train_id!r}"
-        )
+        assert (
+            match.gt.train_id == "056800_7..N"
+        ), f"the exact trip-ID pair must win; matched GT was {match.gt.train_id!r}"
         assert match.tr.train_id == "056800_7..N"
         assert match.delta_seconds == 0, f"expected delta 0s, got {match.delta_seconds}"
 
@@ -607,7 +614,9 @@ class TestCompareRouteIdMatchOrdering:
         # Nudge gt_a to 11:30 so it is 30s away while gt_b is 0s away.
         gt_a.expected_time += timedelta(seconds=30)
 
-        result = compare_route([gt_a, gt_b], [tr_x], "NWK", "WTC", tolerance_minutes=2.0)
+        result = compare_route(
+            [gt_a, gt_b], [tr_x], "NWK", "WTC", tolerance_minutes=2.0
+        )
 
         assert len(result.matches) == 1
         assert result.matches[0].gt.train_id == "T-B"
@@ -703,8 +712,14 @@ class TestPairByTrainId:
         assert pair_by_train_id(gt, tr, 120) == {}
 
     def test_pairs_matching_ids_by_index(self):
-        gt = [_gt(minutes_offset=10, train_id="A"), _gt(minutes_offset=20, train_id="B")]
-        tr = [_tr(minutes_offset=20, train_id="B"), _tr(minutes_offset=10, train_id="A")]
+        gt = [
+            _gt(minutes_offset=10, train_id="A"),
+            _gt(minutes_offset=20, train_id="B"),
+        ]
+        tr = [
+            _tr(minutes_offset=20, train_id="B"),
+            _tr(minutes_offset=10, train_id="A"),
+        ]
 
         assert pair_by_train_id(gt, tr, 120) == {0: 1, 1: 0}
 
@@ -1059,9 +1074,7 @@ class TestFetchTrackratTrainStopOrder:
         assert order == ["NY", "TR"]
 
     def test_missing_train_key_returns_empty_list(self):
-        order = fetch_trackrat_train_stop_order(
-            _FakeClient({}), "http://test", "3701"
-        )
+        order = fetch_trackrat_train_stop_order(_FakeClient({}), "http://test", "3701")
         assert order == []
 
 
@@ -1537,12 +1550,7 @@ class TestProbeLineDeparturesLineCodeFilter:
         # Every segment returns ONLY a sibling ("NE") train; the probed line is
         # "NC". With the filter, no segment counts -> line correctly empty.
         sibling = [_tr(train_id="main", line_code="NE")]
-        seg = {
-            (a, b): sibling
-            for a in self.STATIONS
-            for b in self.STATIONS
-            if a != b
-        }
+        seg = {(a, b): sibling for a in self.STATIONS for b in self.STATIONS if a != b}
         self._patch_fetch(monkeypatch, seg)
         deps, _direction, _errors = gtv._probe_line_departures(
             None, "http://x", "NJT", self.STATIONS, frozenset({"NC"})
@@ -1749,3 +1757,166 @@ class TestScopedLineViolations:
     def test_empty_response_has_no_violations(self):
         # A genuinely dark line is a coverage question, never a contract failure.
         assert gtv.scoped_line_violations([], frozenset({"NC"})) == []
+
+
+# --- Issue #1797: which ID the two sides hold, and which one gets printed ---
+
+
+class TestRealMtaIdShapesPair:
+    """The MTA shapes from the report, through the real collector generators.
+
+    The issue proposed normalizing ``GO201_26_717`` against ``L717``, on the
+    reading that the two sides hold different formats. They do not: the GT
+    fetchers pass the *collectors'* own ``_generate_train_id`` into
+    ``_fetch_gtfsrt_ground_truth``, so both sides already hold ``L717``. These
+    tests use the real generators on the real trip-ID shapes to pin that, since
+    a synthetic ``L717``/``GO201_26_717`` pair would pass trivially while
+    telling you nothing about the ``_METS`` variant.
+    """
+
+    def test_lirr_trip_id_yields_the_rider_facing_id(self):
+        from trackrat.collectors.lirr.collector import _generate_train_id
+
+        assert _generate_train_id("GO201_26_717") == "L717"
+
+    def test_lirr_suffixed_variant_keeps_the_train_number(self):
+        """``_METS`` variants must resolve to 425, not the 2931 beside it.
+
+        The issue called this out as the case a synthetic fixture would miss,
+        and it is genuinely the one that could go wrong — the train number is
+        the third segment, and there are two more numeric segments after it.
+        """
+        from trackrat.collectors.lirr.collector import _generate_train_id
+
+        assert _generate_train_id("GO201_26_425_2931_METS") == "L425"
+
+    def test_both_sides_hold_the_same_id_so_pairing_fires(self):
+        """End-to-end on the reported pair, two minutes apart.
+
+        Ground truth at 06:50, TrackRat at 06:52 — the exact shape reported as
+        one train appearing both missing and phantom. Inside tolerance they
+        pair; the pairing layer was never the problem.
+        """
+        from trackrat.collectors.lirr.collector import _generate_train_id
+
+        train_id = _generate_train_id("GO201_26_717")
+        gt = [_gt(minutes_offset=10, train_id=train_id)]
+        tr = [_tr(minutes_offset=12, train_id=train_id)]
+
+        assert pair_by_train_id(gt, tr, 120) == {0: 0}
+
+    def test_a_genuinely_absent_train_still_finds_nothing(self):
+        """The acceptance criterion that keeps the fix honest.
+
+        Pairing must not become so eager that a train TrackRat really does not
+        have quietly acquires a partner. A different train number on the
+        TrackRat side yields no pair, so the GT arrival still reports missing.
+        """
+        from trackrat.collectors.lirr.collector import _generate_train_id
+
+        gt = [_gt(minutes_offset=10, train_id=_generate_train_id("GO201_26_717"))]
+        tr = [_tr(minutes_offset=10, train_id=_generate_train_id("GO201_26_811"))]
+
+        assert pair_by_train_id(gt, tr, 120) == {}
+
+
+class TestAmtrakIdsIntersect:
+    """The provider that really had no ID pairing at all.
+
+    ``fetch_amtrak_ground_truth`` built ``str(train.trainNum)`` -> ``"2150"``
+    while the collector produces ``"A2150"``, so
+    ``gt_by_id.keys() & tr_by_id.keys()`` was empty on every Amtrak run: the
+    ``id_match`` preference was dead code and the same-trip missing-report path
+    never fired. Both sides now go through the collector's generator.
+    """
+
+    def test_collector_id_carries_the_prefix(self):
+        from trackrat.collectors.amtrak.journey import _generate_train_id
+
+        assert _generate_train_id("2150") == "A2150"
+
+    def test_instance_suffix_is_dropped(self):
+        """``"2150-4"`` is one train running as a second consist, not train 4."""
+        from trackrat.collectors.amtrak.journey import _generate_train_id
+
+        assert _generate_train_id("2150-4") == "A2150"
+
+    def test_ground_truth_and_trackrat_ids_now_pair(self):
+        from trackrat.collectors.amtrak.journey import _generate_train_id
+
+        gt = [_gt(minutes_offset=10, train_id=_generate_train_id("2150"))]
+        tr = [_tr(minutes_offset=11, train_id="A2150")]
+
+        assert pair_by_train_id(gt, tr, 120) == {0: 0}
+
+    def test_the_bare_number_would_not_have_paired(self):
+        """Pins the defect itself, so a revert is caught rather than absorbed."""
+        gt = [_gt(minutes_offset=10, train_id="2150")]
+        tr = [_tr(minutes_offset=10, train_id="A2150")]
+
+        assert pair_by_train_id(gt, tr, 120) == {}, (
+            "the unprefixed GT id paired anyway — this test no longer describes "
+            "the bug it is guarding"
+        )
+
+
+class TestGtLabelPrintsThePairedField:
+    """The display defect that cost the investigation in the first place.
+
+    Every GT report line printed ``headsign``, which ``_fetch_gtfsrt_ground_truth``
+    sets to the raw ``trip_id``, while the TrackRat-side lines printed
+    ``train_id``. Two halves of one report naming the same train differently is
+    indistinguishable, by eye, from a format mismatch in the pairing layer.
+    """
+
+    def test_leads_with_the_train_id(self):
+        gt = _gt(minutes_offset=5, train_id="L717")
+        gt.headsign = "GO201_26_717"
+
+        label = gtv.gt_label(gt)
+
+        assert label.startswith("L717"), (
+            f"label is {label!r}; it must lead with the field pair_by_train_id "
+            "keys on, or a GT line and a TrackRat line for one train still read "
+            "as two different trains"
+        )
+
+    def test_keeps_the_raw_trip_id_visible(self):
+        """The trip_id is what you grep the feed with — don't throw it away."""
+        gt = _gt(minutes_offset=5, train_id="L717")
+        gt.headsign = "GO201_26_717"
+
+        assert "GO201_26_717" in gtv.gt_label(gt)
+
+    def test_falls_back_to_headsign_when_there_is_no_id(self):
+        """PATH and WMATA ground truth expose no comparable ID at all.
+
+        For those the headsign is the only human-readable handle there is, so
+        the line must keep reading as it does today.
+        """
+        gt = _gt(minutes_offset=5)
+        gt.headsign = "Newark"
+
+        assert gtv.gt_label(gt) == "Newark"
+
+    def test_does_not_repeat_itself(self):
+        gt = _gt(minutes_offset=5, train_id="A2150")
+        gt.headsign = "A2150"
+
+        assert gtv.gt_label(gt) == "A2150"
+
+    def test_the_reported_output_is_now_comparable(self):
+        """The two lines from the issue, side by side.
+
+        Before: ``Train "GO201_26_717"`` against ``TrackRat train L717``.
+        After: both name L717, so a reader sees a two-minute delta rather than
+        an apparent format mismatch.
+        """
+        gt = _gt(minutes_offset=5, train_id="L717")
+        gt.headsign = "GO201_26_717"
+        tr = _tr(minutes_offset=7, train_id="L717")
+
+        gt_line = f'Train "{gtv.gt_label(gt)}" not found in TrackRat'
+        tr_line = f"TrackRat train {tr.train_id} has no ground truth match"
+
+        assert "L717" in gt_line and "L717" in tr_line
