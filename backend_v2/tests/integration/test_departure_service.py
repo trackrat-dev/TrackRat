@@ -1342,6 +1342,118 @@ class TestPathCutoffTime:
         # Allow 1 second tolerance for test execution time
         assert abs((cutoff - current_time).total_seconds()) < 1
 
+    async def test_cross_midnight_train_still_counts_as_coverage(
+        self, db_session: AsyncSession
+    ):
+        """A trip that departed before midnight is dated yesterday (#1752).
+
+        PATH journeys are dated by their origin departure, so in the minutes
+        after the rollover the trains actually running are filed under
+        yesterday while ``target_date`` is today. Matching the date exactly
+        would report "no forward real-time coverage" for a train real-time is
+        tracking right now, collapse the cutoff to ``current_time``, and stop
+        suppressing the timetable rows for that same train.
+
+        Before #1752 this could not arise — a post-midnight sighting dated the
+        journey to today — so widening the collector's window without widening
+        this one would trade an orphaned row for a double-listed board.
+        """
+        service = DepartureService()
+        current_time = now_et()
+        today = current_time.date()
+        yesterday = today - timedelta(days=1)
+
+        path_journey = TrainJourney(
+            train_id="PATH_PWC_hoboken_xmid",
+            journey_date=yesterday,
+            data_source="PATH",
+            observation_type="OBSERVED",
+            line_code="HOB-33",
+            line_name="Hoboken - 33rd Street",
+            line_color="#65C100",
+            destination="Hoboken",
+            origin_station_code="PWC",
+            terminal_station_code="PHO",
+            scheduled_departure=current_time - timedelta(minutes=4),
+            first_seen_at=current_time - timedelta(minutes=5),
+            last_updated_at=current_time,
+            has_complete_journey=True,
+            update_count=1,
+        )
+        stop = JourneyStop(
+            station_code="PWC",
+            station_name="World Trade Center",
+            scheduled_departure=current_time + timedelta(minutes=8),
+            stop_sequence=3,
+            has_departed_station=False,
+        )
+        path_journey.stops = [stop]
+        db_session.add(path_journey)
+        await db_session.commit()
+
+        cutoff = await service._get_path_cutoff_time(
+            db_session, "PWC", current_time, today
+        )
+
+        expected = current_time + timedelta(minutes=10)  # +8 stop, +2 buffer
+        assert abs((cutoff - expected).total_seconds()) < 1, (
+            f"cutoff is {cutoff}, expected ~{expected}: the yesterday-dated "
+            "journey was not counted as forward coverage, so the timetable "
+            "would be served alongside the train it duplicates"
+        )
+
+    async def test_coverage_window_stops_before_the_day_before_yesterday(
+        self, db_session: AsyncSession
+    ):
+        """Only yesterday is in scope, not an unbounded history.
+
+        The window exists for trips that crossed midnight, and no PATH route
+        runs for even an hour. A row dated two days back with a future stop is
+        a stale artefact rather than a running train, and letting it set the
+        horizon would suppress the timetable behind nothing at all.
+        """
+        service = DepartureService()
+        current_time = now_et()
+        today = current_time.date()
+
+        path_journey = TrainJourney(
+            train_id="PATH_PWC_hoboken_old",
+            journey_date=today - timedelta(days=2),
+            data_source="PATH",
+            observation_type="OBSERVED",
+            line_code="HOB-33",
+            line_name="Hoboken - 33rd Street",
+            line_color="#65C100",
+            destination="Hoboken",
+            origin_station_code="PWC",
+            terminal_station_code="PHO",
+            scheduled_departure=current_time - timedelta(minutes=4),
+            first_seen_at=current_time - timedelta(minutes=5),
+            last_updated_at=current_time,
+            has_complete_journey=True,
+            update_count=1,
+        )
+        stop = JourneyStop(
+            station_code="PWC",
+            station_name="World Trade Center",
+            scheduled_departure=current_time + timedelta(minutes=8),
+            stop_sequence=3,
+            has_departed_station=False,
+        )
+        path_journey.stops = [stop]
+        db_session.add(path_journey)
+        await db_session.commit()
+
+        cutoff = await service._get_path_cutoff_time(
+            db_session, "PWC", current_time, today
+        )
+
+        assert abs((cutoff - current_time).total_seconds()) < 1, (
+            f"cutoff is {cutoff}, expected ~{current_time}: a two-day-old row "
+            "set the real-time horizon and would suppress the timetable behind "
+            "a train that is long gone"
+        )
+
     async def test_observed_train_within_twenty_minutes_fills_from_coverage_end(
         self, db_session: AsyncSession
     ):

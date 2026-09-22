@@ -1211,7 +1211,17 @@ class DepartureService:
             .where(
                 TrainJourney.data_source == "PATH",
                 TrainJourney.observation_type == "OBSERVED",
-                TrainJourney.journey_date == journey_date,
+                # Yesterday counts because a PATH trip is dated by its origin
+                # departure (issue #1752), so just after midnight the trains
+                # still running are filed under yesterday. Pinning this to the
+                # target date alone would report "no forward real-time
+                # coverage" for those minutes and stop suppressing the
+                # timetable behind trains real-time is actively tracking.
+                # Nothing stale slips in: the row still has to be fresher than
+                # PATH_REALTIME_STALE_AFTER and still has to have a stop
+                # departing after `current_time`.
+                TrainJourney.journey_date >= journey_date - timedelta(days=1),
+                TrainJourney.journey_date <= journey_date,
                 TrainJourney.last_updated_at >= stale_before,
                 JourneyStop.station_code.in_(expand_station_codes(station_code)),
                 JourneyStop.scheduled_departure > current_time,
