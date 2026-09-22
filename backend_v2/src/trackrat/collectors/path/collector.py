@@ -462,6 +462,11 @@ class _TrainCandidate:
         Consecutive trains on a line share all four values, which is exactly why
         they need one-to-one matching against each other rather than an
         independent lookup per sighting.
+
+        ``journey_date`` is origin-derived (see ``_build_train_candidate``), so
+        two sightings of one train either side of midnight still land in the
+        same group — when it was arrival-derived they did not, and the second
+        sighting could not see the row the first had created (issue #1752).
         """
         return (
             self.journey_date,
@@ -593,7 +598,21 @@ def _build_train_candidate(
         train_id=_generate_path_train_id(
             origin_station, destination_headsign, origin_departure_time
         ),
-        journey_date=discovered_arrival_time.date(),
+        # Dated by the ORIGIN DEPARTURE, not the arrival that discovered the
+        # train (issue #1752). The discovering arrival is a *predicted* time at
+        # whichever station happened to see the train, so dating by it gave one
+        # physical trip a different journey_date depending on where it was
+        # sighted — and flipped to tomorrow up to ~20 minutes before midnight,
+        # since the prediction runs ahead of the clock.
+        #
+        # That was not only cosmetic. journey_date is in group_key, in
+        # _find_active_journeys' filter, and in the unique constraint, so a
+        # train sighted either side of the flip landed in a different group
+        # *and* could not see the row already created for it: a guaranteed
+        # duplicate journey every night. Deriving from the origin departure
+        # gives a trip one stable date for its whole life, which is also what
+        # lets _update_journeys reach it after midnight.
+        journey_date=origin_departure_time.date(),
         line_code=line_code,
         line_name=line_name,
         line_color=line_color,
@@ -1235,12 +1254,26 @@ class PathCollector:
         Returns:
             Matching journeys, oldest scheduled departure first
         """
+        # Either side of the group's own date, because the origin departure it
+        # is derived from is itself a back-calculation with minutes of spread
+        # (see MATCH_TOLERANCE_MINUTES). Two sightings of one train whose
+        # implied origins straddle midnight get different `group_key`s, and
+        # a date-exact lookup would then hide the row the first sighting
+        # created from the second, minting a duplicate — the residue of the
+        # nightly duplicate #1752 is mostly about, once the date is derived
+        # from the origin rather than the discovering arrival.
+        #
+        # Nothing distant leaks in: `time_min`/`time_max` already bound
+        # scheduled_departure to a ten-minute window around this group's
+        # departures, so the extra days are only reachable within minutes of
+        # the rollover.
         stmt = (
             select(TrainJourney)
             .where(
                 and_(
                     TrainJourney.data_source == "PATH",
-                    TrainJourney.journey_date == journey_date,
+                    TrainJourney.journey_date >= journey_date - timedelta(days=1),
+                    TrainJourney.journey_date <= journey_date + timedelta(days=1),
                     TrainJourney.line_code == line_code,
                     TrainJourney.origin_station_code == origin_station,
                     TrainJourney.scheduled_departure >= time_min,
@@ -1285,11 +1318,30 @@ class PathCollector:
         """
         today = now_et().date()
 
+        # Yesterday is in the window because a PATH trip that departs before
+        # midnight is dated to the day it departed, so after the rollover it is
+        # still in flight and still needs updating (issue #1752). Filtering to
+        # `== today` orphaned those rows permanently: never updated, never
+        # completed, never expired, because this is the *only* sweep that
+        # touches a PATH journey — _expire_old_journeys and
+        # schedule_periodic_updates are both NJT-only, and retention_cleanup
+        # does not delete anything for 60 days. The Live Activity push job
+        # already widens to [today-1, today] for the same reason
+        # (services/scheduler.py), and kept pushing "EN ROUTE" for orphans that
+        # had arrived hours earlier.
+        #
+        # Nothing PATH runs is long enough to need a wider window: the longest
+        # route is well under an hour, so a journey dated before yesterday
+        # cannot still be moving, and including it would only re-open rows that
+        # the 3-dry-cycle expiry below has already finished with.
+        oldest_active_date = today - timedelta(days=1)
+
         # Get all active PATH journeys
         result = await session.scalars(
             select(TrainJourney).where(
                 TrainJourney.data_source == "PATH",
-                TrainJourney.journey_date == today,
+                TrainJourney.journey_date >= oldest_active_date,
+                TrainJourney.journey_date <= today,
                 TrainJourney.is_completed == False,  # noqa: E712
                 TrainJourney.is_expired == False,  # noqa: E712
                 TrainJourney.is_cancelled == False,  # noqa: E712

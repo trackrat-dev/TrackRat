@@ -482,8 +482,25 @@ class DepartureService:
         # Query journeys from both NJT and Amtrak data sources
         # Determine journey_date filter based on whether a specific date was provided
         if date:
-            # If a specific date was provided, use it exactly
-            journey_date_filter = TrainJourney.journey_date == date
+            # Yesterday is included because journey_date is the trip's service
+            # date, not the date its stops fall on: a PATH trip that departs
+            # before midnight keeps yesterday's date for its whole life
+            # (issue #1752), and clients ask for the calendar day they are
+            # looking at — iOS always sends its selected Date, defaulting to
+            # today. Matching the date exactly dropped exactly those trains
+            # just after the rollover, while _get_path_cutoff_time (which does
+            # see them) suppressed their timetable rows, leaving neither on the
+            # board.
+            #
+            # This only widens a partition-pruning filter. The real constraint
+            # is the JourneyStop.scheduled_departure window below, so the extra
+            # day can only admit journeys whose stops already fall inside the
+            # requested range — which is the same reasoning the no-explicit-date
+            # branch has always relied on, with a wider window still.
+            journey_date_filter = and_(
+                TrainJourney.journey_date >= date - timedelta(days=1),
+                TrainJourney.journey_date <= date,
+            )
         else:
             # For time-based queries, include a range to handle:
             # - Overnight journeys that cross date boundaries
@@ -1211,7 +1228,17 @@ class DepartureService:
             .where(
                 TrainJourney.data_source == "PATH",
                 TrainJourney.observation_type == "OBSERVED",
-                TrainJourney.journey_date == journey_date,
+                # Yesterday counts because a PATH trip is dated by its origin
+                # departure (issue #1752), so just after midnight the trains
+                # still running are filed under yesterday. Pinning this to the
+                # target date alone would report "no forward real-time
+                # coverage" for those minutes and stop suppressing the
+                # timetable behind trains real-time is actively tracking.
+                # Nothing stale slips in: the row still has to be fresher than
+                # PATH_REALTIME_STALE_AFTER and still has to have a stop
+                # departing after `current_time`.
+                TrainJourney.journey_date >= journey_date - timedelta(days=1),
+                TrainJourney.journey_date <= journey_date,
                 TrainJourney.last_updated_at >= stale_before,
                 JourneyStop.station_code.in_(expand_station_codes(station_code)),
                 JourneyStop.scheduled_departure > current_time,
