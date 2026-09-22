@@ -15,9 +15,14 @@ from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from trackrat.collectors.njt.client import (
+    NJTransitAPIError,
     NJTransitClient,
     NJTransitNullDataError,
     TrainNotFoundError,
+)
+from trackrat.collectors.njt.refresh_outcome import (
+    mark_refresh_attempted,
+    mark_refresh_failed,
 )
 from trackrat.config.stations import get_station_name
 from trackrat.models.api import NJTransitStopData, NJTransitTrainData
@@ -653,7 +658,7 @@ class JourneyCollector:
                 # re-selected every tick for its whole in-flight window, starving
                 # trains behind it (issue #1748). The clock records "we asked",
                 # which is exactly what happened.
-                journey.last_updated_at = now_et()
+                mark_refresh_attempted(journey)
                 logger.info(
                     "train_null_data_skipped",
                     train_id=journey.train_id,
@@ -665,12 +670,7 @@ class JourneyCollector:
             except TrainNotFoundError:
                 # Train is genuinely not available (empty/None response) —
                 # increment error count toward expiry threshold.
-                journey.api_error_count = (journey.api_error_count or 0) + 1
-                journey.last_updated_at = now_et()
-                journey.update_count = (journey.update_count or 0) + 1
-
-                # After 3 failed attempts, attempt last-chance completion then expire
-                if journey.api_error_count >= 3:
+                if mark_refresh_failed(journey):
                     # Train disappeared from API — likely completed its run.
                     # Check if penultimate stop departed, which means the train
                     # reached its terminal. We can't set terminal actual_arrival
@@ -698,6 +698,39 @@ class JourneyCollector:
                         journey_id=journey.id,
                         api_error_count=journey.api_error_count,
                     )
+
+                await session.flush()
+                return
+            except NJTransitAPIError as e:
+                # Upstream failed: HTTP error, timeout, or a body that wasn't
+                # JSON. Ordering matters — this arm must stay *below* the two
+                # subclasses above, which carry their own semantics.
+                #
+                # This says nothing about the train, so unlike TrainNotFoundError
+                # there is no last-chance completion to attempt: the run did not
+                # end, NJT just stopped answering. But the strike still counts.
+                # Without it a sustained upstream failure pins every in-flight
+                # journey to the head of the oldest-first batch and re-asks for
+                # all of them on every tick, which is how a bad patch at NJT
+                # became 214% of the 40,000/day quota (issue #1827). Expiry is
+                # reversible: discovery re-activates the train as soon as it
+                # reappears, so the board degrades to the timetable and recovers
+                # on its own.
+                expired = mark_refresh_failed(journey)
+                if expired:
+                    journey.is_expired = True
+                logger.warning(
+                    (
+                        "train_marked_expired_on_upstream_failure"
+                        if expired
+                        else "train_upstream_error_incremented"
+                    ),
+                    train_id=journey.train_id,
+                    journey_id=journey.id,
+                    api_error_count=journey.api_error_count,
+                    error=str(e) or repr(e),
+                    error_type=type(e).__name__,
+                )
 
                 await session.flush()
                 return

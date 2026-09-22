@@ -2110,8 +2110,13 @@ class SchedulerService:
             from sqlalchemy.orm import sessionmaker
 
             from trackrat.collectors.njt.client import (
+                NJTransitAPIError,
                 NJTransitNullDataError,
                 TrainNotFoundError,
+            )
+            from trackrat.collectors.njt.refresh_outcome import (
+                mark_refresh_attempted,
+                mark_refresh_failed,
             )
             from trackrat.utils.time import now_et
 
@@ -2175,7 +2180,7 @@ class SchedulerService:
                 with SyncSession() as session:
                     journey = session.get(TrainJourney, journey_id)
                     if journey:
-                        journey.last_updated_at = now_et()
+                        mark_refresh_attempted(journey)
                         commit_with_retry(session, log_context={"train_id": train_id})
 
                 logger.info(
@@ -2193,22 +2198,19 @@ class SchedulerService:
                 }
             except TrainNotFoundError:
                 # Train is genuinely not available — increment error count.
-                new_error_count = journey_api_error_count + 1
-                is_now_expired = new_error_count >= 3
+                is_now_expired = False
 
                 with SyncSession() as session:
                     journey = session.get(TrainJourney, journey_id)
                     if journey:
-                        journey.api_error_count = new_error_count
-                        journey.last_updated_at = now_et()
-                        journey.update_count = (journey.update_count or 0) + 1
+                        is_now_expired = mark_refresh_failed(journey)
                         if is_now_expired:
                             journey.is_expired = True
                             logger.warning(
                                 "train_marked_expired_sync",
                                 train_id=train_id,
                                 journey_id=journey_id,
-                                error_count=new_error_count,
+                                error_count=journey.api_error_count,
                             )
                         commit_with_retry(session, log_context={"train_id": train_id})
 
@@ -2216,6 +2218,51 @@ class SchedulerService:
                     "train_id": train_id,
                     "success": False,
                     "error": "Train not found",
+                    "expired": is_now_expired,
+                }
+            except NJTransitAPIError as e:
+                # Upstream failed (HTTP error, timeout, non-JSON body). This arm
+                # must stay *below* the two subclass arms above, which inherit
+                # from it and carry their own semantics.
+                #
+                # Before issue #1827 this fell through to the generic
+                # `except Exception` at the bottom, which logs and returns None
+                # while touching neither the freshness clock nor the strike
+                # counter. Since the batch is `ORDER BY last_updated_at ASC`,
+                # every journey NJT refused stayed at the head of the queue and
+                # was re-asked on every 5-minute tick — 100 journeys × 288 ticks
+                # = 28,800 wasted calls/day against a 40,000/day quota, while
+                # the trains behind them went unrefreshed.
+                is_now_expired = False
+
+                with SyncSession() as session:
+                    journey = session.get(TrainJourney, journey_id)
+                    if journey:
+                        is_now_expired = mark_refresh_failed(journey)
+                        if is_now_expired:
+                            journey.is_expired = True
+                        commit_with_retry(session, log_context={"train_id": train_id})
+                        error_count = journey.api_error_count
+                    else:
+                        error_count = journey_api_error_count
+
+                logger.warning(
+                    (
+                        "train_marked_expired_on_upstream_failure_sync"
+                        if is_now_expired
+                        else "train_upstream_error_incremented_sync"
+                    ),
+                    train_id=train_id,
+                    journey_id=journey_id,
+                    error_count=error_count,
+                    error=str(e) or repr(e),
+                    error_type=type(e).__name__,
+                )
+
+                return {
+                    "train_id": train_id,
+                    "success": False,
+                    "error": "NJT upstream error",
                     "expired": is_now_expired,
                 }
 
