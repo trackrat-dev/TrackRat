@@ -527,7 +527,7 @@ struct CombinedDetailsCard: View {
             // Stops section
             VStack(alignment: .leading, spacing: 12) {
                 if !displayableTrainStops.isEmpty {
-                    JourneyStopList(stops: train.stops, journeyRange: journeyStopRange) { stop in
+                    JourneyStopList(stops: train.stops ?? [], journeyRange: journeyStopRange) { stop in
                         let isDepartureStop = appState.departureStationCode != nil &&
                             Stations.areEquivalentStations(stop.stationCode, appState.departureStationCode!)
                         StopRowV2(

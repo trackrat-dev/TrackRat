@@ -260,11 +260,11 @@ private struct LegDetailSection: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
-            } else if let train = train, !train.stops.isEmpty {
+            } else if let train = train, let stops = train.stops, !stops.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
                     JourneyStopList(
-                        stops: train.stops,
-                        journeyRange: train.stops.journeyRange(from: leg.boarding.code, to: leg.alighting.code)
+                        stops: stops,
+                        journeyRange: stops.journeyRange(from: leg.boarding.code, to: leg.alighting.code)
                     ) { stop in
                         StopRowV2(
                             stop: stop,
