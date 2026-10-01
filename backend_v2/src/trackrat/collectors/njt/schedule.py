@@ -23,12 +23,16 @@ from trackrat.utils.time import now_et, parse_njt_time, validate_journey_date
 
 logger = get_logger(__name__)
 
-# NJT schedule API LINE field prefixes → canonical 2-char codes.
-# The schedule API returns full line names (e.g., "Northeast Corridor")
-# unlike the real-time discovery API which returns short codes (e.g., "NEC").
+# NJT LINE field prefixes → canonical 2-char codes.
+# The schedule API returns full line names (e.g., "Northeast Corridor"); the
+# real-time discovery API returns short codes (e.g., "NEC") for some lines and
+# abbreviated names for others ("No Jersey Coast", "Atl. City Line") — the
+# latter must resolve to the same code as the schedule row or the two rows
+# for one physical train never dedupe (issue #1839).
 _NJT_LINE_NAME_PREFIXES: list[tuple[str, str]] = [
     ("northeast", "NE"),
     ("north jersey", "NC"),
+    ("no jersey", "NC"),
     ("gladstone", "GL"),
     ("montclair", "MO"),
     ("boonton", "MO"),
@@ -37,7 +41,7 @@ _NJT_LINE_NAME_PREFIXES: list[tuple[str, str]] = [
     ("pascack", "PV"),
     ("bergen", "BE"),
     ("main", "MA"),
-    ("atlantic", "AC"),
+    ("atl", "AC"),  # "Atlantic City Rail Line" and "Atl. City Line"
     ("princeton", "PR"),
 ]
 

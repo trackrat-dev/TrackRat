@@ -874,6 +874,9 @@ class TestNjtLineCodeConsistency:
             ("Main Line", "MA"),
             ("Atlantic City Rail Line", "AC"),
             ("Princeton Shuttle", "PR"),
+            # Real-time discovery abbreviations (issue #1839)
+            ("No Jersey Coast", "NC"),
+            ("Atl. City Line", "AC"),
         ]
         for name, expected_code in test_names:
             code = parse_njt_line_code(name)

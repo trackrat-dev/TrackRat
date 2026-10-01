@@ -7,7 +7,7 @@ GTFS scheduled data and real-time API data are properly deduplicated.
 Key scenarios:
 1. Matching by train_id (primary key)
 2. Matching by line+time (fallback key)
-3. NJT line code normalization (legacy "No" vs current "NE")
+3. NJT line code normalization (truncated "No" -> "NC", mixed-case legacy codes)
 4. Amtrak train_id normalization (strip "A" prefix)
 """
 
@@ -70,6 +70,13 @@ class TestDestinationPrefix:
         assert _destination_prefix("Trenton") == "trenton"
         assert _destination_prefix("TRENTON TRANSIT CENTER") == _destination_prefix(
             "Trenton"
+        )
+
+    def test_strips_sec_marker(self):
+        """Real-time 'Long Branch -SEC &#9992' vs schedule 'LONG BRANCH' (#1839)."""
+        assert _destination_prefix("Long Branch -SEC &#9992") == "long branch"
+        assert _destination_prefix("Long Branch -SEC &#9992") == _destination_prefix(
+            "LONG BRANCH"
         )
 
 
@@ -224,25 +231,27 @@ class TestMakeDedupKeys:
         # The main key should be the same
         assert fallbacks_et == fallbacks_utc
 
-    def test_njt_legacy_no_code_canonicalized_to_ne(self):
-        """Test legacy NJT line code 'No' is canonicalized to 'NE'.
+    def test_njt_no_code_canonicalized_to_nc(self):
+        """NJT line code 'No' is canonicalized to 'NC' (North Jersey Coast).
 
-        'No' was produced by the old schedule collector truncating
-        "Northeast Corridor" to 2 chars. Existing DB records may still
-        have this value, so the canonicalization maps it to 'NE' for dedup.
+        'No' is what ``parse_njt_line_code`` produced for the real-time feed's
+        "No Jersey Coast" before #1839. Rows stored that way must key with the
+        schedule API's 'NC' rows for the same train, not with NEC — mapping it
+        to 'NE' left NJCL trains on the board twice (once as "Train TBD").
         """
         departure = self._create_departure(
-            train_id="3936",
-            line_code="No",  # Legacy truncated code
-            scheduled_time=ET.localize(datetime(2026, 1, 20, 9, 15)),
+            train_id="3227",
+            line_code="No",
+            scheduled_time=ET.localize(datetime(2026, 10, 1, 8, 46)),
             data_source="NJT",
         )
 
         _, fallbacks = self.service._make_dedup_keys(departure)
 
-        # "No" should be canonicalized to "NE"
-        assert "NE:NJT:09:15" in fallbacks
-        assert "No:NJT:09:15" not in fallbacks
+        print(f"fallbacks for 'No': {fallbacks}")
+        assert "NC:NJT:08:46" in fallbacks
+        assert "NE:NJT:08:46" not in fallbacks
+        assert "No:NJT:08:46" not in fallbacks
 
     def test_njt_line_code_rv_stays_rv(self):
         """Test NJT line code 'RV' is already canonical (no normalization needed)."""
@@ -549,30 +558,23 @@ class TestMergeDepartures:
         assert len(merged) == 1
         assert merged[0].train_id == "3846"  # Real-time train wins
 
-    def test_legacy_no_code_deduplicates_with_gtfs_ne(self):
-        """Test that legacy 'No' line code in DB deduplicates with GTFS 'NE'.
+    def test_no_code_deduplicates_with_gtfs_nc(self):
+        """A DB train stored with 'No' (truncated real-time "No Jersey Coast")
+        deduplicates with the GTFS NJCL train ('NC') at the same time (#1839)."""
+        time = ET.localize(datetime(2026, 10, 1, 8, 46))
 
-        Real-world scenario: Train 3719 in DB has line_code 'No' (from schedule
-        collector truncating 'Northeast Corridor'). GTFS train 3243 has line_code
-        'NE' (from NJT_LINE_CODE_MAPPING). These are the same physical train
-        at the same time. With canonicalization, 'No' → 'NE' enables dedup.
-        """
-        time = ET.localize(datetime(2026, 2, 26, 14, 52))
-
-        # DB train with legacy "No" code (from schedule collector)
         realtime = [
-            self._create_departure(train_id="3719", line_code="No", scheduled_time=time)
+            self._create_departure(train_id="3227", line_code="No", scheduled_time=time)
         ]
-        # GTFS train with correct "NE" code
         gtfs = [
-            self._create_departure(train_id="3243", line_code="NE", scheduled_time=time)
+            self._create_departure(train_id="4070", line_code="NC", scheduled_time=time)
         ]
 
         merged = self.service._merge_departures(realtime, gtfs)
 
-        # Should deduplicate: "No" canonicalizes to "NE", matching GTFS
+        print(f"merged: {[(d.train_id, d.line.code) for d in merged]}")
         assert len(merged) == 1
-        assert merged[0].train_id == "3719"  # DB train preferred
+        assert merged[0].train_id == "3227"  # DB train preferred
 
 
 class TestDedupeScheduledObservedCollisions:
@@ -731,6 +733,67 @@ class TestDedupeScheduledObservedCollisions:
 
         assert len(result) == 1
         assert result[0].train_id == "3865"
+
+    def test_issue_1839_njcl_sec_marker_and_no_line_code(self):
+        """Production case from #1839: NY Penn -> Long Branch 08:46.
+
+        The OBSERVED row came from the real-time feed (train 3227, line 'No'
+        from "No Jersey Coast", destination "Long Branch -SEC &#9992"); the
+        SCHEDULED row came from the schedule API (train 4070, line 'NC',
+        destination "LONG BRANCH"). Same physical train — the SCHEDULED row
+        must be dropped, otherwise it renders as "Train TBD" beside it.
+        """
+        time = ET.localize(datetime(2026, 10, 1, 8, 46))
+
+        deps = [
+            self._create_departure(
+                train_id="3227",
+                line_code="No",
+                scheduled_time=time,
+                observation_type="OBSERVED",
+                destination="Long Branch -SEC &#9992",
+            ),
+            self._create_departure(
+                train_id="4070",
+                line_code="NC",
+                scheduled_time=time,
+                observation_type="SCHEDULED",
+                destination="LONG BRANCH",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        print(f"kept: {[(d.train_id, d.observation_type) for d in result]}")
+        assert len(result) == 1
+        assert result[0].train_id == "3227"
+
+    def test_njcl_no_code_does_not_suppress_nec_scheduled(self):
+        """An NJCL OBSERVED row stored as 'No' must not swallow a distinct NEC
+        SCHEDULED train at the same minute — the old 'No'->'NE' mapping could."""
+        time = ET.localize(datetime(2026, 10, 1, 8, 46))
+
+        deps = [
+            self._create_departure(
+                train_id="3227",
+                line_code="No",
+                scheduled_time=time,
+                observation_type="OBSERVED",
+                destination="Trenton",
+            ),
+            self._create_departure(
+                train_id="3800",
+                line_code="NE",
+                scheduled_time=time,
+                observation_type="SCHEDULED",
+                destination="Trenton",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        print(f"kept: {[(d.train_id, d.line.code) for d in result]}")
+        assert len(result) == 2
 
     def test_does_not_collapse_two_observed_rows(self):
         """Two OBSERVED rows at same line/time are presumed real distinct trains."""

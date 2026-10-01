@@ -2,6 +2,7 @@
 Train-related utility functions for TrackRat V2.
 """
 
+import re
 from collections.abc import Container
 from datetime import datetime
 from typing import TYPE_CHECKING
@@ -466,24 +467,35 @@ def resolve_actual_departure(
     return existing
 
 
+# Trailing decorations NJT puts on one destination format but not the other.
+# Shared with the SQL twin in ``collectors/njt/discovery.py`` (applied in this
+# order, to the lowercased, trimmed destination) so both sides normalize alike.
+# - Secaucus-connection marker: the real-time feed sends "Long Branch -SEC
+#   &#9992" where the schedule API sends "LONG BRANCH" (issue #1839).
+# - " TRANSIT CENTER": the schedule API sends "TRENTON TRANSIT CENTER" where
+#   the real-time feed sends "Trenton" (issue #1329).
+NJT_DESTINATION_SEC_MARKER_PATTERN = r"(\s*-sec)?(\s*&#9992;?)?\s*$"
+NJT_DESTINATION_TRANSIT_CENTER_PATTERN = r"\s+transit center$"
+
+
 def normalize_njt_destination(destination: str | None) -> str:
     """Normalize an NJT destination string for cross-source matching.
 
     NJT's daily schedule API (``getTrainSchedule`` used for schedule
-    generation) returns the full official station name as ``DESTINATION``
-    (e.g. "TRENTON TRANSIT CENTER"), while the real-time discovery feed
-    returns the short common name for the same station (e.g. "Trenton").
-    Without normalization, SCHEDULED rows created from the schedule API
-    never match the OBSERVED row created from the real-time feed for the
-    same physical train — the discovery merge misses it (creating a
-    duplicate journey) and the departures dedup safety net also misses it
-    (leaving the stale "Train TBD" row visible alongside the real train).
-    Strip the generic " TRANSIT CENTER" suffix so both forms compare equal.
+    generation) and its real-time discovery feed describe the same terminus
+    differently: the schedule API uses the full official station name
+    ("TRENTON TRANSIT CENTER"), while the real-time feed uses the short
+    common name ("Trenton") and appends a Secaucus-connection marker to some
+    trains ("Long Branch -SEC &#9992"). Without normalization, SCHEDULED rows
+    created from the schedule API never match the OBSERVED row created from
+    the real-time feed for the same physical train — the discovery merge
+    misses it (creating a duplicate journey) and the departures dedup safety
+    net also misses it (leaving the stale "Train TBD" row visible alongside
+    the real train). Strip both decorations so the forms compare equal.
     """
     if not destination:
         return ""
-    normalized = destination.strip().lower()
-    suffix = " transit center"
-    if normalized.endswith(suffix):
-        normalized = normalized[: -len(suffix)]
-    return normalized
+    normalized = re.sub(
+        NJT_DESTINATION_SEC_MARKER_PATTERN, "", destination.strip().lower()
+    )
+    return re.sub(NJT_DESTINATION_TRANSIT_CENTER_PATTERN, "", normalized)

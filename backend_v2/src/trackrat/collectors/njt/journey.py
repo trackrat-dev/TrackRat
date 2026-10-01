@@ -281,16 +281,15 @@ class JourneyCollector:
         if any(variant in normalized for variant in ["new york", "penn station"]):
             return "new york"
 
-        # Remove common suffixes and prefixes
-        normalized = normalized.replace(" -sec", "").replace("&#9992", "")
         normalized = normalized.replace("penn station ", "")
 
         # Remove extra whitespace
         normalized = " ".join(normalized.split())
 
-        # Collapse NJT's schedule-API " TRANSIT CENTER" suffix so the full
-        # official name ("TRENTON TRANSIT CENTER") and the real-time short
-        # name ("Trenton") for the same station compare equal. A journey
+        # Collapse NJT's schedule-API " TRANSIT CENTER" suffix and the
+        # real-time Secaucus-connection marker (" -SEC &#9992") so the
+        # schedule and real-time names for the same station compare equal
+        # (see ``normalize_njt_destination``). A journey
         # merged/promoted from a SCHEDULED row carries the schedule-API
         # destination; without this it would be falsely flagged as a
         # DESTINATION_MISMATCH and expired on the next collection pass before

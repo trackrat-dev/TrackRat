@@ -131,7 +131,8 @@ NJT_LINE_CANONICALIZATION: dict[str, str] = {
     "Pa": "PV",
     "At": "AC",
     "Pr": "PR",
-    "No": "NE",  # Legacy truncation artifact
+    # Truncated real-time "No Jersey Coast" — NJCL, not NEC (issue #1839)
+    "No": "NC",
 }
 
 # Data sources that have real-time discovery systems.
@@ -1952,7 +1953,7 @@ class DepartureService:
         """Normalize line code to canonical form for deduplication.
 
         NJT line codes can vary between real-time API and GTFS:
-        - Schedule API full names truncated to "No" (fixed at source, safety net here)
+        - Real-time "No Jersey Coast" truncated to "No" (fixed at source, safety net here)
         - API "Raritan Valley" -> "RV", but GTFS maps RARV -> "Ra"
         """
         if data_source == "NJT":
