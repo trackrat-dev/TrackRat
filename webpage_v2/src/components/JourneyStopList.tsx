@@ -13,7 +13,8 @@ const toggleClass =
 
 /**
  * A train's stops trimmed to the rider's journey, with "previous" / "later"
- * toggles that reveal the trimmed ends (issue #1840).
+ * toggles that reveal the trimmed ends (issue #1840). Callers key it by journey
+ * so a different train starts collapsed while polling keeps the expansion.
  */
 export function JourneyStopList({ stops, journeyRange, renderStop }: JourneyStopListProps) {
   const [showPrevious, setShowPrevious] = useState(false);

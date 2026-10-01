@@ -207,6 +207,7 @@ function LegDetail({ leg, train, loading, navigate }: { leg: TripLeg; train: Tra
       ) : (
         <div className="mb-4">
           <JourneyStopList
+            key={`${leg.boarding.code}-${leg.alighting.code}`}
             stops={train.stops}
             journeyRange={journeyRange}
             renderStop={stop => (

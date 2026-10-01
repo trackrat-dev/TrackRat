@@ -245,6 +245,7 @@ export function TrainDetailsPage() {
       <h3 className="text-xl font-semibold mb-4 text-text-primary">Stops</h3>
 
       <JourneyStopList
+        key={`${train.train_id}-${train.journey_date}-${from}-${to}`}
         stops={train.stops}
         journeyRange={journeyRange}
         renderStop={(stop) => (
