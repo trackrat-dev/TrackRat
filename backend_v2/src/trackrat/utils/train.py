@@ -9,8 +9,11 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm.base import NO_VALUE
+from structlog import get_logger
 
 from trackrat.utils.time import normalize_to_et
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from trackrat.models.database import JourneyStop, TrainJourney
@@ -499,3 +502,61 @@ def normalize_njt_destination(destination: str | None) -> str:
         NJT_DESTINATION_SEC_MARKER_PATTERN, "", destination.strip().lower()
     )
     return re.sub(NJT_DESTINATION_TRANSIT_CENTER_PATTERN, "", normalized)
+
+
+# NJT LINE field prefixes → canonical 2-char codes.
+# The schedule API returns full line names (e.g., "Northeast Corridor"); the
+# real-time discovery API returns short codes (e.g., "NEC") for some lines and
+# abbreviated names for others ("No Jersey Coast", "Atl. City Line") — the
+# latter must resolve to the same code as the schedule row or the two rows
+# for one physical train never dedupe (issue #1839).
+_NJT_LINE_NAME_PREFIXES: list[tuple[str, str]] = [
+    ("northeast", "NE"),
+    ("north jersey", "NC"),
+    ("no jersey", "NC"),
+    ("gladstone", "GL"),
+    ("montclair", "MO"),
+    ("boonton", "MO"),
+    ("morris", "ME"),
+    ("raritan", "RV"),
+    ("pascack", "PV"),
+    ("bergen", "BE"),
+    ("main", "MA"),
+    ("atl", "AC"),  # "Atlantic City Rail Line" and "Atl. City Line"
+    ("princeton", "PR"),
+]
+
+# NJT's own short line codes (``LINECODE`` on ``getTrainStopList``, and some
+# real-time ``LINE`` values) that differ from TrackRat's canonical codes.
+# Without this, journey collection overwrote a Main Line train's "MA" with
+# "ML" while its schedule-API twin kept "MA", so the two rows for one physical
+# train never shared a line code and both showed on the board (issue #1839).
+NJT_LINECODE_ALIASES: dict[str, str] = {
+    "ML": "MA",  # Main Line
+    "BC": "BE",  # Bergen County Line
+    "GS": "GL",  # Gladstone Branch
+    "MC": "MO",  # Montclair-Boonton Line
+}
+
+
+def parse_njt_line_code(line: str) -> str:
+    """Extract canonical 2-char NJT line code from the LINE field.
+
+    The NJT schedule API returns full line names (e.g., "Northeast Corridor")
+    while the real-time discovery API returns short codes (e.g., "NEC").
+    This function handles both formats.
+    """
+    if not line:
+        return ""
+    # Short codes (≤3 chars) from real-time API — map NJT's own codes,
+    # otherwise truncate to 2
+    if len(line) <= 3:
+        return NJT_LINECODE_ALIASES.get(line, line[:2])
+    # Full names from schedule API — match by known prefix
+    lower = line.lower()
+    for prefix, code in _NJT_LINE_NAME_PREFIXES:
+        if lower.startswith(prefix):
+            return code
+    # Unknown — log for investigation, fall back to truncation
+    logger.warning("unknown_njt_line_name", line=line, fallback=line[:2])
+    return line[:2]

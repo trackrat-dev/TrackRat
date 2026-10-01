@@ -20,52 +20,9 @@ from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.locks import acquire_njt_journey_lock
 from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import now_et, parse_njt_time, validate_journey_date
+from trackrat.utils.train import parse_njt_line_code
 
 logger = get_logger(__name__)
-
-# NJT LINE field prefixes → canonical 2-char codes.
-# The schedule API returns full line names (e.g., "Northeast Corridor"); the
-# real-time discovery API returns short codes (e.g., "NEC") for some lines and
-# abbreviated names for others ("No Jersey Coast", "Atl. City Line") — the
-# latter must resolve to the same code as the schedule row or the two rows
-# for one physical train never dedupe (issue #1839).
-_NJT_LINE_NAME_PREFIXES: list[tuple[str, str]] = [
-    ("northeast", "NE"),
-    ("north jersey", "NC"),
-    ("no jersey", "NC"),
-    ("gladstone", "GL"),
-    ("montclair", "MO"),
-    ("boonton", "MO"),
-    ("morris", "ME"),
-    ("raritan", "RV"),
-    ("pascack", "PV"),
-    ("bergen", "BE"),
-    ("main", "MA"),
-    ("atl", "AC"),  # "Atlantic City Rail Line" and "Atl. City Line"
-    ("princeton", "PR"),
-]
-
-
-def parse_njt_line_code(line: str) -> str:
-    """Extract canonical 2-char NJT line code from the LINE field.
-
-    The NJT schedule API returns full line names (e.g., "Northeast Corridor")
-    while the real-time discovery API returns short codes (e.g., "NEC").
-    This function handles both formats.
-    """
-    if not line:
-        return ""
-    # Short codes (≤3 chars) from real-time API — truncate to 2
-    if len(line) <= 3:
-        return line[:2]
-    # Full names from schedule API — match by known prefix
-    lower = line.lower()
-    for prefix, code in _NJT_LINE_NAME_PREFIXES:
-        if lower.startswith(prefix):
-            return code
-    # Unknown — log for investigation, fall back to truncation
-    logger.warning("unknown_njt_line_name", line=line, fallback=line[:2])
-    return line[:2]
 
 
 class NJTScheduleCollector:
@@ -404,7 +361,11 @@ class NJTScheduleCollector:
             ):
                 existing_journey.scheduled_departure = scheduled_departure
             existing_journey.destination = destination
-            existing_journey.line_code = parse_njt_line_code(line)
+            # Once the stop list has run, line_code came from the train's own
+            # LINECODE — authoritative where the schedule API's LINE is not
+            # ("Main/Bergen County Line" covers two lines; issue #1839).
+            if not existing_journey.has_complete_journey:
+                existing_journey.line_code = parse_njt_line_code(line)
             existing_journey.line_name = line
             existing_journey.last_updated_at = now_et()
 
@@ -690,6 +651,12 @@ class NJTScheduleCollector:
 
             stops.append(journey_stop)
             session.add(journey_stop)
+
+        # The schedule API's LINE can name two lines at once ("Main/Bergen
+        # County Line" -> MA for Bergen trains too); the per-train LINECODE
+        # says which one this train runs on (issue #1839).
+        if train_data.LINECODE:
+            journey.line_code = parse_njt_line_code(train_data.LINECODE)
 
         # Update journey metadata
         if stops:

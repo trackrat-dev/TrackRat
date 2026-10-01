@@ -795,6 +795,74 @@ class TestDedupeScheduledObservedCollisions:
         print(f"kept: {[(d.train_id, d.line.code) for d in result]}")
         assert len(result) == 2
 
+    def test_issue_1839_main_and_bergen_linecodes(self):
+        """Production HB -> Suffern 12:39 (#1839): Main Line 9147 stored as
+        NJT's 'ML' and Bergen 1155 as 'BC' (raw LINECODE), each beside a
+        schedule-API twin. Both twins must drop; neither real train may."""
+        time = ET.localize(datetime(2026, 10, 1, 12, 39))
+
+        deps = [
+            self._create_departure(
+                train_id="9147",
+                line_code="ML",
+                scheduled_time=time,
+                destination="Suffern",
+            ),
+            self._create_departure(
+                train_id="1155",
+                line_code="BC",
+                scheduled_time=time,
+                destination="Suffern -SEC",
+            ),
+            self._create_departure(
+                train_id="2125",
+                line_code="BE",
+                scheduled_time=time,
+                observation_type="SCHEDULED",
+                destination="SUFFERN",
+            ),
+            self._create_departure(
+                train_id="2126",
+                line_code="MA",
+                scheduled_time=time,
+                observation_type="SCHEDULED",
+                destination="SUFFERN",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        kept = sorted(d.train_id for d in result)
+        print(f"kept: {kept}")
+        assert kept == ["1155", "9147"]
+
+    def test_bergen_observed_does_not_suppress_main_scheduled(self):
+        """Line scoping still holds after canonicalization: an OBSERVED Bergen
+        train ('BC' -> BE) must not swallow a SCHEDULED Main train at the
+        same minute to the same terminus — they are different trains."""
+        time = ET.localize(datetime(2026, 10, 1, 12, 39))
+
+        deps = [
+            self._create_departure(
+                train_id="1155",
+                line_code="BC",
+                scheduled_time=time,
+                destination="Suffern",
+            ),
+            self._create_departure(
+                train_id="2126",
+                line_code="MA",
+                scheduled_time=time,
+                observation_type="SCHEDULED",
+                destination="SUFFERN",
+            ),
+        ]
+
+        result = self.service._dedupe_scheduled_observed_collisions(deps)
+
+        print(f"kept: {[(d.train_id, d.line.code) for d in result]}")
+        assert len(result) == 2
+
     def test_does_not_collapse_two_observed_rows(self):
         """Two OBSERVED rows at same line/time are presumed real distinct trains."""
         time = ET.localize(datetime(2026, 5, 17, 12, 30))

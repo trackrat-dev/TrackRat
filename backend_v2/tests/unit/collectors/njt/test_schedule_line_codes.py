@@ -8,7 +8,7 @@ The parse_njt_line_code function handles both formats.
 
 import pytest
 
-from trackrat.collectors.njt.schedule import parse_njt_line_code
+from trackrat.utils.train import parse_njt_line_code
 
 
 class TestParseNjtLineCode:
@@ -132,3 +132,20 @@ class TestParseNjtLineCode:
         result = parse_njt_line_code("Atl. City Line")
         assert result == "AC", f"'Atl. City Line' -> {result!r}, expected 'AC'"
         assert result == parse_njt_line_code("Atlantic City Rail Line")
+
+    # --- NJT's own LINECODE values (getTrainStopList, issue #1839) ---
+
+    @pytest.mark.parametrize(
+        ("linecode", "expected"),
+        [("ML", "MA"), ("BC", "BE"), ("GS", "GL"), ("MC", "MO")],
+    )
+    def test_njt_linecode_aliases(self, linecode: str, expected: str):
+        """Journey collection used to store these raw, so an OBSERVED Main
+        Line row ('ML') never shared a line code with its schedule twin ('MA')."""
+        result = parse_njt_line_code(linecode)
+        assert result == expected, f"{linecode!r} -> {result!r}, expected {expected!r}"
+
+    @pytest.mark.parametrize("linecode", ["NE", "NC", "RV", "PV", "ME", "AC"])
+    def test_njt_linecodes_already_canonical(self, linecode: str):
+        """Codes NJT and TrackRat agree on pass through unchanged."""
+        assert parse_njt_line_code(linecode) == linecode

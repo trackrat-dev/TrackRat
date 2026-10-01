@@ -17,7 +17,6 @@ from structlog import get_logger
 from trackrat.collectors.njt.client import NJTransitClient, TrainNotFoundError
 from trackrat.collectors.njt.journey import JourneyCollector as NJTJourneyCollector
 from trackrat.collectors.njt.journey import normalize_njt_stop_times
-from trackrat.collectors.njt.schedule import parse_njt_line_code
 from trackrat.config.route_topology import find_route_for_segment
 from trackrat.config.stations import (
     SEPTA_METRO_SCHEDULE_ONLY_LINE_CODES,
@@ -45,12 +44,14 @@ from trackrat.utils.time import (
     safe_datetime_subtract,
 )
 from trackrat.utils.train import (
+    NJT_LINECODE_ALIASES,
     effective_njt_updated_times,
     get_effective_observation_type,
     is_amtrak_train,
     is_njt_stop_cancelled,
     njt_cancellation_reason,
     normalize_njt_destination,
+    parse_njt_line_code,
     resolve_actual_departure,
     stop_sequence_sort_key,
     terminal_stop_index,
@@ -133,6 +134,8 @@ NJT_LINE_CANONICALIZATION: dict[str, str] = {
     "Pr": "PR",
     # Truncated real-time "No Jersey Coast" — NJCL, not NEC (issue #1839)
     "No": "NC",
+    # NJT's own codes written raw by journey collection before #1839
+    **NJT_LINECODE_ALIASES,
 }
 
 # Data sources that have real-time discovery systems.

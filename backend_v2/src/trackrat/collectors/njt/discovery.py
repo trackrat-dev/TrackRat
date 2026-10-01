@@ -14,7 +14,6 @@ from structlog import get_logger
 
 from trackrat.collectors.base import BaseDiscoveryCollector
 from trackrat.collectors.njt.client import NJTransitClient
-from trackrat.collectors.njt.schedule import parse_njt_line_code
 from trackrat.config.stations import DISCOVERY_STATIONS
 from trackrat.db.engine import get_session
 from trackrat.models.database import DiscoveryRun, JourneyStop, TrainJourney
@@ -27,6 +26,7 @@ from trackrat.utils.train import (
     is_njt_stop_cancelled,
     njt_cancellation_reason,
     normalize_njt_destination,
+    parse_njt_line_code,
 )
 
 logger = get_logger(__name__)

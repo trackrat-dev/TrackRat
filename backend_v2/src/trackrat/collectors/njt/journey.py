@@ -38,6 +38,7 @@ from trackrat.utils.train import (
     is_njt_stop_cancelled,
     njt_cancellation_reason,
     normalize_njt_destination,
+    parse_njt_line_code,
     resolve_actual_departure,
 )
 
@@ -351,19 +352,23 @@ class JourneyCollector:
         # between discovery (e.g., "No") and journey details (e.g., "NC")
         # The destination and departure time are sufficient to identify the journey
 
-        # Update line code if API provides a different one (likely more accurate)
-        if (
-            api_train_data.LINECODE
-            and api_train_data.LINECODE != stored_journey.line_code
-        ):
+        # Update line code if API provides a different one (likely more
+        # accurate), canonicalized so NJT's own codes ("ML", "BC", ...) don't
+        # replace TrackRat's ("MA", "BE", ...) (issue #1839)
+        api_line_code = (
+            parse_njt_line_code(api_train_data.LINECODE)
+            if api_train_data.LINECODE
+            else None
+        )
+        if api_line_code and api_line_code != stored_journey.line_code:
             logger.info(
                 "updating_line_code",
                 journey_id=stored_journey.id,
                 train_id=stored_journey.train_id,
                 old_line_code=stored_journey.line_code,
-                new_line_code=api_train_data.LINECODE,
+                new_line_code=api_line_code,
             )
-            stored_journey.line_code = api_train_data.LINECODE
+            stored_journey.line_code = api_line_code
 
         # Signal 2: First stop departure time should match (with tolerance)
         # IMPORTANT: If the journey doesn't have complete data yet, skip this check
@@ -590,9 +595,7 @@ class JourneyCollector:
             destinations_matched=f"{stored_dest_normalized} == {api_dest_normalized}",
             departure_time_check_skipped=not stored_journey.has_complete_journey,
             line_code_updated=(
-                (api_train_data.LINECODE != stored_journey.line_code)
-                if api_train_data.LINECODE
-                else False
+                api_line_code is not None and api_line_code != stored_journey.line_code
             ),
         )
 
