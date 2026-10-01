@@ -6,6 +6,7 @@ import { usePolling } from '../utils/usePolling';
 import { TrainDetailsSkeleton } from '../components/Skeleton';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { StopCard } from '../components/StopCard';
+import { JourneyStopList } from '../components/JourneyStopList';
 import { TrackPredictionBar } from '../components/TrackPredictionBar';
 import { ShareButton } from '../components/ShareButton';
 import { DelayForecastCard } from '../components/DelayForecastCard';
@@ -99,44 +100,13 @@ export function TrainDetailsPage() {
     };
   }, [trainId, from, to, journeyDate, dataSource]);
 
-  // Filter stops based on user's journey (from/to params)
+  // Trim stops to the user's journey (from/to params)
   // Must be called before early returns to maintain hook order
-  const { displayableStops, hasPreviousStops, hasLaterStops } = useMemo(() => {
-    if (!train || !from || !to) {
-      return {
-        displayableStops: train?.stops || [],
-        hasPreviousStops: false,
-        hasLaterStops: false
-      };
-    }
-
-    const stops = train.stops;
-
-    // Find origin station index by station code (case-insensitive)
-    const originIndex = stops.findIndex(
-      stop => stop.station.code.toUpperCase() === from.toUpperCase()
-    );
-
-    // Find destination station index by station code (case-insensitive)
-    const destinationIndex = stops.findIndex(
-      stop => stop.station.code.toUpperCase() === to.toUpperCase()
-    );
-
-    // If both indices found and valid, filter to inclusive range
-    if (originIndex !== -1 && destinationIndex !== -1 && originIndex <= destinationIndex) {
-      return {
-        displayableStops: stops.slice(originIndex, destinationIndex + 1),
-        hasPreviousStops: originIndex > 0,
-        hasLaterStops: destinationIndex < stops.length - 1
-      };
-    }
-
-    // Fallback: show all stops
-    return {
-      displayableStops: stops,
-      hasPreviousStops: false,
-      hasLaterStops: false
-    };
+  const journeyRange = useMemo<[number, number] | null>(() => {
+    if (!train || !from || !to) return null;
+    const originIndex = train.stops.findIndex(s => s.station.code.toUpperCase() === from.toUpperCase());
+    const destinationIndex = train.stops.findIndex(s => s.station.code.toUpperCase() === to.toUpperCase());
+    return originIndex !== -1 && originIndex <= destinationIndex ? [originIndex, destinationIndex] : null;
   }, [train, from, to]);
 
   useEffect(() => {
@@ -274,14 +244,10 @@ export function TrainDetailsPage() {
 
       <h3 className="text-xl font-semibold mb-4 text-text-primary">Stops</h3>
 
-      {hasPreviousStops && (
-        <div className="mb-3 p-4 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl text-center text-text-muted text-sm">
-          Train has previous stops
-        </div>
-      )}
-
-      <div className="space-y-3">
-        {displayableStops.map((stop) => (
+      <JourneyStopList
+        stops={train.stops}
+        journeyRange={journeyRange}
+        renderStop={(stop) => (
           <StopCard
             key={`${stop.station.code}-${stop.stop_sequence}`}
             stop={stop}
@@ -289,14 +255,8 @@ export function TrainDetailsPage() {
             isDestination={to ? stop.station.code.toUpperCase() === to.toUpperCase() : false}
             currentLine={train.data_source === 'SUBWAY' ? train.line.code : undefined}
           />
-        ))}
-      </div>
-
-      {hasLaterStops && (
-        <div className="mt-3 p-4 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl text-center text-text-muted text-sm">
-          Train has later stops
-        </div>
-      )}
+        )}
+      />
 
       {/* Historical performance */}
       <div className="mt-6">

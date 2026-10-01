@@ -183,32 +183,6 @@ private struct LegDetailSection: View {
     let isLoading: Bool
     let onViewFullTrain: () -> Void
 
-    private var displayableStops: [StopV2] {
-        guard let stops = train?.stops else { return [] }
-        let fromCode = leg.boarding.code
-        let toCode = leg.alighting.code
-        let originIdx = stops.firstIndex { Stations.areEquivalentStations($0.stationCode, fromCode) }
-        let destIdx = stops.firstIndex { Stations.areEquivalentStations($0.stationCode, toCode) }
-        if let start = originIdx, let end = destIdx, start <= end {
-            return Array(stops[start...end])
-        }
-        return stops
-    }
-
-    private var hasPreviousStops: Bool {
-        guard let stops = train?.stops,
-              let idx = stops.firstIndex(where: { Stations.areEquivalentStations($0.stationCode, leg.boarding.code) })
-        else { return false }
-        return idx > 0
-    }
-
-    private var hasLaterStops: Bool {
-        guard let stops = train?.stops,
-              let idx = stops.firstIndex(where: { Stations.areEquivalentStations($0.stationCode, leg.alighting.code) })
-        else { return false }
-        return idx < stops.count - 1
-    }
-
     private var lineColor: Color {
         Color(hex: leg.line.color)
     }
@@ -286,23 +260,12 @@ private struct LegDetailSection: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 24)
-            } else if let train = train, !displayableStops.isEmpty {
+            } else if let train = train, !train.stops.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
-                    if hasPreviousStops {
-                        HStack {
-                            Image(systemName: "ellipsis")
-                                .font(.caption)
-                                .foregroundColor(Color(white: 0.55))
-                            Text("Train has previous stops")
-                                .font(.caption)
-                                .foregroundColor(Color(white: 0.55))
-                                .italic()
-                        }
-                        .padding(.bottom, 4)
-                        .padding(.horizontal, 20)
-                    }
-
-                    ForEach(displayableStops) { stop in
+                    JourneyStopList(
+                        stops: train.stops,
+                        journeyRange: train.stops.journeyRange(from: leg.boarding.code, to: leg.alighting.code)
+                    ) { stop in
                         StopRowV2(
                             stop: stop,
                             stationDisplayName: Stations.stopDisplayName(
@@ -319,20 +282,6 @@ private struct LegDetailSection: View {
                             departureStationCode: leg.boarding.code,
                             shouldShowJourneyPredictions: false
                         )
-                    }
-
-                    if hasLaterStops {
-                        HStack {
-                            Image(systemName: "ellipsis")
-                                .font(.caption)
-                                .foregroundColor(Color(white: 0.55))
-                            Text("Train has later stops")
-                                .font(.caption)
-                                .foregroundColor(Color(white: 0.55))
-                                .italic()
-                        }
-                        .padding(.top, 4)
-                        .padding(.horizontal, 20)
                     }
                 }
                 .padding(.bottom, 12)
