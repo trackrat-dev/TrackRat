@@ -127,6 +127,8 @@ def _make_train_data_with_invalid_stop() -> MagicMock:
     bad_stop.TRACK = None
 
     train_data = MagicMock()
+
+    train_data.LINECODE = "NE"  # required on the real NJTransitTrainData
     train_data.STOPS = [bad_stop]
     return train_data
 
@@ -185,6 +187,7 @@ class TestStopCollectionSurvivesFlushFailure:
         good_stop.SCHED_DEP_DATE = base.strftime(NJT_TIME_FORMAT)
         good_stop.TRACK = None
         good_train_data = MagicMock()
+        good_train_data.LINECODE = "NE"  # required on the real NJTransitTrainData
         good_train_data.STOPS = [good_stop]
 
         # First call (train 1234) returns bad data and fails; second call

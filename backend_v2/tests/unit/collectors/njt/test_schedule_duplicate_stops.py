@@ -116,6 +116,7 @@ def schedule_collector():
 def _make_train_data_with_stops(stops: list[MagicMock]) -> MagicMock:
     """Build a mock train_data object matching NJT API schedule response."""
     train_data = MagicMock()
+    train_data.LINECODE = "ME"  # required on the real NJTransitTrainData
     train_data.STOPS = stops
     return train_data
 

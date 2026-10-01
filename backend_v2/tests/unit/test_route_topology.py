@@ -860,7 +860,7 @@ class TestNjtLineCodeConsistency:
 
     def test_schedule_collector_codes_match_topology(self):
         """Every code from parse_njt_line_code (full names) must be in some NJT route's line_codes."""
-        from trackrat.collectors.njt.schedule import parse_njt_line_code
+        from trackrat.utils.train import parse_njt_line_code
 
         test_names = [
             ("Northeast Corridor", "NE"),
@@ -874,6 +874,14 @@ class TestNjtLineCodeConsistency:
             ("Main Line", "MA"),
             ("Atlantic City Rail Line", "AC"),
             ("Princeton Shuttle", "PR"),
+            # Real-time discovery abbreviations (issue #1839)
+            ("No Jersey Coast", "NC"),
+            ("Atl. City Line", "AC"),
+            # NJT getTrainStopList LINECODE values (issue #1839)
+            ("ML", "MA"),
+            ("BC", "BE"),
+            ("GS", "GL"),
+            ("MC", "MO"),
         ]
         for name, expected_code in test_names:
             code = parse_njt_line_code(name)
