@@ -237,8 +237,7 @@ struct TrainDetailsView: View {
                                 selectedDestination: appState.selectedDestination,
                                 selectedDestinationCode: appState.destinationStationCode,
                                 displayableTrainStops: viewModel.displayableTrainStops,
-                                hasPreviousDisplayStops: viewModel.hasPreviousDisplayStops,
-                                hasMoreDisplayStops: viewModel.hasMoreDisplayStops,
+                                journeyStopRange: viewModel.journeyStopRange,
                                 journeyProgressPercentage: viewModel.journeyProgressPercentage,
                                 journeyStopsCompleted: viewModel.journeyStopsCompleted,
                                 journeyTotalStops: viewModel.journeyTotalStops,
@@ -352,8 +351,7 @@ struct CombinedDetailsCard: View {
     @EnvironmentObject private var appState: AppState
     // ViewModel provided properties
     let displayableTrainStops: [StopV2]
-    let hasPreviousDisplayStops: Bool
-    let hasMoreDisplayStops: Bool
+    let journeyStopRange: ClosedRange<Int>?
     let journeyProgressPercentage: Int
     let journeyStopsCompleted: Int
     let journeyTotalStops: Int
@@ -529,21 +527,7 @@ struct CombinedDetailsCard: View {
             // Stops section
             VStack(alignment: .leading, spacing: 12) {
                 if !displayableTrainStops.isEmpty {
-                    if hasPreviousDisplayStops {
-                        HStack {
-                            Image(systemName: "ellipsis")
-                                .font(.caption)
-                                .foregroundColor(Color(white: 0.55))
-                            Text("Train has previous stops")
-                                .font(.caption)
-                                .foregroundColor(Color(white: 0.55))
-                                .italic()
-                        }
-                        .padding(.bottom, 4)
-                        .padding(.horizontal, 20)
-                    }
-                    
-                    ForEach(displayableTrainStops) { stop in
+                    JourneyStopList(stops: train.stops ?? [], journeyRange: journeyStopRange) { stop in
                         let isDepartureStop = appState.departureStationCode != nil &&
                             Stations.areEquivalentStations(stop.stationCode, appState.departureStationCode!)
                         StopRowV2(
@@ -571,21 +555,6 @@ struct CombinedDetailsCard: View {
                             path: $appState.navigationPath
                         )
                     }
-                    
-                    if hasMoreDisplayStops {
-                        HStack {
-                            Image(systemName: "ellipsis")
-                                .font(.caption)
-                                .foregroundColor(Color(white: 0.55))
-                            Text("Train has later stops")
-                                .font(.caption)
-                                .foregroundColor(Color(white: 0.55))
-                                .italic()
-                        }
-                        .padding(.top, 4)
-                        .padding(.horizontal, 20)
-                    }
-
                 } else if isLoadingStops {
                     // Show loading indicator while fetching stops data
                     HStack(spacing: 8) {
@@ -657,6 +626,58 @@ struct ScheduledTrainInfoBanner: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.08))
         .cornerRadius(8)
+    }
+}
+
+// MARK: - Journey Stop List
+/// A train's stops trimmed to the rider's journey, with tappable "previous" /
+/// "later" toggles that reveal the trimmed ends (issue #1840).
+struct JourneyStopList<Row: View>: View {
+    let stops: [StopV2]
+    /// Boarding...alighting indices into `stops`; nil shows every stop.
+    let journeyRange: ClosedRange<Int>?
+    @ViewBuilder let row: (StopV2) -> Row
+
+    @State private var showPrevious = false
+    @State private var showLater = false
+
+    /// Ignores a range that no longer fits `stops` (e.g. mid-refresh).
+    private var range: ClosedRange<Int> {
+        if let journeyRange, journeyRange.upperBound < stops.count { return journeyRange }
+        return 0...(stops.count - 1)
+    }
+
+    var body: some View {
+        if !stops.isEmpty {
+            if range.lowerBound > 0 {
+                toggle(showPrevious ? "Hide previous stops" : "Train has previous stops", isOn: $showPrevious)
+                    .padding(.bottom, 4)
+            }
+            ForEach(stops[(showPrevious ? 0 : range.lowerBound)...(showLater ? stops.count - 1 : range.upperBound)]) { stop in
+                row(stop)
+            }
+            if range.upperBound < stops.count - 1 {
+                toggle(showLater ? "Hide later stops" : "Train has later stops", isOn: $showLater)
+                    .padding(.top, 4)
+            }
+        }
+    }
+
+    private func toggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        Button {
+            withAnimation { isOn.wrappedValue.toggle() }
+        } label: {
+            HStack {
+                Image(systemName: isOn.wrappedValue ? "chevron.up" : "ellipsis")
+                    .font(.caption)
+                Text(title)
+                    .font(.caption)
+                    .italic()
+            }
+            .foregroundColor(Color(white: 0.55))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 20)
     }
 }
 
@@ -1170,36 +1191,22 @@ class TrainDetailsViewModel: ObservableObject {
 
     // Display properties
     @Published var displayableTrainStops: [StopV2] = []
-    
+    /// Origin...destination indices into `train.stops`; nil when unknown, so every stop shows.
+    @Published var journeyStopRange: ClosedRange<Int>?
+
     private func updateDisplayableTrainStops() {
         guard let stops = train?.stops,
               let originStationCode = currentOriginStationCode,
               let destinationStationCode = currentDestinationStationCode else {
+            journeyStopRange = nil
             displayableTrainStops = train?.stops ?? []
             return
         }
 
-        // Find indices of origin and destination stops by station CODE (reliable)
-        let originIndex = stops.firstIndex { stop in
-            Stations.areEquivalentStations(stop.stationCode, originStationCode)
-        }
-
-        let destinationIndex = stops.firstIndex { stop in
-            Stations.areEquivalentStations(stop.stationCode, destinationStationCode)
-        }
-
-        // If we found both indices, return the slice
-        if let startIdx = originIndex, let endIdx = destinationIndex, startIdx <= endIdx {
-            // Include both origin and destination (endIdx inclusive)
-            displayableTrainStops = Array(stops[startIdx...endIdx])
-        } else {
-            // Fallback to all stops if we can't find the stations or if indices are invalid
-            displayableTrainStops = stops
-        }
+        journeyStopRange = stops.journeyRange(from: originStationCode, to: destinationStationCode)
+        displayableTrainStops = journeyStopRange.map { Array(stops[$0]) } ?? stops
     }
-    
-    @Published var hasPreviousDisplayStops: Bool = false
-    @Published var hasMoreDisplayStops: Bool = false
+
     @Published var journeyProgressPercentage: Int = 0
     @Published var journeyStopsCompleted: Int = 0
     @Published var journeyTotalStops: Int = 0
@@ -1207,37 +1214,6 @@ class TrainDetailsViewModel: ObservableObject {
     private func updateComputedProperties() {
         updateDisplayableTrainStops()
         updateJourneyProgress()
-        updateDisplayStopFlags()
-    }
-    
-    private func updateDisplayStopFlags() {
-        guard let stops = train?.stops,
-              let originStationCode = currentOriginStationCode,
-              let destinationStationCode = currentDestinationStationCode else {
-            hasPreviousDisplayStops = false
-            hasMoreDisplayStops = false
-            return
-        }
-
-        // Find the origin index by station CODE
-        let originIndex = stops.firstIndex { stop in
-            Stations.areEquivalentStations(stop.stationCode, originStationCode)
-        }
-
-        // Update hasPreviousDisplayStops
-        hasPreviousDisplayStops = originIndex != nil && originIndex! > 0
-
-        // Find destination index by station CODE
-        let destinationIndex = stops.firstIndex { stop in
-            Stations.areEquivalentStations(stop.stationCode, destinationStationCode)
-        }
-
-        // Update hasMoreDisplayStops
-        if let endIdx = destinationIndex, let startIdx = originIndex, startIdx <= endIdx {
-            hasMoreDisplayStops = endIdx < stops.count - 1
-        } else {
-            hasMoreDisplayStops = false
-        }
     }
     
     private func updateJourneyProgress() {

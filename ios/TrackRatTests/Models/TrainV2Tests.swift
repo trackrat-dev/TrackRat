@@ -1949,4 +1949,35 @@ class TrainV2Tests: XCTestCase {
             destinationStationCode: "PH"
         ), 1, "A sequenced two-stop journey ending at its destination has a real terminal")
     }
+
+    // MARK: - [StopV2].journeyRange (Issue #1840)
+
+    /// Train 1212 from the issue: Waldwick → Hoboken, rider boarded at Passaic.
+    private func makeRoute(_ codes: [String]) -> [StopV2] {
+        codes.enumerated().map { makeStop(stationCode: $1, sequence: $0 + 1, scheduledDeparture: nil) }
+    }
+
+    func testJourneyRange_midRouteJourney_returnsBoardingThroughAlighting() {
+        let stops = makeRoute(["WK", "RW", "PS", "DL", "HB"])
+        let range = stops.journeyRange(from: "PS", to: "HB")
+        print("🐀 journeyRange PS→HB over \(stops.map(\.stationCode)) = \(String(describing: range))")
+        XCTAssertEqual(range, 2...4, "Stops before Passaic are the hidden 'previous stops'")
+    }
+
+    func testJourneyRange_matchesEquivalentStationCodes() {
+        // New Rochelle is "NRO" on Amtrak and "MNRC" on Metro-North.
+        XCTAssertTrue(Stations.areEquivalentStations("MNRC", "NRO"), "Fixture premise: MNRC ≡ NRO")
+        let stops = makeRoute(["NY", "NRO", "STM", "BOS"])
+        let range = stops.journeyRange(from: "MNRC", to: "BOS")
+        print("🐀 journeyRange MNRC→BOS over \(stops.map(\.stationCode)) = \(String(describing: range))")
+        XCTAssertEqual(range, 1...3, "An equivalent origin code must match the Amtrak stop")
+    }
+
+    func testJourneyRange_missingOrReversedStops_isNil() {
+        let stops = makeRoute(["WK", "PS", "HB"])
+        print("🐀 journeyRange missing/reversed over \(stops.map(\.stationCode))")
+        XCTAssertNil(stops.journeyRange(from: "PS", to: "NY"), "Unknown destination shows every stop")
+        XCTAssertNil(stops.journeyRange(from: "XX", to: "HB"), "Unknown origin shows every stop")
+        XCTAssertNil(stops.journeyRange(from: "HB", to: "PS"), "Reversed journey shows every stop")
+    }
 }

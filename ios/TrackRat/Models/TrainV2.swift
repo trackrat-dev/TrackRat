@@ -660,6 +660,18 @@ struct StopV2: Identifiable, Codable {
     }
 }
 
+extension Array where Element == StopV2 {
+    /// Indices of the rider's boarding...alighting stops, matched by equivalent
+    /// station code. Nil when either stop is missing or they are out of order,
+    /// in which case callers show every stop.
+    func journeyRange(from originCode: String, to destinationCode: String) -> ClosedRange<Int>? {
+        guard let start = firstIndex(where: { Stations.areEquivalentStations($0.stationCode, originCode) }),
+              let end = firstIndex(where: { Stations.areEquivalentStations($0.stationCode, destinationCode) }),
+              start <= end else { return nil }
+        return start...end
+    }
+}
+
 struct RawStopStatus: Codable {
     let amtrakStatus: String?
     let njtDepartedFlag: String?
