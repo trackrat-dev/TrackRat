@@ -13,6 +13,9 @@ struct OnboardingView: View {
     @State private var isPickingOtherStation = false
     @State private var stationBeingEdited: StationType? = nil
     @State private var hasLoadedExistingStations = false
+    /// Codes pre-filled from storage. Switching systems on step 1 never drops
+    /// these: they are the user's saved stations, not choices made this session.
+    @State private var storedStationCodes: Set<String> = []
     @State private var isCompletingOnboarding = false
     @State private var hasClearedPreviousData = false
     @State private var showSystemSelection = true
@@ -117,7 +120,7 @@ struct OnboardingView: View {
                 }
                 .onAppear {
                     // Trigger confetti and welcome animation on first onboarding
-                    if !isRepeating && !showConfetti {
+                    if !isRepeating && !hasCompletedOnboarding && !showConfetti {
                         showConfetti = true
                         UINotificationFeedbackGenerator().notificationOccurred(.success)
                         withAnimation(.spring(response: 0.5, dampingFraction: 0.6)) {
@@ -286,11 +289,11 @@ struct OnboardingView: View {
             // Title and the reason any of this is worth doing
             VStack(spacing: 12) {
                 if !isRepeating {
-                    Text("Welcome!")
+                    Text(hasCompletedOnboarding ? "Welcome back" : "Welcome!")
                         .font(.largeTitle)
                         .fontWeight(.bold)
                         .foregroundColor(TrackRatTheme.Colors.onSurface)
-                        .scaleEffect(welcomeTextScale)
+                        .scaleEffect(hasCompletedOnboarding ? 1.0 : welcomeTextScale)
                 }
 
                 Text("Set your home and work stations and TrackRat\nhas your commute ready when you open the app")
@@ -420,19 +423,23 @@ struct OnboardingView: View {
         }
     }
 
-    /// Drops selections the given systems don't serve.
+    /// Drops selections the given systems don't serve, except those in `keeping`.
     ///
     /// Stepping back to the system picker and choosing a different system would
     /// otherwise carry stations forward that the picker itself no longer offers,
-    /// and save them under a system that doesn't run there.
+    /// and save them under a system that doesn't run there. Stations loaded from
+    /// storage are passed as `keeping`: when onboarding reappears for a returning
+    /// user (e.g. a free user deselecting their only system to switch), picking
+    /// the new system must not delete the stations they saved under the old one.
     static func stationsServed(
         by systems: Set<TrainSystem>,
         home: Station?,
         work: Station?,
-        favorites: [Station]
+        favorites: [Station],
+        keeping: Set<String> = []
     ) -> (home: Station?, work: Station?, favorites: [Station]) {
         func isServed(_ station: Station) -> Bool {
-            Stations.isStationVisible(station.code, withSystems: systems)
+            keeping.contains(station.code) || Stations.isStationVisible(station.code, withSystems: systems)
         }
 
         return (
@@ -447,7 +454,8 @@ struct OnboardingView: View {
             by: appState.selectedSystems,
             home: homeStation,
             work: workStation,
-            favorites: otherFavorites
+            favorites: otherFavorites,
+            keeping: storedStationCodes
         )
         homeStation = served.home
         workStation = served.work
@@ -471,17 +479,6 @@ struct OnboardingView: View {
         hasClearedPreviousData = true
 
         Log.info("Clearing all previous data for fresh onboarding")
-        clearPersistedData()
-
-        // Clear local state variables to ensure fresh start
-        homeStation = nil
-        workStation = nil
-        otherFavorites = []
-    }
-
-    /// Clears persisted stations without touching the current UI selections, so
-    /// saving can write the user's new choices over a clean slate.
-    private func clearPersistedData() {
         RatSenseService.shared.clearAllData()
 
         for station in Array(appState.favoriteStations) {
@@ -490,6 +487,11 @@ struct OnboardingView: View {
 
         // Force reload favorites to ensure UI reflects cleared state
         appState.loadFavoriteStations()
+
+        // Clear local state variables to ensure fresh start
+        homeStation = nil
+        workStation = nil
+        otherFavorites = []
     }
 
     private func loadExistingStationsIfNeeded() {
@@ -512,6 +514,7 @@ struct OnboardingView: View {
         otherFavorites = appState.favoriteStations
             .filter { $0.id != homeCode && $0.id != workCode }
             .map { Station(code: $0.id, name: $0.name) }
+        storedStationCodes = Set([homeCode, workCode].compactMap { $0 } + otherFavorites.map(\.code))
 
         Log.debug("Loaded existing stations: home=\(homeCode ?? "none"), work=\(workCode ?? "none"), favorites=\(otherFavorites.count)")
     }
@@ -521,36 +524,54 @@ struct OnboardingView: View {
         guard !isCompletingOnboarding else { return }
         isCompletingOnboarding = true
 
-        // When the screen was pre-filled from storage, it is now the source of
-        // truth — clear the old rows so removals actually stick.
-        if hasLoadedExistingStations {
-            clearPersistedData()
-        }
-
-        // Save selected stations to RatSense first to ensure persistence
-        if let home = homeStation {
-            RatSenseService.shared.setHomeStation(home.code)
-            appState.addFavoriteStation(code: home.code, name: home.name)
-        }
-        if let work = workStation {
-            RatSenseService.shared.setWorkStation(work.code)
-            appState.addFavoriteStation(code: work.code, name: work.name)
-        }
-        for other in otherFavorites {
-            appState.addFavoriteStation(code: other.code, name: other.name)
-        }
-
-        // Force immediate synchronization of favorites
-        appState.loadFavoriteStations()
+        Self.persistSelections(
+            home: homeStation,
+            work: workStation,
+            favorites: otherFavorites,
+            appState: appState,
+            ratSense: RatSenseService.shared
+        )
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
-        if !isRepeating {
+        // Only a true first run counts toward the setup funnel; the self-heal
+        // path (onboarding shown again to a returning user) would skew it.
+        if !isRepeating && !hasCompletedOnboarding {
             reportOnboardingOutcome(skipped: skipped)
         }
 
         Log.info("Onboarding completed (skipped: \(skipped), home: \(homeStation != nil), work: \(workStation != nil))")
         hasCompletedOnboarding = true
         dismiss()
+    }
+
+    /// Makes the stored home, work and favorites match the screen.
+    ///
+    /// The screen is the source of truth, so stored favorites it no longer shows
+    /// are removed — but only those rows are touched. RatSense's journey history,
+    /// station-pair counts and Live Activity history drive its suggestions and are
+    /// left alone; clearing them on every save threw that learning away.
+    @MainActor
+    static func persistSelections(
+        home: Station?,
+        work: Station?,
+        favorites: [Station],
+        appState: AppState,
+        ratSense: RatSenseService
+    ) {
+        let keptCodes = Set([home, work].compactMap { $0?.code } + favorites.map(\.code))
+        for station in Array(appState.favoriteStations) where !keptCodes.contains(station.id) {
+            appState.removeFavoriteStation(code: station.id)
+        }
+
+        // RatSense first: favorites inject home and work from it.
+        ratSense.setHomeStation(home?.code)
+        ratSense.setWorkStation(work?.code)
+        for station in [home, work].compactMap({ $0 }) + favorites {
+            appState.addFavoriteStation(code: station.code, name: station.name)
+        }
+
+        // Force immediate synchronization of favorites
+        appState.loadFavoriteStations()
     }
 
     /// Reports the shape of the finished setup so the drop-off can be measured.

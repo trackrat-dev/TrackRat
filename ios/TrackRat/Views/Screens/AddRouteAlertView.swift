@@ -105,10 +105,6 @@ struct AddRouteAlertView: View {
         alertService.syncIfPossible()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         activeSheet = nil
-
-        // Alerts are delivered by push, so this is the first moment the app has
-        // anything to notify the user about — and the right moment to ask.
-        Task { await notificationService.requestIfNeeded() }
         return true
     }
 

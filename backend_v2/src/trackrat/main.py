@@ -322,8 +322,8 @@ async def request_stats_middleware(
     path_template = route.path if route and hasattr(route, "path") else request.url.path
 
     # Skip noisy internal paths, plus the onboarding beacon — recording it here
-    # would retain a client IP alongside the very event telemetry.py keeps
-    # IP-free on purpose, and it is instrumentation rather than rider traffic.
+    # would retain a client IP in the app's stats alongside the event that
+    # telemetry.py keeps IP-free, and it is instrumentation, not rider traffic.
     if path_template not in {
         "/health",
         "/health/live",

@@ -9,10 +9,15 @@ Log-only, like the feedback endpoint. Filter with:
 jsonPayload.logger="trackrat.api.telemetry"
 
 Deliberately carries no station codes (a home station says where someone lives)
-and no client IP: this is an aggregate metric, not a report anyone follows up on.
-``ONBOARDING_PATH`` is excluded from ``request_stats_middleware`` in ``main.py``
-for the same reason — that middleware retains a client IP per request, which
-would re-attach one to every setup completion the log event leaves out.
+and records no client IP in the event: this is an aggregate metric, not a report
+anyone follows up on. ``ONBOARDING_PATH`` is excluded from
+``request_stats_middleware`` in ``main.py`` for the same reason — that middleware
+retains a client IP per request in the app's own stats.
+
+The IP is not gone end to end: the load balancer's request logs record the
+remote IP, path and time of every request, this one included, under their
+normal retention. The payload never reaches those logs, so what the pair can
+reveal is limited to which systems a given IP selected.
 """
 
 from datetime import UTC, datetime
