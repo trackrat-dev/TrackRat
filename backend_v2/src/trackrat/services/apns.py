@@ -320,10 +320,12 @@ class SimpleAPNSService:
 
         Returns:
             ApnsSendResult.SUCCESS, .INVALID_TOKEN (410 Unregistered/
-            ExpiredToken, or 400 BadDeviceToken/DeviceTokenNotForTopic), or
-            .TRANSIENT_FAILURE. Callers must prune the device registration on
-            INVALID_TOKEN and retry on TRANSIENT_FAILURE; collapsing the two
-            leaves dead tokens in rotation forever (issue #1794).
+            ExpiredToken), .TOKEN_REJECTED (400 BadDeviceToken/
+            DeviceTokenNotForTopic), or .TRANSIENT_FAILURE. Callers prune the
+            device registration only on INVALID_TOKEN: TOKEN_REJECTED is also
+            what a misconfigured environment or bundle id returns for every
+            device, so pruning on it could erase every registration. Retry on
+            TRANSIENT_FAILURE (issue #1794).
         """
         if not self.is_configured:
             logger.warning("apns_alert_skipped", reason="Not configured")
