@@ -1531,12 +1531,19 @@ class TestCollectJourneyLogging:
 
 
 class TestCheckResourceUsage:
-    """Tests for SchedulerService.check_resource_usage (issue #1344).
+    """Tests for SchedulerService.check_resource_usage (issues #1344, #1826).
 
     Verifies the disk-usage and database-size structured log events that
     infra_v2/terraform/metrics.tf + monitoring.tf turn into Cloud Monitoring
     alerts, since the production data disk previously filled to 86% with
     no automated warning.
+
+    #1826 added the boot filesystem. #1344 had deliberately pointed every disk
+    check at the mounted persistent disk and explicitly not at the boot disk —
+    so when the boot disk filled on 2026-09-01 it stayed full for 19 days with
+    /health reporting `healthy`, `/metrics` reporting
+    `system_disk_usage_percent 57.5`, and no alert, because the data disk was
+    genuinely fine the whole time.
     """
 
     @pytest.fixture
@@ -1584,7 +1591,12 @@ class TestCheckResourceUsage:
 
     @pytest.mark.asyncio
     async def test_logs_disk_usage_and_database_size(self, scheduler_service):
-        """A healthy check logs both the disk usage and DB size events."""
+        """A healthy check logs both disk-usage events and the DB size event.
+
+        The two filesystems are given deliberately different numbers, so this
+        also pins that each event carries its *own* reading rather than one
+        being reported twice.
+        """
         freshness_session = AsyncMock()
         work_session = AsyncMock()
         db_size_result = Mock()
@@ -1606,21 +1618,42 @@ class TestCheckResourceUsage:
                 self._session_context(freshness_session),
                 self._session_context(work_session),
             ]
-            mock_get_disk_usage.return_value = {
-                "usage_percent": 86.2,
-                "used_gb": 49.0,
-                "total_gb": 59.0,
-                "free_gb": 10.0,
-            }
+            mock_get_disk_usage.side_effect = [
+                {
+                    "usage_percent": 86.2,
+                    "used_gb": 49.0,
+                    "total_gb": 59.0,
+                    "free_gb": 10.0,
+                },
+                {
+                    "usage_percent": 41.5,
+                    "used_gb": 4.15,
+                    "total_gb": 10.0,
+                    "free_gb": 5.85,
+                },
+            ]
 
             await scheduler_service.check_resource_usage()
 
-            mock_get_disk_usage.assert_called_once_with("/mnt/disks/data")
+            assert [c.args[0] for c in mock_get_disk_usage.call_args_list] == [
+                "/mnt/disks/data",
+                "/",
+            ], (
+                "both filesystems must be sampled; before #1826 only the "
+                "mounted data disk was, which is why a full boot disk was "
+                "invisible for 19 days"
+            )
             mock_logger.info.assert_any_call(
                 "data_disk_usage_check",
                 usage_percent=86.2,
                 used_gb=49.0,
                 total_gb=59.0,
+            )
+            mock_logger.info.assert_any_call(
+                "boot_disk_usage_check",
+                usage_percent=41.5,
+                used_gb=4.15,
+                total_gb=10.0,
             )
             mock_logger.info.assert_any_call("database_size_check", size_gb=5.0)
 
@@ -1629,8 +1662,72 @@ class TestCheckResourceUsage:
             assert call_kwargs["minimum_interval_seconds"] == 780  # (15-2)*60
 
     @pytest.mark.asyncio
+    async def test_full_boot_disk_reported_while_data_disk_is_healthy(
+        self, scheduler_service
+    ):
+        """The exact 2026-09-01 shape: boot disk at 100%, data disk fine.
+
+        This is the case the pre-#1826 code could not express at all. Both
+        events must be emitted, and the boot event must carry the 100% — if
+        the two readings shared one metric the healthy data disk would average
+        it back under the alert threshold.
+        """
+        freshness_session = AsyncMock()
+        work_session = AsyncMock()
+        db_size_result = Mock()
+        db_size_result.scalar.return_value = 0
+        work_session.execute = AsyncMock(
+            side_effect=[db_size_result, self._empty_vacuum_result()]
+        )
+
+        with (
+            patch("trackrat.services.scheduler.get_session") as mock_get_session,
+            patch("trackrat.services.scheduler.get_disk_usage") as mock_get_disk_usage,
+            patch("trackrat.services.scheduler.logger") as mock_logger,
+            patch(
+                "trackrat.services.scheduler.run_with_freshness_check",
+                side_effect=self._run_task_func,
+            ),
+        ):
+            mock_get_session.side_effect = [
+                self._session_context(freshness_session),
+                self._session_context(work_session),
+            ]
+            mock_get_disk_usage.side_effect = [
+                # The data disk during the incident: ~57% used, 15.6 GB free.
+                {
+                    "usage_percent": 57.5,
+                    "used_gb": 21.1,
+                    "total_gb": 36.7,
+                    "free_gb": 15.6,
+                },
+                # The boot disk during the incident.
+                {
+                    "usage_percent": 100.0,
+                    "used_gb": 10.0,
+                    "total_gb": 10.0,
+                    "free_gb": 0.0,
+                },
+            ]
+
+            await scheduler_service.check_resource_usage()
+
+            mock_logger.info.assert_any_call(
+                "boot_disk_usage_check",
+                usage_percent=100.0,
+                used_gb=10.0,
+                total_gb=10.0,
+            )
+            mock_logger.info.assert_any_call(
+                "data_disk_usage_check",
+                usage_percent=57.5,
+                used_gb=21.1,
+                total_gb=36.7,
+            )
+
+    @pytest.mark.asyncio
     async def test_warns_when_disk_path_unavailable(self, scheduler_service):
-        """If the data disk mount isn't visible, warn instead of failing silently."""
+        """If a filesystem isn't visible, warn instead of failing silently."""
         freshness_session = AsyncMock()
         work_session = AsyncMock()
         db_size_result = Mock()
@@ -1657,6 +1754,62 @@ class TestCheckResourceUsage:
 
             mock_logger.warning.assert_any_call(
                 "data_disk_usage_check_unavailable", path="/mnt/disks/data"
+            )
+            mock_logger.warning.assert_any_call(
+                "boot_disk_usage_check_unavailable", path="/"
+            )
+
+    @pytest.mark.asyncio
+    async def test_unreadable_data_disk_does_not_suppress_the_boot_disk(
+        self, scheduler_service
+    ):
+        """One unreadable filesystem must not take the other's reading down.
+
+        The two checks are independent samples; an unmounted data disk is a
+        problem in its own right but says nothing about the boot disk, and
+        this task is the only thing reporting either.
+        """
+        freshness_session = AsyncMock()
+        work_session = AsyncMock()
+        db_size_result = Mock()
+        db_size_result.scalar.return_value = 0
+        work_session.execute = AsyncMock(
+            side_effect=[db_size_result, self._empty_vacuum_result()]
+        )
+
+        with (
+            patch("trackrat.services.scheduler.get_session") as mock_get_session,
+            patch("trackrat.services.scheduler.get_disk_usage") as mock_get_disk_usage,
+            patch("trackrat.services.scheduler.logger") as mock_logger,
+            patch(
+                "trackrat.services.scheduler.run_with_freshness_check",
+                side_effect=self._run_task_func,
+            ),
+        ):
+            mock_get_session.side_effect = [
+                self._session_context(freshness_session),
+                self._session_context(work_session),
+            ]
+            mock_get_disk_usage.side_effect = [
+                {},  # data disk not mounted / not visible
+                {
+                    "usage_percent": 91.0,
+                    "used_gb": 9.1,
+                    "total_gb": 10.0,
+                    "free_gb": 0.9,
+                },
+            ]
+
+            await scheduler_service.check_resource_usage()
+
+            mock_logger.warning.assert_any_call(
+                "data_disk_usage_check_unavailable", path="/mnt/disks/data"
+            )
+            mock_logger.info.assert_any_call(
+                "boot_disk_usage_check",
+                usage_percent=91.0,
+                used_gb=9.1,
+                total_gb=10.0,
             )
 
     @pytest.mark.asyncio

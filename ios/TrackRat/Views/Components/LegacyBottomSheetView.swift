@@ -14,14 +14,14 @@ class BottomSheetDragState: ObservableObject {
 
 // MARK: - Preference Keys for Bottom Sheet communication
 struct DragTranslationPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
+    static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = nextValue()
     }
 }
 
 struct IsDraggingPreferenceKey: PreferenceKey {
-    static var defaultValue: Bool = false
+    static let defaultValue: Bool = false
     static func reduce(value: inout Bool, nextValue: () -> Bool) {
         value = nextValue()
     }

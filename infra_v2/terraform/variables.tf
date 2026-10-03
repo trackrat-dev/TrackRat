@@ -52,7 +52,7 @@ variable "frontend_via_cloudflare" {
 }
 
 variable "enable_cloudflare_tunnel" {
-  description = "Master on/off switch for the Cloudflare Tunnel connector (cloudflared). When false (the committed default), the startup script NEVER creates the cloudflared container, regardless of whether the trackrat-cloudflare-tunnel-token-<env> secret exists — so a dormant/invalid token can no longer crash-loop a connector (issue #1578). Activation requires BOTH this flag true AND the secret present. This gates only whether the connector runs; frontend_via_cloudflare separately controls tearing down the Google API frontend. Flip via a committed default (not -var) so push-triggered applies stay consistent, and only after a valid token is stored — see infra_v2/RUNBOOK-cloudflare-cutover.md."
+  description = "Master on/off switch for the Cloudflare Tunnel connector (cloudflared). When false, the startup script NEVER creates the cloudflared container, regardless of whether the trackrat-cloudflare-tunnel-token-<env> secret exists — so a dormant/invalid token can no longer crash-loop a connector (issue #1578). Activation requires BOTH this flag true AND a well-formed token read from that secret; a failed or malformed read leaves the connector off rather than poisoning .env (issue #1758). The committed default is true: both environments are cut over and serve their API through the tunnel, so flipping this to false takes the API offline unless that workspace's Google frontend is restored first (frontend_via_cloudflare). This gates only whether the connector runs; frontend_via_cloudflare separately controls tearing down the Google API frontend. Flip via a committed default (not -var) so push-triggered applies stay consistent — see infra_v2/RUNBOOK-cloudflare-cutover.md."
   type        = bool
   default     = true
 }
@@ -64,24 +64,25 @@ variable "disabled_data_sources" {
     # BART, WMATA, MBTA and Metra stay dark in both environments: no backend
     # collection runs for them.
     #
-    # SEPTA (RR + Metro) is now enabled in both (issue #1634). Staging carried
-    # the soak; clearing production restores the runbook's rule 3 ordering,
-    # because the iOS and web disabled sets already dropped SEPTA on `main`
-    # (PR #1738) and leaving production dark would ship a picker entry that
-    # returns nothing.
+    # SEPTA (RR + Metro) is enabled in both (issue #1634). Staging carried the
+    # soak; clearing production restored the runbook's rule 3 ordering, because
+    # the iOS and web disabled sets already dropped SEPTA on `main` (PR #1738)
+    # and leaving production dark would have shipped a picker entry that
+    # returns nothing. The production cutover landed on 2026-08-09 (PR #1789)
+    # and both environments serve SEPTA.
     #
-    # ⚠️ THE NEXT PROMOTION TO THE `production` BRANCH IS THE SEPTA CUTOVER.
-    # Production has never held a SEPTA GTFS bundle — the flag gates the
-    # refresh, so there is no stale bundle there, there is none — and both
-    # systems depend on one (Metro is schedule-first; the Regional Rail
-    # collector joins its delay-only feed to the static schedule by
+    # ⚠️ WHEN CLEARING A SOURCE HERE FOR AN ENVIRONMENT THAT HAS NEVER RUN IT:
+    # that environment holds no GTFS bundle for it — the flag gates the
+    # refresh, so there is no stale bundle, there is none — and some systems
+    # cannot serve without one (SEPTA Metro is schedule-first; the Regional
+    # Rail collector joins its delay-only feed to the static schedule by
     # trip_id/stop_sequence). The bundle loads on startup, not on the 3:00 AM
     # cron: the apply replaces the instance, and Scheduler.start() force-
     # refreshes every enabled source with no successful parse. So expect a
-    # short API restart (MIG REPLACE, max_unavailable_fixed = 1) and SEPTA
-    # serving nothing for the few minutes download and parse take. Promote
+    # short API restart (MIG REPLACE, max_unavailable_fixed = 1) and the source
+    # serving nothing for the few minutes download and parse take. Apply
     # outside peak hours, then confirm with /health `data_sources` and a
-    # production ground-truth run before judging the data. See
+    # ground-truth run before judging the data. See
     # infra_v2/RUNBOOK-data-source-flags.md.
     staging    = ["BART", "WMATA", "MBTA", "METRA"]
     production = ["BART", "WMATA", "MBTA", "METRA"]
@@ -100,10 +101,28 @@ variable "disabled_data_sources" {
   }
 }
 
+# RATCHET: may be increased, never decreased.
+#
+# GCP cannot shrink a persistent disk, and the google provider forces
+# REPLACEMENT rather than erroring when this value goes down — which for
+# google_compute_disk.data means destroying and recreating the Postgres data
+# disk. Nothing else guards it: that resource has no prevent_destroy, and its
+# lifecycle block ignores only `snapshot`.
+#
+# That matters because infra_v2/terraform/ is auto-applied by the
+# trackrat-terraform-production Cloud Build trigger, which has no path filter
+# and so fires on every push to the production branch.
+#
+# The production data disk was grown 40 -> 50 GB out of band on 2026-09-20
+# during incident response, leaving the declared 40 as a pending shrink
+# (issue #1828). Reconciled below. Staging shares this variable deliberately
+# (see the note above main.tf's locals block, which keeps staging a faithful
+# rehearsal of production), so staging grows to 50 on its next apply too — a
+# growth, which is permitted and applies in place.
 variable "disk_size_gb" {
-  description = "Persistent disk size in GB"
+  description = "Persistent data disk size in GB (google_compute_disk.data)"
   type        = number
-  default     = 40
+  default     = 50
 }
 
 variable "snapshot_retention_days" {
