@@ -10,7 +10,7 @@ import io
 import re
 import traceback
 import zipfile
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from enum import Enum
@@ -532,6 +532,59 @@ class GTFSBundleServiceStatus:
     service_begins_on: date | None
 
 
+def _service_window_verdict(
+    calendar_windows: Iterable[tuple[date, date]],
+    addition_dates: Iterable[date],
+    today: date,
+) -> tuple[bool, date | None]:
+    """Decide, per service, whether service has begun and when it next starts.
+
+    The single definition of "has this bundle's service begun?", shared by the
+    two places that have to answer it from different inputs:
+    :meth:`GTFSService._bundle_service_status` reads the windows out of a
+    downloaded zip before anything is stored, and
+    :meth:`GTFSService._parse_and_store_gtfs` reads them back out of the rows it
+    just stored. Both must answer identically — the guard declines a bundle on
+    one answer and ``/health`` reports a source pending on the other, so a
+    disagreement is a source that is either declined without being reported or
+    adopted dark without being noticed (issue #1799).
+
+    Returns ``(begun, earliest_future_start)``:
+
+    - ``begun`` — a window covers today (``start <= today <= end``, both
+      inclusive per GTFS) or an addition falls on or before today.
+    - ``earliest_future_start`` — the earliest window start or addition date
+      strictly after today, or ``None`` when nothing is scheduled to start.
+
+    The two are independent, not exclusive: a bundle in force today can also
+    name a later start, and an all-expired bundle is neither begun nor future
+    (``(False, None)``) — a lapse, which ``is_lapsed`` owns.
+
+    Deliberately *not* a "does it serve today?" test. Day-of-week bits and
+    exact-date matching are what :meth:`GTFSService.get_active_service_ids`
+    applies to pick today's trips; applying them here would make every Sunday
+    on a weekday-only calendar, and every gap between ``calendar_dates``
+    additions, read as a feed that has not started yet. A start date answers
+    when the timetable came into effect, not whether it runs a train today.
+    """
+    begun = False
+    future: list[date] = []
+
+    for start, end in calendar_windows:
+        if start <= today <= end:
+            begun = True
+        elif start > today:
+            future.append(start)
+
+    for added_on in addition_dates:
+        if added_on <= today:
+            begun = True
+        else:
+            future.append(added_on)
+
+    return begun, (min(future) if future else None)
+
+
 def _gtfs_csv_rows(f: Any) -> Iterator[dict[str, str]]:
     """Iterate a GTFS CSV file as dicts with whitespace-stripped keys/values.
 
@@ -761,7 +814,13 @@ class GTFSService:
                     )
 
             # Parse and store the data
-            stats = await self._parse_and_store_gtfs(db, data_source, zip_data)
+            # Same `today` the guard above decided on. A refresh that straddles
+            # ET midnight would otherwise let the guard rule on day N and the
+            # stats derive against day N+1 — the split verdict
+            # `_service_window_verdict` exists to prevent.
+            stats = await self._parse_and_store_gtfs(
+                db, data_source, zip_data, today=today
+            )
 
             # Update feed info with stats
             feed_info.last_successful_parse_at = now_et()
@@ -952,9 +1011,8 @@ class GTFSService:
 
                 retained = self._retained_service_ids(zf, data_source)
 
-                in_force = False
-                saw_dated_row = False
-                future_dates: list[date] = []
+                calendar_windows: list[tuple[date, date]] = []
+                addition_dates: list[date] = []
 
                 if "calendar.txt" in names:
                     with zf.open("calendar.txt") as f:
@@ -966,13 +1024,12 @@ class GTFSService:
                                 continue
                             if not row.get("start_date") or not row.get("end_date"):
                                 continue
-                            saw_dated_row = True
-                            start = self._parse_gtfs_date(row["start_date"])
-                            end = self._parse_gtfs_date(row["end_date"])
-                            if start <= today <= end:
-                                in_force = True
-                            elif start > today:
-                                future_dates.append(start)
+                            calendar_windows.append(
+                                (
+                                    self._parse_gtfs_date(row["start_date"]),
+                                    self._parse_gtfs_date(row["end_date"]),
+                                )
+                            )
 
                 if "calendar_dates.txt" in names:
                     with zf.open("calendar_dates.txt") as f:
@@ -986,36 +1043,44 @@ class GTFSService:
                                 continue
                             if not row.get("date"):
                                 continue
-                            saw_dated_row = True
-                            added_on = self._parse_gtfs_date(row["date"])
-                            if added_on <= today:
-                                in_force = True
-                            else:
-                                future_dates.append(added_on)
+                            addition_dates.append(self._parse_gtfs_date(row["date"]))
         except Exception as e:
             logger.warning("gtfs_bundle_service_window_unreadable", error=str(e))
             return GTFSBundleServiceStatus(in_force=None, service_begins_on=None)
 
-        if not saw_dated_row:
+        if not calendar_windows and not addition_dates:
             return GTFSBundleServiceStatus(in_force=None, service_begins_on=None)
 
-        return GTFSBundleServiceStatus(
-            in_force=in_force,
-            service_begins_on=min(future_dates) if future_dates else None,
+        in_force, begins_on = _service_window_verdict(
+            calendar_windows, addition_dates, today
         )
+        return GTFSBundleServiceStatus(in_force=in_force, service_begins_on=begins_on)
 
     async def _parse_and_store_gtfs(
-        self, db: AsyncSession, data_source: str, zip_data: bytes
+        self,
+        db: AsyncSession,
+        data_source: str,
+        zip_data: bytes,
+        today: date | None = None,
     ) -> dict[str, Any]:
         """Parse GTFS zip and store in database.
 
         Returns stats about what was parsed. ``start_date`` / ``end_date`` are
-        the bundle's service-period bounds — min/max over the calendar windows
-        and calendar_dates additions of the services the retained trips
-        reference — and become ``gtfs_feed_info.feed_start_date`` /
-        ``feed_end_date``, which :attr:`GTFSFeedStatus.is_not_yet_active` and
+        the bundle's service-period bounds over the calendar windows and
+        calendar_dates additions of the services the retained trips reference,
+        and become ``gtfs_feed_info.feed_start_date`` / ``feed_end_date``, which
+        :attr:`GTFSFeedStatus.is_not_yet_active` and
         :attr:`GTFSFeedStatus.is_lapsed` read. Either key is absent when the
         bundle carries no calendar data for its retained trips.
+
+        ``end_date`` is a plain ``max()``. ``start_date`` is **not** a plain
+        ``min()`` — see the derivation below and issue #1799.
+
+        ``today`` is the date those bounds are judged against, passed in by
+        :meth:`refresh_feed` so the stored bounds and the guard's decline
+        verdict cannot be decided against different days on a refresh that
+        crosses ET midnight. It defaults to ``now_et().date()`` for any caller
+        that has no verdict to stay consistent with.
         """
         # Clear existing data for this source
         await self._clear_existing_data(db, data_source)
@@ -1097,8 +1162,12 @@ class GTFSService:
                     )
                 )
             ).all()
-            addition_dates = list(
-                (
+            # `GTFSCalendarDate.date` is NOT NULL, so the `is not None` filter
+            # drops nothing — it narrows the column's Optional-typed value so
+            # the dates can be compared rather than only aggregated.
+            addition_dates = [
+                d
+                for d in (
                     await db.execute(
                         select(GTFSCalendarDate.date).where(
                             and_(
@@ -1109,11 +1178,42 @@ class GTFSService:
                         )
                     )
                 ).scalars()
-            )
+                if d is not None
+            ]
             start_candidates = [row[0] for row in calendar_rows] + addition_dates
             end_candidates = [row[1] for row in calendar_rows] + addition_dates
             if start_candidates:
-                stats["start_date"] = min(start_candidates)
+                # NOT `min(start_candidates)`. A bare minimum answers "what is
+                # the oldest date this bundle mentions", and real bundles keep
+                # expired historical calendar rows — so one retained row from
+                # last season drags the minimum into the past and
+                # `is_not_yet_active` reads False for a timetable that
+                # describes no service today. That is #1770's original symptom
+                # reachable through the check built to catch it, and it lands
+                # exactly where detection is the only defense: the guard above
+                # declines a not-yet-active bundle only when a usable one is
+                # stored, and both paths that adopt one anyway
+                # (`gtfs_first_bundle_not_yet_active`,
+                # `gtfs_adopting_future_bundle_over_lapsed`) are also when a
+                # freshly published bundle is most likely to carry historical
+                # rows (issue #1799).
+                #
+                # So derive it with the same per-service predicate the guard
+                # uses. Begun => the minimum is genuinely in the past (some
+                # window covers today, so its start is <= today and the
+                # minimum is <= that) and reads as active. Not begun with a
+                # future start => report that start, so `is_not_yet_active`
+                # fires. Not begun with no future start => all-expired; keep
+                # the minimum so the bundle reads lapsed rather than pending,
+                # which is `is_lapsed`'s call to make off `end_candidates`.
+                begun, begins_on = _service_window_verdict(
+                    [(row[0], row[1]) for row in calendar_rows],
+                    addition_dates,
+                    today if today is not None else now_et().date(),
+                )
+                stats["start_date"] = (
+                    min(start_candidates) if begun or begins_on is None else begins_on
+                )
             if end_candidates:
                 stats["end_date"] = max(end_candidates)
 

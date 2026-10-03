@@ -739,8 +739,14 @@ struct StopRowV2: View {
         // instead of echoing the schedule back as an on-time departure
         // (issue #1768). When it does fall through to the schedule the delay
         // computes to zero and no badge is shown, as before.
+        // train.bestKnownDeparture(at:) rather than stop.bestKnownDeparture:
+        // this branch runs before the isFinalDestination one, so a departed
+        // NJT terminal lands here, and StopV2 alone would hand back the later
+        // turnaround DEP_TIME — rendering "Departed: <turnaround>" with a
+        // fabricated "+Nm delay" on a train that arrived on time (issue #1799,
+        // the #1492 turnaround on a different row).
         if stop.hasDepartedStation {
-            if let departedTime = stop.bestKnownDeparture {
+            if let departedTime = train.bestKnownDeparture(at: stop) {
                 let delayText = departureDelayText(actual: departedTime, scheduled: stop.scheduledDeparture)
                 let departureText = "Departed: \(formatter.string(from: departedTime))" + (delayText.isEmpty ? "" : " (\(delayText))")
                 return (nil, departureText, [])
