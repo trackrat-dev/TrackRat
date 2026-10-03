@@ -121,7 +121,7 @@ Defaults to production. The script builds `dist/` and uploads it as the Worker's
 
 The `production` Worker's custom domains serve `trackrat.net` and `www.trackrat.net` directly, with no GCS fallback, so a production run deploys the local build straight to the live site. The script always refuses a bare `production` run and requires `--cloudflare-only` to acknowledge that; the normal path is pushing to the `production` branch so Cloud Build builds from committed source.
 
-Cache headers (`no-cache` for `index.html` and the service worker, `max-age=1yr` for hashed assets), HSTS, and the `application/json` content type for `/.well-known/apple-app-site-association` come from `public/_headers`, which Vite copies into `dist/`. Deep links are served by `assets.not_found_handling: "single-page-application"` in `wrangler.jsonc`.
+Cache headers (`no-cache, no-store, must-revalidate` for the app shell — keyed on `/`, not `/index.html`, which Cloudflare redirects — and for the service worker, `max-age=1yr, immutable` for hashed assets), HSTS, and the `application/json` content type for `/.well-known/apple-app-site-association` come from `public/_headers`, which Vite copies into `dist/`. Deep links are served by `assets.not_found_handling: "single-page-application"` in `wrangler.jsonc`.
 
 ## License
 

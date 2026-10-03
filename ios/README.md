@@ -209,6 +209,7 @@ TrackRatTests/                   # Test suite
 ├── Utilities/                  # Utility and extension tests
 ├── ViewModels/                 # ViewModel tests
 ├── Views/                      # View tests (AlertConfiguration, LineSelection, ServiceAlertsSection, CongestionMapKitView, StationPickerSheet)
+├── Shared/                     # Shared-target tests (RouteShapes)
 ├── TestUtilities/              # Test helpers
 └── TestFixtures/               # Swift test data (TrainTestData)
 ```

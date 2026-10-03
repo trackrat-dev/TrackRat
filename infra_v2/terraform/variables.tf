@@ -64,24 +64,25 @@ variable "disabled_data_sources" {
     # BART, WMATA, MBTA and Metra stay dark in both environments: no backend
     # collection runs for them.
     #
-    # SEPTA (RR + Metro) is now enabled in both (issue #1634). Staging carried
-    # the soak; clearing production restores the runbook's rule 3 ordering,
-    # because the iOS and web disabled sets already dropped SEPTA on `main`
-    # (PR #1738) and leaving production dark would ship a picker entry that
-    # returns nothing.
+    # SEPTA (RR + Metro) is enabled in both (issue #1634). Staging carried the
+    # soak; clearing production restored the runbook's rule 3 ordering, because
+    # the iOS and web disabled sets already dropped SEPTA on `main` (PR #1738)
+    # and leaving production dark would have shipped a picker entry that
+    # returns nothing. The production cutover has since landed and both
+    # environments serve SEPTA.
     #
-    # ⚠️ THE NEXT PROMOTION TO THE `production` BRANCH IS THE SEPTA CUTOVER.
-    # Production has never held a SEPTA GTFS bundle — the flag gates the
-    # refresh, so there is no stale bundle there, there is none — and both
-    # systems depend on one (Metro is schedule-first; the Regional Rail
-    # collector joins its delay-only feed to the static schedule by
+    # ⚠️ WHEN CLEARING A SOURCE HERE FOR AN ENVIRONMENT THAT HAS NEVER RUN IT:
+    # that environment holds no GTFS bundle for it — the flag gates the
+    # refresh, so there is no stale bundle, there is none — and some systems
+    # cannot serve without one (SEPTA Metro is schedule-first; the Regional
+    # Rail collector joins its delay-only feed to the static schedule by
     # trip_id/stop_sequence). The bundle loads on startup, not on the 3:00 AM
     # cron: the apply replaces the instance, and Scheduler.start() force-
     # refreshes every enabled source with no successful parse. So expect a
-    # short API restart (MIG REPLACE, max_unavailable_fixed = 1) and SEPTA
-    # serving nothing for the few minutes download and parse take. Promote
+    # short API restart (MIG REPLACE, max_unavailable_fixed = 1) and the source
+    # serving nothing for the few minutes download and parse take. Apply
     # outside peak hours, then confirm with /health `data_sources` and a
-    # production ground-truth run before judging the data. See
+    # ground-truth run before judging the data. See
     # infra_v2/RUNBOOK-data-source-flags.md.
     staging    = ["BART", "WMATA", "MBTA", "METRA"]
     production = ["BART", "WMATA", "MBTA", "METRA"]
