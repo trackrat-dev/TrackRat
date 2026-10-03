@@ -205,6 +205,8 @@ TrackRatTests/                   # Test suite
 ├── BuildTests.swift            # Build verification
 ├── Models/                     # Model tests
 ├── Services/                   # Service tests
+├── Shared/                     # Shared/cross-target code tests
+├── Utilities/                  # Utility and extension tests
 ├── ViewModels/                 # ViewModel tests
 ├── Views/                      # View tests (AlertConfiguration, LineSelection, ServiceAlertsSection, CongestionMapKitView, StationPickerSheet)
 ├── TestUtilities/              # Test helpers
@@ -223,7 +225,7 @@ TrackRatTests/                   # Test suite
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/TrackRat.git
+   git clone https://github.com/trackrat-dev/TrackRat.git
    cd TrackRat/ios
    ```
 
