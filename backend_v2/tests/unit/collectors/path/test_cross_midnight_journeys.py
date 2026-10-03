@@ -34,11 +34,11 @@ from datetime import datetime, timedelta
 import pytest
 from sqlalchemy import select
 
+from trackrat.api.trains import _load_journey_for_date, get_train_details
 from trackrat.collectors.path.collector import (
     PathCollector,
     _build_train_candidate,
 )
-from trackrat.api.trains import _load_journey_for_date
 from trackrat.collectors.path.ridepath_client import PathArrival
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.departure import DepartureService
@@ -488,6 +488,96 @@ class TestCrossMidnightConsumersCanStillFindTheJourney:
             "about today; daily-repeating train numbers make that yesterday's "
             "train shown as today's"
         )
+
+    @pytest.mark.asyncio
+    async def test_train_details_endpoint_serves_a_cross_midnight_trip(
+        self, db_session
+    ):
+        """The request a Live Activity actually makes, end to end.
+
+        The helper finding the row is not enough: ``get_train_details`` hands
+        the date to the JIT service, which matches ``journey_date`` exactly. If
+        the endpoint passes on the date it was *asked* for rather than the one
+        the row lives under, the JIT lookup misses and the endpoint still 404s.
+        """
+        now = now_et()
+        yesterday = now.date() - timedelta(days=1)
+        train_id = "PATH_PJS_33rd_endpoint"
+        journey = await _persist_path_journey(
+            db_session,
+            train_id=train_id,
+            journey_date=yesterday,
+            scheduled_departure=now - timedelta(minutes=4),
+        )
+        # Fresh, so the JIT pass serves the row rather than trying to refresh it.
+        journey.last_updated_at = now
+        db_session.add(
+            JourneyStop(
+                journey=journey,
+                station_code="P33",
+                station_name="33rd Street",
+                stop_sequence=0,
+                scheduled_arrival=now + timedelta(minutes=6),
+            )
+        )
+        await db_session.commit()
+
+        for data_source in ("PATH", None):
+            response = await get_train_details(
+                train_id=train_id,
+                date=now.date(),
+                refresh=False,
+                include_predictions=False,
+                from_station=None,
+                data_source=data_source,
+                db=db_session,
+            )
+            assert (
+                response.train.train_id == train_id
+            ), f"data_source={data_source}: got {response.train.train_id}"
+            assert response.train.journey_date == yesterday, (
+                f"data_source={data_source}: served journey_date "
+                f"{response.train.journey_date}, expected the service date "
+                f"{yesterday}"
+            )
+
+    @pytest.mark.asyncio
+    async def test_daily_train_numbers_never_fall_back_to_yesterday(self, db_session):
+        """Only PATH ids are unique across days, so only PATH falls back.
+
+        An LIRR train number runs every day. With no row today — the normal
+        state before the collector discovers today's run — falling back would
+        hand back yesterday's finished trip and pre-empt the GTFS answer the
+        endpoint gives for today's scheduled one.
+        """
+        now = now_et()
+        db_session.add(
+            TrainJourney(
+                train_id="1234",
+                journey_date=now.date() - timedelta(days=1),
+                line_code="BB",
+                line_name="Babylon",
+                destination="Babylon",
+                origin_station_code="NY",
+                terminal_station_code="BTA",
+                data_source="LIRR",
+                observation_type="OBSERVED",
+                scheduled_departure=now - timedelta(days=1),
+                has_complete_journey=True,
+                stops_count=5,
+                is_completed=True,
+            )
+        )
+        await db_session.commit()
+
+        for data_source in ("LIRR", None):
+            found = await _load_journey_for_date(
+                db_session, "1234", now.date(), data_source
+            )
+            assert found is None, (
+                f"data_source={data_source}: returned the {found.journey_date} "
+                f"{found.data_source} run for a request about today"
+            )
 
     @pytest.mark.asyncio
     async def test_a_genuinely_unknown_train_is_still_not_found(self, db_session):

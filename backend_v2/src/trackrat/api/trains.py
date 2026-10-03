@@ -338,10 +338,12 @@ async def _load_journey_for_date(
     at all, so ``APIService`` defaults to ``Date()``, and a cross-midnight trip
     would otherwise 404 on every 30-second refresh for the rest of its run.
 
-    The requested date always wins, so this can only return a row where there
-    was none. That is what makes it safe for NJT and Amtrak, whose train
-    numbers repeat daily: the fallback is reached only when the requested date
-    genuinely has no journey under this id, never in preference to one.
+    The requested date always wins, and the previous-day row is accepted only
+    for PATH, whose train ids embed the origin departure's epoch and so can
+    never name two different trips. Every other source reuses train numbers
+    daily, and "no row today" there usually means today's run is not on record
+    yet (GTFS-RT systems only create it on discovery) — falling back would serve
+    yesterday's finished run in place of the GTFS answer for today's.
 
     Single-sourced because the same lookup is needed again on each of the two
     post-rollback re-query paths below, where the ORM objects have been
@@ -360,7 +362,9 @@ async def _load_journey_for_date(
                 selectinload(TrainJourney.progress_snapshots),
             )
         )
-        if journey is not None:
+        if journey is not None and (
+            candidate_date == journey_date or journey.data_source == "PATH"
+        ):
             return journey
     return None
 
@@ -428,6 +432,11 @@ async def get_train_details(
 
     # Pre-fetch existing journey so we can fall back to stale data on timeout
     stale_journey = await _load_journey_for_date(db, train_id, date, data_source)
+    if stale_journey is not None:
+        # Pin to the date the row actually lives under: the JIT lookup below
+        # matches journey_date exactly, so a cross-midnight PATH trip found via
+        # the previous-day fallback would otherwise still 404 (issue #1752).
+        date = stale_journey.journey_date or date
 
     try:
         async with JustInTimeUpdateService(njt_client) as jit_service:
