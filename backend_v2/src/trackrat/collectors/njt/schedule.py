@@ -26,6 +26,19 @@ logger = get_logger(__name__)
 # NJT schedule API LINE field prefixes → canonical 2-char codes.
 # The schedule API returns full line names (e.g., "Northeast Corridor")
 # unlike the real-time discovery API which returns short codes (e.g., "NEC").
+#
+# A miss here is near-invisible, which is why two of these were wrong for
+# months (issue #1796). The fallback truncates to `line[:2]`, and eight NJT
+# routes carry a Title-case legacy alias in `line_codes` for pre-2026-03 rows
+# ("At", "Ra", "Mo", …) — so a missed prefix usually lands on a code that
+# still resolves, hiding the defect from every topology lookup while the
+# `lines=` filter (which matches raw) silently drops the rows. Prefixes must
+# therefore be kept broad enough to survive NJT abbreviating a name:
+# "atl" rather than "atlantic", because NJT sends "Atl. City Line".
+#
+# Order matters only where one prefix is a prefix of another; "bergen" must
+# stay ahead of "main" so combined "Main/Bergen County Line" forms resolve the
+# way services/gtfs.py's MNBN mapping already does.
 _NJT_LINE_NAME_PREFIXES: list[tuple[str, str]] = [
     ("northeast", "NE"),
     ("north jersey", "NC"),
@@ -37,7 +50,8 @@ _NJT_LINE_NAME_PREFIXES: list[tuple[str, str]] = [
     ("pascack", "PV"),
     ("bergen", "BE"),
     ("main", "MA"),
-    ("atlantic", "AC"),
+    ("port jervis", "PJ"),
+    ("atl", "AC"),
     ("princeton", "PR"),
 ]
 

@@ -76,6 +76,19 @@ logger = get_logger(__name__)
 # dominate an oldest-updated-first batch (issue #1670).
 ACTIVE_JOURNEY_LOOKBACK_HOURS = 3
 
+# The container's boot filesystem, monitored alongside the mounted data disk by
+# check_resource_usage. `settings.data_disk_path` deliberately points at the
+# persistent disk and explicitly not at this one (issue #1344), so nothing was
+# watching the filesystem that actually filled on 2026-09-01 — for 19 days,
+# with /health reporting `healthy` throughout, because the data disk was fine
+# (~57% used) the entire time (issue #1826).
+#
+# On Container-Optimized OS the container's `/` is an overlay whose upper layer
+# lives under /var/lib/docker on the VM's 10 GB boot disk, so statvfs here
+# reports the filesystem that runs out — the same one `/health` and `/metrics`
+# read before #1344 moved them to the data disk.
+BOOT_DISK_PATH = "/"
+
 
 class SchedulerService:
     """Manages scheduled tasks for data collection."""
@@ -2110,8 +2123,13 @@ class SchedulerService:
             from sqlalchemy.orm import sessionmaker
 
             from trackrat.collectors.njt.client import (
+                NJTransitAPIError,
                 NJTransitNullDataError,
                 TrainNotFoundError,
+            )
+            from trackrat.collectors.njt.refresh_outcome import (
+                mark_refresh_attempted,
+                mark_refresh_failed,
             )
             from trackrat.utils.time import now_et
 
@@ -2175,7 +2193,7 @@ class SchedulerService:
                 with SyncSession() as session:
                     journey = session.get(TrainJourney, journey_id)
                     if journey:
-                        journey.last_updated_at = now_et()
+                        mark_refresh_attempted(journey)
                         commit_with_retry(session, log_context={"train_id": train_id})
 
                 logger.info(
@@ -2193,22 +2211,19 @@ class SchedulerService:
                 }
             except TrainNotFoundError:
                 # Train is genuinely not available — increment error count.
-                new_error_count = journey_api_error_count + 1
-                is_now_expired = new_error_count >= 3
+                is_now_expired = False
 
                 with SyncSession() as session:
                     journey = session.get(TrainJourney, journey_id)
                     if journey:
-                        journey.api_error_count = new_error_count
-                        journey.last_updated_at = now_et()
-                        journey.update_count = (journey.update_count or 0) + 1
+                        is_now_expired = mark_refresh_failed(journey)
                         if is_now_expired:
                             journey.is_expired = True
                             logger.warning(
                                 "train_marked_expired_sync",
                                 train_id=train_id,
                                 journey_id=journey_id,
-                                error_count=new_error_count,
+                                error_count=journey.api_error_count,
                             )
                         commit_with_retry(session, log_context={"train_id": train_id})
 
@@ -2217,6 +2232,50 @@ class SchedulerService:
                     "success": False,
                     "error": "Train not found",
                     "expired": is_now_expired,
+                }
+            except NJTransitAPIError as e:
+                # Upstream failed (HTTP error, timeout, non-JSON body). This arm
+                # must stay *below* the two subclass arms above, which inherit
+                # from it and carry their own semantics.
+                #
+                # Before issue #1827 this fell through to the generic
+                # `except Exception` at the bottom, which logs and returns None
+                # while touching neither the freshness clock nor the strike
+                # counter. Since the batch is `ORDER BY last_updated_at ASC`,
+                # every journey NJT refused stayed at the head of the queue and
+                # was re-asked on every 5-minute tick — 100 journeys × 288 ticks
+                # = 28,800 wasted calls/day against a 40,000/day quota, while
+                # the trains behind them went unrefreshed.
+                #
+                # Stamp, no strike — same reasoning as the collector's arm in
+                # collectors/njt/journey.py: an HTTP error is evidence about
+                # NJT, not about this train, and striking would expire every
+                # in-flight journey minutes into a provider-wide outage while
+                # also priming the shared counter so the next genuine
+                # TrainNotFoundError expires on its first occurrence.
+                with SyncSession() as session:
+                    journey = session.get(TrainJourney, journey_id)
+                    if journey:
+                        mark_refresh_attempted(journey)
+                        commit_with_retry(session, log_context={"train_id": train_id})
+                        error_count = journey.api_error_count
+                    else:
+                        error_count = journey_api_error_count
+
+                logger.warning(
+                    "train_upstream_error_skipped_sync",
+                    train_id=train_id,
+                    journey_id=journey_id,
+                    error_count=error_count,
+                    error=str(e) or repr(e),
+                    error_type=type(e).__name__,
+                )
+
+                return {
+                    "train_id": train_id,
+                    "success": False,
+                    "error": "NJT upstream error",
+                    "expired": False,
                 }
 
             if not train_data:
@@ -3105,15 +3164,25 @@ class SchedulerService:
     )
 
     async def check_resource_usage(self) -> None:
-        """Log data-disk utilization, Postgres database size, and per-table
+        """Log disk utilization, Postgres database size, and per-table
         vacuum/analyze staleness for the high-churn tables.
 
         Emits structured log events that Terraform log-based metrics
         (`infra_v2/terraform/metrics.tf`) turn into Cloud Monitoring alerts,
         so disk exhaustion is caught automatically instead of found by
-        manually SSHing in and running `df -h` (issue #1344). Checks
-        `settings.data_disk_path` (the mounted persistent disk), not the
-        container's boot filesystem.
+        manually SSHing in and running `df -h` (issue #1344).
+
+        **Both** filesystems are reported: `settings.data_disk_path` (the
+        mounted persistent disk) and `BOOT_DISK_PATH`. Only the first was
+        checked until issue #1826, which is how the boot disk filled on
+        2026-09-01 and stayed full for 19 days with no alert — the data disk
+        was healthy throughout, so `/metrics` reported
+        `system_disk_usage_percent 57.5` while `/` sat at 100%.
+
+        Note that this task's own reporting path runs through the logs the
+        full disk breaks, so it cannot be the only defence: the
+        "Application Logs Absent" policy in `monitoring.tf` alerts on these
+        metrics going silent, whatever the cause.
 
         The vacuum-staleness check exists because `journey_stops` (35M+ rows,
         updated continuously by every 4-min GTFS-RT collector) was found with
@@ -3140,6 +3209,25 @@ class SchedulerService:
                 logger.warning(
                     "data_disk_usage_check_unavailable",
                     path=settings.data_disk_path,
+                )
+
+            # Separate event, not an extra label on the one above: the alerts
+            # read these metrics as a mean over the window, so folding both
+            # filesystems into one series would let a healthy data disk average
+            # a full boot disk back under the threshold — which is exactly the
+            # shape of the 2026-09-01 miss.
+            boot_disk = get_disk_usage(BOOT_DISK_PATH)
+            if boot_disk:
+                logger.info(
+                    "boot_disk_usage_check",
+                    usage_percent=boot_disk["usage_percent"],
+                    used_gb=boot_disk["used_gb"],
+                    total_gb=boot_disk["total_gb"],
+                )
+            else:
+                logger.warning(
+                    "boot_disk_usage_check_unavailable",
+                    path=BOOT_DISK_PATH,
                 )
 
             async with get_session() as db:
