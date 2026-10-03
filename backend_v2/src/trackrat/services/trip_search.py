@@ -545,6 +545,9 @@ async def _station_complex_direct_trips(
                 hide_departed=hide_departed,
                 data_sources=[system],
                 skip_individual_refresh=True,
+                # One search issues many boards, so the up-to-10s inline NJT
+                # refresh would stack across them (issue #1793).
+                skip_inline_refresh=True,
                 # Every hub subway code expands to the whole in-building
                 # complex, so a query for one platform code (e.g. S138) can
                 # match a train that actually boards at an equivalent platform
@@ -627,6 +630,11 @@ async def search_trips(
         hide_departed=hide_departed,
         data_sources=data_sources,
         skip_individual_refresh=False,
+        # A trip search is a fan-out of boards, not a board: the direct query's
+        # inline NJT refresh stacks with one per transfer leg below, which is
+        # where the ~20s p95 came from (issue #1793). The background refresh
+        # still fires, so the next search sees the promoted trains.
+        skip_inline_refresh=True,
     )
 
     # Build direct trips from departures (may produce fewer trips than departures
@@ -777,6 +785,11 @@ async def search_trips(
                 hide_departed=leg_hide_departed,
                 data_sources=leg_data_sources,
                 skip_individual_refresh=True,
+                # Up to 6 transfer points x 2 legs run here. Each NJT leg could
+                # block 10s inline, and because the wait starts at task creation
+                # while _background_refresh_semaphore admits only 4 at a time,
+                # the later legs burned the whole budget queued (issue #1793).
+                skip_inline_refresh=True,
             )
 
     # Two-phase query: leg 1 first, then leg 2 with time windows derived from

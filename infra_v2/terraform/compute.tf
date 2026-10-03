@@ -29,7 +29,14 @@ resource "google_compute_instance_template" "trackrat" {
     source_image = data.google_compute_image.cos.self_link
     auto_delete  = true
     boot         = true
-    disk_size_gb = 10 # COS minimum; only container images live here (~0.6GB), all state is on the data disk
+    # COS minimum. Container images (~0.6GB) AND container logs live here
+    # (/var/lib/docker/containers); application *state* is on the data disk.
+    # The logs were the false premise in the original note: unrotated, they
+    # filled this disk in ~2 weeks and killed all log shipping for 19 days
+    # (issue #1825). They are bounded in backend_v2/docker-compose.yml now, so
+    # this stays at 10GB deliberately — growing it changes the instance
+    # template and forces another MIG rollout.
+    disk_size_gb = 10
   }
 
   network_interface {
@@ -48,7 +55,17 @@ resource "google_compute_instance_template" "trackrat" {
     startup-script = <<-EOF
       #!/bin/bash
       set -e
-      exec > /var/log/startup.log 2>&1
+      # Tee, do not redirect. GCE ships startup-script stdout to the serial
+      # console and to Cloud Logging automatically (google-logging-enabled is
+      # set on this template), so `exec > FILE` opted every step of the boot out
+      # of remote observability: on 2026-09-20 the instance was visibly up and
+      # the API visibly down while Cloud Logging held only kernel/systemd noise,
+      # and the one line that explained it — a failed docker-compose.yml
+      # download — was reachable only by SSH. Teeing keeps the on-disk copy for
+      # forensics AND makes the same output queryable remotely and available to
+      # log-based metrics. The shutdown script below already does this (issue
+      # #1829).
+      exec > >(tee -a /var/log/startup.log) 2>&1
 
       echo "=== TrackRat ${var.environment} startup script ==="
       echo "Started at: $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -173,12 +190,46 @@ resource "google_compute_instance_template" "trackrat" {
       METRA_API_TOKEN=$(toolbox --quiet gcloud secrets versions access latest \
         --secret=trackrat-metra-api-token --project="$PROJECT_ID" 2>/dev/null) || true
       # Cloudflare Tunnel token (optional, per-environment). The connector is only
-      # started when ENABLE_CLOUDFLARE_TUNNEL=true AND this token is non-empty
-      # (issue #1578) — so an absent/unreadable secret OR the flag being off both
-      # leave the tunnel fully off. Only the staging secret exists during the
-      # Cloudflare pilot; production reads a nonexistent secret and keeps its LB.
-      CLOUDFLARE_TUNNEL_TOKEN=$(toolbox --quiet gcloud secrets versions access latest \
-        --secret="trackrat-cloudflare-tunnel-token-$ENVIRONMENT" --project="$PROJECT_ID" 2>/dev/null) || true
+      # started when ENABLE_CLOUDFLARE_TUNNEL=true AND this read yields a
+      # well-formed token (issue #1578) — so an absent/unreadable secret OR the
+      # flag being off both leave the tunnel fully off, while api/db come up
+      # normally either way.
+      #
+      # This deliberately does NOT use VAR=$(toolbox ...): toolbox runs gcloud in
+      # a container on a pty, so gcloud's stderr is merged into toolbox's STDOUT
+      # and the `2>/dev/null` above discards nothing. With `|| true` also throwing
+      # away the exit status, a failed read produced gcloud's *error text* as a
+      # non-empty "token", which was appended to .env verbatim — making .env
+      # unparseable and aborting the whole startup script under `set -e` before
+      # any container started (issue #1758; ~30 min production outage on
+      # 2026-08-08). Capture to a file so the exit status is the signal, then
+      # validate the shape so toolbox chatter on a zero exit is rejected too.
+      CLOUDFLARE_TUNNEL_TOKEN=""
+      if TUNNEL_TOKEN_TMP=$(mktemp); then
+        if toolbox --quiet gcloud secrets versions access latest \
+             --secret="trackrat-cloudflare-tunnel-token-$ENVIRONMENT" \
+             --project="$PROJECT_ID" > "$TUNNEL_TOKEN_TMP" 2>/dev/null; then
+          # tr strips the pty's CRs; $(...) strips the trailing newline. Any
+          # newline left in the middle is a multi-line blob, and is caught by the
+          # character-class check below rather than silently concatenated.
+          CLOUDFLARE_TUNNEL_TOKEN=$(tr -d '\r' < "$TUNNEL_TOKEN_TMP")
+        else
+          echo "WARN: Cloudflare tunnel token could not be read — connector disabled this boot; api/db unaffected"
+        fi
+        rm -f "$TUNNEL_TOKEN_TMP" || echo "WARN: tunnel token temp file cleanup failed; api/db unaffected"
+      else
+        echo "WARN: could not create a temp file for the tunnel token read — connector disabled this boot; api/db unaffected"
+      fi
+      # A connector token is a single-line base64 blob. Whitespace, an embedded
+      # newline, or anything outside the base64/base64url alphabet means we are
+      # holding diagnostics rather than a token — never write that to .env.
+      case "$CLOUDFLARE_TUNNEL_TOKEN" in
+        "") ;;
+        *[!A-Za-z0-9+/=_-]*)
+          echo "WARN: Cloudflare tunnel token is malformed — connector disabled this boot; api/db unaffected"
+          CLOUDFLARE_TUNNEL_TOKEN=""
+          ;;
+      esac
       echo "Secrets fetched successfully"
 
       # ===========================================
@@ -190,7 +241,17 @@ resource "google_compute_instance_template" "trackrat" {
       # Note: toolbox writes to its internal mount, not the actual host path.
       # We must find and copy from toolbox mount to the real host path.
       # Always overwrite to ensure we're running the latest version (persistent disk may have stale copy).
-      toolbox --quiet gsutil cp "gs://$DEPLOY_BUCKET/docker-compose.yml" "$APP_DIR/docker-compose.yml"
+      #
+      # Non-fatal on purpose (issue #1824). Under `set -e` a failed download
+      # aborted the script ON THIS LINE — before the "Verify download" guard
+      # below, which exists precisely for this case, and before the copy the
+      # persistent data disk already holds could be used. On 2026-09-20 a usable
+      # docker-compose.yml was sitting at $APP_DIR while the VM served nothing
+      # for 33 minutes. Booting on the previous config beats not booting: this
+      # file changes only on deploy, and the guard below still hard-fails when
+      # there is genuinely no file anywhere.
+      toolbox --quiet gsutil cp "gs://$DEPLOY_BUCKET/docker-compose.yml" "$APP_DIR/docker-compose.yml" \
+        || echo "WARN: docker-compose.yml download failed — falling back to the on-disk copy if present"
       TOOLBOX_FILE=$(find /var/lib/toolbox -name "docker-compose.yml" -path "*/mnt/disks/data/compose/*" 2>/dev/null | head -1)
       if [ -n "$TOOLBOX_FILE" ]; then
         echo "Copying from toolbox mount: $TOOLBOX_FILE"
@@ -306,8 +367,13 @@ TUNNELEOF
       # is recreated by the isolated connector bring-up further below.
       $COMPOSE_PATH down --remove-orphans 2>/dev/null || true
 
-      # Pull latest images (DOCKER_CONFIG is exported, so compose uses it)
-      $COMPOSE_PATH pull
+      # Pull latest images (DOCKER_CONFIG is exported, so compose uses it).
+      # Non-fatal: `down` has already run, so aborting here under `set -e` leaves
+      # the VM with no containers at all, fails the LB health check and makes the
+      # MIG auto-heal into the same failure (issue #1758). A pull failure is
+      # usually transient/registry-side; the bring-up below uses the cached image
+      # if there is one, and fails loudly on its own if there is not.
+      $COMPOSE_PATH pull || echo "WARN: image pull failed — starting with cached images"
 
       # ---------------------------------------------------------
       # 7a. Scrub production user data on staging

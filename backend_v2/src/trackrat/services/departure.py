@@ -17,6 +17,7 @@ from structlog import get_logger
 from trackrat.collectors.njt.client import NJTransitClient, TrainNotFoundError
 from trackrat.collectors.njt.journey import JourneyCollector as NJTJourneyCollector
 from trackrat.collectors.njt.journey import normalize_njt_stop_times
+from trackrat.collectors.njt.refresh_outcome import mark_refresh_attempted
 from trackrat.collectors.njt.schedule import parse_njt_line_code
 from trackrat.config.route_topology import find_route_for_segment
 from trackrat.config.stations import (
@@ -302,6 +303,43 @@ def _detect_at_station(journey: TrainJourney) -> str | None:
     return None
 
 
+async def _stamp_refresh_after_rollback(
+    db: AsyncSession, journey_id: int, train_id: str | None
+) -> None:
+    """Advance a journey's freshness clock in a fresh transaction after a rollback.
+
+    The JIT second pass selects on ``last_updated_at < now - 60s``, and
+    ``collect_journey_details`` stamps the journey for every outcome it handles
+    — including the ones where NJT gave it nothing. Rolling back on a failure
+    therefore *undoes* the record that we asked, so the same journey is
+    re-selected by the next station-board view and asked again, driven by user
+    traffic with no ceiling: every page load and every 30-second web poll
+    re-attempts the same doomed refresh against NJT's 40,000/day quota
+    (issue #1827).
+
+    Stamping here records only "we asked", never a strike — an exception
+    reaching this point may be a local fault (deadlock, bad row) rather than
+    anything NJT said, and the NJT-attributable strikes have already been
+    applied inside ``collect_journey_details`` before it raised. Failures are
+    swallowed: one journey we could not stamp must not abort the refresh of the
+    rest of the board.
+    """
+    try:
+        journey = await db.get(TrainJourney, journey_id)
+        if journey is not None:
+            mark_refresh_attempted(journey)
+            await db.commit()
+    except Exception as e:  # pragma: no cover - defensive
+        await db.rollback()
+        logger.warning(
+            "stale_train_stamp_failed",
+            train_id=train_id,
+            journey_id=journey_id,
+            error=str(e) or repr(e),
+            error_type=type(e).__name__,
+        )
+
+
 class DepartureService:
     """Service for handling departure queries and processing."""
 
@@ -375,6 +413,7 @@ class DepartureService:
         skip_gtfs_merge: bool = False,
         line_codes: list[str] | None = None,
         label_matched_stop: bool = False,
+        skip_inline_refresh: bool = False,
     ) -> DeparturesResponse:
         """Get train departures between stations.
 
@@ -403,6 +442,25 @@ class DepartureService:
         echoes the requested code so the board reflects what the caller asked
         for; cross-modal-hub trip search (#1587 / PR #1593 review) opts in so a
         substituted hub code can't surface the wrong physical platform.
+
+        ``skip_inline_refresh`` gives up the blocking NJT refresh below — up to
+        10 seconds per call — keeping only the non-blocking background trigger.
+        It exists for callers that issue *many* boards to answer one request:
+        trip search fires one query for the direct leg plus up to two per
+        transfer point, so the same 10s wait stacks (issue #1793). This is
+        distinct from ``skip_individual_refresh``, which only drops the second
+        (per-train) pass and never affected the inline wait — the inline path
+        hardcodes that skip internally.
+
+        The cost is real and worth stating: the inline refresh exists so a
+        SCHEDULED NJT train departing within
+        ``SCHEDULED_VISIBILITY_THRESHOLDS["NJT"]`` minutes is promoted to
+        OBSERVED before ``_filter_stale_scheduled_trains`` hides it. Opting out
+        can therefore omit an imminent, not-yet-discovered NJT train from that
+        board. For a single station board that would be the wrong trade; for
+        trip search it is the right one, because the background refresh still
+        fires on the same request (so the next poll sees the train) and a
+        20-30s response is a worse failure than a missing near-term option.
         """
         today = now_et().date()
         target_date = date or today
@@ -596,8 +654,12 @@ class DepartureService:
         jit_start = time.perf_counter()
         jit_ran_inline = False
         if "NJT" in allowed_sources:
+            # skip_inline_refresh is tested first so an opting-out caller also
+            # avoids the _has_imminent_scheduled_njt probe — one query per board,
+            # and trip search issues up to 13 of them (issue #1793).
             if (
-                target_date == today
+                not skip_inline_refresh
+                and target_date == today
                 and from_station not in _refreshing_stations
                 and await self._has_imminent_scheduled_njt(
                     db, from_station, target_date
@@ -1720,12 +1782,14 @@ class DepartureService:
                         # Train no longer in NJT system - this is expected for
                         # trains that completed their journey
                         await db.rollback()
+                        await _stamp_refresh_after_rollback(db, journey_id, train_id)
                         logger.debug(
                             "stale_train_not_found",
                             train_id=train_id,
                         )
                     except Exception as e:
                         await db.rollback()
+                        await _stamp_refresh_after_rollback(db, journey_id, train_id)
                         logger.warning(
                             "stale_train_refresh_failed",
                             train_id=train_id,

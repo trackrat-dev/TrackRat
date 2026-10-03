@@ -60,9 +60,22 @@ resource "google_storage_bucket" "deploy" {
     enabled = true
   }
 
+  # Scoped to ARCHIVED (noncurrent) generations ONLY.
+  #
+  # Without with_state this rule deletes the LIVE object too, and this bucket is
+  # the MIG's bootstrap source: the startup script downloads docker-compose.yml
+  # and docker-compose.tunnel.yml from here on every boot (compute.tf). Going 30
+  # days without a deploy therefore aged out the live bootstrap artifacts while
+  # the running VM kept serving from its data-disk copy — so nothing broke until
+  # the next instance recreate, which then could not boot at all. That is the
+  # 33-minute production outage on 2026-09-20 (issue #1823).
+  #
+  # Versioning is enabled above, so garbage-collecting old generations after 30
+  # days keeps the original intent; the live object is now never removed.
   lifecycle_rule {
     condition {
-      age = 30
+      age        = 30
+      with_state = "ARCHIVED"
     }
     action {
       type = "Delete"
