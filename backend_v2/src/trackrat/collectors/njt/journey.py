@@ -15,9 +15,14 @@ from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from trackrat.collectors.njt.client import (
+    NJTransitAPIError,
     NJTransitClient,
     NJTransitNullDataError,
     TrainNotFoundError,
+)
+from trackrat.collectors.njt.refresh_outcome import (
+    mark_refresh_attempted,
+    mark_refresh_failed,
 )
 from trackrat.config.stations import get_station_name
 from trackrat.models.api import NJTransitStopData, NJTransitTrainData
@@ -653,7 +658,7 @@ class JourneyCollector:
                 # re-selected every tick for its whole in-flight window, starving
                 # trains behind it (issue #1748). The clock records "we asked",
                 # which is exactly what happened.
-                journey.last_updated_at = now_et()
+                mark_refresh_attempted(journey)
                 logger.info(
                     "train_null_data_skipped",
                     train_id=journey.train_id,
@@ -665,12 +670,7 @@ class JourneyCollector:
             except TrainNotFoundError:
                 # Train is genuinely not available (empty/None response) —
                 # increment error count toward expiry threshold.
-                journey.api_error_count = (journey.api_error_count or 0) + 1
-                journey.last_updated_at = now_et()
-                journey.update_count = (journey.update_count or 0) + 1
-
-                # After 3 failed attempts, attempt last-chance completion then expire
-                if journey.api_error_count >= 3:
+                if mark_refresh_failed(journey):
                     # Train disappeared from API — likely completed its run.
                     # Check if penultimate stop departed, which means the train
                     # reached its terminal. We can't set terminal actual_arrival
@@ -698,6 +698,42 @@ class JourneyCollector:
                         journey_id=journey.id,
                         api_error_count=journey.api_error_count,
                     )
+
+                await session.flush()
+                return
+            except NJTransitAPIError as e:
+                # Upstream failed: HTTP error, timeout, or a body that wasn't
+                # JSON. Ordering matters — this arm must stay *below* the two
+                # subclasses above, which carry their own semantics.
+                #
+                # Stamp, no strike. `api_error_count` answers "is this train
+                # failing", and an HTTP error is evidence about NJT, not about
+                # the train — the run did not end, NJT just stopped answering.
+                # Striking here would do two wrong things: expire every
+                # in-flight journey about 15 minutes into any provider-wide
+                # outage, removing them from /departures (the query excludes
+                # expired rows) until a later discovery pass that needs the same
+                # broken API to succeed; and, because the counter is shared with
+                # the not-found path, leave a journey primed so the next genuine
+                # TrainNotFoundError expires it on the first occurrence instead
+                # of the third.
+                #
+                # The stamp alone is what #1827 needs. The storm came from
+                # journeys never leaving the head of the oldest-first batch and
+                # from the JIT path re-asking on every station-board view;
+                # advancing the clock ends both. Bounding total daily volume is
+                # a different problem — the quota guard / circuit breaker the
+                # issue raises separately — and expiring live trains is not a
+                # substitute for it.
+                mark_refresh_attempted(journey)
+                logger.warning(
+                    "train_upstream_error_skipped",
+                    train_id=journey.train_id,
+                    journey_id=journey.id,
+                    api_error_count=journey.api_error_count,
+                    error=str(e) or repr(e),
+                    error_type=type(e).__name__,
+                )
 
                 await session.flush()
                 return

@@ -26,6 +26,25 @@ from trackrat.utils.time import normalize_to_et, now_et
 logger = get_logger(__name__)
 
 
+def _generate_train_id(train_num: str) -> str:
+    """Generate the stable internal train ID for an Amtrak train.
+
+    Amtrak identifies a train by number, and the feed sometimes carries an
+    instance suffix for a train running as more than one physical consist
+    (``"2150-4"``); the suffix is dropped, since a journey is keyed by number
+    and date. The ``A`` prefix distinguishes Amtrak from NJT, whose numbers
+    occupy the same range.
+
+    Named and shaped to match ``_generate_train_id`` in the LIRR, Metro-North
+    and Subway collectors, so ``scripts/ground-truth-validate.py`` can derive
+    the same ID for its ground-truth side rather than reconstructing the format
+    by hand — which it did, without the prefix, so ``pair_by_train_id`` found
+    no Amtrak intersection at all and every run silently fell back to greedy
+    time matching (issue #1797).
+    """
+    return f"A{train_num.split('-')[0]}"
+
+
 class AmtrakJourneyCollector(BaseJourneyCollector):
     """Collects detailed journey information for Amtrak trains."""
 
@@ -43,8 +62,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
             TrainJourney object if successful, None if failed
         """
         # Extract train number for internal ID and journey date
-        train_num = train_id.split("-")[0] if "-" in train_id else train_id
-        internal_train_id = f"A{train_num}"
+        internal_train_id = _generate_train_id(train_id)
         journey_date = now_et().date().isoformat()
 
         # Use train-specific locking to prevent concurrent processing
@@ -194,7 +212,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
         """
         try:
             # Prefix train number with 'A' to distinguish from NJT
-            train_id = f"A{train_data.trainNum}"
+            train_id = _generate_train_id(str(train_data.trainNum))
 
             # Find the first tracked station for origin and scheduled departure
             origin_code = None
