@@ -68,8 +68,8 @@ variable "disabled_data_sources" {
     # soak; clearing production restored the runbook's rule 3 ordering, because
     # the iOS and web disabled sets already dropped SEPTA on `main` (PR #1738)
     # and leaving production dark would have shipped a picker entry that
-    # returns nothing. The production cutover has since landed and both
-    # environments serve SEPTA.
+    # returns nothing. The production cutover landed on 2026-08-09 (PR #1789)
+    # and both environments serve SEPTA.
     #
     # ⚠️ WHEN CLEARING A SOURCE HERE FOR AN ENVIRONMENT THAT HAS NEVER RUN IT:
     # that environment holds no GTFS bundle for it — the flag gates the

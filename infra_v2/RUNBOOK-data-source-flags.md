@@ -179,8 +179,9 @@ empty history and lose the analytics baseline the soak built up.
 | staging | BART, WMATA, MBTA, METRA |
 | production | BART, WMATA, MBTA, METRA |
 
-The environments match again: `SEPTA_RR` and `SEPTA_METRO` passed their staging
-soak (issue #1634) and the production cutover has landed, alongside the iOS
-(`TrainSystem.disabledSystems`) and web (`DISABLED_SYSTEMS`) mirrors. Keeping
-them divergent is still the supported mode for the next soak — that is what the
-per-environment keying exists for.
+The environments converged on 2026-08-09: `SEPTA_RR` and `SEPTA_METRO` passed
+their staging soak (issue #1634) and were cut over to production by PR #1789,
+one coordinated release behind the iOS (`TrainSystem.disabledSystems`) and web
+(`DISABLED_SYSTEMS`) mirrors — backend first, clients after.
+Keeping them divergent is still the supported mode for the next soak — that is
+what the per-environment keying exists for.
