@@ -6,7 +6,7 @@ A mobile-first web application for tracking trains across 13 transit systems (NJ
 
 - Real-time train departures and details
 - Search trains by origin and destination across 13 transit systems
-- 1,500+ stations with system-grouped picker
+- 2,300+ stations with system-grouped picker
 - Visual train states: departed (dimmed), boarding (highlighted), cancelled (strikethrough), scheduled
 - Train number filter on departure list
 - Route operations summary
@@ -36,7 +36,7 @@ A mobile-first web application for tracking trains across 13 transit systems (NJ
 
 ### Prerequisites
 
-- Node.js 18+ and npm
+- Node.js 20.19+ or 22.12+ and npm (required by Vite 8)
 
 ### Installation
 
@@ -67,7 +67,7 @@ src/
 ├── store/           # Zustand global state
 ├── types/           # TypeScript type definitions
 ├── utils/           # Date formatting, status badges, share helpers
-├── data/            # Station data, route topology, subway lines (1,500+ stations, 13 transit systems)
+├── data/            # Station data, route topology, subway lines (2,300+ stations, 13 transit systems)
 ├── App.tsx          # Main app component with route definitions
 ├── main.tsx         # Entry point
 └── index.css        # Global styles
@@ -121,7 +121,7 @@ Defaults to production. The script builds `dist/` and uploads it as the Worker's
 
 The `production` Worker's custom domains serve `trackrat.net` and `www.trackrat.net` directly, with no GCS fallback, so a production run deploys the local build straight to the live site. The script always refuses a bare `production` run and requires `--cloudflare-only` to acknowledge that; the normal path is pushing to the `production` branch so Cloud Build builds from committed source.
 
-Cache headers (`no-cache` for `index.html` and the service worker, `max-age=1yr` for hashed assets), HSTS, and the `application/json` content type for `/.well-known/apple-app-site-association` come from `public/_headers`, which Vite copies into `dist/`. Deep links are served by `assets.not_found_handling: "single-page-application"` in `wrangler.jsonc`.
+Cache headers (`no-cache, no-store, must-revalidate` for the app shell and the service worker, `max-age=1yr, immutable` for hashed assets under `/assets/*`), HSTS, and the `application/json` content type for `/.well-known/apple-app-site-association` come from `public/_headers`, which Vite copies into `dist/`. The shell rule is keyed on `/`, not `/index.html` — Cloudflare redirects `/index.html` to `/` before serving, so a rule on `/index.html` would only decorate that redirect. Deep links are served by `assets.not_found_handling: "single-page-application"` in `wrangler.jsonc`.
 
 ## License
 

@@ -58,6 +58,21 @@ class TestParseNjtLineCode:
     def test_atlantic_city(self):
         assert parse_njt_line_code("Atlantic City Rail Line") == "AC"
 
+    def test_atlantic_city_unsuffixed(self):
+        assert parse_njt_line_code("Atlantic City Line") == "AC"
+
+    def test_atl_city_abbreviation(self):
+        """The literal string NJT's schedule API sends (issue #1796).
+
+        Not a synthesised variant: this is the exact `line` value from the
+        production `unknown_njt_line_name` log, which fired ~200x per sample.
+        """
+        assert parse_njt_line_code("Atl. City Line") == "AC"
+
+    def test_port_jervis(self):
+        """Port Jervis had no prefix entry at all (issue #1796)."""
+        assert parse_njt_line_code("Port Jervis Line") == "PJ"
+
     def test_princeton_shuttle(self):
         assert parse_njt_line_code("Princeton Shuttle") == "PR"
 
@@ -114,3 +129,25 @@ class TestParseNjtLineCode:
         result = parse_njt_line_code("North Jersey Coast Line")
         assert result != "No"
         assert result == "NC"
+
+    def test_no_longer_produces_at_for_atl_city(self):
+        """'Atl. City Line' truncated to 'At' (issue #1796).
+
+        'At' is Atlantic City's own pre-2026-03 legacy alias, so topology
+        lookups still resolved and nothing looked broken — while SCHEDULED
+        rows carried 'At' and OBSERVED rows carried 'AC' for the same line,
+        and a client filtering `lines=AC` silently dropped the scheduled ones.
+        """
+        result = parse_njt_line_code("Atl. City Line")
+        assert result != "At"
+        assert result == "AC"
+
+    def test_no_longer_produces_po_for_port_jervis(self):
+        """'Port Jervis Line' truncated to 'Po' (issue #1796).
+
+        Strictly worse than the Atlantic City case that was reported: no NJT
+        route carries 'Po', so unlike 'At' it resolved to no route at all.
+        """
+        result = parse_njt_line_code("Port Jervis Line")
+        assert result != "Po"
+        assert result == "PJ"

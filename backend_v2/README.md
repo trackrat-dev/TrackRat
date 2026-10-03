@@ -93,7 +93,9 @@ poetry run uvicorn trackrat.main:app --reload
 - **Every 5 minutes**: Update checks for active journeys
 - **Every 15 minutes**: NJT journey maintenance (silent-cancellation reconcile + old-journey expiry sweeps)
 - **Every 5 minutes**: Route alert evaluation and push notifications
-- **Hourly at :05**: Validation across key routes
+- **Every 15 minutes**: Service alerts collection (MTA + SEPTA GTFS-RT feeds, NJT `getStationMSG`, WMATA Rail Incidents)
+- **Hourly**: Validation across key routes (interval job; first run ~10 minutes after startup)
+- **Daily 3:00 AM ET**: GTFS static schedule refresh
 - **Daily 3:30 AM ET**: Data retention cleanup (deletes journeys, discovery runs, validation results, and inactive service alerts older than `TRACKRAT_RETENTION_DAYS`, default 60 days; active service alerts are kept regardless of age)
 - Monitor scheduler status at `/scheduler/status` endpoint
 
@@ -307,21 +309,31 @@ GET /admin/stats.json  # Server usage statistics (JSON)
 #### Register Device
 ```
 POST /api/v2/devices/register
-{"device_token": "...", "platform": "ios"}
+{"device_id": "...", "apns_token": "..."}
 ```
 
 #### Sync Alert Subscriptions
 ```
 PUT /api/v2/alerts/subscriptions
-{"device_token": "...", "subscriptions": [...]}
+{"device_id": "...", "subscriptions": [...]}
 ```
-Sync route alert subscriptions for delay/cancellation push notifications
+Full-replace sync of a device's route alert subscriptions for delay/cancellation push
+notifications. Each subscription carries `data_source` plus at most one of `line_id`,
+both `from_station_code`/`to_station_code`, or `train_id` (none = system-wide), along
+with its schedule (`active_days` bitmask, `active_start_minutes`/`active_end_minutes`,
+`timezone`), thresholds, per-type toggles, and `digest_time_minutes`.
+
+#### Get Subscriptions
+```
+GET /api/v2/alerts/subscriptions/{device_id}
+```
+Current subscriptions for a device
 
 #### Service Alerts
 ```
 GET /api/v2/alerts/service
 ```
-MTA service alerts (planned work, delays) for Subway, LIRR, Metro-North, and SEPTA (Regional Rail + Metro)
+Service alerts (planned work, delays, elevator outages) for Subway, LIRR, Metro-North, NJT, SEPTA (Regional Rail + Metro), and WMATA. Filter with `?data_source=` and `?alert_type=`
 
 ### Feedback
 ```

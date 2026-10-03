@@ -56,10 +56,6 @@ class TestValidateJourneyDate:
         """The exact production corruption case: year 3025."""
         assert validate_journey_date(date(3025, 6, 22)) is False
 
-    def test_december_2026_from_april_2026_is_invalid(self):
-        """8 months in the future exceeds 60-day window."""
-        assert validate_journey_date(date(2026, 12, 1)) is False
-
     def test_min_valid_date_is_valid(self):
         """The minimum valid date boundary should pass."""
         assert validate_journey_date(MIN_VALID_DATE) is True

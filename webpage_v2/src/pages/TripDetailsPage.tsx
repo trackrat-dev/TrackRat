@@ -6,6 +6,7 @@ import { usePolling } from '../utils/usePolling';
 import { LoadingSpinner } from '../components/LoadingSpinner';
 import { ErrorMessage } from '../components/ErrorMessage';
 import { StopCard } from '../components/StopCard';
+import { JourneyStopList } from '../components/JourneyStopList';
 import { ServiceAlertBanner } from '../components/ServiceAlertBanner';
 import { TransferIndicator } from '../components/TransferTripCard';
 import { StatusBadge } from '../components/StatusBadge';
@@ -39,24 +40,11 @@ function codesMatch(a: string, b: string): boolean {
   return canonicalA != null && canonicalB != null && canonicalA === canonicalB;
 }
 
-/** Filter stops to the boarding→alighting range for a leg */
-function filterStopsForLeg(
-  train: TrainDetails,
-  boardingCode: string,
-  alightingCode: string
-) {
-  const stops = train.stops;
+/** Boarding and alighting stop indices for a leg, or null when they can't be matched in order */
+function legJourneyRange(stops: Stop[], boardingCode: string, alightingCode: string): [number, number] | null {
   const fromIdx = stops.findIndex(s => codesMatch(s.station.code, boardingCode));
   const toIdx = stops.findIndex(s => codesMatch(s.station.code, alightingCode));
-
-  if (fromIdx !== -1 && toIdx !== -1 && fromIdx <= toIdx) {
-    return {
-      stops: stops.slice(fromIdx, toIdx + 1),
-      hasPreviousStops: fromIdx > 0,
-      hasLaterStops: toIdx < stops.length - 1,
-    };
-  }
-  return { stops, hasPreviousStops: false, hasLaterStops: false };
+  return fromIdx !== -1 && fromIdx <= toIdx ? [fromIdx, toIdx] : null;
 }
 
 /**
@@ -148,10 +136,10 @@ function tripDurationMinutes(start: string, end: string): number {
 }
 
 function LegDetail({ leg, train, loading, navigate }: { leg: TripLeg; train: TrainDetails | null; loading: boolean; navigate: ReturnType<typeof useNavigate> }) {
-  const legStops = useMemo(() => {
-    if (!train) return null;
-    return filterStopsForLeg(train, leg.boarding.code, leg.alighting.code);
-  }, [train, leg.boarding.code, leg.alighting.code]);
+  const journeyRange = useMemo(
+    () => (train ? legJourneyRange(train.stops, leg.boarding.code, leg.alighting.code) : null),
+    [train, leg.boarding.code, leg.alighting.code]
+  );
 
   return (
     <div>
@@ -216,30 +204,23 @@ function LegDetail({ leg, train, loading, navigate }: { leg: TripLeg; train: Tra
         <div className="mb-4 p-4 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl text-center text-text-muted text-sm">
           Could not load stops for this leg.
         </div>
-      ) : legStops ? (
-        <>
-          {legStops.hasPreviousStops && (
-            <div className="mb-3 p-3 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl text-center text-text-muted text-sm">
-              Train has previous stops
-            </div>
-          )}
-          <div className="space-y-3 mb-4">
-            {legStops.stops.map(stop => (
+      ) : (
+        <div className="mb-4">
+          <JourneyStopList
+            key={`${leg.boarding.code}-${leg.alighting.code}`}
+            stops={train.stops}
+            journeyRange={journeyRange}
+            renderStop={stop => (
               <StopCard
                 key={`${leg.train_id}-${stop.station.code}-${stop.stop_sequence}`}
                 stop={stop}
                 isOrigin={codesMatch(stop.station.code, leg.boarding.code)}
                 isDestination={codesMatch(stop.station.code, leg.alighting.code)}
               />
-            ))}
-          </div>
-          {legStops.hasLaterStops && (
-            <div className="mb-4 p-3 bg-surface/50 backdrop-blur-xl border border-text-muted/20 rounded-xl text-center text-text-muted text-sm">
-              Train has later stops
-            </div>
-          )}
-        </>
-      ) : null}
+            )}
+          />
+        </div>
+      )}
     </div>
   );
 }
