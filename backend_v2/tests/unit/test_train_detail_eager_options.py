@@ -1,11 +1,18 @@
 """
-Regression test for issue #919: Train detail fallback queries must eager-load
+Regression test for issue #919: Train detail journey loads must eager-load
 progress_snapshots to avoid raise_on_sql errors.
 
 The get_train_details endpoint has fallback re-query paths (JIT timeout, flush
 failure) that previously only loaded TrainJourney.stops, causing crashes when
-journey.progress_snapshots was accessed downstream. This test verifies that
-every query in get_train_details that loads stops also loads progress_snapshots.
+journey.progress_snapshots was accessed downstream.
+
+Those three queries were identical apart from that bug, and #1752 needed a
+fourth behaviour from all of them (an adjacent-date fallback), so they are now
+one helper — ``_load_journey_for_date``. That makes #919's invariant structural
+rather than repeated: there is a single place to get the eager loads right, and
+no fourth path can be added that forgets them. These tests check both halves of
+that: the helper loads both relationships, and the endpoint still routes every
+journey load through it instead of reintroducing an inline query.
 """
 
 import ast
@@ -58,46 +65,59 @@ def _extract_selectinload_groups(source: str, function_name: str) -> list[set[st
     return groups
 
 
-def test_all_fallback_queries_include_progress_snapshots():
-    """Every .options(selectinload(TrainJourney.stops)) call in get_train_details
-    must also include selectinload(TrainJourney.progress_snapshots).
-
-    This prevents raise_on_sql errors when the response builder accesses
-    journey.progress_snapshots after a fallback re-query path.
-    """
-    source = inspect.getsource(trains_module)
+def _module_source() -> str:
     # Dedent so AST parsing works regardless of module-level indentation
-    source = textwrap.dedent(source)
+    return textwrap.dedent(inspect.getsource(trains_module))
 
-    groups = _extract_selectinload_groups(source, "get_train_details")
 
-    assert len(groups) >= 3, (
-        f"Expected at least 3 .options() calls in get_train_details "
-        f"(pre-fetch, timeout fallback, flush fallback), found {len(groups)}. "
-        f"If queries were refactored, update this test."
+def test_journey_loader_eager_loads_progress_snapshots():
+    """The one place that loads a journey for the detail endpoint must load both.
+
+    This is #919's invariant. It used to be repeated across three queries, with
+    the fallback paths being exactly the ones that got it wrong; it now lives in
+    a single helper, so this asserts it there.
+    """
+    groups = _extract_selectinload_groups(_module_source(), "_load_journey_for_date")
+
+    assert groups, (
+        "_load_journey_for_date has no .options(selectinload(...)) call, so the "
+        "journey it returns lazy-loads its relationships — which raises "
+        "MissingGreenlet under the async session (see issue #919)"
     )
 
     for i, group in enumerate(groups):
         if "stops" in group:
             assert "progress_snapshots" in group, (
-                f".options() call #{i + 1} in get_train_details loads "
-                f"'stops' but is missing 'progress_snapshots'. "
-                f"Found: {group}. "
-                f"All fallback queries must eager-load progress_snapshots "
-                f"to avoid raise_on_sql errors (see issue #919)."
+                f".options() call #{i + 1} in _load_journey_for_date loads "
+                f"'stops' but is missing 'progress_snapshots'. Found: {group}. "
+                f"The response builder accesses progress_snapshots downstream "
+                f"(see issue #919)."
             )
+
+
+def test_train_details_does_not_load_journeys_inline():
+    """No path may go around the helper and reintroduce the #919 bug.
+
+    An inline query here is how the original defect happened: three near-copies
+    of one lookup, and the two least-exercised ones missing an eager load. The
+    endpoint should have no journey-loading .options() of its own.
+    """
+    groups = _extract_selectinload_groups(_module_source(), "get_train_details")
+
+    assert not [g for g in groups if "stops" in g], (
+        f"get_train_details loads a journey inline ({groups}) instead of "
+        "through _load_journey_for_date. Either route it through the helper, "
+        "or eager-load both stops and progress_snapshots here too."
+    )
 
 
 def test_selectinload_group_extraction_works():
     """Verify the AST extraction helper works correctly on the actual source."""
-    source = inspect.getsource(trains_module)
-    source = textwrap.dedent(source)
-
-    groups = _extract_selectinload_groups(source, "get_train_details")
+    groups = _extract_selectinload_groups(_module_source(), "_load_journey_for_date")
 
     # Every group should have at least 'stops' since that's always loaded
     for group in groups:
         assert "stops" in group, (
             f"Found a .options() group without 'stops': {group}. "
-            f"This is unexpected — all queries in get_train_details should load stops."
+            f"This is unexpected — the journey loader should always load stops."
         )
