@@ -48,7 +48,7 @@ TrackRat/
 ├── Shared/           # Stations, StationData, StationCoordinates, StationDepartures, LiveActivityModels, RouteTopology, RouteShapes, SubwayLines
 ├── Theme/            # TrackRatTheme.swift
 ├── Utilities/        # Extensions.swift, Logger.swift
-└── Resources/        # Assets, Info.plist
+└── (target root)     # Assets.xcassets, Info.plist, TrackRat.entitlements, Configuration.storekit
 TrainLiveActivityExtension/  # Live Activity widget
 TrackRatTests/               # Unit tests
 ```

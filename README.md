@@ -37,7 +37,7 @@ TrackRat tracks trains across thirteen transit systems in real time, predicts pl
 - **Route Alerts** — Push notifications for delays, cancellations, and service changes on subscribed routes, with customizable schedules, thresholds, and per-type toggles
 - **Service Alerts** — Planned work and service change notifications for Subway, LIRR, Metro-North, NJ Transit, and SEPTA (Regional Rail + Metro). WMATA incidents are also collected and served on `/api/v2/alerts/service`, but do not yet trigger notifications
 - **Congestion Maps** — Live network congestion monitoring
-- **1,500+ Stations** across the US
+- **2,300+ Stations** across the US
 
 ## Architecture
 
@@ -96,7 +96,7 @@ poetry run uvicorn trackrat.main:app --reload
 
 ### Web App (React / TypeScript)
 
-**Prerequisites:** Node.js 18+
+**Prerequisites:** Node.js 20.19+ or 22.12+ (required by Vite 8)
 
 ```bash
 cd webpage_v2

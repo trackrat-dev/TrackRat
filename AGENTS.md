@@ -95,6 +95,7 @@ The individual steps can still be run separately if needed:
 bash scripts/verify-deployment.sh https://staging-api.trackrat.net [--no-wait]
 
 # 2. Run E2E API tests (mimics iOS app call sequence across all providers)
+# --no-random skips the random-route phase; --seed N makes that phase reproducible
 bash scripts/e2e-api-test.sh https://staging-api.trackrat.net --no-random
 
 # 3. Check backend logs for errors
@@ -551,7 +552,7 @@ terraform apply -var="environment=production"
 
 **Deployment Triggers**: Push to `main` → staging, push to `production` → production.
 
-**CI (GitHub Actions)**: `.github/workflows/ci-cd-v2.yml` runs backend tests, terraform validation, and web/Docker builds on `backend_v2/`, `infra_v2/`, or `webpage_v2/` changes; `.github/workflows/ios-ci.yml` builds and tests the iOS app on `ios/` changes (dynamically selects an available simulator).
+**CI (GitHub Actions)**: `.github/workflows/ci-cd-v2.yml` runs backend tests, terraform validation, and web/Docker builds on `backend_v2/`, `infra_v2/`, or `webpage_v2/` changes — plus `ios/TrackRat/Shared/RouteTopology.swift`, because the route-topology parity test lives in `backend_v2` but reads that Swift file, and an iOS-only topology edit would otherwise run `ios-ci.yml` (Xcode only) and merge the drift unnoticed. `.github/workflows/ios-ci.yml` builds and tests the iOS app on `ios/` changes (runs on `macos-26` for the iOS 26 SDK; dynamically selects an available simulator).
 
 ## GCP Log Viewing (Cloud Environment)
 
@@ -649,6 +650,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Backend utilities: `backend_v2/src/trackrat/utils/` (logging, metrics, request_stats, locks, time, train, sanitize, scheduler_utils, system_stats)
 - Backend database: `backend_v2/src/trackrat/db/` (database.py, engine.py, migrations_runner.py, partitioning.py, migrations/)
 - Backend tests: `backend_v2/tests/`
+- Backend reference docs: `backend_v2/docs/journey-lifecycle.md` (journey state machine, lifecycle-flag invariants, NJT/Amtrak field semantics — read before changing a collector)
 - iOS app: `ios/TrackRat/App/` (TrackRatApp.swift, ContentView.swift)
 - iOS views: `ios/TrackRat/Views/Screens/`, `ios/TrackRat/Views/Components/`, `ios/TrackRat/Views/Paywall/`
 - iOS services: `ios/TrackRat/Services/`
