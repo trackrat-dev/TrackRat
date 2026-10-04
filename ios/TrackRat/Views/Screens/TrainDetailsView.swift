@@ -651,14 +651,12 @@ struct JourneyStopList<Row: View>: View {
         if !stops.isEmpty {
             if range.lowerBound > 0 {
                 toggle(showPrevious ? "Hide previous stops" : "Train has previous stops", isOn: $showPrevious)
-                    .padding(.bottom, 4)
             }
             ForEach(stops[(showPrevious ? 0 : range.lowerBound)...(showLater ? stops.count - 1 : range.upperBound)]) { stop in
                 row(stop)
             }
             if range.upperBound < stops.count - 1 {
                 toggle(showLater ? "Hide later stops" : "Train has later stops", isOn: $showLater)
-                    .padding(.top, 4)
             }
         }
     }
@@ -670,14 +668,19 @@ struct JourneyStopList<Row: View>: View {
             HStack {
                 Image(systemName: isOn.wrappedValue ? "chevron.up" : "ellipsis")
                     .font(.caption)
+                    .accessibilityHidden(true)
                 Text(title)
                     .font(.caption)
                     .italic()
             }
             .foregroundColor(Color(white: 0.55))
+            .padding(.horizontal, 20)
+            // Whole row is the 44pt tap target, not just the caption glyphs (issue #1846).
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .padding(.horizontal, 20)
+        .accessibilityValue(isOn.wrappedValue ? "Expanded" : "Collapsed")
     }
 }
 
