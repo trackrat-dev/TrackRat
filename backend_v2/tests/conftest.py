@@ -58,6 +58,26 @@ def setup_logging_for_tests():
     logging.getLogger().setLevel(logging.DEBUG)
 
 
+@pytest.fixture(autouse=True)
+def clear_implausible_track_memo():
+    """Reset ``validate_track``'s once-per-process rejection memo around each test.
+
+    ``utils.sanitize._implausible_track_warned`` suppresses a repeat
+    ``track_value_implausible`` warning for a ``(station, source, track)`` it has
+    already reported (issue #1792). It is process-global and is populated by any
+    test that drives a collector over a feed carrying an implausible track — the
+    LIRR, MNR and SUBWAY clients all call ``validate_track`` during ingest — so a
+    later test asserting on that warning would otherwise pass or fail depending
+    on what ran before it. Lives here rather than beside those tests so the
+    guarantee covers the whole suite.
+    """
+    from trackrat.utils import sanitize as sanitize_module
+
+    sanitize_module._implausible_track_warned.clear()
+    yield
+    sanitize_module._implausible_track_warned.clear()
+
+
 # Remove custom event_loop fixture to avoid deprecation warning
 # pytest-asyncio will provide the default one
 

@@ -307,6 +307,217 @@ class TestRunInlineJitRefresh:
         assert "SO" in _refreshing_stations
 
 
+class TestInlineRefreshOptOut:
+    """``get_departures(skip_inline_refresh=...)`` gates the blocking wait.
+
+    Issue #1793: the up-to-10s inline NJT refresh is right for a single station
+    board and wrong for a caller that issues a dozen boards to answer one
+    request. Nothing previously asserted the gate in ``get_departures`` at all —
+    the older tests here cover ``_run_inline_jit_refresh`` in isolation — so
+    these pin both directions of the decision.
+    """
+
+    def _mock_session(self):
+        """A session that answers the main departures query with no rows."""
+        session = AsyncMock()
+        result = Mock()
+        scalars = Mock()
+        scalars.unique.return_value.all.return_value = []
+        scalars.all.return_value = []
+        result.scalars.return_value = scalars
+        session.execute = AsyncMock(return_value=result)
+        # Truthy scalar: any staleness/imminence probe reached would say "yes",
+        # so a test that expects no inline refresh is proving the gate rather
+        # than benefiting from an empty database.
+        session.scalar = AsyncMock(return_value=1)
+        session.commit = AsyncMock()
+        return session
+
+    def setup_method(self):
+        _refreshing_stations.discard("NY")
+
+    def teardown_method(self):
+        _refreshing_stations.discard("NY")
+
+    @pytest.mark.asyncio
+    async def test_default_still_blocks_for_imminent_scheduled_njt(self):
+        """The station board must keep the behaviour it was built for.
+
+        With an imminent stale SCHEDULED NJT train present and no opt-out, the
+        inline refresh runs and (having completed) suppresses the background
+        trigger. api/trains.py passes no flag, so this is the board's path.
+        """
+        service = DepartureService()
+        session = self._mock_session()
+
+        with (
+            patch.object(
+                service,
+                "_has_imminent_scheduled_njt",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_imminent,
+            patch.object(
+                service,
+                "_run_inline_jit_refresh",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_inline,
+            patch.object(
+                service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
+            ) as mock_background,
+        ):
+            await service.get_departures(
+                db=session,
+                from_station="NY",
+                time_from=now_et(),
+                time_to=now_et() + timedelta(hours=3),
+                data_sources=["NJT"],
+            )
+
+        assert mock_imminent.await_count == 1, (
+            "The board must still probe for imminent SCHEDULED NJT trains; "
+            f"awaited {mock_imminent.await_count} times"
+        )
+        assert mock_inline.await_count == 1, (
+            "Default get_departures must still run the inline refresh so an "
+            "imminent SCHEDULED train is promoted before the stale filter "
+            f"hides it; awaited {mock_inline.await_count} times"
+        )
+        assert mock_background.await_count == 0, (
+            "A completed inline refresh already did the work — the background "
+            "trigger should be suppressed"
+        )
+
+    @pytest.mark.asyncio
+    async def test_skip_inline_refresh_drops_the_blocking_wait(self):
+        """The opt-out removes the 10s wait but keeps the background refresh.
+
+        Keeping the background trigger is the reason the trade is acceptable:
+        the train still gets promoted, just not within this request.
+        """
+        service = DepartureService()
+        session = self._mock_session()
+
+        with (
+            patch.object(
+                service,
+                "_has_imminent_scheduled_njt",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_imminent,
+            patch.object(
+                service, "_run_inline_jit_refresh", new_callable=AsyncMock
+            ) as mock_inline,
+            patch.object(
+                service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
+            ) as mock_background,
+        ):
+            await service.get_departures(
+                db=session,
+                from_station="NY",
+                time_from=now_et(),
+                time_to=now_et() + timedelta(hours=3),
+                data_sources=["NJT"],
+                skip_inline_refresh=True,
+            )
+
+        assert mock_inline.await_count == 0, (
+            "skip_inline_refresh=True must not block on the inline refresh; "
+            f"awaited {mock_inline.await_count} times"
+        )
+        assert mock_imminent.await_count == 0, (
+            "The imminence probe is one query per board and is pointless once "
+            "the inline path is skipped, so the flag must short-circuit before "
+            f"it; awaited {mock_imminent.await_count} times"
+        )
+        assert mock_background.await_count == 1, (
+            "The non-blocking refresh must still fire, or the skipped station "
+            "never warms and the next search is stale too; awaited "
+            f"{mock_background.await_count} times"
+        )
+
+    @pytest.mark.asyncio
+    async def test_skip_inline_refresh_is_independent_of_skip_individual(self):
+        """The two flags are orthogonal, which is the confusion #1793 exposed.
+
+        ``skip_individual_refresh=True`` alone never suppressed the inline wait
+        — trip search passed it and blocked anyway — so the inline refresh must
+        still run when only that flag is set, and the value of
+        ``skip_individual_refresh`` must reach the background trigger unchanged.
+        """
+        service = DepartureService()
+        session = self._mock_session()
+
+        with (
+            patch.object(
+                service,
+                "_has_imminent_scheduled_njt",
+                new_callable=AsyncMock,
+                return_value=True,
+            ),
+            patch.object(
+                service,
+                "_run_inline_jit_refresh",
+                new_callable=AsyncMock,
+                return_value=False,  # timed out, so the background trigger runs
+            ) as mock_inline,
+            patch.object(
+                service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
+            ) as mock_background,
+        ):
+            await service.get_departures(
+                db=session,
+                from_station="NY",
+                time_from=now_et(),
+                time_to=now_et() + timedelta(hours=3),
+                data_sources=["NJT"],
+                skip_individual_refresh=True,
+            )
+
+        assert mock_inline.await_count == 1, (
+            "skip_individual_refresh only drops the per-train second pass; it "
+            "must not be read as an inline opt-out"
+        )
+        # Args: db, station, target_date, skip_individual_refresh, hide_departed
+        assert mock_background.call_args[0][3] is True, (
+            "skip_individual_refresh must still reach the background refresh "
+            f"unchanged, got {mock_background.call_args[0]}"
+        )
+
+    @pytest.mark.asyncio
+    async def test_non_njt_board_never_reaches_either_path(self):
+        """Both refresh paths are NJT-only; the flag must not change that."""
+        service = DepartureService()
+        session = self._mock_session()
+
+        with (
+            patch.object(
+                service,
+                "_has_imminent_scheduled_njt",
+                new_callable=AsyncMock,
+                return_value=True,
+            ) as mock_imminent,
+            patch.object(
+                service, "_run_inline_jit_refresh", new_callable=AsyncMock
+            ) as mock_inline,
+            patch.object(
+                service, "_maybe_trigger_background_refresh", new_callable=AsyncMock
+            ) as mock_background,
+        ):
+            await service.get_departures(
+                db=session,
+                from_station="NY",
+                time_from=now_et(),
+                time_to=now_et() + timedelta(hours=3),
+                data_sources=["SUBWAY"],
+            )
+
+        assert mock_imminent.await_count == 0
+        assert mock_inline.await_count == 0
+        assert mock_background.await_count == 0
+
+
 class TestBackgroundRefreshSemaphore:
     """The module-level semaphore caps concurrent JIT refreshes so an NJT
     slowdown cannot exhaust the DB connection pool by spawning one
