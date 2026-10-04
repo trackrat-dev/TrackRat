@@ -68,16 +68,31 @@ final class AlertSubscriptionService: ObservableObject {
     /// How many of `subs` `addSubscriptions` would actually store. Entries that
     /// duplicate an existing subscription — or an earlier entry in the same
     /// batch — are not counted.
-    ///
-    /// Callers enforcing the free-tier cap need this: a round trip saves two
-    /// subscriptions in one call, so a pre-save count under the limit does not
-    /// mean the result stays under it.
     func newSubscriptionCount(for subs: [RouteAlertSubscription]) -> Int {
         var projected = subscriptions
         for sub in subs where !isDuplicate(sub, in: projected) {
             projected.append(sub)
         }
         return projected.count - subscriptions.count
+    }
+
+    // MARK: - Free Tier
+
+    /// Whether a free user already holds `SubscriptionService.freeRouteAlertLimit`
+    /// alerts, before configuring anything new. Entry points use this to show the
+    /// paywall instead of opening an editor whose save could not succeed.
+    @MainActor
+    func isAtFreeLimit(isPro: Bool) -> Bool {
+        !isPro && subscriptions.count >= SubscriptionService.freeRouteAlertLimit
+    }
+
+    /// Whether storing `subs` would carry a free user past the limit. A round trip
+    /// saves both directions in one call, so being under the limit before saving
+    /// does not mean the result stays under it — the batch has to be counted.
+    @MainActor
+    func wouldExceedFreeLimit(adding subs: [RouteAlertSubscription], isPro: Bool) -> Bool {
+        !isPro
+            && subscriptions.count + newSubscriptionCount(for: subs) > SubscriptionService.freeRouteAlertLimit
     }
 
     /// Find subscriptions matching a route context (by dataSource + station codes, lineId, or system-wide).

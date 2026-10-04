@@ -359,8 +359,7 @@ struct SettingsSection: View {
                         .background(Color.white.opacity(0.1))
 
                     Button {
-                        if !subscriptionService.isPro
-                            && alertService.subscriptions.count >= SubscriptionService.freeRouteAlertLimit {
+                        if alertService.isAtFreeLimit(isPro: subscriptionService.isPro) {
                             showingPaywall = true
                         } else {
                             showAddRouteAlert = true

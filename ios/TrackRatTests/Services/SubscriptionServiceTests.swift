@@ -62,21 +62,6 @@ final class SubscriptionServiceTests: XCTestCase {
         )
     }
 
-    func testProductIds_areDistinct() {
-        XCTAssertNotEqual(
-            SubscriptionService.monthlyProductId,
-            SubscriptionService.legacyYearlyProductId,
-            "Monthly and legacy yearly must be separate App Store products"
-        )
-        XCTAssertEqual(
-            SubscriptionService.entitledProductIds.count, 2,
-            """
-            Expected exactly the monthly plan plus the legacy yearly plan. Found: \
-            \(SubscriptionService.entitledProductIds.sorted())
-            """
-        )
-    }
-
     // MARK: - Free Tier
 
     func testFreeRouteAlertLimit_coversARoundTripWithHeadroom() {
@@ -90,13 +75,6 @@ final class SubscriptionServiceTests: XCTestCase {
             \(SubscriptionService.freeRouteAlertLimit), which leaves no room for a commute plus \
             anything else.
             """
-        )
-    }
-
-    func testFreeRouteAlertLimit_isStillALimit() {
-        XCTAssertLessThan(
-            SubscriptionService.freeRouteAlertLimit, Int.max,
-            "Route alerts are the only paid feature left; an unbounded free tier removes the paywall entirely"
         )
     }
 

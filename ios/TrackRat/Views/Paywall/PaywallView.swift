@@ -13,6 +13,11 @@ struct PaywallView: View {
     @State private var restoreMessage = ""
     @State private var isRestoring = false
     @State private var showPurchaseSuccess = false
+    /// Whether this Apple ID can still redeem the monthly plan's introductory offer.
+    /// Eligibility is per subscription group, so anyone who ever held monthly or the
+    /// legacy yearly plan has used it. Starts false so the paywall never promises a
+    /// trial it has not confirmed.
+    @State private var isEligibleForIntroOffer = false
 
     var body: some View {
         ZStack {
@@ -232,17 +237,23 @@ struct PaywallView: View {
         } message: {
             Text(errorMessage)
         }
+        .task(id: subscriptionService.monthlyProduct?.id) {
+            isEligibleForIntroOffer = await subscriptionService.monthlyProduct?.subscription?.isEligibleForIntroOffer ?? false
+        }
     }
 
-    /// Whether the monthly plan has a free trial introductory offer
-    private var hasFreeTrial: Bool {
-        guard let product = subscriptionService.monthlyProduct,
-              let subscription = product.subscription,
-              let introOffer = subscription.introductoryOffer,
+    /// The monthly plan's free-trial offer, only when this user can redeem it
+    private var freeTrialOffer: Product.SubscriptionOffer? {
+        guard isEligibleForIntroOffer,
+              let introOffer = subscriptionService.monthlyProduct?.subscription?.introductoryOffer,
               introOffer.paymentMode == .freeTrial else {
-            return false
+            return nil
         }
-        return true
+        return introOffer
+    }
+
+    private var hasFreeTrial: Bool {
+        freeTrialOffer != nil
     }
 
     /// Legal disclaimer text, adjusted for free trial when available
@@ -254,11 +265,9 @@ struct PaywallView: View {
         return "Payment will be charged to your Apple ID account at the confirmation of purchase. \(renewalText)"
     }
 
-    /// Format the trial period from product subscription info
-    private func trialText(for product: Product) -> String {
-        guard let subscription = product.subscription,
-              let introOffer = subscription.introductoryOffer,
-              introOffer.paymentMode == .freeTrial else {
+    /// Format the trial period, or empty when no redeemable trial exists
+    private var trialText: String {
+        guard let introOffer = freeTrialOffer else {
             return ""
         }
 
@@ -281,7 +290,7 @@ struct PaywallView: View {
 
     /// Format the subscription subtitle with trial info if available
     private func subscriptionSubtitle(for product: Product) -> String {
-        let trialPrefix = trialText(for: product)
+        let trialPrefix = trialText
         let periodLabel: String
         if let subscription = product.subscription {
             switch subscription.subscriptionPeriod.unit {

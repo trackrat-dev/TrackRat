@@ -130,8 +130,10 @@ class LineDiscoveryModel: ObservableObject {
 /// directions are configurable — a round trip is one route, not two upsells.
 struct DirectionalAlertConfigurationSheet: View {
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var subscriptionService = SubscriptionService.shared
     @StateObject private var lineDiscovery = LineDiscoveryModel()
     @State private var directions: [DirectionDraft]
+    @State private var showingPaywall = false
     private let onSave: ([RouteAlertSubscription]) -> Void
 
     init(directions: [DirectionDraft], onSave: @escaping ([RouteAlertSubscription]) -> Void) {
@@ -156,8 +158,26 @@ struct DirectionalAlertConfigurationSheet: View {
         return "\(pair.from)|\(pair.to)"
     }
 
+    /// Directions the user has configured and not already subscribed to — what Save stores.
+    private var enabledSubscriptions: [RouteAlertSubscription] {
+        directions
+            .filter { !$0.alreadySubscribed && $0.subscription.activeDays != 0 }
+            .map(\.subscription)
+    }
+
     private var canSave: Bool {
-        directions.contains { !$0.alreadySubscribed && $0.subscription.activeDays != 0 }
+        !enabledSubscriptions.isEmpty
+    }
+
+    /// Saving would carry a free user past the route alert limit. Checked here rather
+    /// than by the caller so the paywall opens over this sheet and the configuration
+    /// survives: after subscribing, Save simply succeeds; otherwise the user can turn
+    /// a direction off.
+    private var exceedsFreeLimit: Bool {
+        AlertSubscriptionService.shared.wouldExceedFreeLimit(
+            adding: enabledSubscriptions,
+            isPro: subscriptionService.isPro
+        )
     }
 
     @ViewBuilder
@@ -184,6 +204,13 @@ struct DirectionalAlertConfigurationSheet: View {
                                 )
                             }
                         }
+
+                        if exceedsFreeLimit {
+                            Text("The free plan includes \(SubscriptionService.freeRouteAlertLimit) route alerts. Turn off a direction, or upgrade to Pro to save them all.")
+                                .font(.footnote)
+                                .foregroundColor(.white.opacity(0.7))
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
                     }
                     .padding()
                 }
@@ -197,10 +224,11 @@ struct DirectionalAlertConfigurationSheet: View {
                     }
                     ToolbarItem(placement: .topBarTrailing) {
                         Button("Save") {
-                            let enabledSubs = directions
-                                .filter { !$0.alreadySubscribed && $0.subscription.activeDays != 0 }
-                                .map(\.subscription)
-                            onSave(enabledSubs)
+                            guard !exceedsFreeLimit else {
+                                showingPaywall = true
+                                return
+                            }
+                            onSave(enabledSubscriptions)
                             // Save line selection preference
                             if let pair = stationPair {
                                 Task { await lineDiscovery.savePreference(from: pair.from, to: pair.to) }
@@ -219,6 +247,9 @@ struct DirectionalAlertConfigurationSheet: View {
                 }
             }
             .preferredColorScheme(.dark)
+            .sheet(isPresented: $showingPaywall) {
+                PaywallView()
+            }
         }
     }
 

@@ -42,14 +42,12 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metr
 - **Map Layer Controls**: Toggleable congestion, routes, and station markers on map
 - **GTFS Future Schedules**: View train schedules for future dates via GTFS data
 
-### Pro Subscription Features
-- **Congestion Maps**: Premium map overlay showing network congestion levels
-- **Historical Analytics**: Performance data, delay statistics, and track usage patterns
-- **Penn Station Boarding Guide**: Interactive navigation assistance
-- **Delay Forecasts**: AI-powered delay predictions
-- **1-Week Free Trial**: Apple introductory offer for new subscribers
+### Pro Subscription
+- **Free tier**: Every transit system and feature, plus up to 3 route alerts (`SubscriptionService.freeRouteAlertLimit`) — enough for a round trip and one more
+- **Pro**: Unlimited route alerts, the only paywalled feature
+- **Single Plan**: $4.99/month; the yearly plan is no longer sold, but existing yearly subscribers keep Pro
+- **1-Week Free Trial**: Apple introductory offer, shown only to Apple IDs still eligible for it
 - **StoreKit 2 Integration**: Modern subscription management with PaywallView
-- **Subscription Tiers**: $4.99/month or $49.99/year after trial
 
 ### Train System Filtering
 - **App-Wide Disabled Systems**: `TrainSystem.disabledSystems` (currently BART, WMATA, MBTA, Metra) removes systems from every surface — onboarding, Settings, maps, route alerts — mirroring the backend's `TRACKRAT_DISABLED_DATA_SOURCES` flag

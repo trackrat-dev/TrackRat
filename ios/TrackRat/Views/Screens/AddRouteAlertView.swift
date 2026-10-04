@@ -87,27 +87,13 @@ struct AddRouteAlertView: View {
     // MARK: - Save Subscriptions
 
     /// True when the user is already at the cap, before any new subscription is
-    /// configured. Used to avoid opening a sheet that could not be saved.
+    /// configured. Used to avoid opening a sheet that could not be saved. The
+    /// sheet itself enforces the cap on the batch it saves.
     private var atAlertLimit: Bool {
-        !SubscriptionService.shared.isPro
-            && alertService.subscriptions.count >= SubscriptionService.freeRouteAlertLimit
-    }
-
-    /// True when saving `subs` would carry a free user past the cap. A round trip
-    /// saves both directions at once, so a pre-save count under the limit does
-    /// not mean the result stays under it — the batch has to be counted too.
-    private func exceedsAlertLimit(_ subs: [RouteAlertSubscription]) -> Bool {
-        guard !SubscriptionService.shared.isPro else { return false }
-        let projected = alertService.subscriptions.count + alertService.newSubscriptionCount(for: subs)
-        return projected > SubscriptionService.freeRouteAlertLimit
+        alertService.isAtFreeLimit(isPro: SubscriptionService.shared.isPro)
     }
 
     private func saveDirectionalSubscriptions(_ subs: [RouteAlertSubscription]) {
-        guard !exceedsAlertLimit(subs) else {
-            activeSheet = nil
-            showingPaywall = true
-            return
-        }
         alertService.addSubscriptions(subs)
         alertService.syncIfPossible()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -119,11 +105,6 @@ struct AddRouteAlertView: View {
     }
 
     private func saveSystemSubscription(_ subs: [RouteAlertSubscription]) {
-        guard !exceedsAlertLimit(subs) else {
-            activeSheet = nil
-            showingPaywall = true
-            return
-        }
         alertService.addSubscriptions(subs)
         alertService.syncIfPossible()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
