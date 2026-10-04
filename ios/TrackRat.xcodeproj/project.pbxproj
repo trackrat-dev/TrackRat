@@ -7,6 +7,13 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		A1LOCSVC0000000000000002 /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1LOCSVC0000000000000001 /* LocationService.swift */; };
+		A1LOCSVC0000000000000003 /* LocationService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1LOCSVC0000000000000001 /* LocationService.swift */; };
+		A1NOTSVC0000000000000002 /* NotificationPermissionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1NOTSVC0000000000000001 /* NotificationPermissionService.swift */; };
+		A1NOTSVC0000000000000003 /* NotificationPermissionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1NOTSVC0000000000000001 /* NotificationPermissionService.swift */; };
+		A1LOCTST0000000000000003 /* LocationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1LOCTST0000000000000001 /* LocationServiceTests.swift */; };
+		A1NOTTST0000000000000003 /* NotificationPermissionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1NOTTST0000000000000001 /* NotificationPermissionServiceTests.swift */; };
+		A1ONBTST0000000000000003 /* OnboardingViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1ONBTST0000000000000001 /* OnboardingViewTests.swift */; };
 		1A1A1A1A1A1A1A1A1A1A1A1E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A1A1A1A1A1A1A1A1A1A1A1F /* Assets.xcassets */; };
 		446F271841A8FA59C62FA628 /* TrainSystemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD899D62327DBD0B9C1DDDB6 /* TrainSystemTests.swift */; };
 		728970FFA08F441C994FCA1C /* AlertConfigurationSection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60E6F30618D8429081157633 /* AlertConfigurationSection.swift */; };
@@ -163,6 +170,8 @@
 		B1SVCALRT01000000000000A1 /* ServiceAlertsSectionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SVCALRT01000000000000A1 /* ServiceAlertsSectionTests.swift */; };
 		B1CGMKTST01000000000000A1 /* CongestionMapKitViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1CGMKTST01000000000000A1 /* CongestionMapKitViewTests.swift */; };
 		B1RTSHPTST010000000000A1 /* RouteShapesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1RTSHPTST010000000000A1 /* RouteShapesTests.swift */; };
+		B1SUBSCTST010000000000A1 /* SubscriptionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SUBSCTST010000000000A1 /* SubscriptionServiceTests.swift */; };
+		B1ALRTLIMT010000000000A1 /* AlertSubscriptionFreeLimitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1ALRTLIMT010000000000A1 /* AlertSubscriptionFreeLimitTests.swift */; };
 		B1SHIMR001000000000000A1 /* ShimmerRect.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SHIMR001000000000000A1 /* ShimmerRect.swift */; };
 		B1SHIMR002000000000000A1 /* ShimmerRect.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SHIMR001000000000000A1 /* ShimmerRect.swift */; };
 		B1SUBCHP01000000000000A1 /* SubwayLineChips.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1SUBCHP01000000000000A1 /* SubwayLineChips.swift */; };
@@ -256,6 +265,11 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		A1LOCSVC0000000000000001 /* LocationService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LocationService.swift; path = TrackRat/Services/LocationService.swift; sourceTree = "<group>"; };
+		A1NOTSVC0000000000000001 /* NotificationPermissionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NotificationPermissionService.swift; path = TrackRat/Services/NotificationPermissionService.swift; sourceTree = "<group>"; };
+		A1LOCTST0000000000000001 /* LocationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LocationServiceTests.swift; path = TrackRatTests/Services/LocationServiceTests.swift; sourceTree = "<group>"; };
+		A1NOTTST0000000000000001 /* NotificationPermissionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NotificationPermissionServiceTests.swift; path = TrackRatTests/Services/NotificationPermissionServiceTests.swift; sourceTree = "<group>"; };
+		A1ONBTST0000000000000001 /* OnboardingViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OnboardingViewTests.swift; path = TrackRatTests/Views/OnboardingViewTests.swift; sourceTree = "<group>"; };
 		1A1A1A1A1A1A1A1A1A1A1A10 /* TrackRat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TrackRat.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A1A1A1A1A1A1A1A1A1A1A1F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1A1A1A1A1A1A1A1A1A1A1A20 /* TrackRat.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = TrackRat.entitlements; sourceTree = "<group>"; };
@@ -386,6 +400,8 @@
 		F1SVCALRT01000000000000A1 /* ServiceAlertsSectionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ServiceAlertsSectionTests.swift; path = TrackRatTests/Views/ServiceAlertsSectionTests.swift; sourceTree = "<group>"; };
 		F1CGMKTST01000000000000A1 /* CongestionMapKitViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = CongestionMapKitViewTests.swift; path = TrackRatTests/Views/CongestionMapKitViewTests.swift; sourceTree = "<group>"; };
 		F1RTSHPTST010000000000A1 /* RouteShapesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = RouteShapesTests.swift; path = TrackRatTests/Shared/RouteShapesTests.swift; sourceTree = "<group>"; };
+		F1SUBSCTST010000000000A1 /* SubscriptionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SubscriptionServiceTests.swift; sourceTree = "<group>"; };
+		F1ALRTLIMT010000000000A1 /* AlertSubscriptionFreeLimitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AlertSubscriptionFreeLimitTests.swift; sourceTree = "<group>"; };
 		F1SHIMR001000000000000A1 /* ShimmerRect.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ShimmerRect.swift; path = TrackRat/Views/Components/ShimmerRect.swift; sourceTree = "<group>"; };
 		F1SUBCHP01000000000000A1 /* SubwayLineChips.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SubwayLineChips.swift; path = TrackRat/Views/Components/SubwayLineChips.swift; sourceTree = "<group>"; };
 		F1SUBLNS01000000000000A1 /* SubwayLines.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SubwayLines.swift; path = TrackRat/Shared/SubwayLines.swift; sourceTree = "<group>"; };
@@ -425,6 +441,11 @@
 		1A1A1A1A1A1A1A1A1A1A1A07 = {
 			isa = PBXGroup;
 			children = (
+				A1LOCSVC0000000000000001 /* LocationService.swift */,
+				A1NOTSVC0000000000000001 /* NotificationPermissionService.swift */,
+				A1LOCTST0000000000000001 /* LocationServiceTests.swift */,
+				A1NOTTST0000000000000001 /* NotificationPermissionServiceTests.swift */,
+				A1ONBTST0000000000000001 /* OnboardingViewTests.swift */,
 				A19899422E8063EA0079E596 /* LiveActivityServiceTests.swift */,
 				A19899432E8063EA0079E596 /* RatSenseServiceTests.swift */,
 				B1B1B1B12FA1B1B100000004 /* PrefetcherTests.swift */,
@@ -603,6 +624,8 @@
 			children = (
 				A1BA60E72DFC73650002FB39 /* APIServiceTests.swift */,
 				A1BA60E82DFC73650002FB39 /* StorageServiceTests.swift */,
+				F1SUBSCTST010000000000A1 /* SubscriptionServiceTests.swift */,
+				F1ALRTLIMT010000000000A1 /* AlertSubscriptionFreeLimitTests.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -802,6 +825,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1LOCSVC0000000000000002 /* LocationService.swift in Sources */,
+				A1NOTSVC0000000000000002 /* NotificationPermissionService.swift in Sources */,
 				A18E54422DEB893100AB2B74 /* LiveActivityControls.swift in Sources */,
 				A19E912D2E3F8E4A0011F777 /* LegacyBottomSheetView.swift in Sources */,
 				A12C314B2F1DA64A00CAF76D /* SubscriptionService.swift in Sources */,
@@ -892,6 +917,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				A1LOCSVC0000000000000003 /* LocationService.swift in Sources */,
+				A1NOTSVC0000000000000003 /* NotificationPermissionService.swift in Sources */,
+				A1LOCTST0000000000000003 /* LocationServiceTests.swift in Sources */,
+				A1NOTTST0000000000000003 /* NotificationPermissionServiceTests.swift in Sources */,
+				A1ONBTST0000000000000003 /* OnboardingViewTests.swift in Sources */,
 				A1BA60EC2DFC73650002FB39 /* BuildTests.swift in Sources */,
 				A1BA60ED2DFC73650002FB39 /* StationsTests.swift in Sources */,
 				C1A1B2C3D4E5F60718293A4B /* RouteTopologyTests.swift in Sources */,
@@ -913,6 +943,8 @@
 				B1SVCALRT01000000000000A1 /* ServiceAlertsSectionTests.swift in Sources */,
 				B1CGMKTST01000000000000A1 /* CongestionMapKitViewTests.swift in Sources */,
 				B1RTSHPTST010000000000A1 /* RouteShapesTests.swift in Sources */,
+				B1SUBSCTST010000000000A1 /* SubscriptionServiceTests.swift in Sources */,
+				B1ALRTLIMT010000000000A1 /* AlertSubscriptionFreeLimitTests.swift in Sources */,
 				A16C81EF2EEEFFEE00F34F00 /* FeedbackButton.swift in Sources */,
 				A198994A2E8063F90079E596 /* HistoricalDataViewModelTests.swift in Sources */,
 				B1RSVMTST01000000000000A1 /* RouteStatusViewModelTests.swift in Sources */,

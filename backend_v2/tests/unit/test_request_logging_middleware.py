@@ -11,6 +11,7 @@ that no request — including one that crashes its handler — goes unrecorded.
 import pytest
 from structlog.testing import capture_logs
 
+from trackrat.api.telemetry import ONBOARDING_PATH
 from trackrat.main import app
 from trackrat.settings import get_settings
 
@@ -58,6 +59,23 @@ def test_health_and_metrics_paths_are_not_logged(client):
 
     events = _http_request_events(captured)
     assert events == [], f"probe requests leaked into http_request: {events}"
+
+
+def test_onboarding_beacon_is_not_logged(client):
+    """The http_request event carries a client IP, so it must honor the same
+    privacy contract as request_stats: the onboarding beacon stays IP-free."""
+    with capture_logs() as captured:
+        resp = client.post(
+            ONBOARDING_PATH,
+            json={"systems": "NJT"},
+            headers={"cf-connecting-ip": "203.0.113.7"},
+        )
+
+    assert resp.status_code < 400, resp.text
+    events = _http_request_events(captured)
+    assert events == [], f"onboarding beacon logged with a client IP: {events}"
+    # Not vacuous: the beacon's own event was captured, so logging was live.
+    assert any(e.get("event") == "onboarding_completed" for e in captured), captured
 
 
 def test_unmatched_write_request_keeps_its_method_and_status(client):
