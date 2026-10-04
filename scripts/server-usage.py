@@ -181,27 +181,27 @@ def load_station_names():
     )
     # Pattern matches:  "CODE": "Name",  or  "CODE": "Name"
     pattern = re.compile(r'^\s*"([^"]+)"\s*:\s*"([^"]+)"', re.MULTILINE)
-
-    for filename in ["njt.py", "amtrak.py", "path.py", "lirr.py", "mnr.py", "subway.py", "patco.py"]:
-        filepath = stations_dir / filename
-        if filepath.exists():
-            content = filepath.read_text()
-            # Only parse the STATION_NAMES dict (stop at first non-dict line after it)
-            in_names_dict = False
-            for line in content.splitlines():
-                if "_STATION_NAMES" in line and "dict" in line:
-                    in_names_dict = True
+    # Every system's module, so any data source a search can name resolves; NJT
+    # first so it takes priority for shared codes.
+    filepaths = sorted(stations_dir.glob("*.py"), key=lambda p: (p.name != "njt.py", p.name))
+    for filepath in filepaths:
+        content = filepath.read_text()
+        # Only parse the STATION_NAMES dict (stop at first non-dict line after it)
+        in_names_dict = False
+        for line in content.splitlines():
+            if "_STATION_NAMES" in line and "dict" in line:
+                in_names_dict = True
+                continue
+            if in_names_dict:
+                if line.strip() == "}":
+                    in_names_dict = False
                     continue
-                if in_names_dict:
-                    if line.strip() == "}":
-                        in_names_dict = False
-                        continue
-                    m = pattern.match(line)
-                    if m:
-                        code, name = m.group(1), m.group(2)
-                        # Don't overwrite (NJT takes priority for shared codes)
-                        if code not in names:
-                            names[code] = name
+                m = pattern.match(line)
+                if m:
+                    code, name = m.group(1), m.group(2)
+                    # Don't overwrite (NJT takes priority for shared codes)
+                    if code not in names:
+                        names[code] = name
     return names
 
 
@@ -393,21 +393,22 @@ def analyze_request_entries(entries, station_names):
     scanner_count = 0
 
     # Health probes and /metrics never reach here: the backend does not log them.
+    # ``path`` is the matched route template (e.g. /api/v2/trains/{train_id}) and
+    # the query holds only the route-search fields; the backend logs no raw
+    # paths, since some carry a device_id or push token.
     for e in entries:
         jp = e.get("jsonPayload", {})
-        path = jp.get("path", "")
+        path = jp.get("path")
         params = parse_qs(jp.get("query", ""))
         ua = parse_user_agent(jp.get("user_agent", ""))
         status = jp.get("status_code", 0)
         lat = jp.get("duration_ms", 0) / 1000
         remote_ip = jp.get("client_ip", "")
 
-        # Filter out scanner probes (not real API usage)
-        if "/api/v2/" not in path and path not in ("/", ""):
-            category = classify_entry(path, params)
-            if category is None:
-                scanner_count += 1
-                continue
+        # A request that matched no route is a scanner probe (not real API usage)
+        if path is None:
+            scanner_count += 1
+            continue
 
         # Classify
         category = classify_entry(path, params)
@@ -437,11 +438,8 @@ def analyze_request_entries(entries, station_names):
             route_searches[f"{from_name} -> {to_name}"] += 1
             cls_data["routes"][f"{from_name} -> {to_name}"] += 1
 
-        elif category == "train_detail":
-            parts = path.split("/trains/")
-            if len(parts) > 1:
-                train_id = parts[1].split("/")[0].split("?")[0]
-                train_lookups[train_id] += 1
+        elif category == "train_detail" and jp.get("train_id"):
+            train_lookups[jp["train_id"]] += 1
 
     return {
         "total_api": total_api,

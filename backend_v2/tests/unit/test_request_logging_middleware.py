@@ -25,7 +25,7 @@ def _http_request_events(captured):
 def test_api_request_is_logged_with_every_field_the_report_reads(client):
     with capture_logs() as captured:
         resp = client.get(
-            "/api/v2/predictions/supported-stations?from=NY&to=TR",
+            "/api/v2/predictions/supported-stations?from=NY&to=TR&date=2026-10-04",
             headers={
                 "user-agent": _IOS_UA,
                 # Behind the tunnel the socket peer is the cloudflared container,
@@ -43,7 +43,9 @@ def test_api_request_is_logged_with_every_field_the_report_reads(client):
     assert event["environment"] == get_settings().environment
     assert event["method"] == "GET"
     assert event["path"] == "/api/v2/predictions/supported-stations"
+    # Only the route-search fields survive; everything else is dropped.
     assert event["query"] == "from=NY&to=TR"
+    assert event["train_id"] is None
     assert event["status_code"] == 200
     assert event["client_ip"] == "203.0.113.7"
     assert event["user_agent"] == _IOS_UA
@@ -82,7 +84,8 @@ def test_unmatched_write_request_keeps_its_method_and_status(client):
     """Scanner probes and write endpoints must keep their method and status.
 
     Device registrations and alert-subscription syncs are POST/PUT, and the
-    report counts scanners by path, so neither may be filtered out here.
+    report counts a request that matched no route as a scanner, so neither may
+    be filtered out here. The probed path itself is not logged.
     """
     with capture_logs() as captured:
         resp = client.post(
@@ -94,9 +97,54 @@ def test_unmatched_write_request_keeps_its_method_and_status(client):
     assert len(events) == 1, captured
     print(f"scanner event: {events[0]}")
     assert events[0]["method"] == "POST"
-    assert events[0]["path"] == "/wp-login.php"
+    assert events[0]["path"] is None
     assert events[0]["status_code"] == resp.status_code
     assert events[0]["query"] == ""
+
+
+def test_train_detail_logs_the_route_template_and_train_id(client):
+    """Train views keep their train_id (public) beside the route template."""
+    with capture_logs() as captured:
+        client.get("/api/v2/trains/3918")
+
+    events = _http_request_events(captured)
+    assert len(events) == 1, captured
+    print(f"train event: {events[0]}")
+    assert events[0]["path"] == "/api/v2/trains/{train_id}"
+    assert events[0]["train_id"] == "3918"
+
+
+@pytest.mark.parametrize(
+    ("method", "url", "template"),
+    [
+        (
+            "GET",
+            "/api/v2/alerts/subscriptions/DEVICE-SECRET-123",
+            "/api/v2/alerts/subscriptions/{device_id}",
+        ),
+        (
+            "GET",
+            "/api/v2/routes/preferences?device_id=DEVICE-SECRET-123",
+            "/api/v2/routes/preferences",
+        ),
+        (
+            "DELETE",
+            "/api/v2/live-activities/DEVICE-SECRET-123",
+            "/api/v2/live-activities/{push_token}",
+        ),
+    ],
+)
+def test_device_identifiers_never_reach_the_log(client, method, url, template):
+    """The log pairs each request with a client IP; a persistent device_id or
+    push token beside it would make every device trackable from the logs."""
+    with capture_logs() as captured:
+        client.request(method, url)
+
+    events = _http_request_events(captured)
+    assert len(events) == 1, captured
+    print(f"{method} {url} -> {events[0]}")
+    assert events[0]["path"] == template
+    assert "DEVICE-SECRET-123" not in repr(events[0])
 
 
 @pytest.fixture

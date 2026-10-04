@@ -10,6 +10,7 @@ import uuid
 from collections.abc import AsyncGenerator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from typing import Any
+from urllib.parse import urlencode
 
 import structlog
 from fastapi import FastAPI, Request, Response
@@ -67,6 +68,11 @@ structlog.configure(
 
 
 _STAGING_DEVICE_TOKEN_THRESHOLD = 50
+
+# Query fields the http_request log keeps (the route searched). Everything else
+# is dropped: some requests carry a persistent device_id in the query
+# (/routes/preferences), and the log pairs each request with a client IP.
+_LOGGED_QUERY_PARAMS = frozenset({"from", "to", "from_station", "to_station"})
 
 
 async def _check_staging_notification_safety(settings: Any) -> bool:
@@ -334,9 +340,8 @@ async def request_stats_middleware(
 
         # Extract the matched route template (e.g. "/api/v2/trains/{train_id}")
         route = request.scope.get("route")
-        path_template = (
-            route.path if route and hasattr(route, "path") else request.url.path
-        )
+        matched_path = route.path if route and hasattr(route, "path") else None
+        path_template = matched_path or request.url.path
 
         # Skip noisy internal paths, plus the onboarding beacon — recording it
         # here (or in the http_request log) would retain a client IP alongside
@@ -360,12 +365,24 @@ async def request_stats_middleware(
                 client_ip=client_ip,
                 query_params=query_params if query_params else None,
             )
+            # Identifiers stay out of this durable, IP-attributed record: the
+            # path is the route template (raw paths carry a device_id or push
+            # token, e.g. /alerts/subscriptions/{device_id}), None when no
+            # route matched, and the query keeps only _LOGGED_QUERY_PARAMS.
+            # train_id is public and names the train viewed.
             logger.info(
                 "http_request",
                 environment=get_settings().environment,
                 method=request.method,
-                path=request.url.path,
-                query=request.url.query,
+                path=matched_path,
+                query=urlencode(
+                    [
+                        (key, value)
+                        for key, value in request.query_params.multi_items()
+                        if key in _LOGGED_QUERY_PARAMS
+                    ]
+                ),
+                train_id=request.path_params.get("train_id"),
                 status_code=status_code,
                 duration_ms=round(duration * 1000, 1),
                 client_ip=client_ip,

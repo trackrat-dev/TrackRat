@@ -27,9 +27,10 @@ def su():
 
 
 def _entry(path, ua, *, status=200, duration_ms=50.0, ip="1.1.1.1", query="",
-           method="GET"):
+           method="GET", train_id=None):
     """Build a cos_containers ``http_request`` entry as the backend logs it.
 
+    ``path`` is the matched route template, or None when no route matched.
     Field names mirror request_stats_middleware in backend_v2/src/trackrat/main.py;
     tests/unit/test_request_logging_middleware.py pins that side.
     """
@@ -42,6 +43,7 @@ def _entry(path, ua, *, status=200, duration_ms=50.0, ip="1.1.1.1", query="",
             "query": query,
             "status_code": status,
             "duration_ms": duration_ms,
+            "train_id": train_id,
             "client_ip": ip,
             "user_agent": ua,
         }
@@ -86,11 +88,11 @@ def test_analyze_request_entries_splits_ios_web_and_other(su):
         _entry("/api/v2/trains/departures", _IOS_UA, ip="10.0.0.2", query="from=NP&to=NY"),
         # Web user C searches NY -> TR and views a train detail.
         _entry("/api/v2/trains/departures", _WEB_UA, ip="10.0.0.3", query="from=NY&to=TR"),
-        _entry("/api/v2/trains/1234", _WEB_UA, ip="10.0.0.3"),
+        _entry("/api/v2/trains/{train_id}", _WEB_UA, ip="10.0.0.3", train_id="1234"),
         # Other: a curl departures call from D.
         _entry("/api/v2/trains/departures", _CURL_UA, ip="10.0.0.4", query="from=NY&to=TR"),
-        # Noise: a scanner probe (must not count as API).
-        _entry("/wp-login.php", "Go-http-client/1.1", ip="10.0.0.9", status=404),
+        # Noise: a scanner probe, which matched no route (must not count as API).
+        _entry(None, "Go-http-client/1.1", ip="10.0.0.9", status=404),
     ]
 
     result = su.analyze_request_entries(entries, station_names)
@@ -113,6 +115,7 @@ def test_analyze_request_entries_splits_ios_web_and_other(su):
     assert web["unique_users"] == 1
     assert web["routes"]["New York Penn -> Trenton"] == 1
     assert web["endpoints"]["train_detail"] == 1
+    assert result["train_lookups"] == {"1234": 1}
 
     other = cb["other"]
     assert other["requests"] == 1
@@ -148,6 +151,30 @@ def test_trip_searches_count_as_route_searches(su):
     assert result["route_searches"][route] == 3
     assert result["client_breakdown"]["ios"]["routes"][route] == 2
     assert result["client_breakdown"]["web"]["routes"][route] == 1
+
+
+def test_only_unmatched_requests_count_as_scanners(su):
+    """A scanner is a request that matched no route (logged path None).
+
+    Matched non-API routes (admin, share pages) are real traffic of another
+    kind, and a train-scoped route without a train_id records no train view.
+    """
+    entries = [
+        _entry(None, "Go-http-client/1.1", status=404),
+        _entry(None, _CURL_UA, status=404, method="POST"),
+        _entry("/admin/stats", _WEB_UA),
+        _entry("/share/train/{train_id}", _WEB_UA, train_id="3918"),
+        _entry("/api/v2/trains/stations/{station_code}/tracks/occupied", _IOS_UA),
+    ]
+
+    result = su.analyze_request_entries(entries, {})
+    print(f"scanner={result['scanner_count']} non_api={result['total_non_api']} "
+          f"api={result['total_api']} lookups={dict(result['train_lookups'])}")
+
+    assert result["scanner_count"] == 2
+    assert result["total_non_api"] == 2
+    assert result["total_api"] == 1
+    assert result["train_lookups"] == {}
 
 
 def test_latency_and_status_come_from_the_request_event(su):
@@ -332,3 +359,44 @@ def test_api_urls_point_at_universal_ssl_covered_hosts(su):
         assert host.endswith(".trackrat.net"), f"{env}: {host}"
         labels_below_apex = host[: -len(".trackrat.net")].split(".")
         assert len(labels_below_apex) == 1, f"{env}: {host} is more than one label deep"
+
+
+def test_station_names_cover_every_system_exactly(su):
+    """The text parser must agree with the backend's own per-system dicts.
+
+    Every system's module is read, so a search on any enabled source (SEPTA went
+    live after the original hardcoded file list) resolves to station names, and
+    NJT keeps priority for codes shared with another system. Comparing against
+    the imported modules also catches over-reading: a line that merely mentions
+    a names dict (wmata.py's comprehension) must not pull in another dict.
+    """
+    import importlib
+    import pkgutil
+
+    import trackrat.config.stations as stations_pkg
+
+    expected = {}
+    modules = sorted(
+        (m.name for m in pkgutil.iter_modules(stations_pkg.__path__)),
+        key=lambda name: (name != "njt", name),
+    )
+    for module_name in modules:
+        module = importlib.import_module(f"trackrat.config.stations.{module_name}")
+        # Each system module declares its own <MODULE>_STATION_NAMES (common.py
+        # declares none; its unified STATION_NAMES is built from the others).
+        own = getattr(module, f"{module_name.upper()}_STATION_NAMES", {})
+        for code, name in own.items():
+            expected.setdefault(code, name)
+
+    parsed = su.load_station_names()
+
+    missing = {c: n for c, n in expected.items() if c not in parsed}
+    extra = {c: n for c, n in parsed.items() if c not in expected}
+    wrong = {c: (parsed[c], n) for c, n in expected.items() if c in parsed and parsed[c] != n}
+    print(f"parsed={len(parsed)} expected={len(expected)} "
+          f"missing={list(missing)[:5]} extra={list(extra)[:5]} wrong={list(wrong.items())[:3]}")
+    assert not missing, f"{len(missing)} codes not parsed, e.g. {list(missing.items())[:5]}"
+    assert not extra, f"{len(extra)} codes parsed from outside a names dict, e.g. {list(extra.items())[:5]}"
+    assert not wrong, f"{len(wrong)} codes resolved differently, e.g. {list(wrong.items())[:5]}"
+    assert parsed["SEPR90404"] == "Airport Terminal A"
+    assert parsed["SEPM30866"] == "10th St & Main St"

@@ -265,7 +265,9 @@ Shows how the server is being used: API traffic breakdown, route searches, train
 client versions, latency, scheduler health, errors, and warnings. Traffic comes from the
 backend's own structured `http_request` log events (`cos_containers`, one per request, logged
 by `request_stats_middleware` in `main.py`) — the API sits behind the Cloudflare Tunnel, so no
-load balancer sees it (#1759). Requires GCP service account credentials (same as gcp-logs.py).
+load balancer sees it (#1759). The event logs the matched route template and only the
+route-search query fields, never the raw path or query, since some carry a `device_id` or push
+token. Requires GCP service account credentials (same as gcp-logs.py).
 The report also breaks traffic out by client class (`client_breakdown` in JSON, "iOS app vs
 Web app" section in text): `ios` (TrackRat iOS app), `web` (browser = the web app), and
 `other` (Android/curl/scripts), each with request count, unique users, and top routes.
