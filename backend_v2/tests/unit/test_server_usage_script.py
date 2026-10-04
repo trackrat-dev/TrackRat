@@ -147,11 +147,27 @@ def test_json_report_includes_client_breakdown(su):
 # balancer and the window is permanently empty — rendering that as a bare
 # "0 requests" states as fact something the report cannot know.
 # ---------------------------------------------------------------------------
+# Every real environment is tunnel-fronted now, so the LB-fronted branch is
+# exercised with an env name that is deliberately absent from the set.
+_LB_ENV = "lb-fronted"
+
+
+def test_production_is_tunnel_fronted(su):
+    """Production cut over to the tunnel on 2026-08-08 (#1759).
+
+    Without this entry, incidental LB entries (scanners, the webpage host)
+    suppress the caveat and the report presents them as production traffic.
+    """
+    assert "production" in su.TUNNEL_FRONTED_ENVS
+    assert su.lb_traffic_source_note("production", 0) is not None
+    assert su.lb_traffic_source_note("production", 4200) is not None
+
+
 def test_traffic_note_absent_when_lb_entries_exist(su):
     """An LB-fronted env with real LB entries carries no caveat."""
-    assert "production" not in su.TUNNEL_FRONTED_ENVS
-    assert su.lb_traffic_source_note("production", 1) is None
-    assert su.lb_traffic_source_note("production", 4200) is None
+    assert _LB_ENV not in su.TUNNEL_FRONTED_ENVS
+    assert su.lb_traffic_source_note(_LB_ENV, 1) is None
+    assert su.lb_traffic_source_note(_LB_ENV, 4200) is None
 
 
 def test_traffic_note_survives_incidental_lb_entries_on_a_tunnel_env(su):
@@ -191,10 +207,10 @@ def test_traffic_note_names_the_tunnel_for_tunnel_fronted_envs(su):
 
 
 def test_traffic_note_for_lb_fronted_env_does_not_blame_the_tunnel(su):
-    """An empty production window means no traffic — it must not claim a tunnel."""
-    assert "production" not in su.TUNNEL_FRONTED_ENVS
+    """An empty LB-fronted window means no traffic — it must not claim a tunnel."""
+    assert _LB_ENV not in su.TUNNEL_FRONTED_ENVS
 
-    note = su.lb_traffic_source_note("production", 0)
+    note = su.lb_traffic_source_note(_LB_ENV, 0)
 
     assert note is not None
     assert "Cloudflare Tunnel" not in note
@@ -254,7 +270,7 @@ def test_text_report_unchanged_when_traffic_is_real(su):
 
     text = su.format_report(
         "production", 1, {}, {}, lb, app_analysis, use_color=False,
-        traffic_note=su.lb_traffic_source_note("production", len(entries)),
+        traffic_note=su.lb_traffic_source_note(_LB_ENV, len(entries)),
     )
 
     # "WARNING: " with the colon — the report always contains an unrelated

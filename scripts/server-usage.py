@@ -63,7 +63,7 @@ API_URLS = {
 # requests" that reads as fact. Add "production" here when it cuts over, and
 # remove an entry if an environment moves back to the LB
 # (infra_v2/RUNBOOK-cloudflare-cutover.md).
-TUNNEL_FRONTED_ENVS = {"staging"}
+TUNNEL_FRONTED_ENVS = {"staging", "production"}
 
 
 # ---------------------------------------------------------------------------
