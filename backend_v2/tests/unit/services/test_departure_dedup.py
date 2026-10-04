@@ -576,6 +576,68 @@ class TestMergeDepartures:
         assert len(merged) == 1
         assert merged[0].train_id == "3227"  # DB train preferred
 
+    def test_issue_1839_gtfs_main_bergen_matches_either_line(self):
+        """Production HB -> Suffern, 2026-10-03 (#1839). NJT GTFS publishes Main
+        and Bergen County as one route (MNBN -> 'MA') under different train
+        numbers, so each real-time train sat beside a "Train TBD" GTFS twin:
+        Main 1731 (stored 'ML') / GTFS 2069, Bergen 1785 (stored 'BC') / GTFS
+        2165. Both GTFS rows must drop; both real trains must stay."""
+        main_time = ET.localize(datetime(2026, 10, 3, 19, 24))
+        bergen_time = ET.localize(datetime(2026, 10, 3, 21, 28))
+
+        realtime = [
+            self._create_departure("1731", "ML", main_time),
+            self._create_departure("1785", "BC", bergen_time),
+        ]
+        gtfs = [
+            self._create_departure("2069", "MA", main_time),
+            self._create_departure("2165", "MA", bergen_time),
+        ]
+
+        merged = self.service._merge_departures(realtime, gtfs)
+
+        kept = [(d.train_id, d.line.code) for d in merged]
+        print(f"merged: {kept}")
+        assert sorted(d.train_id for d in merged) == ["1731", "1785"]
+
+    def test_gtfs_main_bergen_without_realtime_twin_is_kept(self):
+        """A GTFS Main/Bergen departure with no real-time Main or Bergen train
+        at that minute is the only record of that train and must stay."""
+        gtfs = [
+            self._create_departure(
+                "2165", "MA", ET.localize(datetime(2026, 10, 3, 21, 28))
+            )
+        ]
+        realtime = [
+            self._create_departure(
+                "1731", "ML", ET.localize(datetime(2026, 10, 3, 19, 24))
+            )
+        ]
+
+        merged = self.service._merge_departures(realtime, gtfs)
+
+        print(f"merged: {[(d.train_id, d.line.code) for d in merged]}")
+        assert sorted(d.train_id for d in merged) == ["1731", "2165"]
+
+    def test_gtfs_alternate_line_codes_are_scoped(self):
+        """Only GTFS 'MA' gets the Bergen alternate. A GTFS Northeast Corridor
+        departure must not be swallowed by a real-time Bergen train at the same
+        minute, and the alternate must not apply outside NJT."""
+        time = ET.localize(datetime(2026, 10, 3, 19, 24))
+        realtime = [
+            self._create_departure("1785", "BC", time),
+            self._create_departure("X1", "BE", time, data_source="PATH"),
+        ]
+        gtfs = [
+            self._create_departure("3801", "NE", time),
+            self._create_departure("X2", "MA", time, data_source="PATH"),
+        ]
+
+        merged = self.service._merge_departures(realtime, gtfs)
+
+        print(f"merged: {[(d.train_id, d.line.code, d.data_source) for d in merged]}")
+        assert sorted(d.train_id for d in merged) == ["1785", "3801", "X1", "X2"]
+
 
 class TestDedupeScheduledObservedCollisions:
     """Tests for _dedupe_scheduled_observed_collisions.
@@ -796,9 +858,9 @@ class TestDedupeScheduledObservedCollisions:
         assert len(result) == 2
 
     def test_issue_1839_main_and_bergen_linecodes(self):
-        """Production HB -> Suffern 12:39 (#1839): Main Line 9147 stored as
-        NJT's 'ML' and Bergen 1155 as 'BC' (raw LINECODE), each beside a
-        schedule-API twin. Both twins must drop; neither real train may."""
+        """HB -> Suffern 12:39 (#1839): Main Line 9147 stored as NJT's 'ML' and
+        Bergen 1155 as 'BC' (raw LINECODE), each beside a SCHEDULED twin under
+        TrackRat's code. Both twins must drop; neither real train may."""
         time = ET.localize(datetime(2026, 10, 1, 12, 39))
 
         deps = [

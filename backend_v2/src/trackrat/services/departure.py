@@ -139,6 +139,15 @@ NJT_LINE_CANONICALIZATION: dict[str, str] = {
     **NJT_LINECODE_ALIASES,
 }
 
+# Other real-time lines an NJT GTFS line code can stand for. NJT's GTFS
+# publishes Main and Bergen County as a single route (MNBN -> "MA"; see
+# NJT_LINE_CODE_MAPPING in services/gtfs.py), so a GTFS "MA" departure may be
+# either line's real-time train. NJT GTFS also uses different train numbers
+# from the real-time API, so the line + time fallback key is the only way to
+# pair them; without the alternates every Bergen train showed twice, once as a
+# "Train TBD" GTFS row (issue #1839).
+NJT_GTFS_ALTERNATE_LINE_CODES: dict[str, tuple[str, ...]] = {"MA": ("BE",)}
+
 # Data sources that have real-time discovery systems.
 # SCHEDULED trains from these sources should be hidden when close to departure
 # if they haven't been upgraded to OBSERVED by discovery.
@@ -2207,6 +2216,16 @@ class DepartureService:
         # Add GTFS trains not matched in real-time
         for gtfs_dep in gtfs:
             primary, fallbacks = self._make_dedup_keys(gtfs_dep)
+            if gtfs_dep.data_source == "NJT":
+                for line_code in NJT_GTFS_ALTERNATE_LINE_CODES.get(
+                    gtfs_dep.line.code, ()
+                ):
+                    alternate = gtfs_dep.model_copy(
+                        update={
+                            "line": gtfs_dep.line.model_copy(update={"code": line_code})
+                        }
+                    )
+                    fallbacks += self._make_dedup_keys(alternate)[1]
 
             # Check primary key match
             if primary and primary in primary_keys:

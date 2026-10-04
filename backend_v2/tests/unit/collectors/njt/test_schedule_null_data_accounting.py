@@ -140,8 +140,6 @@ def _make_train_data_with_invalid_stop() -> MagicMock:
     bad_stop.TRACK = None
 
     train_data = MagicMock()
-
-    train_data.LINECODE = "NE"  # required on the real NJTransitTrainData
     train_data.STOPS = [bad_stop]
     return train_data
 
@@ -161,8 +159,6 @@ def _make_train_data_with_valid_stop() -> MagicMock:
     stop.TRACK = None
 
     train_data = MagicMock()
-
-    train_data.LINECODE = "NE"  # required on the real NJTransitTrainData
     train_data.STOPS = [stop]
     return train_data
 

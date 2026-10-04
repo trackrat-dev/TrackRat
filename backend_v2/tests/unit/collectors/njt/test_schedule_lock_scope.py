@@ -53,7 +53,6 @@ class _TrainData:
     """Minimal stand-in for the getTrainStopList response envelope."""
 
     def __init__(self, stops: list[Any]):
-        self.LINECODE = "NE"  # required on the real NJTransitTrainData
         self.STOPS = stops
 
 

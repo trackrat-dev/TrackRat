@@ -361,11 +361,7 @@ class NJTScheduleCollector:
             ):
                 existing_journey.scheduled_departure = scheduled_departure
             existing_journey.destination = destination
-            # Once the stop list has run, line_code came from the train's own
-            # LINECODE — authoritative where the schedule API's LINE is not
-            # ("Main/Bergen County Line" covers two lines; issue #1839).
-            if not existing_journey.has_complete_journey:
-                existing_journey.line_code = parse_njt_line_code(line)
+            existing_journey.line_code = parse_njt_line_code(line)
             existing_journey.line_name = line
             existing_journey.last_updated_at = now_et()
 
@@ -651,12 +647,6 @@ class NJTScheduleCollector:
 
             stops.append(journey_stop)
             session.add(journey_stop)
-
-        # The schedule API's LINE can name two lines at once ("Main/Bergen
-        # County Line" -> MA for Bergen trains too); the per-train LINECODE
-        # says which one this train runs on (issue #1839).
-        if train_data.LINECODE:
-            journey.line_code = parse_njt_line_code(train_data.LINECODE)
 
         # Update journey metadata
         if stops:
