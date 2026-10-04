@@ -531,8 +531,10 @@ bash scripts/e2e-api-test.sh https://apiv2.trackrat.net --no-random
 
 **Soak ≥24h.** Confirm the P0 usage report still reports traffic.
 
-**Rollback:** grey `A` → `136.110.151.144` (the webpage LB still host-routes
-`apiv2`).
+**Rollback:** forward-only — restore the tunnel connector. The path written
+here originally (grey `A` → `136.110.151.144`, host-routed by the webpage LB)
+died with that LB on 2026-08-08, and P6 releases the IP: never point a record
+at it again.
 
 ### P5. Static site on Workers Static Assets
 
@@ -671,6 +673,16 @@ changed outside of Terraform"): the refresh gets a 404 for each and drops it
 from state, so there is nothing left to destroy. Do **not** `terraform state rm`
 them by hand. If the plan shows anything else, stop.
 
+Before applying, confirm **no DNS record still points at `136.110.151.144`**:
+once released, Google can hand the address to another project, and a leftover
+record would send that hostname to someone else's load balancer. In the
+Cloudflare dashboard, search the `trackrat.net` zone's DNS records for the IP
+(expect none), and spot-check the public names:
+
+```bash
+for h in trackrat.net www.trackrat.net apiv2.trackrat.net; do dig +short A "$h"; done   # expect only Cloudflare IPs
+```
+
 ```bash
 terraform apply                 # releases 136.110.151.144, persists the refreshed state
 terraform plan                  # expect: No changes
@@ -738,7 +750,7 @@ This matches the invariant already stated for the staging rehearsal in S9.
 | S8 | forward-only — fix and redeploy (staging LB is already gone) | minutes |
 | S9 | `git revert` + re-apply | new IP, DNS update |
 | P1–P3 | none needed (connector additive) | — |
-| P4 | grey `A` `apiv2` → `136.110.151.144` | seconds |
+| P4 | forward-only — restore the tunnel connector; the grey `A` → `136.110.151.144` path is gone (LB deleted 2026-08-08, IP released in P6) | minutes |
 | P5 | redeploy a known-good build to the Worker (`deploy-webpage.sh production --cloudflare-only`) — no GCS fallback, the LB behind `136.110.151.144` is gone | minutes |
 | **P6** | **restore the LB blocks from git history and apply — the IP is released, so a new one** | **new IP + DNS + cert reprovision** |
 

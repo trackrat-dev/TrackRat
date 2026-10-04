@@ -1,7 +1,7 @@
 # Outputs
 
 output "load_balancer_ip" {
-  description = "External IP of the load balancer (staging only; production is served by the consolidated webpage LB — see terraform-webpage output production_webpage_ip)"
+  description = "External IP of the load balancer (staging only; production has no load balancer — it is fronted by the Cloudflare Tunnel)"
   value       = try(google_compute_global_address.trackrat[0].address, "consolidated-into-webpage-lb")
 }
 
