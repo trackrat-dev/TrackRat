@@ -32,11 +32,16 @@ describe('JourneyStopList', () => {
     renderList([2, 3]);
     expect(shownCodes()).toEqual(['PS', 'DL']);
 
-    fireEvent.click(screen.getByRole('button', { name: 'Train has previous stops' }));
+    const toggle = screen.getByRole('button', { name: 'Train has previous stops' });
+    expect(toggle).toHaveAttribute('aria-expanded', 'false');
+
+    fireEvent.click(toggle);
     expect(shownCodes()).toEqual(['WK', 'RW', 'PS', 'DL']);
+    expect(screen.getByRole('button', { name: 'Hide previous stops' })).toHaveAttribute('aria-expanded', 'true');
 
     fireEvent.click(screen.getByRole('button', { name: 'Hide previous stops' }));
     expect(shownCodes()).toEqual(['PS', 'DL']);
+    expect(screen.getByRole('button', { name: 'Train has previous stops' })).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('expands later stops independently of previous stops', () => {
@@ -44,7 +49,8 @@ describe('JourneyStopList', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Train has later stops' }));
     expect(shownCodes()).toEqual(['PS', 'DL', 'HB']);
-    expect(screen.getByRole('button', { name: 'Train has previous stops' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hide later stops' })).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByRole('button', { name: 'Train has previous stops' })).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('omits toggles at the ends of the line', () => {

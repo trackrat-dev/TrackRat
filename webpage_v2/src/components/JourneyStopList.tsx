@@ -25,13 +25,23 @@ export function JourneyStopList({ stops, journeyRange, renderStop }: JourneyStop
   return (
     <>
       {start > 0 && (
-        <button type="button" className={`mb-3 ${toggleClass}`} onClick={() => setShowPrevious(!showPrevious)}>
+        <button
+          type="button"
+          className={`mb-3 ${toggleClass}`}
+          aria-expanded={showPrevious}
+          onClick={() => setShowPrevious(!showPrevious)}
+        >
           {showPrevious ? 'Hide previous stops' : 'Train has previous stops'}
         </button>
       )}
       <div className="space-y-3">{visibleStops.map(renderStop)}</div>
       {end < stops.length - 1 && (
-        <button type="button" className={`mt-3 ${toggleClass}`} onClick={() => setShowLater(!showLater)}>
+        <button
+          type="button"
+          className={`mt-3 ${toggleClass}`}
+          aria-expanded={showLater}
+          onClick={() => setShowLater(!showLater)}
+        >
           {showLater ? 'Hide later stops' : 'Train has later stops'}
         </button>
       )}
