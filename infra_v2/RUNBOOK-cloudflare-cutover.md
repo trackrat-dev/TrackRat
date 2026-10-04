@@ -628,34 +628,57 @@ the `routes` block — that just takes the site down.
 
 ### P6. Phase 4 — delete the webpage LB (point of no easy return)
 
-Edit `infra_v2/terraform-webpage/main.tf` and remove:
+**What actually happened.** The eight LB resources were deleted by hand in GCP
+on 2026-08-08, *before* P5.4, while `main.tf` and the root's state still held
+them. The static IP was not deleted. Nothing applies this root automatically, so
+the drift sat there: a local apply would have rebuilt the whole LB on
+`136.110.151.144` and re-billed the forwarding-rule SKU (issue #1762).
+
+The config side is done: `infra_v2/terraform-webpage/main.tf` no longer declares
 
 - both `google_compute_global_forwarding_rule.webpage_production_*`
 - both target proxies (`webpage_production_proxy`, `webpage_production_http_proxy`)
 - both url maps (`webpage_production`, `webpage_production_https_redirect`)
 - `google_compute_backend_bucket.webpage_production_backend`
 - `google_compute_managed_ssl_certificate.webpage_production_cert`
-- `google_compute_global_address.webpage_production_ip`
+- `google_compute_global_address.webpage_production_ip` — **released**, not
+  kept: nothing routes to it, an unattached global IP bills ~$0.01/h (~$88/yr,
+  a large share of what this runbook saves), and a rebuilt LB means DNS + cert
+  work regardless
 - `data "google_compute_backend_service" "api_production"`
 - the `production_webpage_ip` output
 
-Keep both GCS buckets and the webpage Cloud Build triggers.
+Both GCS buckets and the webpage Cloud Build triggers stay.
 
-No trigger exists for this root — apply it manually:
+**Remaining manual step — reconcile state and release the IP.** No trigger
+exists for this root:
 
 ```bash
 cd infra_v2/terraform-webpage
 terraform init
-terraform plan      # review carefully: must destroy only the LB resources
-terraform apply
+terraform plan
+```
 
+The plan must show **exactly one destroy**, `google_compute_global_address.webpage_production_ip`,
+and **zero creates**. The eight hand-deleted resources must not appear as
+planned actions (at most as "has been deleted" notes under "Objects have
+changed outside of Terraform"): the refresh gets a 404 for each and drops it
+from state, so there is nothing left to destroy. Do **not** `terraform state rm`
+them by hand. If the plan shows anything else, stop.
+
+```bash
+terraform apply                 # releases 136.110.151.144, persists the refreshed state
+terraform plan                  # expect: No changes
+gcloud compute addresses list --global --project=trackrat-v2          # expect no trackrat-webpage-production-ip
 gcloud compute forwarding-rules list --global --project=trackrat-v2   # expect EMPTY
 ```
 
-Do this only after P4 and P5 have been stable ≥24h. It deletes the shared IP;
-rollback means re-applying with a new IP and repointing DNS.
+The forwarding-rule SKU already stopped with the 2026-08-08 deletion; this
+apply stops the unattached-IP charge.
 
-The SKU drops to $0 on the next billing cycle.
+P8 (#1764) depends on this config change, not on the apply: while
+`main.tf` still declared the `api_production` data source, deleting
+`trackrat-production-backend` broke every plan in this root.
 
 ### P7. Destroy staging durably
 
@@ -712,7 +735,7 @@ This matches the invariant already stated for the staging rehearsal in S9.
 | P1–P3 | none needed (connector additive) | — |
 | P4 | grey `A` `apiv2` → `136.110.151.144` | seconds |
 | P5 | redeploy a known-good build to the Worker (`deploy-webpage.sh production --cloudflare-only`) — no GCS fallback, the LB behind `136.110.151.144` is gone | minutes |
-| **P6** | **re-apply webpage LB Terraform** | **new IP + DNS + cert reprovision** |
+| **P6** | **restore the LB blocks from git history and apply — the IP is released, so a new one** | **new IP + DNS + cert reprovision** |
 
 ## Verification cheatsheet
 
