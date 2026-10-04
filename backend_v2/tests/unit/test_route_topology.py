@@ -860,7 +860,7 @@ class TestNjtLineCodeConsistency:
 
     def test_schedule_collector_codes_match_topology(self):
         """Every code from parse_njt_line_code (full names) must be in some NJT route's line_codes."""
-        from trackrat.collectors.njt.schedule import parse_njt_line_code
+        from trackrat.utils.train import parse_njt_line_code
 
         test_names = [
             ("Northeast Corridor", "NE"),
@@ -876,6 +876,14 @@ class TestNjtLineCodeConsistency:
             ("Atlantic City Rail Line", "AC"),
             ("Atl. City Line", "AC"),  # NJT's own abbreviation (issue #1796)
             ("Princeton Shuttle", "PR"),
+            # Real-time discovery abbreviations (issue #1839)
+            ("No Jersey Coast", "NC"),
+            ("Atl. City Line", "AC"),
+            # NJT getTrainStopList LINECODE values (issue #1839)
+            ("ML", "MA"),
+            ("BC", "BE"),
+            ("GS", "GL"),
+            ("MC", "MO"),
         ]
         for name, expected_code in test_names:
             code = parse_njt_line_code(name)
@@ -910,7 +918,7 @@ class TestNjtLineCodeConsistency:
         Gladstone); `parse_njt_line_code` returns a single code and must land
         inside that set.
         """
-        from trackrat.collectors.njt.schedule import parse_njt_line_code
+        from trackrat.utils.train import parse_njt_line_code
         from trackrat.collectors.service_alerts import NJT_LINE_SCOPE_TO_CODES
 
         for scope_name, alert_codes in NJT_LINE_SCOPE_TO_CODES.items():
@@ -921,7 +929,7 @@ class TestNjtLineCodeConsistency:
                 f"parse_njt_line_code({scope_name!r}) = {code!r}, which is in "
                 f"no NJT route's line_codes. NJT emits this name on the alerts "
                 f"feed, so the schedule feed can send it too — add a prefix to "
-                f"_NJT_LINE_NAME_PREFIXES in collectors/njt/schedule.py."
+                f"_NJT_LINE_NAME_PREFIXES in utils/train.py."
             )
 
             assert route.line_codes & set(alert_codes), (

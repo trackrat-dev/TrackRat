@@ -18,7 +18,6 @@ from trackrat.collectors.njt.client import NJTransitClient, TrainNotFoundError
 from trackrat.collectors.njt.journey import JourneyCollector as NJTJourneyCollector
 from trackrat.collectors.njt.journey import normalize_njt_stop_times
 from trackrat.collectors.njt.refresh_outcome import mark_refresh_attempted
-from trackrat.collectors.njt.schedule import parse_njt_line_code
 from trackrat.config.route_topology import find_route_for_segment
 from trackrat.config.stations import (
     SEPTA_METRO_SCHEDULE_ONLY_LINE_CODES,
@@ -46,12 +45,14 @@ from trackrat.utils.time import (
     safe_datetime_subtract,
 )
 from trackrat.utils.train import (
+    NJT_LINECODE_ALIASES,
     effective_njt_updated_times,
     get_effective_observation_type,
     is_amtrak_train,
     is_njt_stop_cancelled,
     njt_cancellation_reason,
     normalize_njt_destination,
+    parse_njt_line_code,
     resolve_actual_departure,
     stop_sequence_sort_key,
     terminal_stop_index,
@@ -132,8 +133,20 @@ NJT_LINE_CANONICALIZATION: dict[str, str] = {
     "Pa": "PV",
     "At": "AC",
     "Pr": "PR",
-    "No": "NE",  # Legacy truncation artifact
+    # Truncated real-time "No Jersey Coast" — NJCL, not NEC (issue #1839)
+    "No": "NC",
+    # NJT's own codes written raw by journey collection before #1839
+    **NJT_LINECODE_ALIASES,
 }
+
+# Other real-time lines an NJT GTFS line code can stand for. NJT's GTFS
+# publishes Main and Bergen County as a single route (MNBN -> "MA"; see
+# NJT_LINE_CODE_MAPPING in services/gtfs.py), so a GTFS "MA" departure may be
+# either line's real-time train. NJT GTFS also uses different train numbers
+# from the real-time API, so the line + time fallback key is the only way to
+# pair them; without the alternates every Bergen train showed twice, once as a
+# "Train TBD" GTFS row (issue #1839).
+NJT_GTFS_ALTERNATE_LINE_CODES: dict[str, tuple[str, ...]] = {"MA": ("BE",)}
 
 # Data sources that have real-time discovery systems.
 # SCHEDULED trains from these sources should be hidden when close to departure
@@ -2043,7 +2056,7 @@ class DepartureService:
         """Normalize line code to canonical form for deduplication.
 
         NJT line codes can vary between real-time API and GTFS:
-        - Schedule API full names truncated to "No" (fixed at source, safety net here)
+        - Real-time "No Jersey Coast" truncated to "No" (fixed at source, safety net here)
         - API "Raritan Valley" -> "RV", but GTFS maps RARV -> "Ra"
         """
         if data_source == "NJT":
@@ -2230,6 +2243,16 @@ class DepartureService:
         # Add GTFS trains not matched in real-time
         for gtfs_dep in gtfs:
             primary, fallbacks = self._make_dedup_keys(gtfs_dep)
+            if gtfs_dep.data_source == "NJT":
+                for line_code in NJT_GTFS_ALTERNATE_LINE_CODES.get(
+                    gtfs_dep.line.code, ()
+                ):
+                    alternate = gtfs_dep.model_copy(
+                        update={
+                            "line": gtfs_dep.line.model_copy(update={"code": line_code})
+                        }
+                    )
+                    fallbacks += self._make_dedup_keys(alternate)[1]
 
             # Check primary key match
             if primary and primary in primary_keys:
