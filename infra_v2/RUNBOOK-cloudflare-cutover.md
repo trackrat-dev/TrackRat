@@ -715,13 +715,13 @@ Also: delete the staging DNS records, delete
 `trackrat-cloudflare-tunnel-token-staging`, and delete the `trackrat-staging`
 tunnel in Cloudflare.
 
-### P8. Cleanup (optional, ~1 week later)
+### P8. Cleanup — done in issue #1764
 
-Removable: the API backend service (`loadbalancer.tf`) and
-`trackrat-production-cert`. Both are dead once nothing routes through a Google
-LB. They are free to keep and serve as a rollback path — leave them a week, then
-remove. Fold the two out-of-band secret IAM grants into `secrets.tf` at that
-point (the note in that file anticipates this).
+`loadbalancer.tf` (the API backend service, the managed cert and the
+already-count-0 frontend) is deleted, along with the `consolidate_api_lb` and
+`frontend_via_cloudflare` switches that gated it, so the flag names used in the
+steps above no longer exist in `variables.tf`. The two out-of-band secret IAM
+grants are folded into `secrets.tf`.
 
 **Must keep — do not delete with the load balancer:**
 
@@ -730,9 +730,9 @@ point (the note in that file anticipates this).
 | `google_compute_health_check.trackrat` | Also drives `google_compute_instance_group_manager.trackrat.auto_healing_policies`, not just the backend service |
 | `google_compute_firewall.allow_health_checks` (`network.tf:5`) | Auto-healing probes come from `130.211.0.0/22` + `35.191.0.0/16` on port 8000 — the same ranges the LB used |
 
-The health check has two consumers: the backend service in `loadbalancer.tf`
-(dies with the cutover) and the MIG's `auto_healing_policies` in `compute.tf`
-(does not). Deleting it
+The health check had two consumers: the backend service in `loadbalancer.tf`
+(removed in P8) and the MIG's `auto_healing_policies` in `compute.tf`
+(still live). Deleting it
 leaves the production MIG unable to replace a wedged instance, and the failure is
 **silent** — nothing breaks at deletion time; you find out the next time an
 instance needs auto-healing and doesn't get it. Neither resource is `count`-gated,

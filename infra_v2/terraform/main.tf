@@ -38,26 +38,13 @@ provider "google" {
 # Do not reintroduce a per-environment machine_type/disk override; change the
 # shared variable instead so both environments move together.
 locals {
-  # Two domain locals, because in staging they are NOT the same name.
-  #
-  # local.domain is the name on the LB's Google-managed certificate
-  # (loadbalancer.tf) and the uptime check host (monitoring.tf, production-only).
-  # Staging's is deliberately left on the old staging.apiv2.trackrat.net: DNS for
-  # staging-api now points at Cloudflare, so a Google cert minted for the new
-  # name would just sit in FAILED_NOT_VISIBLE. Note the certificate is NOT
-  # count-gated — unlike the frontend (local.create_api_frontend), it survives
-  # frontend_via_cloudflare — so staging's cert stays bound to a name Google can
-  # no longer validate until the LB itself is retired.
-  #
-  # local.public_api_domain is where clients actually reach the API, and is what
-  # the api_url output advertises. Staging's API is served at
+  # Where clients reach the API, advertised by the api_url output and probed by
+  # the production uptime check (monitoring.tf). Staging's API is served at
   # staging-api.trackrat.net via the Cloudflare Tunnel: Universal SSL covers only
   # the apex and ONE subdomain level (the edge cert's SANs are trackrat.net and
   # *.trackrat.net), so the two-label staging.apiv2.trackrat.net cannot be proxied
-  # without paid Advanced Certificate Manager — hence the rename. The two locals
-  # diverge in staging only; production's cert and public hostname are both
-  # apiv2.trackrat.net. See infra_v2/RUNBOOK-cloudflare-cutover.md.
-  domain            = var.environment == "production" ? "apiv2.trackrat.net" : "staging.apiv2.trackrat.net"
+  # without paid Advanced Certificate Manager — hence the rename. See
+  # infra_v2/RUNBOOK-cloudflare-cutover.md.
   public_api_domain = var.environment == "production" ? "apiv2.trackrat.net" : "staging-api.trackrat.net"
   use_spot_vm       = var.environment == "staging"
 
@@ -67,20 +54,4 @@ locals {
   # .env line — a set reordering would otherwise rewrite the startup script and
   # churn the instance template on an unrelated apply.
   disabled_data_sources = join(",", sort(var.disabled_data_sources[var.environment]))
-
-  # Once var.consolidate_api_lb is flipped, production's HTTPS frontend (IP,
-  # url map, proxies, forwarding rules) is served by the consolidated webpage
-  # load balancer in infra_v2/terraform-webpage (apiv2.trackrat.net is
-  # host-routed there to this workspace's backend service), dropping
-  # production's 2 dedicated global forwarding rules. Gated on the variable
-  # (default false) because infra_v2/cloudbuild-terraform.yaml auto-applies
-  # this root on every deploy-branch push — the teardown must be an explicit
-  # runbook Phase-4 action, never a side effect of an unrelated deploy.
-  #
-  # var.frontend_via_cloudflare drops this workspace's dedicated API frontend
-  # once the environment's API is fronted by a Cloudflare Tunnel instead (see
-  # infra_v2/RUNBOOK-cloudflare-cutover.md). Same committed-default discipline
-  # as consolidate_api_lb: flip it to true ONLY after the tunnel is up and DNS
-  # is cut over, or the push-triggered apply takes the API offline.
-  create_api_frontend = !var.frontend_via_cloudflare && !(var.environment == "production" && var.consolidate_api_lb)
 }
