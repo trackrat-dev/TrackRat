@@ -6,6 +6,7 @@ struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var subscriptionService = SubscriptionService.shared
 
+    @State private var selectedProduct: Product?
     @State private var isPurchasing = false
     @State private var showError = false
     @State private var errorMessage = ""
@@ -13,10 +14,9 @@ struct PaywallView: View {
     @State private var restoreMessage = ""
     @State private var isRestoring = false
     @State private var showPurchaseSuccess = false
-    /// Whether this Apple ID can still redeem the monthly plan's introductory offer.
-    /// Eligibility is per subscription group, so anyone who ever held monthly or the
-    /// legacy yearly plan has used it. Starts false so the paywall never promises a
-    /// trial it has not confirmed.
+    /// Whether this Apple ID can still redeem an introductory offer. Eligibility is
+    /// per subscription group, so anyone who ever held monthly or yearly has used it.
+    /// Starts false so the paywall never promises a trial it has not confirmed.
     @State private var isEligibleForIntroOffer = false
 
     var body: some View {
@@ -108,18 +108,12 @@ struct PaywallView: View {
                     )
                     .padding(.horizontal)
 
-                    // Pricing
+                    // Pricing options
                     if subscriptionService.isLoading && subscriptionService.availableProducts.isEmpty {
                         ProgressView()
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             .padding()
-                    } else if let monthly = subscriptionService.monthlyProduct {
-                        PricingSummaryView(
-                            title: monthly.displayName,
-                            subtitle: subscriptionSubtitle(for: monthly)
-                        )
-                        .padding(.horizontal)
-                    } else {
+                    } else if subscriptionService.availableProducts.isEmpty {
                         VStack(spacing: 12) {
                             Text("Unable to load pricing")
                                 .foregroundColor(.white.opacity(0.5))
@@ -145,6 +139,34 @@ struct PaywallView: View {
                             .buttonStyle(.plain)
                         }
                         .padding()
+                    } else {
+                        VStack(spacing: 12) {
+                            // Monthly option
+                            if let monthly = subscriptionService.monthlyProduct {
+                                PricingOptionView(
+                                    product: monthly,
+                                    isSelected: selectedProduct?.id == monthly.id,
+                                    subtitle: subscriptionSubtitle(for: monthly)
+                                ) {
+                                    selectedProduct = monthly
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                }
+                            }
+
+                            // Yearly option
+                            if let yearly = subscriptionService.yearlyProduct {
+                                PricingOptionView(
+                                    product: yearly,
+                                    isSelected: selectedProduct?.id == yearly.id,
+                                    subtitle: subscriptionSubtitle(for: yearly),
+                                    badge: subscriptionService.monthlyProduct.flatMap { yearlySavingsText(yearly: yearly, monthly: $0) }
+                                ) {
+                                    selectedProduct = yearly
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                }
+                            }
+                        }
+                        .padding(.horizontal)
                     }
 
                     // Subscribe button
@@ -167,12 +189,12 @@ struct PaywallView: View {
                         .padding()
                         .background(
                             RoundedRectangle(cornerRadius: 14)
-                                .fill(subscriptionService.monthlyProduct != nil ? .orange : .gray)
+                                .fill(selectedProduct != nil ? .orange : .gray)
                         )
                         .foregroundColor(.white)
                     }
                     .buttonStyle(.plain)
-                    .disabled(subscriptionService.monthlyProduct == nil || isPurchasing)
+                    .disabled(selectedProduct == nil || isPurchasing)
                     .padding(.horizontal)
 
                     // Restore purchases
@@ -237,23 +259,32 @@ struct PaywallView: View {
         } message: {
             Text(errorMessage)
         }
-        .task(id: subscriptionService.monthlyProduct?.id) {
-            isEligibleForIntroOffer = await subscriptionService.monthlyProduct?.subscription?.isEligibleForIntroOffer ?? false
+        .onAppear {
+            // Default to monthly selection
+            if selectedProduct == nil {
+                selectedProduct = subscriptionService.monthlyProduct
+            }
+        }
+        .onChange(of: subscriptionService.availableProducts) { _, products in
+            if selectedProduct == nil, let monthly = products.first(where: { $0.id == SubscriptionService.monthlyProductId }) {
+                selectedProduct = monthly
+            }
+        }
+        .task(id: selectedProduct?.id) {
+            isEligibleForIntroOffer = await selectedProduct?.subscription?.isEligibleForIntroOffer ?? false
         }
     }
 
-    /// The monthly plan's free-trial offer, only when this user can redeem it
-    private var freeTrialOffer: Product.SubscriptionOffer? {
-        guard isEligibleForIntroOffer,
-              let introOffer = subscriptionService.monthlyProduct?.subscription?.introductoryOffer,
-              introOffer.paymentMode == .freeTrial else {
-            return nil
-        }
-        return introOffer
-    }
-
+    /// Whether the selected product has a free trial this user can redeem
     private var hasFreeTrial: Bool {
-        freeTrialOffer != nil
+        guard isEligibleForIntroOffer,
+              let product = selectedProduct,
+              let subscription = product.subscription,
+              let introOffer = subscription.introductoryOffer,
+              introOffer.paymentMode == .freeTrial else {
+            return false
+        }
+        return true
     }
 
     /// Legal disclaimer text, adjusted for free trial when available
@@ -266,8 +297,11 @@ struct PaywallView: View {
     }
 
     /// Format the trial period, or empty when no redeemable trial exists
-    private var trialText: String {
-        guard let introOffer = freeTrialOffer else {
+    private func trialText(for product: Product) -> String {
+        guard isEligibleForIntroOffer,
+              let subscription = product.subscription,
+              let introOffer = subscription.introductoryOffer,
+              introOffer.paymentMode == .freeTrial else {
             return ""
         }
 
@@ -290,7 +324,7 @@ struct PaywallView: View {
 
     /// Format the subscription subtitle with trial info if available
     private func subscriptionSubtitle(for product: Product) -> String {
-        let trialPrefix = trialText
+        let trialPrefix = trialText(for: product)
         let periodLabel: String
         if let subscription = product.subscription {
             switch subscription.subscriptionPeriod.unit {
@@ -311,8 +345,16 @@ struct PaywallView: View {
         return "\(trialPrefix)\(product.displayPrice)\(periodLabel)"
     }
 
+    /// Show savings badge if yearly plan is cheaper than 12× monthly
+    private func yearlySavingsText(yearly: Product, monthly: Product) -> String? {
+        let yearlyTotal = NSDecimalNumber(decimal: yearly.price).doubleValue
+        let monthlyTotal = NSDecimalNumber(decimal: monthly.price).doubleValue * 12
+        guard monthlyTotal > 0, yearlyTotal < monthlyTotal else { return nil }
+        return "2 months free!"
+    }
+
     private func purchase() async {
-        guard let product = subscriptionService.monthlyProduct else { return }
+        guard let product = selectedProduct else { return }
 
         isPurchasing = true
 
@@ -368,36 +410,60 @@ struct PaywallView: View {
     }
 }
 
-// MARK: - Pricing Summary
+// MARK: - Pricing Option
 
-/// The single plan on offer. Not selectable — monthly is the only plan.
-private struct PricingSummaryView: View {
-    let title: String
+private struct PricingOptionView: View {
+    let product: Product
+    let isSelected: Bool
     let subtitle: String
+    var badge: String? = nil
+    let onSelect: () -> Void
 
     var body: some View {
-        HStack {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(.headline)
-                    .foregroundColor(.white)
+        Button(action: onSelect) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(spacing: 8) {
+                        Text(product.displayName)
+                            .font(.headline)
+                            .foregroundColor(.white)
 
-                Text(subtitle)
-                    .font(.caption)
-                    .foregroundColor(.white.opacity(0.6))
+                        if let badge {
+                            Text(badge)
+                                .font(.caption2.weight(.semibold))
+                                .foregroundColor(.orange)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(
+                                    Capsule()
+                                        .fill(.orange.opacity(0.15))
+                                )
+                        }
+                    }
+
+                    Text(subtitle)
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.6))
+                }
+
+                Spacer()
+
+                // Selection indicator
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(.title2)
+                    .foregroundColor(isSelected ? .orange : .white.opacity(0.3))
             }
-
-            Spacer()
+            .padding()
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(isSelected ? .orange.opacity(0.15) : .white.opacity(0.05))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(isSelected ? .orange.opacity(0.5) : .white.opacity(0.1), lineWidth: 1)
+                    )
+            )
         }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 12)
-                .fill(.orange.opacity(0.15))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12)
-                        .stroke(.orange.opacity(0.5), lineWidth: 1)
-                )
-        )
+        .buttonStyle(.plain)
     }
 }
 

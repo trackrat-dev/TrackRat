@@ -42,18 +42,9 @@ final class SubscriptionService: ObservableObject {
 
     // Product IDs - configure these in App Store Connect
     static let monthlyProductId = "com.trackrat.pro.monthly"
-
-    /// The yearly plan, removed from sale — monthly is the only plan offered now.
-    /// App Store Connect cannot delete a product, so anyone who bought yearly
-    /// keeps renewing it; this ID must stay in `entitledProductIds` or those
-    /// paying subscribers silently lose Pro.
-    static let legacyYearlyProductId = "com.trackrat.pro.yearly"
-
-    /// Plans the paywall can sell.
-    static let purchasableProductIds: Set<String> = [monthlyProductId]
-
-    /// Plans that grant Pro, including ones no longer sold.
-    static let entitledProductIds: Set<String> = [monthlyProductId, legacyYearlyProductId]
+    static let yearlyProductId = "com.trackrat.pro.yearly"
+    /// Plans the paywall sells; an active transaction for any of them grants Pro.
+    static let productIds: Set<String> = [monthlyProductId, yearlyProductId]
 
     // Free tier limit
     static let freeRouteAlertLimit = 3
@@ -68,6 +59,10 @@ final class SubscriptionService: ObservableObject {
 
     var monthlyProduct: Product? {
         availableProducts.first { $0.id == Self.monthlyProductId }
+    }
+
+    var yearlyProduct: Product? {
+        availableProducts.first { $0.id == Self.yearlyProductId }
     }
 
     // MARK: - Initialization
@@ -106,7 +101,7 @@ final class SubscriptionService: ObservableObject {
         errorMessage = nil
 
         do {
-            let products = try await Product.products(for: Self.purchasableProductIds)
+            let products = try await Product.products(for: Self.productIds)
             availableProducts = products.sorted { $0.price < $1.price }
             print("Loaded \(products.count) subscription products")
         } catch {
@@ -182,7 +177,7 @@ final class SubscriptionService: ObservableObject {
             do {
                 let transaction = try checkVerified(result)
 
-                if Self.entitledProductIds.contains(transaction.productID),
+                if Self.productIds.contains(transaction.productID),
                    let expirationDate = transaction.expirationDate,
                    expirationDate > Date() {
                     let isTrialPeriod = transaction.offer?.type == .introductory

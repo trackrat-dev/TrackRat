@@ -2,63 +2,24 @@ import StoreKit
 import XCTest
 @testable import TrackRat
 
-/// Covers the paid-plan contract: which products the paywall may sell, which
-/// products still grant Pro, and how much a free user gets. These are the
+/// Covers the paid-plan contract: which products the paywall sells and that grant
+/// Pro, and how much a free user gets. These are the
 /// pieces that can be asserted without a live App Store session — the purchase
 /// and restore flows need StoreKit itself and are exercised manually against
 /// `Configuration.storekit`.
 @MainActor
 final class SubscriptionServiceTests: XCTestCase {
 
-    // MARK: - Plans On Sale
+    // MARK: - Plans
 
-    func testPurchasableProductIds_isMonthlyOnly() {
+    func testProductIds_sellsAndHonorsMonthlyAndYearly() {
+        // The same set feeds both loadProducts (what the paywall offers) and
+        // checkSubscriptionStatus (what grants Pro), so dropping a plan here would
+        // both hide it from the paywall and revoke Pro from everyone paying for it.
         XCTAssertEqual(
-            SubscriptionService.purchasableProductIds,
-            [SubscriptionService.monthlyProductId],
-            """
-            Monthly is the only plan on offer. Found: \
-            \(SubscriptionService.purchasableProductIds.sorted())
-            """
-        )
-    }
-
-    func testPurchasableProductIds_excludesLegacyYearly() {
-        XCTAssertFalse(
-            SubscriptionService.purchasableProductIds.contains(SubscriptionService.legacyYearlyProductId),
-            "The yearly plan was removed from sale and must never be offered on the paywall"
-        )
-    }
-
-    // MARK: - Entitlements
-
-    func testEntitledProductIds_stillHonorsLegacyYearly() {
-        XCTAssertTrue(
-            SubscriptionService.entitledProductIds.contains(SubscriptionService.legacyYearlyProductId),
-            """
-            App Store Connect cannot delete a product — it can only be removed from sale — so \
-            subscribers who bought the yearly plan keep renewing. Dropping \
-            \(SubscriptionService.legacyYearlyProductId) from entitledProductIds would silently \
-            revoke Pro for every paying yearly subscriber at their next launch.
-            """
-        )
-    }
-
-    func testEntitledProductIds_includesMonthly() {
-        XCTAssertTrue(
-            SubscriptionService.entitledProductIds.contains(SubscriptionService.monthlyProductId),
-            "The plan currently on sale must grant Pro"
-        )
-    }
-
-    func testPurchasableProductIds_areAllEntitled() {
-        XCTAssertTrue(
-            SubscriptionService.purchasableProductIds.isSubset(of: SubscriptionService.entitledProductIds),
-            """
-            A plan the paywall can sell but that grants no entitlement would charge users for \
-            nothing. Sellable: \(SubscriptionService.purchasableProductIds.sorted()), \
-            entitled: \(SubscriptionService.entitledProductIds.sorted())
-            """
+            SubscriptionService.productIds,
+            [SubscriptionService.monthlyProductId, SubscriptionService.yearlyProductId],
+            "Expected exactly the monthly and yearly plans. Found: \(SubscriptionService.productIds.sorted())"
         )
     }
 

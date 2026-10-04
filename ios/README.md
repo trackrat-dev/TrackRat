@@ -45,7 +45,7 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metr
 ### Pro Subscription
 - **Free tier**: Every transit system and feature, plus up to 3 route alerts (`SubscriptionService.freeRouteAlertLimit`) — enough for a round trip and one more
 - **Pro**: Unlimited route alerts, the only paywalled feature
-- **Single Plan**: $4.99/month; the yearly plan is no longer sold, but existing yearly subscribers keep Pro
+- **Plans**: $4.99/month or $49.99/year
 - **1-Week Free Trial**: Apple introductory offer, shown only to Apple IDs still eligible for it
 - **StoreKit 2 Integration**: Modern subscription management with PaywallView
 
