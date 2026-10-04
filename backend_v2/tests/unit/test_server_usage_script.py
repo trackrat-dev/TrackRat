@@ -162,6 +162,8 @@ def test_only_unmatched_requests_count_as_scanners(su):
     entries = [
         _entry(None, "Go-http-client/1.1", status=404),
         _entry(None, _CURL_UA, status=404, method="POST"),
+        # The web app's own CORS preflight: no route, but not a scanner.
+        _entry(None, _WEB_UA, method="OPTIONS"),
         _entry("/admin/stats", _WEB_UA),
         _entry("/share/train/{train_id}", _WEB_UA, train_id="3918"),
         _entry("/api/v2/trains/stations/{station_code}/tracks/occupied", _IOS_UA),

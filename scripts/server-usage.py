@@ -405,9 +405,12 @@ def analyze_request_entries(entries, station_names):
         lat = jp.get("duration_ms", 0) / 1000
         remote_ip = jp.get("client_ip", "")
 
-        # A request that matched no route is a scanner probe (not real API usage)
+        # A request that matched no route is a scanner probe (not real API usage),
+        # except a CORS preflight: CORSMiddleware answers it before routing, so
+        # the web app's own OPTIONS requests also arrive with no route.
         if path is None:
-            scanner_count += 1
+            if jp.get("method") != "OPTIONS":
+                scanner_count += 1
             continue
 
         # Classify

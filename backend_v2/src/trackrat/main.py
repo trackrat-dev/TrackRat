@@ -4,6 +4,7 @@ Main FastAPI application for TrackRat V2.
 This module sets up the FastAPI app with all routers, middleware, and lifecycle events.
 """
 
+import asyncio
 import json
 import time
 import uuid
@@ -335,6 +336,11 @@ async def request_stats_middleware(
         response: Response = await call_next(request)
         status_code = response.status_code
         return response
+    except asyncio.CancelledError:
+        # The client went away before a response existed (nginx's 499); that is
+        # not a server error and must not inflate the 500 count.
+        status_code = 499
+        raise
     finally:
         duration = time.time() - start
 
@@ -369,12 +375,18 @@ async def request_stats_middleware(
             # path is the route template (raw paths carry a device_id or push
             # token, e.g. /alerts/subscriptions/{device_id}), None when no
             # route matched, and the query keeps only _LOGGED_QUERY_PARAMS.
-            # train_id is public and names the train viewed.
+            # train_id is public and names the train viewed. An unmatched
+            # request keeps its first three path segments so scanner probes and
+            # dead client URLs stay visible; every identifier in a real route
+            # sits deeper than that (/api/v2/live-activities/{push_token}).
             logger.info(
                 "http_request",
                 environment=get_settings().environment,
                 method=request.method,
                 path=matched_path,
+                unmatched_path=(
+                    None if matched_path else "/".join(request.url.path.split("/")[:4])
+                ),
                 query=urlencode(
                     [
                         (key, value)

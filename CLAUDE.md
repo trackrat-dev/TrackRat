@@ -267,7 +267,8 @@ backend's own structured `http_request` log events (`cos_containers`, one per re
 by `request_stats_middleware` in `main.py`) — the API sits behind the Cloudflare Tunnel, so no
 load balancer sees it (#1759). The event logs the matched route template and only the
 route-search query fields, never the raw path or query, since some carry a `device_id` or push
-token. Requires GCP service account credentials (same as gcp-logs.py).
+token; a request that matched no route keeps only its first three path segments
+(`unmatched_path`). A client disconnect is logged as status 499, not 500. Requires GCP service account credentials (same as gcp-logs.py).
 The report also breaks traffic out by client class (`client_breakdown` in JSON, "iOS app vs
 Web app" section in text): `ios` (TrackRat iOS app), `web` (browser = the web app), and
 `other` (Android/curl/scripts), each with request count, unique users, and top routes.

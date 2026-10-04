@@ -8,11 +8,14 @@ the fields that report reads, the client attribution behind the tunnel, and
 that no request — including one that crashes its handler — goes unrecorded.
 """
 
+import asyncio
+
 import pytest
+from fastapi import Request
 from structlog.testing import capture_logs
 
 from trackrat.api.telemetry import ONBOARDING_PATH
-from trackrat.main import app
+from trackrat.main import app, request_stats_middleware
 from trackrat.settings import get_settings
 
 _IOS_UA = "TrackRat/230 CFNetwork/1568.200.51 Darwin/24.1.0"
@@ -85,7 +88,7 @@ def test_unmatched_write_request_keeps_its_method_and_status(client):
 
     Device registrations and alert-subscription syncs are POST/PUT, and the
     report counts a request that matched no route as a scanner, so neither may
-    be filtered out here. The probed path itself is not logged.
+    be filtered out here. The probed path is kept as ``unmatched_path``.
     """
     with capture_logs() as captured:
         resp = client.post(
@@ -98,8 +101,86 @@ def test_unmatched_write_request_keeps_its_method_and_status(client):
     print(f"scanner event: {events[0]}")
     assert events[0]["method"] == "POST"
     assert events[0]["path"] is None
+    assert events[0]["unmatched_path"] == "/wp-login.php"
     assert events[0]["status_code"] == resp.status_code
     assert events[0]["query"] == ""
+
+
+def test_unmatched_api_path_is_cut_before_any_identifier(client):
+    """A dead or mistyped client URL stays visible without its identifier.
+
+    Only requests that match no route log a raw path, and only its first three
+    segments: a stale client hitting a removed endpoint would otherwise put its
+    device_id beside its client IP, which the matched-route template prevents.
+    """
+    with capture_logs() as captured:
+        resp = client.get("/api/v2/alerts/subscription/DEVICE-SECRET-123")
+
+    assert resp.status_code == 404, resp.status_code
+    events = _http_request_events(captured)
+    assert len(events) == 1, captured
+    print(f"unmatched api event: {events[0]}")
+    assert events[0]["path"] is None
+    assert events[0]["unmatched_path"] == "/api/v2/alerts"
+    assert "DEVICE-SECRET-123" not in repr(events[0])
+
+
+def test_matched_request_logs_no_unmatched_path(client):
+    with capture_logs() as captured:
+        client.get("/api/v2/live-activities/DEVICE-SECRET-123")
+
+    events = _http_request_events(captured)
+    assert len(events) == 1, captured
+    assert events[0]["path"] == "/api/v2/live-activities/{push_token}"
+    assert events[0]["unmatched_path"] is None
+
+
+def test_cors_preflight_is_logged_as_an_unmatched_options_request(client):
+    """CORSMiddleware answers a preflight before routing, so it reaches the log
+    with no route. The report relies on the OPTIONS method to keep the web
+    app's own preflights out of its scanner count."""
+    with capture_logs() as captured:
+        resp = client.options(
+            "/api/v2/feedback",
+            headers={
+                "origin": "https://trackrat.net",
+                "access-control-request-method": "POST",
+                "access-control-request-headers": "content-type",
+            },
+        )
+
+    assert resp.status_code == 200, resp.text
+    events = _http_request_events(captured)
+    assert len(events) == 1, captured
+    print(f"preflight event: {events[0]}")
+    assert events[0]["method"] == "OPTIONS"
+    assert events[0]["path"] is None
+
+
+def test_client_disconnect_is_logged_as_499_not_500():
+    """A cancelled request never produced a response; counting it as a 500
+    would report client disconnects as server errors."""
+
+    async def cancelled(_request):
+        raise asyncio.CancelledError
+
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/api/v2/trains/departures",
+            "query_string": b"from=NY&to=TR",
+            "headers": [],
+        }
+    )
+    with capture_logs() as captured:
+        with pytest.raises(asyncio.CancelledError):
+            asyncio.run(request_stats_middleware(request, cancelled))
+
+    events = _http_request_events(captured)
+    assert len(events) == 1, f"cancelled request went unrecorded: {captured}"
+    print(f"cancelled event: {events[0]}")
+    assert events[0]["status_code"] == 499
 
 
 def test_train_detail_logs_the_route_template_and_train_id(client):
