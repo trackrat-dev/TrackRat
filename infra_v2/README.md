@@ -1,12 +1,8 @@
 # TrackRat V2 Infrastructure
 
-Simplified GCP infrastructure using Managed Instance Groups with Container-Optimized OS, persistent disks, and HTTPS load balancing.
+Simplified GCP infrastructure using Managed Instance Groups with Container-Optimized OS, persistent disks, and a Cloudflare Tunnel in front of the API.
 
 ## Architecture
-
-The Global Load Balancer block below is the **original** API frontend. Neither
-environment creates it any more — both are fronted by a Cloudflare Tunnel. See
-"Frontend Topology" below.
 
 ```
                                     ┌─────────────────────────────┐
@@ -17,13 +13,13 @@ environment creates it any more — both are fronted by a Cloudflare Tunnel. See
                                                    ▼
 ┌─────────────┐    ┌─────────────────────────────────────────────────────────┐
 │   Client    │    │                    Google Cloud Platform                 │
-│  (HTTPS)    │    │  ┌─────────────────────────────────────────────────┐    │
-└──────┬──────┘    │  │              Global Load Balancer               │    │
-       │           │  │  • Managed SSL Certificate                      │    │
-       │           │  │  • HTTP→HTTPS Redirect                          │    │
-       └──────────▶│  └─────────────────────┬───────────────────────────┘    │
-                   │                        │                                 │
-                   │                        ▼                                 │
+│  (HTTPS)    │    │                                                          │
+└──────┬──────┘    │                                                          │
+       ▼           │                                                          │
+┌─────────────┐    │  Cloudflare Tunnel: an outbound connection opened by     │
+│ Cloudflare  │◀═══╪═ the cloudflared container below. No inbound port,       │
+│ edge (TLS)  │    │  no Google load balancer.                                │
+└─────────────┘    │                                                          │
                    │  ┌─────────────────────────────────────────────────┐    │
                    │  │         Managed Instance Group (MIG)            │    │
                    │  │  • Container-Optimized OS                       │    │
@@ -32,7 +28,8 @@ environment creates it any more — both are fronted by a Cloudflare Tunnel. See
                    │  │  ┌───────────────────────────────────────────┐  │    │
                    │  │  │  Docker Compose                           │  │    │
                    │  │  │  ├── PostgreSQL Container                 │  │    │
-                   │  │  │  └── TrackRat API Container               │  │    │
+                   │  │  │  ├── TrackRat API Container               │  │    │
+                   │  │  │  └── cloudflared (Cloudflare Tunnel)      │  │    │
                    │  │  └───────────────────────────────────────────┘  │    │
                    │  └─────────────────────┬───────────────────────────┘    │
                    │                        │                                 │
@@ -46,19 +43,20 @@ environment creates it any more — both are fronted by a Cloudflare Tunnel. See
                    │                                                          │
                    │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
                    │  │Secret Manager│  │  Artifact    │  │  GCS Deploy  │   │
-                   │  │  (8 secrets) │  │  Registry    │  │    Bucket    │   │
+                   │  │  (9 secrets) │  │  Registry    │  │    Bucket    │   │
                    │  └──────────────┘  └──────────────┘  └──────────────┘   │
                    └──────────────────────────────────────────────────────────┘
 ```
 
-### Frontend Topology (LB consolidation & Cloudflare Tunnel)
+### Frontend Topology (Cloudflare Tunnel)
 
-The dedicated per-environment API load balancer above is the original topology, and **neither environment uses it any more** — `local.create_api_frontend` is false in both. **Both** environments are now served by a Cloudflare Tunnel (`frontend_via_cloudflare`): staging via `staging-api.trackrat.net`, production via `apiv2.trackrat.net`. Which frontend a workspace gets is controlled by three committed-default switches in `terraform/variables.tf` (flipped via committed defaults, not `-var`, so push-triggered applies stay consistent):
+**Both** environments are served by a Cloudflare Tunnel: staging via `staging-api.trackrat.net`, production via `apiv2.trackrat.net`. There is no Google load balancer. The per-environment API load balancer, its consolidation into the webpage LB (`RUNBOOK-lb-consolidation.md`) and the move to the tunnel (`RUNBOOK-cloudflare-cutover.md`) are history; the last LB resources and the `consolidate_api_lb` / `frontend_via_cloudflare` switches that gated them were removed in issue #1764. HSTS with `preload` used to come from the LB's `custom_response_headers` and now comes from `webpage_v2/public/_headers`.
 
-- **`consolidate_api_lb`** (default `true`): tears down this workspace's dedicated API frontend (IP, url map, proxies, forwarding rules). This was production's Phase-4 step, when `apiv2.trackrat.net` was host-routed by the consolidated **webpage** LB (`terraform-webpage/`) to the API backend service. That webpage LB has since been deleted (2026-08-08) and production moved on to the tunnel, so the flag's lasting effect is the teardown, not the host-routing. Its blocks, the `api_production` data source and its static IP (`136.110.151.144`, released by the P6 apply) were removed from `terraform-webpage/main.tf` in runbook Phase P6 (issue #1762). HSTS with `preload` used to come from the LB's `custom_response_headers` and now comes from `webpage_v2/public/_headers`. Runbook: `RUNBOOK-lb-consolidation.md`.
-- **`enable_cloudflare_tunnel`** (default `true` since the staging pilot; originally `false`): master on/off switch for the **`cloudflared` connector itself** (issue #1578). It is global, and activation also requires the per-environment secret; both `trackrat-cloudflare-tunnel-token-staging` and `-production` now exist, so both environments run a connector. The connector lives in an isolated `backend_v2/docker-compose.tunnel.yml`; the startup script (`compute.tf`) brings `db`/`api` up from `docker-compose.yml` alone, then starts `cloudflared` in a separate, **non-fatal** `up` only when this flag is `true` **and** the `trackrat-cloudflare-tunnel-token-<env>` secret is present. Because the connector is never gated on secret-existence alone and never shares the api/db bring-up, a dormant/invalid token can no longer crash-loop it or abort the API. The on/off state is committed here, not only in Secret Manager IAM. The connector config download **fails closed** (issue #1594): startup clears any tunnel file left on the persistent disk by a prior boot, downloads to a unique temp file, validates it with `compose config`, and only then installs it — so a failed or malformed download leaves the connector off (with a `WARN` in `/var/log/startup.log`) instead of launching a stale definition.
-- **`frontend_via_cloudflare`** (default `true` since the staging LB teardown; originally `false`): once the connector above is healthy and DNS is cut over, this tears down the dedicated Google API frontend (IP, url map, proxies, forwarding rules). This is the teardown trigger and is independent of `enable_cloudflare_tunnel` (which only governs whether the connector runs); in production it was a no-op at the resource level, because `consolidate_api_lb` had already removed that frontend. Note it does **not** by itself eliminate the "Cloud Load Balancer Forwarding Rule Minimum Global" charge — that SKU is a flat per-project minimum for the first 5 global rules, so it persists until the project has zero forwarding rules. Runbook: `RUNBOOK-cloudflare-cutover.md`.
+Two resources look like load balancer leftovers and are **not**: `google_compute_health_check.trackrat` (`compute.tf`) drives the MIG's `auto_healing_policies`, and `google_compute_firewall.allow_health_checks` (`network.tf`) lets those probes reach port 8000. Deleting either breaks auto-healing silently — nothing fails until an instance wedges and is not replaced.
 
+One committed-default switch remains in `terraform/variables.tf` (flipped via the committed default, not `-var`, so push-triggered applies stay consistent):
+
+- **`enable_cloudflare_tunnel`** (default `true` since the staging pilot; originally `false`): master on/off switch for the **`cloudflared` connector itself** (issue #1578). It is global, and activation also requires the per-environment secret; both `trackrat-cloudflare-tunnel-token-staging` and `-production` now exist, so both environments run a connector. The connector lives in an isolated `backend_v2/docker-compose.tunnel.yml`; the startup script (`compute.tf`) brings `db`/`api` up from `docker-compose.yml` alone, then starts `cloudflared` in a separate, **non-fatal** `up` only when this flag is `true` **and** the `trackrat-cloudflare-tunnel-token-<env>` secret is present. Because the connector is never gated on secret-existence alone and never shares the api/db bring-up, a dormant/invalid token can no longer crash-loop it or abort the API. The on/off state is committed here, not only in Secret Manager IAM. With no load balancer left, flipping this to `false` takes the API offline. The connector config download **fails closed** (issue #1594): startup clears any tunnel file left on the persistent disk by a prior boot, downloads to a unique temp file, validates it with `compose config`, and only then installs it — so a failed or malformed download leaves the connector off (with a `WARN` in `/var/log/startup.log`) instead of launching a stale definition.
 ### Disabled transit data sources
 
 - **`disabled_data_sources`** (`map(list(string))`, keyed by environment): the `TRACKRAT_DISABLED_DATA_SOURCES` value rendered into each workspace's `.env`. A disabled source is skipped for collection, schedule generation, GTFS refresh, and service-alert polling, and is filtered out of API responses. Keyed by environment (issue #1634) so a source can be soaked in staging while production stays dark; it was previously a single literal in `compute.tf` shared by both workspaces, which made a staging-only soak arm the next production apply. Same committed-default discipline as the switches above. Runbook: `RUNBOOK-data-source-flags.md`.
@@ -79,7 +77,7 @@ gcloud secrets create trackrat-wmata-api-key --data-file=-
 gcloud secrets create trackrat-metra-api-token --data-file=-
 ```
 
-The optional Cloudflare Tunnel token secret (`trackrat-cloudflare-tunnel-token-<env>`) is **not** Terraform-managed — it is created manually during the Cloudflare cutover (`RUNBOOK-cloudflare-cutover.md`). When absent, the `cloudflared` tunnel profile stays off.
+Each environment also needs its Cloudflare Tunnel token secret, `trackrat-cloudflare-tunnel-token-<env>`, created manually (`RUNBOOK-cloudflare-cutover.md`). Terraform does not create the secret but does grant the VM service account access to it (`secrets.tf`), so the apply fails if it is missing.
 
 ### Terraform State Bucket
 
@@ -171,18 +169,13 @@ The `production` Worker's custom domains serve `trackrat.net` and `www.trackrat.
 | `domain` | `""` | Overrides the derived public API hostname when set |
 | `disabled_data_sources` | `{staging = [BART, WMATA, MBTA, METRA], production = [BART, WMATA, MBTA, METRA]}` | Per-environment `TRACKRAT_DISABLED_DATA_SOURCES`; see the section above |
 | `alert_email` | trackrat@andymartin.cc | Destination for monitoring alert notifications |
-| `consolidate_api_lb` | true | Production cutover: tear down the dedicated API frontend. Was host-routed by the consolidated webpage LB; that LB is now deleted and production rides the tunnel. No effect on staging. |
 | `enable_cloudflare_tunnel` | true | Master on/off switch for the `cloudflared` connector itself. Activation requires this flag **and** the `trackrat-cloudflare-tunnel-token-<env>` secret; both environments now have one, so both run a connector. Flip via a committed default, not `-var`. |
-| `frontend_via_cloudflare` | true | Tear down the dedicated API frontend in favor of a Cloudflare Tunnel (`cloudflared`). Flipped after each connector was verified healthy and DNS cut over; in production the frontend was already gone via `consolidate_api_lb`. |
 
 **Note:** Staging and production are kept in sync on resources — same `machine_type` (`t2d-standard-1`, 1 vCPU / 4 GB), same disk size, same MIG target size — so staging is a faithful rehearsal of production and a sizing change reaches both environments at once. The **only** intended divergence is the provisioning model: staging uses spot VMs for cost savings, production uses on-demand VMs for stability. Size changes go in the shared `machine_type` variable, not a per-environment override.
 
 ### Outputs
 
 ```bash
-terraform output load_balancer_ip       # Returns the literal string
-                                        # "consolidated-into-webpage-lb" — neither
-                                        # workspace creates an API frontend any more
 terraform output api_url                # HTTPS API endpoint
 terraform output artifact_registry_url  # Docker registry URL
 terraform output mig_name               # Managed instance group name
@@ -456,8 +449,7 @@ infra_v2/
     ├── outputs.tf               # Output values
     ├── apis.tf                  # GCP API enablement
     ├── compute.tf               # Instance template, MIG, health check
-    ├── network.tf               # Firewall rules
-    ├── loadbalancer.tf          # HTTPS LB, SSL cert, forwarding rules
+    ├── network.tf               # Firewall rules (incl. health-check probes for MIG auto-healing)
     ├── storage.tf               # Artifact Registry, persistent disk, GCS
     ├── secrets.tf               # Secret Manager refs, IAM, service account
     ├── metrics.tf               # Log-based metrics (8 google_logging_metric resources)

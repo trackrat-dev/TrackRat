@@ -492,7 +492,9 @@ TUNNELEOF
   ]
 }
 
-# Health check
+# Health check for the MIG's auto_healing_policies below. It used to back the
+# load balancer's backend service too; that is gone (issue #1764) and this must
+# stay. It needs google_compute_firewall.allow_health_checks (network.tf).
 resource "google_compute_health_check" "trackrat" {
   name = "trackrat-${var.environment}-health-check"
 

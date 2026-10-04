@@ -35,7 +35,7 @@ resource "google_monitoring_uptime_check_config" "api_health" {
     type = "uptime_url"
     labels = {
       project_id = var.project_id
-      host       = local.domain
+      host       = local.public_api_domain
     }
   }
 

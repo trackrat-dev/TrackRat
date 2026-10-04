@@ -28,9 +28,9 @@ variable "environment" {
 }
 
 variable "domain" {
-  description = "Override for the API domain. When set it becomes BOTH the managed cert's domain and the advertised api_url, collapsing the staging split between local.domain (cert) and local.public_api_domain (public hostname). Leave empty to use the per-environment defaults."
+  description = "Override for the API domain. When set it replaces local.public_api_domain in the advertised api_url. Leave empty to use the per-environment default."
   type        = string
-  default     = "" # Empty means use local.domain / local.public_api_domain
+  default     = "" # Empty means use local.public_api_domain
 }
 
 variable "machine_type" {
@@ -39,20 +39,8 @@ variable "machine_type" {
   default     = "t2d-standard-1"
 }
 
-variable "consolidate_api_lb" {
-  description = "Production cutover switch: when true, tear down this workspace's dedicated API frontend (IP, url map, proxies, forwarding rules) because apiv2.trackrat.net is served by the consolidated webpage LB (infra_v2/terraform-webpage). Flipped to true at runbook Phase 4 (webpage LB applied, apiv2 DNS on the shared IP, old forwarding rule drained) — see infra_v2/RUNBOOK-lb-consolidation.md. Flipped via a committed default change, not -var, so push-triggered applies stay consistent. No effect on staging."
-  type        = bool
-  default     = true
-}
-
-variable "frontend_via_cloudflare" {
-  description = "Cloudflare cutover switch: when true, tear down this workspace's dedicated API frontend (IP, url map, proxies, forwarding rules) because the API is fronted by a Cloudflare Tunnel (cloudflared container) instead of a Google load balancer. This is what removes the 'Cloud Load Balancer Forwarding Rule Minimum Global' charge. Flip to true (committed default, not -var, so push-triggered applies stay consistent) ONLY after the tunnel connector is healthy and the hostname's DNS is cut over to it — see infra_v2/RUNBOOK-cloudflare-cutover.md. Applies to whichever workspace it is set in; during the staging pilot only staging has a tunnel."
-  type        = bool
-  default     = true
-}
-
 variable "enable_cloudflare_tunnel" {
-  description = "Master on/off switch for the Cloudflare Tunnel connector (cloudflared). When false, the startup script NEVER creates the cloudflared container, regardless of whether the trackrat-cloudflare-tunnel-token-<env> secret exists — so a dormant/invalid token can no longer crash-loop a connector (issue #1578). Activation requires BOTH this flag true AND a well-formed token read from that secret; a failed or malformed read leaves the connector off rather than poisoning .env (issue #1758). The committed default is true: both environments are cut over and serve their API through the tunnel, so flipping this to false takes the API offline unless that workspace's Google frontend is restored first (frontend_via_cloudflare). This gates only whether the connector runs; frontend_via_cloudflare separately controls tearing down the Google API frontend. Flip via a committed default (not -var) so push-triggered applies stay consistent — see infra_v2/RUNBOOK-cloudflare-cutover.md."
+  description = "Master on/off switch for the Cloudflare Tunnel connector (cloudflared). When false, the startup script NEVER creates the cloudflared container, regardless of whether the trackrat-cloudflare-tunnel-token-<env> secret exists — so a dormant/invalid token can no longer crash-loop a connector (issue #1578). Activation requires BOTH this flag true AND a well-formed token read from that secret; a failed or malformed read leaves the connector off rather than poisoning .env (issue #1758). The committed default is true: both environments are cut over and serve their API through the tunnel, and the Google load balancer that used to front it no longer exists (issue #1764), so flipping this to false takes the API offline. Flip via a committed default (not -var) so push-triggered applies stay consistent — see infra_v2/RUNBOOK-cloudflare-cutover.md."
   type        = bool
   default     = true
 }
