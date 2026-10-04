@@ -262,12 +262,17 @@ to error via `stale_sources` and /health degrades until the start date arrives, 
 **Server Usage Report:**
 
 Shows how the server is being used: API traffic breakdown, route searches, train follows,
-client versions, latency, scheduler health, errors, and warnings. Queries GCP load balancer
-logs and backend endpoints. Requires GCP service account credentials (same as gcp-logs.py).
+client versions, latency, scheduler health, errors, and warnings. Traffic comes from the
+backend's own structured `http_request` log events (`cos_containers`, one per request, logged
+by `request_stats_middleware` in `main.py`) — the API sits behind the Cloudflare Tunnel, so no
+load balancer sees it (#1759). Requires GCP service account credentials (same as gcp-logs.py).
 The report also breaks traffic out by client class (`client_breakdown` in JSON, "iOS app vs
 Web app" section in text): `ios` (TrackRat iOS app), `web` (browser = the web app), and
 `other` (Android/curl/scripts), each with request count, unique users, and top routes.
-Health probes and `/metrics` are excluded server-side so a 24h window reports real traffic.
+Health probes and `/metrics` are never logged as `http_request`, so a 24h window reports real
+traffic. `traffic_source_warning` is set when the window has no `http_request` events (nothing
+recorded — e.g. a window before the backend logged them) or the query hit its page budget
+(counts cover only the newest part of the window).
 
 ```bash
 # Production, last 1 hour (default)
@@ -305,8 +310,8 @@ automatically and sends it back via the run's completion notification. The routi
 > Generate the TrackRat daily usage report. Run
 > `bash scripts/server-usage.sh --env production --hours 24 --json` (let it install GCP deps
 > if prompted). From the JSON, write a concise narrative summarizing the last 24h: total API
-> requests and unique users; any `traffic_source_warning` (when present the load-balancer
-> counts are not real traffic — lead with that caveat instead of reporting the zeros as fact);
+> requests and unique users; any `traffic_source_warning` (when present the traffic counts
+> are empty or partial — lead with that caveat instead of reporting them as fact);
 > the iOS-app vs web-app breakout (use `api_traffic.client_breakdown`
 > if present — requests, unique users, and top routes for `ios`, `web`, and `other` =
 > Android/curl/scripts; otherwise derive the split from `api_traffic.clients`); the most-searched
