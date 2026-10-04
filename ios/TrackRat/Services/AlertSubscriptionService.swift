@@ -58,11 +58,24 @@ final class AlertSubscriptionService: ObservableObject {
 
     /// Add fully-configured subscriptions, deduplicating against existing ones.
     /// Supports line (lineId+direction), station-pair (from+to), and train (trainId) subscriptions.
+    ///
+    /// Also asks for notification permission: alerts are delivered by push, so the
+    /// first saved alert is the first moment the app has anything to notify about.
+    /// Asking here rather than in each view covers every entry point (Add Route
+    /// Alert, the route page's day toggles, system-wide alerts) — a path that
+    /// skipped the prompt would leave a new user's alerts silently undelivered.
     func addSubscriptions(_ subs: [RouteAlertSubscription]) {
+        let countBefore = subscriptions.count
         for sub in subs where !isDuplicate(sub, in: subscriptions) {
             subscriptions.append(sub.clearingUnsupportedAlertTypes())
         }
         saveToDefaults()
+
+        if subscriptions.count > countBefore {
+            Task { @MainActor in
+                await NotificationPermissionService.shared.requestIfNeeded()
+            }
+        }
     }
 
     /// How many of `subs` `addSubscriptions` would actually store. Entries that

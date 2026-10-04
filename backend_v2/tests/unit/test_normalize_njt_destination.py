@@ -58,3 +58,34 @@ class TestNormalizeNjtDestination:
         assert normalize_njt_destination(
             "TRENTON TRANSIT CENTER"
         ) != normalize_njt_destination("Hamilton")
+
+    # --- Real-time Secaucus-connection marker (issue #1839) ---
+
+    def test_strips_sec_marker(self) -> None:
+        """Real-time feed: 'Long Branch -SEC &#9992'; schedule API: 'LONG
+        BRANCH'. Observed in production for NJCL trains 3227/4070."""
+        result = normalize_njt_destination("Long Branch -SEC &#9992")
+        assert result == "long branch", f"got {result!r}"
+        assert result == normalize_njt_destination("LONG BRANCH")
+
+    def test_strips_sec_marker_with_entity_semicolon(self) -> None:
+        assert normalize_njt_destination("Long Branch -SEC &#9992;") == "long branch"
+
+    def test_strips_sec_marker_without_airplane(self) -> None:
+        assert normalize_njt_destination("Long Branch -SEC") == "long branch"
+
+    def test_strips_airplane_without_sec(self) -> None:
+        assert normalize_njt_destination("New York &#9992") == "new york"
+
+    def test_strips_sec_marker_then_transit_center(self) -> None:
+        assert (
+            normalize_njt_destination("Trenton Transit Center -SEC &#9992") == "trenton"
+        )
+
+    def test_does_not_strip_sec_inside_a_word(self) -> None:
+        """'-sec' only counts as the trailing marker, not a hyphenated word
+        ending the destination such as '-Secaucus'."""
+        assert (
+            normalize_njt_destination("Frank R Lautenberg-Secaucus")
+            == "frank r lautenberg-secaucus"
+        )
