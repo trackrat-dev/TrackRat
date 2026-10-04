@@ -65,7 +65,7 @@ struct AddRouteAlertView: View {
         }
         .preferredColorScheme(.dark)
         .sheet(isPresented: $showingPaywall) {
-            PaywallView(context: .routeAlerts)
+            PaywallView()
         }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
@@ -87,29 +87,24 @@ struct AddRouteAlertView: View {
 
     // MARK: - Save Subscriptions
 
+    /// True when the user is already at the cap, before any new subscription is
+    /// configured. Used to avoid opening a sheet that could not be saved. The
+    /// sheet itself enforces the cap on the batch it saves.
     private var atAlertLimit: Bool {
-        !SubscriptionService.shared.isPro
-            && alertService.subscriptions.count >= SubscriptionService.freeRouteAlertLimit
+        alertService.isAtFreeLimit(isPro: SubscriptionService.shared.isPro)
     }
 
-    /// Stores the subscriptions, or sends a capped user to the paywall.
-    /// Returns whether the subscriptions were saved.
-    @discardableResult
-    private func saveSubscriptions(_ subs: [RouteAlertSubscription]) -> Bool {
-        guard !atAlertLimit else {
-            activeSheet = nil
-            showingPaywall = true
-            return false
-        }
+    /// Stores the subscriptions. The free-tier cap has already been enforced:
+    /// `atAlertLimit` before the sheet opened, and the sheet on the batch it saves.
+    private func saveSubscriptions(_ subs: [RouteAlertSubscription]) {
         alertService.addSubscriptions(subs)
         alertService.syncIfPossible()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         activeSheet = nil
-        return true
     }
 
     private func saveDirectionalSubscriptions(_ subs: [RouteAlertSubscription]) {
-        guard saveSubscriptions(subs) else { return }
+        saveSubscriptions(subs)
         withAnimation {
             fromStation = nil
             toStation = nil

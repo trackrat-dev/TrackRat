@@ -160,7 +160,8 @@ Physical device recommended for:
 - All timestamps use Eastern Time zone
 - Train lookup supports both IDs and train numbers
 - `TrainSystem.disabledSystems` (BART, WMATA, MBTA, Metra) hides systems app-wide; use `TrainSystem.availableCases` for any user-facing system list (mirrors backend `TRACKRAT_DISABLED_DATA_SOURCES`). Persisted selections are sanitized on load. SEPTA (RR + Metro) was re-enabled for the issue #1634 rollout and cut over to production on 2026-08-09 (PR #1789), so a build pointed at either API will exercise it.
-- Pro subscription offers 1-week free trial via Apple introductory offer
+- Pro is sold as a monthly (`com.trackrat.pro.monthly`) or yearly (`com.trackrat.pro.yearly`) plan, both with a 1-week Apple introductory trial. The paywall only advertises the trial when StoreKit reports `isEligibleForIntroOffer` — eligibility is per subscription group, so lapsed subscribers of either plan don't get it again.
+- Route alerts beyond `SubscriptionService.freeRouteAlertLimit` are the only paywalled feature. Every transit system is free and unlimited, and both directions of a route are configurable for free — a round trip is 2 subscriptions, which is why the limit has to clear 2. Gate on `AlertSubscriptionService.isAtFreeLimit` before opening an editor and `wouldExceedFreeLimit(adding:)` when saving a batch — never a raw `count >= limit`, which a two-direction save overshoots.
 - `debugOverrideEnabled` in SubscriptionService controls Pro feature override (defaults to `false`)
 
 ---
