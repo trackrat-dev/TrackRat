@@ -29,7 +29,9 @@ jobs:
     # Note the label is "xcode-27", not "macos-27": GitHub changed the naming rule for
     # this release, and the image is arm64-only and still marked public preview.
     runs-on: xcode-27
-    timeout-minutes: 30
+    # A cold build + tests + the Release device build no longer reliably fits in 30
+    # minutes on the xcode-27 image: runs were cancelled mid-build on main as well.
+    timeout-minutes: 45
 
     steps:
       - name: Checkout code
