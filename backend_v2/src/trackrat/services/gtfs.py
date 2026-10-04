@@ -96,6 +96,19 @@ GTFS_ROUTE_TYPE_FILTER: dict[str, frozenset[str]] = {
     "SEPTA_METRO": frozenset({"0", "1"}),
 }
 
+# Sources whose trips.txt carries the rider-facing train number in block_id
+# rather than trip_short_name, keyed to the route types where that holds. NJT
+# publishes no trip_short_name and digit-free headsigns, so without this every
+# NJT GTFS trip took its internal trip_id as its train number: GTFS rows never
+# matched their real-time train by number and showed as "Train TBD" twins, and
+# Live Activity materialized permanent ghost rows under the trip_id (issue
+# #1839). Commuter-rail blocks (route_type 2) are the train number; light-rail
+# blocks are vehicle numbers, and bus substitutions ("PJBUS", "GBUS707") are
+# not numeric.
+GTFS_BLOCK_ID_TRAIN_NUMBER_ROUTE_TYPES: dict[str, frozenset[str]] = {
+    "NJT": frozenset({"2"}),
+}
+
 # Data sources whose upstream GTFS feed ships an already-expired service
 # calendar (its ``end_date`` is in the past) but whose weekly service pattern is
 # still broadly accurate. For these, ``get_active_service_ids`` ignores the
@@ -1092,8 +1105,11 @@ class GTFSService:
             logger.debug("GTFS zip contents", files=file_list)
 
             # Parse routes first (needed for FK)
+            block_train_number_routes: set[str] = set()
             if "routes.txt" in file_list:
-                routes = await self._parse_routes(db, data_source, zf)
+                routes, block_train_number_routes = await self._parse_routes(
+                    db, data_source, zf
+                )
                 stats["routes"] = len(routes)
             else:
                 logger.warning("No routes.txt in GTFS", data_source=data_source)
@@ -1118,7 +1134,9 @@ class GTFSService:
 
             # Parse trips
             if "trips.txt" in file_list:
-                trips = await self._parse_trips(db, data_source, zf, routes)
+                trips = await self._parse_trips(
+                    db, data_source, zf, routes, block_train_number_routes
+                )
                 stats["trips"] = len(trips)
             else:
                 logger.warning("No trips.txt in GTFS", data_source=data_source)
@@ -1252,11 +1270,20 @@ class GTFSService:
 
     async def _parse_routes(
         self, db: AsyncSession, data_source: str, zf: zipfile.ZipFile
-    ) -> dict[str, int]:
-        """Parse routes.txt and store in database. Returns route_id -> db_id mapping."""
+    ) -> tuple[dict[str, int], set[str]]:
+        """Parse routes.txt and store in database.
+
+        Returns the route_id -> db_id mapping and the route_ids whose trips
+        carry their train number in block_id
+        (``GTFS_BLOCK_ID_TRAIN_NUMBER_ROUTE_TYPES``).
+        """
         routes: dict[str, int] = {}
+        block_train_number_routes: set[str] = set()
 
         route_type_filter = GTFS_ROUTE_TYPE_FILTER.get(data_source)
+        block_train_number_types = GTFS_BLOCK_ID_TRAIN_NUMBER_ROUTE_TYPES.get(
+            data_source, frozenset()
+        )
         with zf.open("routes.txt") as f:
             for row in _gtfs_csv_rows(f):
                 route_id = row.get("route_id", "")
@@ -1281,8 +1308,10 @@ class GTFSService:
                 await db.flush()
                 if route.route_id and route.id is not None:
                     routes[route.route_id] = route.id
+                if row.get("route_type", "") in block_train_number_types:
+                    block_train_number_routes.add(route_id)
 
-        return routes
+        return routes, block_train_number_routes
 
     async def _parse_calendar(
         self, db: AsyncSession, data_source: str, zf: zipfile.ZipFile
@@ -1367,8 +1396,13 @@ class GTFSService:
         data_source: str,
         zf: zipfile.ZipFile,
         routes: dict[str, int],
+        block_train_number_routes: set[str],
     ) -> dict[str, int]:
-        """Parse trips.txt and store in database. Returns trip_id -> db_id mapping."""
+        """Parse trips.txt and store in database. Returns trip_id -> db_id mapping.
+
+        ``block_train_number_routes`` are the route_ids whose numeric block_id
+        is the train number (see ``GTFS_BLOCK_ID_TRAIN_NUMBER_ROUTE_TYPES``).
+        """
         trips: dict[str, int] = {}
         batch: list[GTFSTrip] = []
         batch_trip_ids: list[str] = []  # Track trip_ids in current batch
@@ -1390,9 +1424,18 @@ class GTFSService:
 
                 headsign = row.get("trip_headsign", "")
 
-                # Extract train_id from trip_short_name or headsign
+                # Extract train_id from trip_short_name, a train-number
+                # block_id, or the headsign
                 short_name = row.get("trip_short_name", "")
-                train_id = short_name or self._extract_train_id(headsign)
+                block_id = row.get("block_id", "")
+                block_train_number = (
+                    block_id
+                    if route_id in block_train_number_routes and block_id.isdigit()
+                    else None
+                )
+                train_id = (
+                    short_name or block_train_number or self._extract_train_id(headsign)
+                )
 
                 direction_str = row.get("direction_id", "")
                 direction_id = int(direction_str) if direction_str.isdigit() else None
@@ -2364,9 +2407,9 @@ class GTFSService:
             # - If train_id is set (from trip_short_name, e.g., Amtrak/NJT), use it
             # - Otherwise fall back to gtfs_trip_id for lookup purposes
             # For Amtrak, train_id will be the actual train number (e.g., "112")
-            # NJT GTFS has trip_short_name but uses different train numbers
-            # than the real-time API, so primary-key dedup won't match —
-            # fallback dedup (line + time) handles NJT matching instead.
+            # NJT GTFS has no trip_short_name; its train number comes from
+            # block_id (GTFS_BLOCK_ID_TRAIN_NUMBER_ROUTE_TYPES), so NJT rows
+            # dedup against real-time by train number like Amtrak's.
             effective_train_id = train_id if train_id else gtfs_trip_id
 
             # Add "A" prefix for Amtrak to match real-time format (e.g., "112" -> "A112")
@@ -2819,7 +2862,7 @@ class GTFSService:
             )
             return None
 
-        # Use stored_train_id (from trip_short_name) if available (e.g., Amtrak "112", NJT "3243")
+        # Use stored_train_id (trip_short_name, or NJT block_id) if available (e.g., Amtrak "112", NJT "3243")
         # Otherwise use gtfs_trip_id as fallback
         effective_train_id = stored_train_id if stored_train_id else gtfs_trip_id
 
