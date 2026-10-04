@@ -1660,33 +1660,42 @@ struct SegmentedTrackPredictionView: View {
     @State private var showWaitingLink = false
     
     private var predictionSegments: [TrackPredictionSegment] {
-        print("🔍 [TrackPredictionView] Computing prediction segments")
-        guard let predictionData = adjustedPredictions else {
-            print("❌ [TrackPredictionView] No adjustedPredictions data")
+        guard let trackProbabilities = adjustedPredictions?.trackProbabilities else {
             return []
         }
-
-        guard let trackProbabilities = predictionData.trackProbabilities else {
-            print("❌ [TrackPredictionView] No trackProbabilities in prediction data")
-            return []
-        }
-	
-        print("✅ [TrackPredictionView] Have \(trackProbabilities.count) track probabilities")
-
-        let segments = TrackPredictionSegment.makeSegments(
+        return TrackPredictionSegment.makeSegments(
             from: trackProbabilities,
             groupTracksAtNYPenn: train.originStationCode == "NY"
         )
-        print("   Created \(segments.count) segments")
-        return segments
     }
 
     private var rankedPredictionSegments: [TrackPredictionSegment] {
         predictionSegments.sortedByProbability
     }
 
-    private var predictionAccessibilitySummary: String {
-        predictionSegments.accessibilitySummary
+    private var predictionAccessibilityValue: String {
+        Self.predictionAccessibilityValue(
+            isLoading: isLoadingPredictions,
+            isExpanded: isExpanded,
+            segments: predictionSegments
+        )
+    }
+
+    /// What VoiceOver reads for the card's tap target. The header and the bar
+    /// are one button, so the bar's summary is announced here rather than as an
+    /// element of its own.
+    static func predictionAccessibilityValue(
+        isLoading: Bool,
+        isExpanded: Bool,
+        segments: [TrackPredictionSegment]
+    ) -> String {
+        if isLoading { return "Loading" }
+        let state = isExpanded ? "Expanded" : "Collapsed"
+        guard !segments.isEmpty else { return state }
+        let summary = segments.hasOnlyLowConfidencePredictions
+            ? "No clear favorite"
+            : segments.accessibilitySummary
+        return "\(summary), \(state)"
     }
 
     private var predictionTaskID: String {
@@ -1729,10 +1738,6 @@ struct SegmentedTrackPredictionView: View {
         return "fallback:\(trainId):\(track ?? "unassigned"):\(refreshGeneration)"
     }
     
-    private var hasOnlyLowConfidencePredictions: Bool {
-        !predictionSegments.isEmpty && predictionSegments.allSatisfy { $0.probability < 0.17 }
-    }
-
     /// Which source satisfies the current prediction task.
     ///
     /// The prefetch is a first-paint shortcut and nothing more. It is fetched
@@ -1807,73 +1812,76 @@ struct SegmentedTrackPredictionView: View {
         // Hide entire section when loading complete and no prediction data (404 from API)
         if isLoadingPredictions || adjustedPredictions != nil {
             VStack(alignment: .leading, spacing: 12) {
-                // Header
+                // Header and summary are one tap target: riders tap the bar
+                // they are looking at, not the chevron.
                 Button(action: toggleExpansion) {
-                    HStack {
-                        Image(systemName: "tram.circle.fill")
-                            .foregroundColor(.black)
-                            .font(.title2)
-                            .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "tram.circle.fill")
+                                .foregroundColor(.black)
+                                .font(.title2)
 
-                        Text("Track Predictions")
-                            .font(.headline)
-                            .foregroundColor(.black)
+                            Text("Track Predictions")
+                                .font(.headline)
+                                .foregroundColor(.black)
 
-                        Spacer()
+                            Spacer()
 
-                        if !predictionSegments.isEmpty {
-                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.black.opacity(0.55))
-                                .accessibilityHidden(true)
+                            if !predictionSegments.isEmpty {
+                                Image(systemName: "chevron.down")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.black.opacity(0.55))
+                                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                            }
+                        }
+
+                        if isLoadingPredictions {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 64)
+                        } else if predictionSegments.hasOnlyLowConfidencePredictions {
+                            Text("No clear favorite")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundColor(Color(white: 0.6))
+                                .frame(height: 64)
+                                .frame(maxWidth: .infinity)
+                        } else if !predictionSegments.isEmpty {
+                            VStack(spacing: 8) {
+                                // Labels for segments that need them above the bar
+                                if hasSegmentsWithTopLabels {
+                                    topLabelsView
+                                }
+
+                                // Main segmented bar
+                                segmentedBarView
+                                    .frame(height: 64)
+
+                                // Percentages below the bar
+                                bottomLabelsView
+                            }
+                            .padding(.top, 4)
                         }
                     }
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(CardPressButtonStyle())
                 .disabled(isLoadingPredictions || predictionSegments.isEmpty)
                 .accessibilityLabel("Track predictions")
-                .accessibilityValue(isLoadingPredictions ? "Loading" : (isExpanded ? "Expanded" : "Collapsed"))
+                .accessibilityValue(predictionAccessibilityValue)
                 .accessibilityHint(
                     isExpanded
                         ? "Hides all predicted tracks and probabilities"
                         : "Shows all predicted tracks and probabilities"
                 )
 
-                if isLoadingPredictions {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 64)
-                } else if hasOnlyLowConfidencePredictions {
-                    Text("No clear favorite")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(Color(white: 0.6))
-                        .frame(height: 64)
-                        .frame(maxWidth: .infinity)
-                } else if !predictionSegments.isEmpty {
-                    VStack(spacing: 8) {
-                        // Labels for segments that need them above the bar
-                        if hasSegmentsWithTopLabels {
-                            topLabelsView
-                        }
-
-                        // Main segmented bar
-                        segmentedBarView
-                            .frame(height: 64)
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel("Track prediction summary")
-                            .accessibilityValue(predictionAccessibilitySummary)
-
-                        // Percentages below the bar
-                        bottomLabelsView
-                    }
-                    .padding(.top, 4)
-                }
-
+                // Kept outside the button so VoiceOver still reads each row and
+                // the disclaimer; a tap anywhere on it collapses the card.
                 if isExpanded && !rankedPredictionSegments.isEmpty {
                     expandedPredictionsView
+                        .contentShape(Rectangle())
+                        .onTapGesture(perform: toggleExpansion)
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
@@ -2097,6 +2105,16 @@ struct SegmentedTrackPredictionView: View {
     
 }
 
+/// Dims a card-sized button while pressed. The prediction card has no button
+/// chrome, so this is the only cue that the bar responds to a tap.
+private struct CardPressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
 // MARK: - Track Prediction Segment Model
 struct TrackPredictionSegment: Identifiable, Equatable {
     let id: String
@@ -2218,6 +2236,12 @@ extension Array where Element == TrackPredictionSegment {
             }
             return first.probability > second.probability
         }
+    }
+
+    /// No track is likely enough to call; the card says "No clear favorite"
+    /// instead of drawing the bar.
+    var hasOnlyLowConfidencePredictions: Bool {
+        !isEmpty && allSatisfy { $0.probability < 0.17 }
     }
 
     var accessibilitySummary: String {
