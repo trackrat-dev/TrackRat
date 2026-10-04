@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Server usage report for TrackRat backend.
 
-Queries GCP load balancer logs and backend endpoints to generate a
+Queries the backend's structured app logs (one ``http_request`` event per API
+request, plus scheduler and error events) and backend endpoints to generate a
 comprehensive usage summary: API traffic, route searches, train follows,
 scheduler health, errors, and latency breakdown.
 
@@ -36,15 +37,10 @@ import sys
 from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs
 
 SA_KEY_PATH = "/root/.config/gcloud/service-account.json"
 PROJECT = "trackrat-v2"
-
-FORWARDING_RULES = {
-    "production": "trackrat-production-https",
-    "staging": "trackrat-staging-https",
-}
 
 HOSTNAME_PREFIX = {
     "staging": "trackrat-staging-",
@@ -55,15 +51,6 @@ API_URLS = {
     "production": "https://apiv2.trackrat.net",
     "staging": "https://staging-api.trackrat.net",
 }
-
-# Environments whose API is fronted by the Cloudflare Tunnel instead of a Google
-# load balancer. Tunnel requests reach the API container directly, so the
-# http_load_balancer entries fetch_lb_logs reads are empty for them no matter how
-# much real traffic there is — and an empty window renders as a confident "0
-# requests" that reads as fact. Add "production" here when it cuts over, and
-# remove an entry if an environment moves back to the LB
-# (infra_v2/RUNBOOK-cloudflare-cutover.md).
-TUNNEL_FRONTED_ENVS = {"staging"}
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +101,12 @@ def get_credentials():
 # GCP Log Queries
 # ---------------------------------------------------------------------------
 def query_logs(token, log_filter, limit=1000, max_pages=10):
-    """Query GCP Cloud Logging API, paginating up to max_pages."""
+    """Query GCP Cloud Logging API, paginating up to max_pages.
+
+    Returns (entries, truncated): truncated is True when max_pages ran out with
+    more entries still available, so the result covers only the newest part of
+    the window.
+    """
     import requests as req
 
     url = "https://logging.googleapis.com/v2/entries:list"
@@ -144,7 +136,7 @@ def query_logs(token, log_filter, limit=1000, max_pages=10):
         page_token = data.get("nextPageToken")
         if not page_token:
             break
-    return all_entries
+    return all_entries, bool(page_token)
 
 
 def discover_instance_id(token, env):
@@ -189,88 +181,78 @@ def load_station_names():
     )
     # Pattern matches:  "CODE": "Name",  or  "CODE": "Name"
     pattern = re.compile(r'^\s*"([^"]+)"\s*:\s*"([^"]+)"', re.MULTILINE)
-
-    for filename in ["njt.py", "amtrak.py", "path.py", "lirr.py", "mnr.py", "subway.py", "patco.py"]:
-        filepath = stations_dir / filename
-        if filepath.exists():
-            content = filepath.read_text()
-            # Only parse the STATION_NAMES dict (stop at first non-dict line after it)
-            in_names_dict = False
-            for line in content.splitlines():
-                if "_STATION_NAMES" in line and "dict" in line:
-                    in_names_dict = True
+    # Every system's module, so any data source a search can name resolves; NJT
+    # first so it takes priority for shared codes.
+    filepaths = sorted(stations_dir.glob("*.py"), key=lambda p: (p.name != "njt.py", p.name))
+    for filepath in filepaths:
+        content = filepath.read_text()
+        # Only parse the STATION_NAMES dict (stop at first non-dict line after it)
+        in_names_dict = False
+        for line in content.splitlines():
+            if "_STATION_NAMES" in line and "dict" in line:
+                in_names_dict = True
+                continue
+            if in_names_dict:
+                if line.strip() == "}":
+                    in_names_dict = False
                     continue
-                if in_names_dict:
-                    if line.strip() == "}":
-                        in_names_dict = False
-                        continue
-                    m = pattern.match(line)
-                    if m:
-                        code, name = m.group(1), m.group(2)
-                        # Don't overwrite (NJT takes priority for shared codes)
-                        if code not in names:
-                            names[code] = name
+                m = pattern.match(line)
+                if m:
+                    code, name = m.group(1), m.group(2)
+                    # Don't overwrite (NJT takes priority for shared codes)
+                    if code not in names:
+                        names[code] = name
     return names
 
 
 # ---------------------------------------------------------------------------
 # Data Collection
 # ---------------------------------------------------------------------------
-def fetch_lb_logs(token, env, hours):
-    """Fetch GCP load balancer logs for the given environment and time window.
+def fetch_request_logs(token, env, hours):
+    """Fetch the backend's per-request ``http_request`` events for an environment.
 
-    Health probes (/health*) and metrics scrapes (/metrics) are excluded
-    server-side: over a multi-hour window they dominate the logs and would
-    otherwise consume the pagination budget and truncate real API traffic.
-    Pagination scales with the window so a full day of traffic still fits.
+    The API is fronted by the Cloudflare Tunnel, so no load balancer sees its
+    traffic; the backend logs each request itself (request_stats_middleware in
+    backend_v2/src/trackrat/main.py), already excluding health probes and
+    /metrics. Filtering on the event's own ``environment`` field rather than an
+    instance id keeps requests served by instances the MIG has since replaced.
+    The page budget scales with the window so a full day of traffic still fits.
+
+    Returns (entries, truncated) as query_logs does.
     """
     since = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
-    rule = FORWARDING_RULES[env]
     log_filter = (
-        f'resource.type="http_load_balancer"'
-        f' AND resource.labels.forwarding_rule_name="{rule}"'
+        f'logName="projects/{PROJECT}/logs/cos_containers"'
+        f' AND jsonPayload.event="http_request"'
+        f' AND jsonPayload.environment="{env}"'
         f' AND timestamp>="{since}"'
-        f' AND NOT httpRequest.requestUrl=~"://[^/]+/(health|metrics)([/?]|$)"'
     )
     max_pages = min(60, max(20, round(hours * 2)))
     return query_logs(token, log_filter, limit=1000, max_pages=max_pages)
 
 
-def lb_traffic_source_note(env, lb_entry_count):
-    """Caveat the API traffic counts when they cannot be read as real, else None.
+def traffic_source_note(entry_count, truncated):
+    """Caveat the API traffic counts when they cannot be read as whole, else None.
 
-    The API traffic section is derived entirely from load balancer logs, so it
-    is only a measure of real traffic when the API actually goes through the
-    load balancer. Two ways it is not:
-
-    - A tunnel-fronted env never routes its API through the LB at all. The
-      count is checked *before* lb_entry_count because a nonzero count does not
-      clear staging: the same forwarding rule host-routes staging.trackrat.net
-      to the webpage bucket, so browsing the staging site — or a scanner, or
-      the legacy API host — puts entries in this window while every real
-      staging-api.trackrat.net request still bypasses it. Suppressing the
-      caveat on those incidental entries would present a partial count as whole.
-    - An empty window anywhere else cannot distinguish "nobody used the server"
-      from "the traffic never touched the load balancer", and rendering bare
-      zeros asserts the first.
-
-    Returns None only when LB entries exist for an LB-fronted env, so a normal
-    production report is unchanged.
+    - An empty window cannot distinguish "nobody used the server" from "nothing
+      was logged" (e.g. a window predating the backend's http_request logging,
+      or a logging outage), and rendering bare zeros asserts the first.
+    - A truncated query covers only the newest part of the window, so its
+      counts are a partial window presented under the full window's label.
     """
-    if env in TUNNEL_FRONTED_ENVS:
+    if truncated:
         return (
-            f"{env} is fronted by the Cloudflare Tunnel, so its API requests bypass "
-            "the load balancer these numbers come from; any entries counted here are "
-            "incidental (webpage host, legacy API host, scanners). The API traffic "
-            "and business activity counts below are NOT a measure of real traffic."
+            f"The request-log query stopped at its page budget after {entry_count} "
+            "entries, so the API traffic and business activity counts below cover "
+            "only the most recent part of this window."
         )
-    if lb_entry_count:
+    if entry_count:
         return None
     return (
-        "No load balancer log entries in this window — the counts below are empty "
-        "because nothing was recorded, not because it was filtered out."
+        "No http_request log entries in this window — the counts below are empty "
+        "because nothing was recorded, not because nobody used the server."
     )
 
 
@@ -290,7 +272,8 @@ def fetch_app_logs(token, instance_id, hours, level=None, search=None):
         parts.append(
             f'(jsonPayload.event=~"{search}" OR jsonPayload.message=~"{search}")'
         )
-    return query_logs(token, " AND ".join(parts), limit=500, max_pages=5)
+    entries, _ = query_logs(token, " AND ".join(parts), limit=500, max_pages=5)
+    return entries
 
 
 def fetch_health(env):
@@ -322,6 +305,8 @@ def classify_entry(path, params):
     """Classify an API request into a business category."""
     if "/trains/departures" in path:
         return "departures"
+    if "/trips/search" in path:
+        return "trip_search"
     if "/trains/" in path and "/history" in path:
         return "train_history"
     if "/trains/" in path:
@@ -362,8 +347,6 @@ def parse_user_agent(ua):
         return f"iOS/{version}"
     if "Mozilla" in ua or "Safari" in ua:
         return "browser"
-    if "GoogleStackdriver" in ua:
-        return "gcp-healthcheck"
     if "python" in ua.lower() or "requests" in ua.lower():
         return "python-script"
     if "curl" in ua.lower():
@@ -377,7 +360,7 @@ def client_class(ua_label):
     """Map a parsed client label to a coarse class for the iOS/web breakout.
 
     Returns "ios" (TrackRat iOS app), "web" (browser = the web app), or
-    "other" (Android, curl, scripts, scanners, health checks).
+    "other" (Android, curl, scripts, scanners).
     """
     if ua_label.startswith("iOS/"):
         return "ios"
@@ -386,8 +369,8 @@ def client_class(ua_label):
     return "other"
 
 
-def analyze_lb_entries(entries, station_names):
-    """Analyze load balancer log entries into structured report data."""
+def analyze_request_entries(entries, station_names):
+    """Analyze http_request log entries into structured report data."""
     # Counters
     api_endpoint_counts = Counter()
     route_searches = Counter()
@@ -408,32 +391,24 @@ def analyze_lb_entries(entries, station_names):
     total_api = 0
     total_non_api = 0
     scanner_count = 0
-    healthcheck_count = 0
 
+    # Health probes and /metrics never reach here: the backend does not log them.
+    # ``path`` is the matched route template (e.g. /api/v2/trains/{train_id}) and
+    # the query holds only the route-search fields; the backend logs no raw
+    # paths, since some carry a device_id or push token.
     for e in entries:
-        hr = e.get("httpRequest", {})
-        raw_url = hr.get("requestUrl", "")
-        parsed = urlparse(raw_url)
-        path = parsed.path
-        params = parse_qs(parsed.query)
-        ua_raw = hr.get("userAgent", "")
-        ua = parse_user_agent(ua_raw)
-        status = hr.get("status", 0)
-        lat_str = hr.get("latency", "0s")
-        lat = float(lat_str.rstrip("s"))
-        remote_ip = hr.get("remoteIp", "")
+        jp = e.get("jsonPayload", {})
+        path = jp.get("path")
+        params = parse_qs(jp.get("query", ""))
+        ua = parse_user_agent(jp.get("user_agent", ""))
+        status = jp.get("status_code", 0)
+        lat = jp.get("duration_ms", 0) / 1000
+        remote_ip = jp.get("client_ip", "")
 
-        # Filter out health checks
-        if path in ("/health", "/health/live", "/health/ready", "/metrics"):
-            healthcheck_count += 1
+        # A request that matched no route is a scanner probe (not real API usage)
+        if path is None:
+            scanner_count += 1
             continue
-
-        # Filter out scanner probes (not real API usage)
-        if "/api/v2/" not in path and path not in ("/", ""):
-            category = classify_entry(path, params)
-            if category is None:
-                scanner_count += 1
-                continue
 
         # Classify
         category = classify_entry(path, params)
@@ -455,7 +430,7 @@ def analyze_lb_entries(entries, station_names):
         cls_data["endpoints"][category] += 1
 
         # Extract business details
-        if category == "departures":
+        if category in ("departures", "trip_search"):
             from_s = (params.get("from", params.get("from_station", ["?"])) or ["?"])[0]
             to_s = (params.get("to", params.get("to_station", ["?"])) or ["?"])[0]
             from_name = station_names.get(from_s, from_s)
@@ -463,16 +438,12 @@ def analyze_lb_entries(entries, station_names):
             route_searches[f"{from_name} -> {to_name}"] += 1
             cls_data["routes"][f"{from_name} -> {to_name}"] += 1
 
-        elif category == "train_detail":
-            parts = path.split("/trains/")
-            if len(parts) > 1:
-                train_id = parts[1].split("/")[0].split("?")[0]
-                train_lookups[train_id] += 1
+        elif category == "train_detail" and jp.get("train_id"):
+            train_lookups[jp["train_id"]] += 1
 
     return {
         "total_api": total_api,
         "total_non_api": total_non_api,
-        "healthcheck_count": healthcheck_count,
         "scanner_count": scanner_count,
         "endpoint_counts": api_endpoint_counts,
         "route_searches": route_searches,
@@ -554,8 +525,8 @@ def fmt_latency(lats):
     return f"avg={avg:.2f}s  p50={p50:.2f}s  p95={p95:.2f}s  max={max(lats_sorted):.2f}s"
 
 
-def format_report(env, hours, health, scheduler, lb_analysis, app_analysis, use_color=True,
-                  traffic_note=None):
+def format_report(env, hours, health, scheduler, request_analysis, app_analysis,
+                  use_color=True, traffic_note=None):
     """Format the full report as a string."""
     lines = []
     b = BOLD if use_color else ""
@@ -600,7 +571,7 @@ def format_report(env, hours, health, scheduler, lb_analysis, app_analysis, use_
     lines.append("")
 
     # --- Section 2: API Traffic ---
-    la = lb_analysis
+    la = request_analysis
     lines.append(f"{b}{'=' * 60}{nc}")
     lines.append(f"{b}API TRAFFIC{nc}")
     lines.append(f"{b}{'=' * 60}{nc}")
@@ -612,7 +583,6 @@ def format_report(env, hours, health, scheduler, lb_analysis, app_analysis, use_
     rate = la["total_api"] / hours if hours > 0 else 0
     lines.append(f"  API requests:     {la['total_api']}  ({rate:.1f}/hour)")
     lines.append(f"  Unique clients:   {la['unique_ips']}")
-    lines.append(f"  Health checks:    {la['healthcheck_count']}")
     lines.append(f"  Scanner probes:   {la['scanner_count']}")
     lines.append("")
 
@@ -620,6 +590,7 @@ def format_report(env, hours, health, scheduler, lb_analysis, app_analysis, use_
     lines.append(f"  {b}Endpoint Breakdown:{nc}")
     ep_labels = {
         "departures": "Departure searches",
+        "trip_search": "Trip searches",
         "train_detail": "Train detail views",
         "train_history": "Train history",
         "congestion": "Congestion checks",
@@ -685,11 +656,11 @@ def format_report(env, hours, health, scheduler, lb_analysis, app_analysis, use_
 
     # Route searches
     if la["route_searches"]:
-        lines.append(f"  {b}Route Searches ({la['endpoint_counts'].get('departures', 0)} total):{nc}")
+        lines.append(f"  {b}Route Searches ({sum(la['route_searches'].values())} total):{nc}")
         for route, count in la["route_searches"].most_common(15):
             lines.append(f"    {count:>5}x  {route}")
     else:
-        lines.append(f"  {d}No departure searches in this window{nc}")
+        lines.append(f"  {d}No route searches in this window{nc}")
     lines.append("")
 
     # Train detail views
@@ -769,18 +740,19 @@ def format_report(env, hours, health, scheduler, lb_analysis, app_analysis, use_
     return "\n".join(lines)
 
 
-def build_json_report(env, hours, health, scheduler, lb_analysis, app_analysis,
+def build_json_report(env, hours, health, scheduler, request_analysis, app_analysis,
                       traffic_note=None):
     """Build a JSON-serializable report dict."""
-    la = lb_analysis
+    la = request_analysis
     aa = app_analysis
     return {
         "environment": env,
         "window_hours": hours,
         "generated_utc": datetime.now(timezone.utc).isoformat(),
-        # Present only when the load-balancer traffic counts cannot be taken at
-        # face value; consumers (e.g. the daily usage Routine) must surface it
-        # instead of reporting the zeros below as real traffic.
+        # Present only when the request-log traffic counts cannot be taken at
+        # face value (empty or truncated window); consumers (e.g. the daily
+        # usage Routine) must surface it instead of reporting the counts below
+        # as the whole window's traffic.
         "traffic_source_warning": traffic_note,
         "server_state": {
             "health": health,
@@ -791,7 +763,6 @@ def build_json_report(env, hours, health, scheduler, lb_analysis, app_analysis,
             "total_requests": la["total_api"],
             "requests_per_hour": round(la["total_api"] / hours, 1) if hours > 0 else 0,
             "unique_clients": la["unique_ips"],
-            "healthcheck_count": la["healthcheck_count"],
             "scanner_count": la["scanner_count"],
             "endpoints": dict(la["endpoint_counts"].most_common()),
             "status_codes": {str(k): v for k, v in la["status_codes"].items()},
@@ -862,10 +833,10 @@ def main():
     print(f"Loaded {len(station_names)} station names", file=sys.stderr)
 
     # Fetch data in parallel-ish (sequential but fast)
-    print("Fetching LB logs...", file=sys.stderr)
-    lb_entries = fetch_lb_logs(token, args.env, args.hours)
-    print(f"  {len(lb_entries)} LB log entries", file=sys.stderr)
-    traffic_note = lb_traffic_source_note(args.env, len(lb_entries))
+    print("Fetching request logs...", file=sys.stderr)
+    request_entries, truncated = fetch_request_logs(token, args.env, args.hours)
+    print(f"  {len(request_entries)} request log entries", file=sys.stderr)
+    traffic_note = traffic_source_note(len(request_entries), truncated)
     if traffic_note:
         print(f"  WARNING: {traffic_note}", file=sys.stderr)
 
@@ -892,20 +863,20 @@ def main():
     health, scheduler = fetch_health(args.env)
 
     # Analyze
-    lb_analysis = analyze_lb_entries(lb_entries, station_names)
+    request_analysis = analyze_request_entries(request_entries, station_names)
     app_analysis = analyze_app_logs(task_entries, error_entries, warning_entries)
 
     # Output
     if args.json_output:
         report = build_json_report(
-            args.env, args.hours, health, scheduler, lb_analysis, app_analysis,
+            args.env, args.hours, health, scheduler, request_analysis, app_analysis,
             traffic_note=traffic_note,
         )
         output = json.dumps(report, indent=2, default=str)
     else:
         use_color = not args.output and sys.stdout.isatty()
         output = format_report(
-            args.env, args.hours, health, scheduler, lb_analysis, app_analysis,
+            args.env, args.hours, health, scheduler, request_analysis, app_analysis,
             use_color=use_color, traffic_note=traffic_note,
         )
 

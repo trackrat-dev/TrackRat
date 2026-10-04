@@ -459,6 +459,11 @@ request stats / `cos_containers` app logs — and merge to `main` before P4.
 Client-IP attribution already works: `api/utils.get_client_ip` reads
 `CF-Connecting-IP`.
 
+**Resolved after the fact (#1759).** P4 shipped without this, and the report was
+blind from 2026-08-08 until the backend began logging each request as a structured
+`http_request` event (`request_stats_middleware`), which `server-usage.py` now
+reads from `cos_containers` in place of the load balancer logs.
+
 ### P1. Merge `main` → `production`
 
 Before pushing, confirm the merge did not revert the VM sizing (the `production`

@@ -3,9 +3,9 @@
 This ops script lives at the repository root (outside the ``trackrat`` package)
 and has a hyphenated filename, so it is loaded by file path via ``importlib``
 rather than a normal import. The tests cover the pure analysis helpers that back
-the daily usage report: user-agent parsing, client-class mapping, and the
-per-client-class (iOS app vs web app vs other) breakout derived from
-load-balancer log entries.
+the daily usage report: user-agent parsing, client-class mapping, the
+per-client-class (iOS app vs web app vs other) breakout derived from the
+backend's ``http_request`` log events, and the traffic-source caveats.
 """
 
 import importlib.util
@@ -26,18 +26,26 @@ def su():
     return module
 
 
-def _entry(path, ua, *, status=200, latency="0.05s", ip="1.1.1.1", query=""):
-    """Build a minimal GCP load-balancer log entry for analysis."""
-    url = f"https://apiv2.trackrat.net{path}"
-    if query:
-        url = f"{url}?{query}"
+def _entry(path, ua, *, status=200, duration_ms=50.0, ip="1.1.1.1", query="",
+           method="GET", train_id=None):
+    """Build a cos_containers ``http_request`` entry as the backend logs it.
+
+    ``path`` is the matched route template, or None when no route matched.
+    Field names mirror request_stats_middleware in backend_v2/src/trackrat/main.py;
+    tests/unit/test_request_logging_middleware.py pins that side.
+    """
     return {
-        "httpRequest": {
-            "requestUrl": url,
-            "userAgent": ua,
-            "status": status,
-            "latency": latency,
-            "remoteIp": ip,
+        "jsonPayload": {
+            "event": "http_request",
+            "environment": "production",
+            "method": method,
+            "path": path,
+            "query": query,
+            "status_code": status,
+            "duration_ms": duration_ms,
+            "train_id": train_id,
+            "client_ip": ip,
+            "user_agent": ua,
         }
     }
 
@@ -66,11 +74,10 @@ def test_client_class_mapping(su):
     assert su.client_class("browser") == "web"
     assert su.client_class("curl") == "other"
     assert su.client_class("go-scanner") == "other"
-    assert su.client_class("gcp-healthcheck") == "other"
     assert su.client_class("unknown") == "other"
 
 
-def test_analyze_lb_entries_splits_ios_web_and_other(su):
+def test_analyze_request_entries_splits_ios_web_and_other(su):
     """The breakout separates iOS/web/other by requests, users, and routes."""
     station_names = {"NY": "New York Penn", "TR": "Trenton", "NP": "Newark Penn"}
     entries = [
@@ -81,19 +88,17 @@ def test_analyze_lb_entries_splits_ios_web_and_other(su):
         _entry("/api/v2/trains/departures", _IOS_UA, ip="10.0.0.2", query="from=NP&to=NY"),
         # Web user C searches NY -> TR and views a train detail.
         _entry("/api/v2/trains/departures", _WEB_UA, ip="10.0.0.3", query="from=NY&to=TR"),
-        _entry("/api/v2/trains/1234", _WEB_UA, ip="10.0.0.3"),
+        _entry("/api/v2/trains/{train_id}", _WEB_UA, ip="10.0.0.3", train_id="1234"),
         # Other: a curl departures call from D.
         _entry("/api/v2/trains/departures", _CURL_UA, ip="10.0.0.4", query="from=NY&to=TR"),
-        # Noise: a health check and a scanner probe (must not count as API).
-        _entry("/health", "GoogleStackdriver_UptimeCheck", ip="10.0.0.9"),
-        _entry("/wp-login.php", "Go-http-client/1.1", ip="10.0.0.9"),
+        # Noise: a scanner probe, which matched no route (must not count as API).
+        _entry(None, "Go-http-client/1.1", ip="10.0.0.9", status=404),
     ]
 
-    result = su.analyze_lb_entries(entries, station_names)
+    result = su.analyze_request_entries(entries, station_names)
 
     # Six real API requests; noise excluded.
     assert result["total_api"] == 6
-    assert result["healthcheck_count"] == 1
     assert result["scanner_count"] == 1
     assert result["unique_ips"] == 4
 
@@ -110,11 +115,114 @@ def test_analyze_lb_entries_splits_ios_web_and_other(su):
     assert web["unique_users"] == 1
     assert web["routes"]["New York Penn -> Trenton"] == 1
     assert web["endpoints"]["train_detail"] == 1
+    assert result["train_lookups"] == {"1234": 1}
 
     other = cb["other"]
     assert other["requests"] == 1
     assert other["unique_users"] == 1
     assert other["routes"]["New York Penn -> Trenton"] == 1
+
+
+def test_trip_searches_count_as_route_searches(su):
+    """/trips/search is the primary route search on both iOS and web.
+
+    Before it was classified, every trip search fell into total_non_api, so the
+    report dropped most route searches and undercounted API requests.
+    """
+    station_names = {"SD35": "Times Sq-42 St", "SD43": "Grand Central-42 St"}
+    entries = [
+        _entry("/api/v2/trips/search", _IOS_UA, ip="10.0.0.1",
+               query="from=SD35&to=SD43&limit=50&hide_departed=true"),
+        _entry("/api/v2/trips/search", _WEB_UA, ip="10.0.0.2",
+               query="from=SD35&to=SD43&limit=50"),
+        _entry("/api/v2/trains/departures", _IOS_UA, ip="10.0.0.1",
+               query="from=SD35&to=SD43"),
+    ]
+
+    result = su.analyze_request_entries(entries, station_names)
+    print(f"endpoint_counts={dict(result['endpoint_counts'])} "
+          f"route_searches={dict(result['route_searches'])}")
+
+    assert result["total_api"] == 3
+    assert result["total_non_api"] == 0
+    assert result["endpoint_counts"]["trip_search"] == 2
+    assert result["endpoint_counts"]["departures"] == 1
+    route = "Times Sq-42 St -> Grand Central-42 St"
+    assert result["route_searches"][route] == 3
+    assert result["client_breakdown"]["ios"]["routes"][route] == 2
+    assert result["client_breakdown"]["web"]["routes"][route] == 1
+
+
+def test_only_unmatched_requests_count_as_scanners(su):
+    """A scanner is a request that matched no route (logged path None).
+
+    Matched non-API routes (admin, share pages) are real traffic of another
+    kind, and a train-scoped route without a train_id records no train view.
+    """
+    entries = [
+        _entry(None, "Go-http-client/1.1", status=404),
+        _entry(None, _CURL_UA, status=404, method="POST"),
+        _entry("/admin/stats", _WEB_UA),
+        _entry("/share/train/{train_id}", _WEB_UA, train_id="3918"),
+        _entry("/api/v2/trains/stations/{station_code}/tracks/occupied", _IOS_UA),
+    ]
+
+    result = su.analyze_request_entries(entries, {})
+    print(f"scanner={result['scanner_count']} non_api={result['total_non_api']} "
+          f"api={result['total_api']} lookups={dict(result['train_lookups'])}")
+
+    assert result["scanner_count"] == 2
+    assert result["total_non_api"] == 2
+    assert result["total_api"] == 1
+    assert result["train_lookups"] == {}
+
+
+def test_latency_and_status_come_from_the_request_event(su):
+    """duration_ms is reported in seconds, and status codes are kept per request."""
+    entries = [
+        _entry("/api/v2/trips/search", _IOS_UA, duration_ms=1250.0, query="from=A&to=B"),
+        _entry("/api/v2/trips/search", _IOS_UA, duration_ms=250.0, status=500,
+               query="from=A&to=B"),
+    ]
+
+    result = su.analyze_request_entries(entries, {})
+
+    assert sorted(result["latencies"]["trip_search"]) == [0.25, 1.25]
+    assert result["status_codes"] == {200: 1, 500: 1}
+
+
+def test_report_reads_the_events_the_backend_actually_logs(su, client):
+    """Contract test: the backend's real http_request event feeds the report.
+
+    The middleware and this script live in different trees and agree on field
+    names only by convention; renaming one side would silently zero the report.
+    The event is captured from a real request and wrapped the way Cloud Logging
+    delivers a cos_containers JSON line (fields under ``jsonPayload``).
+    """
+    from structlog.testing import capture_logs
+
+    with capture_logs() as captured:
+        resp = client.get(
+            "/api/v2/predictions/supported-stations?from=NY&to=TR",
+            headers={"user-agent": _IOS_UA, "cf-connecting-ip": "203.0.113.7"},
+        )
+    assert resp.status_code == 200, resp.text
+    events = [e for e in captured if e.get("event") == "http_request"]
+    assert len(events) == 1, captured
+
+    result = su.analyze_request_entries(
+        [{"jsonPayload": events[0]}], {"NY": "New York Penn", "TR": "Trenton"}
+    )
+    print(f"event={events[0]} -> endpoint_counts={dict(result['endpoint_counts'])}")
+
+    assert result["total_api"] == 1
+    assert result["endpoint_counts"]["prediction_stations"] == 1
+    assert result["status_codes"] == {200: 1}
+    assert result["unique_ips"] == 1
+    ios = result["client_breakdown"]["ios"]
+    assert ios["requests"] == 1 and ios["unique_users"] == 1
+    lat = result["latencies"]["prediction_stations"][0]
+    assert 0 <= lat < 60, f"duration not converted to seconds: {lat}"
 
 
 def test_json_report_includes_client_breakdown(su):
@@ -124,10 +232,10 @@ def test_json_report_includes_client_breakdown(su):
         _entry("/api/v2/trains/departures", _IOS_UA, ip="10.0.0.1", query="from=NY&to=TR"),
         _entry("/api/v2/trains/departures", _WEB_UA, ip="10.0.0.3", query="from=NY&to=TR"),
     ]
-    lb = su.analyze_lb_entries(entries, station_names)
+    analysis = su.analyze_request_entries(entries, station_names)
     app_analysis = su.analyze_app_logs([], [], [])
 
-    report = su.build_json_report("production", 24, {}, {}, lb, app_analysis)
+    report = su.build_json_report("production", 24, {}, {}, analysis, app_analysis)
 
     breakdown = report["api_traffic"]["client_breakdown"]
     assert breakdown["ios"]["requests"] == 1
@@ -140,129 +248,103 @@ def test_json_report_includes_client_breakdown(su):
 
 
 # ---------------------------------------------------------------------------
-# Empty load-balancer windows
+# Traffic-source caveats
 #
-# The API traffic section is derived entirely from load balancer logs. Staging
-# is now fronted by the Cloudflare Tunnel, so its requests never reach the load
-# balancer and the window is permanently empty — rendering that as a bare
-# "0 requests" states as fact something the report cannot know.
+# The traffic section is built from the backend's http_request events. An empty
+# window cannot tell "nobody used the server" from "nothing was logged", and a
+# truncated query covers only the newest slice of the window — rendering either
+# as bare counts states as fact something the report cannot know.
 # ---------------------------------------------------------------------------
-def test_traffic_note_absent_when_lb_entries_exist(su):
-    """An LB-fronted env with real LB entries carries no caveat."""
-    assert "production" not in su.TUNNEL_FRONTED_ENVS
-    assert su.lb_traffic_source_note("production", 1) is None
-    assert su.lb_traffic_source_note("production", 4200) is None
+def test_traffic_note_absent_for_a_complete_window(su):
+    """A window with entries and no truncation carries no caveat."""
+    assert su.traffic_source_note(1, False) is None
+    assert su.traffic_source_note(4200, False) is None
 
 
-def test_traffic_note_survives_incidental_lb_entries_on_a_tunnel_env(su):
-    """Nonzero LB entries must not clear the caveat for a tunnel-fronted env.
-
-    The staging forwarding rule the script reads also host-routes
-    staging.trackrat.net to the webpage bucket, so browsing the staging site —
-    or a scanner, or the legacy API host — is enough to make lb_entry_count
-    nonzero while every real staging-api.trackrat.net request still travels
-    through the tunnel and is absent from these logs. Clearing the caveat there
-    would present a partial count as a whole one, which is the exact failure
-    this function exists to prevent.
-    """
-    assert "staging" in su.TUNNEL_FRONTED_ENVS
-
-    for count in (1, 37, 4200):
-        note = su.lb_traffic_source_note("staging", count)
-
-        assert note is not None, f"caveat dropped with {count} incidental LB entries"
-        assert "Cloudflare Tunnel" in note
-        assert "NOT a measure of real traffic" in note
-        # The wording must not claim an empty window when entries were counted.
-        assert "No load balancer" not in note
-
-
-def test_traffic_note_names_the_tunnel_for_tunnel_fronted_envs(su):
-    """An empty staging window is explained by the tunnel, not reported as zero traffic."""
-    assert "staging" in su.TUNNEL_FRONTED_ENVS
-
-    note = su.lb_traffic_source_note("staging", 0)
+def test_traffic_note_for_an_empty_window(su):
+    """Zero entries is reported as missing data, not as zero traffic."""
+    note = su.traffic_source_note(0, False)
 
     assert note is not None
-    assert "Cloudflare Tunnel" in note
-    assert "bypass the load balancer" in note
-    # The caveat must contradict the zeros rather than merely annotate them.
-    assert "NOT a measure of real traffic" in note
+    assert "No http_request log entries" in note
+    assert "not because nobody used the server" in note
 
 
-def test_traffic_note_for_lb_fronted_env_does_not_blame_the_tunnel(su):
-    """An empty production window means no traffic — it must not claim a tunnel."""
-    assert "production" not in su.TUNNEL_FRONTED_ENVS
+def test_traffic_note_for_a_truncated_window(su):
+    """A truncated query must say its counts cover only part of the window."""
+    note = su.traffic_source_note(20000, True)
 
-    note = su.lb_traffic_source_note("production", 0)
-
-    assert note is not None
-    assert "Cloudflare Tunnel" not in note
-    assert "nothing was recorded" in note
+    assert note is not None, "truncated window rendered without a caveat"
+    assert "20000 entries" in note
+    assert "only the most recent part of this window" in note
+    # Entries were counted; the wording must not claim an empty window.
+    assert "No http_request" not in note
 
 
 def test_json_report_carries_the_traffic_warning(su):
     """The JSON the daily Routine consumes exposes the caveat next to the zeros."""
-    lb = su.analyze_lb_entries([], {})
+    analysis = su.analyze_request_entries([], {})
     app_analysis = su.analyze_app_logs([], [], [])
-    note = su.lb_traffic_source_note("staging", 0)
+    note = su.traffic_source_note(0, False)
 
     report = su.build_json_report(
-        "staging", 24, {}, {}, lb, app_analysis, traffic_note=note
+        "production", 24, {}, {}, analysis, app_analysis, traffic_note=note
     )
 
     assert report["api_traffic"]["total_requests"] == 0
     assert report["traffic_source_warning"] == note
-    assert "Cloudflare Tunnel" in report["traffic_source_warning"]
 
 
-def test_json_report_omits_the_warning_on_a_healthy_window(su):
+def test_json_report_omits_the_warning_on_a_complete_window(su):
     """A production report with traffic reports no warning at all."""
     entries = [_entry("/api/v2/trains/departures", _IOS_UA, query="from=NY&to=TR")]
-    lb = su.analyze_lb_entries(entries, {"NY": "New York Penn", "TR": "Trenton"})
+    analysis = su.analyze_request_entries(entries, {"NY": "New York Penn", "TR": "Trenton"})
     app_analysis = su.analyze_app_logs([], [], [])
 
-    report = su.build_json_report("production", 1, {}, {}, lb, app_analysis)
+    report = su.build_json_report(
+        "production", 1, {}, {}, analysis, app_analysis,
+        traffic_note=su.traffic_source_note(len(entries), False),
+    )
 
     assert report["api_traffic"]["total_requests"] == 1
     assert report["traffic_source_warning"] is None
 
 
-def test_text_report_prints_the_warning_above_the_zeros(su):
+def test_text_report_prints_the_warning_above_the_counts(su):
     """The rendered report surfaces the caveat inside the API TRAFFIC section."""
-    lb = su.analyze_lb_entries([], {})
+    analysis = su.analyze_request_entries([], {})
     app_analysis = su.analyze_app_logs([], [], [])
-    note = su.lb_traffic_source_note("staging", 0)
+    note = su.traffic_source_note(0, False)
 
     text = su.format_report(
-        "staging", 24, {}, {}, lb, app_analysis, use_color=False, traffic_note=note
+        "production", 24, {}, {}, analysis, app_analysis, use_color=False,
+        traffic_note=note,
     )
 
     # "WARNING: " with the colon — a bare "WARNING" would also match the
     # unrelated "ERRORS & WARNINGS" section header and pass vacuously.
     assert "WARNING: " in text
-    assert "Cloudflare Tunnel" in text
+    assert "No http_request log entries" in text
     # The caveat precedes the count it qualifies.
-    assert text.index("Cloudflare Tunnel") < text.index("API requests:")
+    assert text.index("No http_request log entries") < text.index("API requests:")
 
 
 def test_text_report_unchanged_when_traffic_is_real(su):
     """No caveat leaks into an ordinary report with traffic."""
     entries = [_entry("/api/v2/trains/departures", _IOS_UA, query="from=NY&to=TR")]
-    lb = su.analyze_lb_entries(entries, {"NY": "New York Penn", "TR": "Trenton"})
+    analysis = su.analyze_request_entries(entries, {"NY": "New York Penn", "TR": "Trenton"})
     app_analysis = su.analyze_app_logs([], [], [])
 
     text = su.format_report(
-        "production", 1, {}, {}, lb, app_analysis, use_color=False,
-        traffic_note=su.lb_traffic_source_note("production", len(entries)),
+        "production", 1, {}, {}, analysis, app_analysis, use_color=False,
+        traffic_note=su.traffic_source_note(len(entries), False),
     )
 
     # "WARNING: " with the colon — the report always contains an unrelated
     # "ERRORS & WARNINGS" header, so a bare "WARNING" could never be absent.
     assert "WARNING: " not in text
-    assert "Cloudflare Tunnel" not in text
-    assert "No load balancer log entries" not in text
     assert "API requests:     1" in text
+    assert "Route Searches (1 total)" in text
 
 
 def test_api_urls_point_at_universal_ssl_covered_hosts(su):
@@ -277,3 +359,44 @@ def test_api_urls_point_at_universal_ssl_covered_hosts(su):
         assert host.endswith(".trackrat.net"), f"{env}: {host}"
         labels_below_apex = host[: -len(".trackrat.net")].split(".")
         assert len(labels_below_apex) == 1, f"{env}: {host} is more than one label deep"
+
+
+def test_station_names_cover_every_system_exactly(su):
+    """The text parser must agree with the backend's own per-system dicts.
+
+    Every system's module is read, so a search on any enabled source (SEPTA went
+    live after the original hardcoded file list) resolves to station names, and
+    NJT keeps priority for codes shared with another system. Comparing against
+    the imported modules also catches over-reading: a line that merely mentions
+    a names dict (wmata.py's comprehension) must not pull in another dict.
+    """
+    import importlib
+    import pkgutil
+
+    import trackrat.config.stations as stations_pkg
+
+    expected = {}
+    modules = sorted(
+        (m.name for m in pkgutil.iter_modules(stations_pkg.__path__)),
+        key=lambda name: (name != "njt", name),
+    )
+    for module_name in modules:
+        module = importlib.import_module(f"trackrat.config.stations.{module_name}")
+        # Each system module declares its own <MODULE>_STATION_NAMES (common.py
+        # declares none; its unified STATION_NAMES is built from the others).
+        own = getattr(module, f"{module_name.upper()}_STATION_NAMES", {})
+        for code, name in own.items():
+            expected.setdefault(code, name)
+
+    parsed = su.load_station_names()
+
+    missing = {c: n for c, n in expected.items() if c not in parsed}
+    extra = {c: n for c, n in parsed.items() if c not in expected}
+    wrong = {c: (parsed[c], n) for c, n in expected.items() if c in parsed and parsed[c] != n}
+    print(f"parsed={len(parsed)} expected={len(expected)} "
+          f"missing={list(missing)[:5]} extra={list(extra)[:5]} wrong={list(wrong.items())[:3]}")
+    assert not missing, f"{len(missing)} codes not parsed, e.g. {list(missing.items())[:5]}"
+    assert not extra, f"{len(extra)} codes parsed from outside a names dict, e.g. {list(extra.items())[:5]}"
+    assert not wrong, f"{len(wrong)} codes resolved differently, e.g. {list(wrong.items())[:5]}"
+    assert parsed["SEPR90404"] == "Airport Terminal A"
+    assert parsed["SEPM30866"] == "10th St & Main St"

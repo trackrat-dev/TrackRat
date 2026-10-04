@@ -10,6 +10,7 @@ import uuid
 from collections.abc import AsyncGenerator, Callable, Coroutine
 from contextlib import asynccontextmanager
 from typing import Any
+from urllib.parse import urlencode
 
 import structlog
 from fastapi import FastAPI, Request, Response
@@ -67,6 +68,11 @@ structlog.configure(
 
 
 _STAGING_DEVICE_TOKEN_THRESHOLD = 50
+
+# Query fields the http_request log keeps (the route searched). Everything else
+# is dropped: some requests carry a persistent device_id in the query
+# (/routes/preferences), and the log pairs each request with a client IP.
+_LOGGED_QUERY_PARAMS = frozenset({"from", "to", "from_station", "to_station"})
 
 
 async def _check_staging_notification_safety(settings: Any) -> bool:
@@ -304,7 +310,8 @@ async def suppress_health_check_logs(
             )
         return response
 
-    # For all other requests, process normally (will be logged by uvicorn)
+    # For all other requests, process normally (logged as http_request by
+    # request_stats_middleware)
     return await call_next(request)
 
 
@@ -312,37 +319,75 @@ async def suppress_health_check_logs(
 async def request_stats_middleware(
     request: Request, call_next: Callable[[Request], Coroutine[Any, Any, Response]]
 ) -> Response:
-    """Track inbound request metrics for the admin stats page."""
+    """Track inbound request metrics for the admin stats page and request log.
+
+    Each request is also logged as one ``http_request`` event: the durable,
+    fleet-wide traffic record ``scripts/server-usage.py`` reads, since requests
+    arrive through the Cloudflare Tunnel and no load balancer logs them (#1759).
+    ``environment`` is bound explicitly because the module-level structlog
+    config does not add it.
+    """
     start = time.time()
-    response: Response = await call_next(request)
-    duration = time.time() - start
+    # An unhandled exception propagates out of call_next; record it as the 500
+    # the client receives rather than dropping the request from the record.
+    status_code = 500
+    try:
+        response: Response = await call_next(request)
+        status_code = response.status_code
+        return response
+    finally:
+        duration = time.time() - start
 
-    # Extract the matched route template (e.g. "/api/v2/trains/{train_id}")
-    route = request.scope.get("route")
-    path_template = route.path if route and hasattr(route, "path") else request.url.path
+        # Extract the matched route template (e.g. "/api/v2/trains/{train_id}")
+        route = request.scope.get("route")
+        matched_path = route.path if route and hasattr(route, "path") else None
+        path_template = matched_path or request.url.path
 
-    # Skip noisy internal paths, plus the onboarding beacon — recording it here
-    # would retain a client IP in the app's stats alongside the event that
-    # telemetry.py keeps IP-free, and it is instrumentation, not rider traffic.
-    if path_template not in {
-        "/health",
-        "/health/live",
-        "/health/ready",
-        "/metrics",
-        telemetry.ONBOARDING_PATH,
-    }:
-        query_params = dict(request.query_params)
-        client_ip = get_client_ip(request)
-        get_request_stats().record_request(
-            path_template=path_template,
-            status_code=response.status_code,
-            user_agent=request.headers.get("user-agent", ""),
-            duration=duration,
-            client_ip=client_ip,
-            query_params=query_params if query_params else None,
-        )
-
-    return response
+        # Skip noisy internal paths, plus the onboarding beacon — recording it
+        # here (or in the http_request log) would retain a client IP alongside
+        # the event that telemetry.py keeps IP-free, and it is instrumentation,
+        # not rider traffic.
+        if path_template not in {
+            "/health",
+            "/health/live",
+            "/health/ready",
+            "/metrics",
+            telemetry.ONBOARDING_PATH,
+        }:
+            query_params = dict(request.query_params)
+            client_ip = get_client_ip(request)
+            user_agent = request.headers.get("user-agent", "")
+            get_request_stats().record_request(
+                path_template=path_template,
+                status_code=status_code,
+                user_agent=user_agent,
+                duration=duration,
+                client_ip=client_ip,
+                query_params=query_params if query_params else None,
+            )
+            # Identifiers stay out of this durable, IP-attributed record: the
+            # path is the route template (raw paths carry a device_id or push
+            # token, e.g. /alerts/subscriptions/{device_id}), None when no
+            # route matched, and the query keeps only _LOGGED_QUERY_PARAMS.
+            # train_id is public and names the train viewed.
+            logger.info(
+                "http_request",
+                environment=get_settings().environment,
+                method=request.method,
+                path=matched_path,
+                query=urlencode(
+                    [
+                        (key, value)
+                        for key, value in request.query_params.multi_items()
+                        if key in _LOGGED_QUERY_PARAMS
+                    ]
+                ),
+                train_id=request.path_params.get("train_id"),
+                status_code=status_code,
+                duration_ms=round(duration * 1000, 1),
+                client_ip=client_ip,
+                user_agent=user_agent,
+            )
 
 
 # Include routers
