@@ -13,10 +13,11 @@ from trackrat.collectors.path.collector import PathCollector, get_path_route_and
 from trackrat.collectors.path.segment_times import (
     DEFAULT_MINUTES_PER_SEGMENT,
     SegmentTimesMap,
+    _load_segment_times_from_gtfs,
     clear_cache,
     get_cumulative_time,
 )
-from trackrat.models.database import JourneyStop
+from trackrat.models.database import GTFSRoute, GTFSStopTime, GTFSTrip, JourneyStop
 
 # =============================================================================
 # TEST DATA
@@ -520,3 +521,135 @@ class TestClearCache:
         segment_times._cached_segment_times = {"test": []}
         clear_cache()
         assert segment_times._cached_segment_times is None
+
+
+# =============================================================================
+# GTFS LOADER TESTS
+# =============================================================================
+
+
+async def _add_path_trip(
+    db_session, route: GTFSRoute, trip_id: str, service_id: str, stop_times
+) -> None:
+    """Insert one PATH GTFS trip with (station_code, "HH:MM:SS") stop times."""
+    trip = GTFSTrip(
+        data_source="PATH", trip_id=trip_id, route_id=route.id, service_id=service_id
+    )
+    db_session.add(trip)
+    await db_session.flush()
+    db_session.add_all(
+        GTFSStopTime(
+            trip_id=trip.id,
+            stop_sequence=sequence,
+            gtfs_stop_id=station_code,
+            station_code=station_code,
+            arrival_time=time_str,
+            departure_time=time_str,
+        )
+        for sequence, (station_code, time_str) in enumerate(stop_times, start=1)
+    )
+    await db_session.flush()
+
+
+class TestLoadSegmentTimesFromGTFS:
+    """Tests for building the segment map from stored GTFS data."""
+
+    async def test_construction_hold_trip_does_not_set_segment_time(self, db_session):
+        """A construction-variant trip stored first must not define the segment.
+
+        PATH's feed lists special services ahead of the regular timetable — the
+        first 862 trip in trips.txt belongs to a construction schedule — and
+        the loader used to take one arbitrary trip per route (``LIMIT 1``).
+        A 10-minute hold at JSQ in that trip became JSQ -> Grove's travel
+        time, and every sighting past JSQ back-calculated an origin 6 minutes
+        early (issue #1752). The median across trips, in both directions,
+        ignores it.
+        """
+        route = GTFSRoute(data_source="PATH", route_id="862", route_long_name="NWK-WTC")
+        db_session.add(route)
+        await db_session.flush()
+
+        # Stored first: JSQ hold makes JSQ -> Grove 10 minutes.
+        await _add_path_trip(
+            db_session,
+            route,
+            "construction",
+            "JSQ_HOLDS",
+            [
+                ("PNK", "08:00:00"),
+                ("PHR", "08:03:00"),
+                ("PJS", "08:14:00"),
+                ("PGR", "08:24:00"),
+                ("PEX", "08:27:00"),
+                ("PWC", "08:32:00"),
+            ],
+        )
+        for index, start in enumerate(("09:00", "09:05")):
+            hour, minute = map(int, start.split(":"))
+            base = hour * 60 + minute
+            offsets = [0, 3, 14, 18, 21, 26]
+            await _add_path_trip(
+                db_session,
+                route,
+                f"regular-{index}",
+                "WEEKDAY",
+                [
+                    (code, f"{(base + off) // 60:02d}:{(base + off) % 60:02d}:00")
+                    for code, off in zip(NWK_WTC_STOPS, offsets)
+                ],
+            )
+        # Reverse direction counts toward the same segments.
+        await _add_path_trip(
+            db_session,
+            route,
+            "regular-reverse",
+            "WEEKDAY",
+            [
+                ("PWC", "10:00:00"),
+                ("PEX", "10:05:00"),
+                ("PGR", "10:08:00"),
+                ("PJS", "10:12:00"),
+                ("PHR", "10:23:00"),
+                ("PNK", "10:26:00"),
+            ],
+        )
+
+        segment_times = await _load_segment_times_from_gtfs(db_session)
+
+        segments = {(a, b): minutes for a, b, minutes in segment_times["862"]}
+        print(f"862 segments: {segments}")
+        assert segments[("PJS", "PGR")] == 4.0, (
+            f"JSQ -> Grove should be the 4-min median across trips, got "
+            f"{segments[('PJS', 'PGR')]} (10.0 means the construction hold won)"
+        )
+        assert segments == {
+            ("PNK", "PHR"): 3.0,
+            ("PHR", "PJS"): 11.0,
+            ("PJS", "PGR"): 4.0,
+            ("PGR", "PEX"): 3.0,
+            ("PEX", "PWC"): 5.0,
+        }
+        assert "861" not in segment_times, "Routes with no GTFS data stay absent"
+
+    async def test_segment_missing_from_gtfs_uses_default(self, db_session):
+        """A segment no trip runs falls back to the default, others still load."""
+        route = GTFSRoute(data_source="PATH", route_id="860", route_long_name="HOB-WTC")
+        db_session.add(route)
+        await db_session.flush()
+        # Skips Exchange Place, as a bypass schedule would.
+        await _add_path_trip(
+            db_session,
+            route,
+            "bypass",
+            "WEEKDAY",
+            [("PHO", "08:00:00"), ("PNP", "08:04:00"), ("PWC", "08:12:00")],
+        )
+
+        segment_times = await _load_segment_times_from_gtfs(db_session)
+
+        print(f"860 segments: {segment_times['860']}")
+        assert segment_times["860"] == [
+            ("PHO", "PNP", 4.0),
+            ("PNP", "PEX", DEFAULT_MINUTES_PER_SEGMENT),
+            ("PEX", "PWC", DEFAULT_MINUTES_PER_SEGMENT),
+        ]

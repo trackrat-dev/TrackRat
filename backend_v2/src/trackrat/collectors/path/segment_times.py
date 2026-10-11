@@ -1,17 +1,19 @@
 """GTFS-based segment travel times for PATH trains.
 
 Loads per-segment travel times from GTFS static data to replace the
-hardcoded 3 min/segment approximation. Uses one representative trip
-per PATH route to extract inter-stop travel time ratios.
+hardcoded 3 min/segment approximation. Each segment's time is the median
+across every PATH trip that runs it.
 """
+
+from collections import defaultdict
+from statistics import median
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from trackrat.config.stations import PATH_ROUTE_STOPS
-from trackrat.models.database import GTFSRoute, GTFSTrip
+from trackrat.models.database import GTFSRoute, GTFSStopTime, GTFSTrip
 
 logger = get_logger(__name__)
 
@@ -43,8 +45,12 @@ def _parse_gtfs_time_to_seconds(time_str: str) -> int:
 async def _load_segment_times_from_gtfs(db: AsyncSession) -> SegmentTimesMap:
     """Load segment travel times from GTFS static data.
 
-    For each PATH route, finds one representative trip and computes
-    the travel time between consecutive stops.
+    Each segment's time is the median across every PATH trip that runs it, in
+    either direction. One representative trip per route is not safe: the feed
+    mixes the regular timetable with construction and holiday variants that
+    hold trains 5-10 minutes at JSQ or WTC, and it lists them first. Whichever
+    trip ``LIMIT 1`` returned baked its hold into a segment, enough on its own
+    to split one train into two journeys (issue #1752).
 
     Args:
         db: Database session
@@ -54,92 +60,65 @@ async def _load_segment_times_from_gtfs(db: AsyncSession) -> SegmentTimesMap:
     """
     result: SegmentTimesMap = {}
 
-    # Get all PATH routes from GTFS
-    stmt = select(GTFSRoute).where(GTFSRoute.data_source == "PATH")
-    routes = (await db.scalars(stmt)).all()
+    stmt = (
+        select(
+            GTFSRoute.route_id,
+            GTFSStopTime.trip_id,
+            GTFSStopTime.station_code,
+            GTFSStopTime.departure_time,
+            GTFSStopTime.arrival_time,
+        )
+        .join(GTFSTrip, GTFSStopTime.trip_id == GTFSTrip.id)
+        .join(GTFSRoute, GTFSTrip.route_id == GTFSRoute.id)
+        .where(GTFSRoute.data_source == "PATH")
+        .order_by(GTFSStopTime.trip_id, GTFSStopTime.stop_sequence)
+    )
 
-    if not routes:
+    # (route_id, {station, station}) -> minutes for each trip running that hop
+    observed: dict[tuple[str, frozenset[str]], list[float]] = defaultdict(list)
+    previous: tuple[int, str, int] | None = None  # (trip_id, station, seconds)
+    async for route_id, trip_id, station_code, departure, arrival in await db.stream(
+        stmt
+    ):
+        time_str = departure or arrival
+        if not station_code or not time_str:
+            continue
+        seconds = _parse_gtfs_time_to_seconds(time_str)
+        if previous is not None and previous[0] == trip_id:
+            hop = frozenset((previous[1], station_code))
+            observed[(route_id, hop)].append(abs(seconds - previous[2]) / 60.0)
+        previous = (trip_id, station_code, seconds)
+
+    if not observed:
         logger.warning("path_no_gtfs_routes_found")
         return result
 
-    for route in routes:
-        route_id_str = route.route_id
-        if not route_id_str:
-            continue
-        expected_stops = PATH_ROUTE_STOPS.get(route_id_str)
-        if not expected_stops:
-            continue
-
-        # Find one representative trip for this route
-        trip_stmt = (
-            select(GTFSTrip)
-            .where(GTFSTrip.route_id == route.id)
-            .options(selectinload(GTFSTrip.stop_times))
-            .limit(1)
-        )
-        trip = await db.scalar(trip_stmt)
-        if not trip or not trip.stop_times:
-            continue
-
-        # Sort stop_times by sequence
-        sorted_times = sorted(trip.stop_times, key=lambda st: st.stop_sequence or 0)
-
-        # Build station_code -> departure_time_seconds map
-        station_times: dict[str, int] = {}
-        for st in sorted_times:
-            if st.station_code and st.departure_time:
-                station_times[st.station_code] = _parse_gtfs_time_to_seconds(
-                    st.departure_time
-                )
-            elif st.station_code and st.arrival_time:
-                station_times[st.station_code] = _parse_gtfs_time_to_seconds(
-                    st.arrival_time
-                )
-
-        # Check if GTFS stop order matches our expected order
-        # If reversed, we still extract correct segment times by matching
-        # against expected_stops order
-        gtfs_station_order = [st.station_code for st in sorted_times if st.station_code]
-
-        # Determine if GTFS trip is in reverse direction
-        if len(gtfs_station_order) >= 2 and len(expected_stops) >= 2:
-            first_gtfs = gtfs_station_order[0]
-            if (
-                first_gtfs in expected_stops
-                and expected_stops.index(first_gtfs) == len(expected_stops) - 1
-            ):
-                # GTFS trip is reversed relative to our route definition
-                # That's OK - we just need the absolute travel times between stations
-                pass
-
-        # Extract segment times following expected_stops order
+    for route_id_str, expected_stops in PATH_ROUTE_STOPS.items():
         segments: list[tuple[str, str, float]] = []
-        for i in range(len(expected_stops) - 1):
-            from_station = expected_stops[i]
-            to_station = expected_stops[i + 1]
-
-            if from_station in station_times and to_station in station_times:
-                time_diff = abs(station_times[to_station] - station_times[from_station])
-                minutes = time_diff / 60.0
-                # Sanity check: segment time should be 1-15 minutes
-                if 0.5 <= minutes <= 15.0:
-                    segments.append((from_station, to_station, minutes))
-                else:
-                    logger.warning(
-                        "path_gtfs_segment_time_outlier",
-                        route_id=route_id_str,
-                        from_station=from_station,
-                        to_station=to_station,
-                        minutes=minutes,
-                    )
-                    segments.append(
-                        (from_station, to_station, DEFAULT_MINUTES_PER_SEGMENT)
-                    )
-            else:
-                # Missing station in GTFS data - use default
+        found_any = False
+        for from_station, to_station in zip(
+            expected_stops, expected_stops[1:], strict=False
+        ):
+            times = observed.get((route_id_str, frozenset((from_station, to_station))))
+            if not times:
+                # No trip runs this hop - use default
                 segments.append((from_station, to_station, DEFAULT_MINUTES_PER_SEGMENT))
+                continue
+            found_any = True
+            minutes = median(times)
+            # Sanity check: segment time should be 1-15 minutes
+            if not 0.5 <= minutes <= 15.0:
+                logger.warning(
+                    "path_gtfs_segment_time_outlier",
+                    route_id=route_id_str,
+                    from_station=from_station,
+                    to_station=to_station,
+                    minutes=minutes,
+                )
+                minutes = DEFAULT_MINUTES_PER_SEGMENT
+            segments.append((from_station, to_station, minutes))
 
-        if segments:
+        if found_any:
             result[route_id_str] = segments
             logger.debug(
                 "path_gtfs_segment_times_loaded",
