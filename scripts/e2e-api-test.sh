@@ -170,15 +170,26 @@ station_system() {
 # empty board can be checked against the agency's own explanation rather than
 # guessed at from the clock.
 #
-# Indexed once here as `SOURCE<TAB>ROUTE_ID<TAB>headline`, filtered to
-# planned_work active at this moment. Alerts are advisory for this suite — if
-# the endpoint is unreachable the file is empty and every check keeps its
-# original strictness.
+# Indexed once here as `SOURCE<TAB>ROUTE_ID<TAB>headline<TAB>suspended`,
+# filtered to planned_work active at this moment. Alerts are advisory for this
+# suite — if the endpoint is unreachable the file is empty and every check keeps
+# its original strictness.
+#
+# `suspended` is 1 when the alert suspends a segment of *that row's own* line —
+# MTA's "No [L] between …" or "[3] is suspended", case-insensitive and anywhere
+# in the text — and 0 otherwise. Most planned work is not a closure (skip-stops,
+# local running, reduced frequency, entrance changes; 14 subway alerts on
+# 2026-10-11 touched 13 lines, only 2 were suspensions), and "no [1] at <stop>"
+# closes one station, not the line. Classified against the full header_text,
+# not the 120-char headline: one alert can suspend several lines in turn
+# ("No [4] between … No [6] between …"), and later clauses fall past the cut.
+# The bracketed id must be the row's own, so the [6] row is judged by its own
+# clause, not the [4] one (issue #1884).
 echo -e "${BOLD}Service alerts...${NC}"
 : > "$TMPDIR/planned_work.tsv"
 if curl -s -f --max-time 20 -o "$TMPDIR/alerts.json" "$API/alerts/service" 2>/dev/null; then
   python3 - "$TMPDIR/alerts.json" "$TMPDIR/planned_work.tsv" <<'PY' 2>/dev/null || true
-import json, sys, time
+import json, re, sys, time
 
 with open(sys.argv[1]) as fh:
     payload = json.load(fh)
@@ -202,9 +213,15 @@ rows = []
 for alert in alerts:
     if alert.get("alert_type") != "planned_work" or not active(alert):
         continue
-    headline = " ".join((alert.get("header_text") or "").split())[:120]
+    text = " ".join((alert.get("header_text") or "").split())
     for route_id in alert.get("affected_route_ids") or []:
-        rows.append(f"{alert.get('data_source', '')}\t{route_id}\t{headline}")
+        line = re.escape(f"[{route_id}]")
+        suspended = re.search(
+            rf"\bno {line} between|{line} (?:is|are) suspended", text, re.IGNORECASE
+        )
+        rows.append(
+            f"{alert.get('data_source', '')}\t{route_id}\t{text[:120]}\t{int(bool(suspended))}"
+        )
 
 with open(sys.argv[2], "w") as out:
     out.write("\n".join(sorted(set(rows))) + ("\n" if rows else ""))
@@ -237,18 +254,48 @@ NJT_CLOSURE_RE='suspend|no (rail |train )?service|bus(es)? (will )?(replace|subs
 # outages wholesale. A pair served by a single line needs that line closed; a
 # multi-line trunk is never excused by one branch's work, which is why
 # many-line pairs deliberately leave the field empty.
+#
+# Pass `suspended` as a third argument to count only rows the indexer
+# classified as a suspension of that line (see required_legs_note).
 planned_work_note() {
-  local source="$1" lines="$2" line note first=""
+  local source="$1" lines="$2" only_suspended="${3:-}" line note first=""
   [[ -z "$lines" || ! -s "$TMPDIR/planned_work.tsv" ]] && return 1
   local IFS=,
   for line in $lines; do
     note=$(awk -F'\t' -v s="$source" -v l="$line" -v njt_re="$NJT_CLOSURE_RE" \
-      '$1 == s && $2 == l && (s != "NJT" || tolower($3) ~ njt_re) { print $3; exit }' \
+      -v susp="$only_suspended" \
+      '$1 == s && $2 == l && (s != "NJT" || tolower($3) ~ njt_re) && (susp == "" || $4 == "1") { print $3; exit }' \
       "$TMPDIR/planned_work.tsv")
     [[ -z "$note" ]] && return 1
     [[ -z "$first" ]] && first="$note"
   done
   echo "$first"
+}
+
+# Echo a suspension headline when ANY required leg of a transfer itinerary has
+# EVERY one of its lines suspended.
+# Usage: required_legs_note <data_source> <leg groups>
+#   leg groups: ';'-separated legs, each the ','-separated lines that can serve
+#               it — "L;4,5" is "the L, then the 4 or the 5".
+#
+# A transfer trip is legitimately empty when one leg it cannot avoid is closed,
+# so legs are any-of. Within a leg, every alternative must be down: Coney Island
+# is reached by the D, F, N and Q, and a Q suspension alone still leaves three
+# ways in. Only suspensions count (planned_work_note's `suspended` mode) — an
+# any-planned-work rule would have excused nearly every transfer pair on
+# 2026-10-11 (issue #1884). Two deliberate limits:
+#   - Segment-blind, like the `lines` rule: a suspension anywhere on the L
+#     excuses every L leg. `--coverage --fail-empty` is the backstop.
+#   - Groups describe the lines trip search routes the pair over today, read
+#     from live responses. If it gains transfer points, they can go stale.
+required_legs_note() {
+  local source="$1" legs="$2" leg
+  [[ -z "$legs" ]] && return 1
+  local IFS=';'
+  for leg in $legs; do
+    planned_work_note "$source" "$leg" suspended && return 0
+  done
+  return 1
 }
 
 # --- Congestion API (network-wide, tested once per data source) ---
@@ -929,7 +976,7 @@ echo -e "${BOLD}Trip Search API (bidirectional)...${NC}"
 
 # Test a single trip search direction.
 # Returns 0 on success, 1 on failure, 2 when excused by active planned work.
-# Usage: trip_test "label" from to expected tmpfile [always_expect] [source] [lines]
+# Usage: trip_test "label" from to expected tmpfile [always_expect] [source] [lines] [legs]
 #   expected: "transfer" | "direct" | "any" | "same_complex"
 #             "same_complex" expects no_direct_trains/0 trips (origin and dest
 #             are platforms in one station complex — see #1357)
@@ -939,9 +986,12 @@ echo -e "${BOLD}Trip Search API (bidirectional)...${NC}"
 #                  used to excuse an empty result during planned work. Same
 #                  semantics and same caveats as the ROUTES table's `lines`
 #                  field — set only for single-line pairs (issue #1771).
+#   legs:          leg groups of a transfer itinerary ("L;4,5"), excusing an
+#                  empty result when one leg is suspended. Needs `source`; see
+#                  required_legs_note (issue #1884).
 trip_test() {
   local label="$1" from="$2" to="$3" expected="$4" tmpfile="$5" always_expect="${6:-false}"
-  local source="${7:-}" lines="${8:-}"
+  local source="${7:-}" lines="${8:-}" legs="${9:-}"
   local code count search_type is_direct legs transfers pw_note et_hour
 
   code=$(curl -s -o "$tmpfile" -w "%{http_code}" \
@@ -978,7 +1028,8 @@ trip_test() {
     # A line closed for planned work has no through service to find, so trip
     # search returning nothing is correct. Checked before the 24/7 assumption
     # below, which is exactly the assumption planned work suspends.
-    if pw_note=$(planned_work_note "$source" "$lines"); then
+    if pw_note=$(planned_work_note "$source" "$lines") ||
+       pw_note=$(required_legs_note "$source" "$legs"); then
       warn "$label: 0 trips ($search_type) — planned work: $pw_note"
       # Distinct from an ordinary miss so the caller can tell an excused
       # direction from a failing one when checking for asymmetry.
@@ -1035,13 +1086,13 @@ trip_test() {
 }
 
 # Test A→B and B→A. Flag asymmetry if only one direction works.
-# Usage: trip_bidi "label" from to expected [always_expect] [source] [lines]
+# Usage: trip_bidi "label" from to expected [always_expect] [source] [lines] [legs]
 #   always_expect: "true" to FAIL on 0 trips (for 24/7 services like subway)
 #                  During overnight hours (1-5 AM ET), downgrades to WARN due to sparse real-time data
-#   source/lines:  passed through to trip_test to excuse planned-work closures
+#   source/lines/legs: passed through to trip_test to excuse planned-work closures
 trip_bidi() {
   local label="$1" from="$2" to="$3" expected="$4" always_expect="${5:-false}"
-  local source="${6:-}" lines="${7:-}"
+  local source="${6:-}" lines="${7:-}" legs="${8:-}"
   local fwd_rc=0 rev_rc=0 sys_from sys_to
 
   # Skip pairs whose endpoints belong to a disabled data source.
@@ -1056,9 +1107,9 @@ trip_bidi() {
 
   echo -e "  ${BOLD}$label${NC}"
   trip_test "  $from → $to" "$from" "$to" "$expected" "$TMPDIR/trip_fwd.json" \
-    "$always_expect" "$source" "$lines" || fwd_rc=$?
+    "$always_expect" "$source" "$lines" "$legs" || fwd_rc=$?
   trip_test "  $to → $from" "$to" "$from" "$expected" "$TMPDIR/trip_rev.json" \
-    "$always_expect" "$source" "$lines" || rev_rc=$?
+    "$always_expect" "$source" "$lines" "$legs" || rev_rc=$?
 
   # rc 2 means the direction was excused by planned work. Asymmetry is only
   # meaningful between a working direction and a genuinely failing one —
@@ -1121,15 +1172,27 @@ trip_bidi "PATH Grove St↔33rd St"            "PGR"  "P33"  "direct"
 
 # ── Intra-subway multi-leg (24/7 — requires transfer between lines) ─
 # always_expect=true because subway runs 24/7.
+# The last argument lists each pair's leg groups (required_legs_note), read
+# from live trip-search responses on 2026-10-11. A group lists every line that
+# can serve that leg, so one line's suspension never excuses a leg another line
+# still serves. A line is listed only on days it runs: one that isn't running
+# has no alert and would block a legitimate excuse.
 # Different physical stations (true multi-leg transfer)
-trip_bidi "SUBWAY G↔4/5 MetroAv↔WallSt"     "SG29" "S419" "transfer" "true"
-trip_bidi "SUBWAY L↔4/5 BedfordAv↔WallSt"    "SL08" "S419" "transfer" "true"
-# Inwood-207St(A) ↔ Coney Island(D/F/N/Q) — requires A↔D/F transfer
-trip_bidi "SUBWAY A↔D Inwood↔ConeyIsland"    "SA02" "SD43" "transfer" "true"
-# Flushing(7) ↔ Astoria(N/W) — no shared stations, requires 7↔N transfer
-trip_bidi "SUBWAY 7↔N Flushing↔Astoria"      "S701" "SR01" "transfer" "true"
+# Metropolitan Av(G) is in the Lorimer St complex: the trip rides the L, then the 4/5
+trip_bidi "SUBWAY G↔4/5 MetroAv↔WallSt"     "SG29" "S419" "transfer" "true" "SUBWAY" "" "L;4,5"
+trip_bidi "SUBWAY L↔4/5 BedfordAv↔WallSt"    "SL08" "S419" "transfer" "true" "SUBWAY" "" "L;4,5"
+# Inwood-207St(A) ↔ Coney Island(D/F/N/Q) — requires A↔D/F/N transfer
+# (W 4 St, Canal St or 145 St; any of the four lines can take the Coney Island leg)
+trip_bidi "SUBWAY A↔D Inwood↔ConeyIsland"    "SA02" "SD43" "transfer" "true" "SUBWAY" "" "A;D,F,N,Q"
+# Flushing(7) ↔ Astoria(N/W) — no shared stations, requires 7↔N transfer.
+# The W serves Astoria on weekdays only.
+if [[ "$DOW" -le 5 ]]; then
+  trip_bidi "SUBWAY 7↔N Flushing↔Astoria"    "S701" "SR01" "transfer" "true" "SUBWAY" "" "7;N,W"
+else
+  trip_bidi "SUBWAY 7↔N Flushing↔Astoria"    "S701" "SR01" "transfer" "true" "SUBWAY" "" "7;N"
+fi
 # Pelham Bay(6) ↔ Canarsie(L) — requires 6↔L transfer
-trip_bidi "SUBWAY 6↔L PelhamBay↔Canarsie"    "S601" "SL29" "transfer" "true"
+trip_bidi "SUBWAY 6↔L PelhamBay↔Canarsie"    "S601" "SL29" "transfer" "true" "SUBWAY" "" "6;L"
 # Same-complex pairs: both codes are platforms in ONE physical station complex
 # (verified via SUBWAY_STATION_COMPLEXES — e.g. S635/SR20 are both "14 St-Union
 # Sq"). There is no train to ride between platforms, so trip search correctly
