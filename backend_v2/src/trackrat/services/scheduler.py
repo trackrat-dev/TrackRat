@@ -2947,9 +2947,21 @@ class SchedulerService:
                 # Phase 0: top up the rolling partition window for
                 # journey_stops / segment_transit_times so upcoming writes
                 # (including schedule-generated future journeys) always have
-                # a partition to land in. Idempotent.
-                async with get_session() as db:
-                    await ensure_future_partitions(db)
+                # a partition to land in. Idempotent. Isolated: phases 1-5
+                # don't depend on it, so a failure here is re-raised only after
+                # they run — one bad partition must not halt all retention
+                # (issue #1877).
+                topup_error: Exception | None = None
+                try:
+                    async with get_session() as db:
+                        await ensure_future_partitions(db)
+                except Exception as e:
+                    topup_error = e
+                    logger.error(
+                        "retention_partition_topup_failed",
+                        error=str(e),
+                        error_type=type(e).__name__,
+                    )
 
                 # Phase 1: Delete old train_journeys in batches.
                 # SUBWAY uses a shorter retention window than other providers: it
@@ -3073,6 +3085,9 @@ class SchedulerService:
                 cutoff_date = date.today() - timedelta(days=cutoff_days)
                 async with get_session() as db:
                     partitions_dropped = await drop_old_partitions(db, cutoff_date)
+
+                if topup_error is not None:
+                    raise topup_error
 
                 logger.info(
                     "retention_cleanup_completed",

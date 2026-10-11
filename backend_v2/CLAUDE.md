@@ -240,6 +240,13 @@ filesystem immediately, unlike DELETE + autovacuum. Partition drops use the
 general `retention_days` cutoff, not SUBWAY's shorter one, since a single
 partition mixes rows from every data source; SUBWAY rows are still pruned
 granularly within a not-yet-dropped partition by the existing cascade delete.
+A row dated beyond the window lands in `{table}_default`, and Postgres refuses
+to create a partition whose range overlaps rows already there — which halted
+every nightly top-up for 10+ days in October 2026 (issue #1877). The top-up now
+detects that case and moves the rows (detach DEFAULT, create, re-insert,
+re-attach, in one transaction), logging `partition_default_rows_moved`; a
+top-up failure is also isolated so the other retention phases still run before
+the job reports failure (`retention_partition_topup_failed`).
 
 `journey_stops` gained a `journey_date` column (denormalized from
 `train_journeys.journey_date`) because Postgres requires every unique/primary

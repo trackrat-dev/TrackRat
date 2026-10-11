@@ -22,8 +22,10 @@ from trackrat.db.partitioning import (
     get_partitioned_table,
     initial_setup_sql,
     month_end_exclusive,
+    month_range_predicate,
     month_start,
     months_back_for_retention,
+    move_default_rows_sql,
     partition_name,
     rolling_window_sql,
 )
@@ -80,6 +82,50 @@ class TestCreatePartitionSql:
             "CREATE TABLE IF NOT EXISTS journey_stops_default "
             "PARTITION OF journey_stops DEFAULT"
         )
+
+
+class TestMonthRangePredicate:
+    def test_date_column_matches_partition_bounds(self):
+        pt = PartitionedTable("journey_stops", "journey_date", "date")
+        assert month_range_predicate(pt, 2026, 12) == (
+            "journey_date >= '2026-12-01' AND journey_date < '2027-01-01'"
+        )
+
+    def test_timestamptz_column_uses_utc_bounds(self):
+        pt = PartitionedTable("segment_transit_times", "departure_time", "timestamptz")
+        assert month_range_predicate(pt, 2026, 7) == (
+            "departure_time >= '2026-07-01 00:00:00+00' "
+            "AND departure_time < '2026-08-01 00:00:00+00'"
+        )
+
+
+class TestMoveDefaultRowsSql:
+    """Issue #1877: creating a partition while DEFAULT holds rows in its range
+    fails, so the rows are moved under a detached DEFAULT. Order matters —
+    the partition must exist before the rows are re-inserted through the
+    parent, and DEFAULT must be emptied of them before it is re-attached."""
+
+    def test_statement_order(self):
+        pt = PartitionedTable("journey_stops", "journey_date", "date")
+        in_range = "journey_date >= '2026-12-01' AND journey_date < '2027-01-01'"
+        statements = move_default_rows_sql(pt, 2026, 12)
+        print("\n".join(statements))
+        assert statements == [
+            "ALTER TABLE journey_stops DETACH PARTITION journey_stops_default",
+            create_partition_sql(pt, 2026, 12),
+            "INSERT INTO journey_stops SELECT * FROM journey_stops_default "
+            f"WHERE {in_range}",
+            f"DELETE FROM journey_stops_default WHERE {in_range}",
+            "ALTER TABLE journey_stops ATTACH PARTITION journey_stops_default "
+            "DEFAULT",
+        ]
+
+    def test_moves_only_the_month_being_created(self):
+        pt = PartitionedTable("segment_transit_times", "departure_time", "timestamptz")
+        statements = move_default_rows_sql(pt, 2027, 1)
+        predicate = month_range_predicate(pt, 2027, 1)
+        assert statements[2].endswith(f"WHERE {predicate}")
+        assert statements[3].endswith(f"WHERE {predicate}")
 
 
 class TestRollingWindowSql:
