@@ -11,6 +11,7 @@ from typing import Any
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, model_validator
 from sqlalchemy import ColumnElement, delete, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
@@ -171,24 +172,27 @@ def _subscription_identity_from_item(
 async def register_device(
     request: DeviceRegisterRequest, db: AsyncSession = Depends(get_db)
 ) -> DeviceRegisterResponse:
-    """Register or update a device's APNS token."""
-    existing = await db.execute(
-        select(DeviceToken).where(DeviceToken.device_id == request.device_id)
+    """Register or update a device's APNS token.
+
+    An atomic upsert rather than select-then-update: a device the
+    stale-registration sweep is deleting concurrently waits on the row lock
+    and is re-inserted, instead of updating zero rows and failing (#1858).
+    ``last_registered_at`` is written even for an unchanged token — the sweep
+    keys on it.
+    """
+    stmt = pg_insert(DeviceToken).values(
+        device_id=request.device_id, apns_token=request.apns_token
     )
-    device = existing.scalar_one_or_none()
-
-    if device:
-        device.apns_token = request.apns_token
-        # Always written, so an unchanged token still records the visit — the
-        # stale-registration sweep keys on it (issue #1858).
-        device.last_registered_at = func.now()
-    else:
-        device = DeviceToken(
-            device_id=request.device_id,
-            apns_token=request.apns_token,
+    await db.execute(
+        stmt.on_conflict_do_update(
+            index_elements=[DeviceToken.device_id],
+            set_={
+                "apns_token": stmt.excluded.apns_token,
+                "last_registered_at": func.now(),
+                "updated_at": func.now(),
+            },
         )
-        db.add(device)
-
+    )
     await db.commit()
 
     logger.info("device_registered", device_id=request.device_id[:8] + "...")

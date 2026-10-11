@@ -5,14 +5,16 @@ Uses real PostgreSQL via db_session fixture. APNS send calls are mocked
 since we cannot hit Apple's servers in tests.
 """
 
+import asyncio
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
 from sqlalchemy import func, select, update
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from trackrat.api.alerts import DeviceRegisterRequest, register_device
 from trackrat.config.route_topology import Route
 from trackrat.models.database import (
     DeviceToken,
@@ -3149,3 +3151,44 @@ class TestPruneStaleDeviceRegistrations:
         print(f"  deleted={deleted} remaining={remaining}")
         assert deleted == 1
         assert remaining == ["fresh-device", "inside-window"]
+
+    async def test_reregistration_racing_the_sweep_does_not_fail(
+        self, db_engine, db_session: AsyncSession
+    ):
+        """A stale device that launches mid-sweep must still register.
+
+        The sweep deletes the row but has not committed when the device's
+        /devices/register arrives. A select-then-update registration sees the
+        still-visible row, blocks on its lock, then updates zero rows once the
+        sweep commits and fails. The upsert instead waits for the lock and
+        re-inserts, so the returning device always ends up registered.
+        """
+        db_session.add(DeviceToken(device_id="returning", apns_token="tok"))
+        await db_session.commit()
+        await _backdate_registration(db_session, "returning", days=120)
+
+        sessions = async_sessionmaker(db_engine, expire_on_commit=False)
+        async with sessions() as sweep_db, sessions() as register_db:
+            deleted = await prune_stale_device_registrations(sweep_db, 90)
+            assert deleted == 1, "Sweep should have claimed the stale row"
+
+            register = asyncio.create_task(
+                register_device(
+                    DeviceRegisterRequest(device_id="returning", apns_token="tok"),
+                    db=register_db,
+                )
+            )
+            await asyncio.sleep(0.3)
+            print(f"  register blocked on sweep's row lock: {not register.done()}")
+            assert not register.done(), "Registration should wait on the row lock"
+
+            await sweep_db.commit()
+            await asyncio.wait_for(register, timeout=10)
+
+        device = (
+            await db_session.execute(
+                select(DeviceToken).where(DeviceToken.device_id == "returning")
+            )
+        ).scalar_one_or_none()
+        print(f"  after race: registered={device is not None}")
+        assert device is not None, "The returning device must end up registered"
