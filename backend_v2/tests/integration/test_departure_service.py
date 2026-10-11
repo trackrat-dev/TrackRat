@@ -12,7 +12,6 @@ import pytest
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from trackrat.collectors.njt.client import NJTransitAPIError
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.departure import DepartureService
 from trackrat.utils.time import now_et
@@ -820,17 +819,14 @@ class TestDepartureServiceIntegration:
             mock_client.get_train_schedule_with_stops = AsyncMock(
                 return_value={"ITEMS": mock_items}
             )
-            # The second (per-train) pass re-fetches the still-stale NJT rows
-            # via getTrainStopList; simulate it failing upstream. Without this
-            # the AsyncMock's auto-generated return value reaches dateutil,
-            # which spins forever reading it as a stream.
-            mock_client.get_train_stop_list = AsyncMock(
-                side_effect=NJTransitAPIError("upstream error")
-            )
             mock_client.close = AsyncMock()
             mock_njt.return_value = mock_client
 
-            await service._ensure_fresh_station_data(db_session, "NY", now_et().date())
+            # Bulk pass only: the per-train getTrainStopList pass is not under
+            # test here and would need its own upstream response.
+            await service._ensure_fresh_station_data(
+                db_session, "NY", now_et().date(), skip_individual_refresh=True
+            )
 
         # Verify only NJT trains were updated
         updated = await db_session.execute(
@@ -871,10 +867,6 @@ class TestDepartureServiceIntegration:
         journey.stops = [stop]
         db_session.add(journey)
         await db_session.commit()
-        # Capture the primary key before _ensure_fresh_station_data runs:
-        # its second-pass rollback (on the simulated API failure) expires
-        # session-attached attributes, so re-reading `journey.id` afterwards
-        # would trigger a sync lazy-load that fails inside the async session.
         journey_id = journey.id
 
         # API returns empty list
@@ -883,16 +875,14 @@ class TestDepartureServiceIntegration:
             mock_client.get_train_schedule_with_stops = AsyncMock(
                 return_value={"ITEMS": []}
             )
-            # The per-train second pass then fails upstream, which stamps the
-            # attempt without counting an update.
-            mock_client.get_train_stop_list = AsyncMock(
-                side_effect=NJTransitAPIError("upstream error")
-            )
             mock_client.close = AsyncMock()
             mock_njt.return_value = mock_client
 
-            # Should not crash
-            await service._ensure_fresh_station_data(db_session, "NY", now_et().date())
+            # Should not crash. Bulk pass only: the per-train getTrainStopList
+            # pass is not under test here and would need its own response.
+            await service._ensure_fresh_station_data(
+                db_session, "NY", now_et().date(), skip_individual_refresh=True
+            )
 
         # Verify journey was not updated
         refreshed = await db_session.get(TrainJourney, journey_id)

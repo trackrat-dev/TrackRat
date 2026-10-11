@@ -28,15 +28,6 @@ from trackrat.utils.time import now_et
 
 NJT_TIME_FORMAT = "%d-%b-%Y %I:%M:%S %p"
 
-# Raritan Valley short-turn RA -> DN -> NP, all stops still ahead, so the
-# collection neither infers departures nor completes the journey.
-RA_DEPARTURE = now_et().replace(second=0, microsecond=0) + timedelta(minutes=10)
-STOPS = [
-    ("RA", "Raritan", RA_DEPARTURE),
-    ("DN", "Dunellen", RA_DEPARTURE + timedelta(minutes=20)),
-    ("NP", "Newark Penn Station", RA_DEPARTURE + timedelta(minutes=45)),
-]
-
 # (stored destination, getTrainStopList DESTINATION) pairs from the production
 # and staging `journey_mismatch_destination` logs quoted in issue #1878.
 SPELLING_VARIANTS = [
@@ -78,7 +69,24 @@ def _fmt(at: datetime) -> str:
     return at.strftime(NJT_TIME_FORMAT)
 
 
-def _train_data(destination: str) -> NJTransitTrainData:
+Stops = list[tuple[str, str, datetime]]
+
+
+@pytest.fixture
+def stops() -> Stops:
+    """Raritan Valley short-turn RA -> DN -> NP, all stops still ahead, so the
+    collection neither infers departures nor completes the journey. Built when
+    the test runs, not at import, so a long suite can't age them into the past.
+    """
+    ra_departure = now_et().replace(second=0, microsecond=0) + timedelta(minutes=10)
+    return [
+        ("RA", "Raritan", ra_departure),
+        ("DN", "Dunellen", ra_departure + timedelta(minutes=20)),
+        ("NP", "Newark Penn Station", ra_departure + timedelta(minutes=45)),
+    ]
+
+
+def _train_data(destination: str, stops: Stops) -> NJTransitTrainData:
     """getTrainStopList response for train 5528 bound for ``destination``."""
     return NJTransitTrainData(
         TRAIN_ID="5528",
@@ -96,16 +104,17 @@ def _train_data(destination: str) -> NJTransitTrainData:
                 SCHED_ARR_DATE=_fmt(at),
                 SCHED_DEP_DATE=_fmt(at),
             )
-            for code, name, at in STOPS
+            for code, name, at in stops
         ],
     )
 
 
-def _journey(destination: str) -> TrainJourney:
+def _journey(destination: str, stops: Stops) -> TrainJourney:
     """OBSERVED journey as discovery/schedule left it, with ``destination``."""
+    ra_departure = stops[0][2]
     journey = TrainJourney(
         train_id="5528",
-        journey_date=RA_DEPARTURE.date(),
+        journey_date=ra_departure.date(),
         data_source="NJT",
         observation_type="OBSERVED",
         line_code="RV",
@@ -113,7 +122,7 @@ def _journey(destination: str) -> TrainJourney:
         destination=destination,
         origin_station_code="RA",
         terminal_station_code="NP",
-        scheduled_departure=RA_DEPARTURE,
+        scheduled_departure=ra_departure,
         has_complete_journey=True,
         is_cancelled=False,
         is_completed=False,
@@ -128,7 +137,7 @@ def _journey(destination: str) -> TrainJourney:
             scheduled_arrival=at,
             stop_sequence=sequence,
         )
-        for sequence, (code, name, at) in enumerate(STOPS)
+        for sequence, (code, name, at) in enumerate(stops)
     ]
     return journey
 
@@ -146,10 +155,11 @@ async def njt_client() -> AsyncGenerator[NJTransitClient, None]:
 async def _collect(
     db_session: AsyncSession,
     njt_client: NJTransitClient,
+    stops: Stops,
     stored: str,
     api: str,
 ) -> TrainJourney:
-    journey = _journey(stored)
+    journey = _journey(stored, stops)
     db_session.add(journey)
     await db_session.flush()
 
@@ -157,7 +167,7 @@ async def _collect(
         db_session,
         journey,
         skip_enhancement=True,
-        prefetched_train_data=_train_data(api),
+        prefetched_train_data=_train_data(api, stops),
     )
     await db_session.refresh(journey)
     print(
@@ -177,10 +187,11 @@ class TestDestinationIsNotIdentity:
         self,
         db_session: AsyncSession,
         njt_client: NJTransitClient,
+        stops: Stops,
         stored: str,
         api: str,
     ) -> None:
-        journey = await _collect(db_session, njt_client, stored, api)
+        journey = await _collect(db_session, njt_client, stops, stored, api)
 
         assert journey.is_expired is False, (
             f"Destination {stored!r} -> {api!r} with a matching scheduled "
@@ -196,12 +207,14 @@ class TestDestinationIsNotIdentity:
         )
 
     async def test_live_train_stays_on_departure_board(
-        self, db_session: AsyncSession, njt_client: NJTransitClient
+        self, db_session: AsyncSession, njt_client: NJTransitClient, stops: Stops
     ) -> None:
         """The reported case: 5528 stored as "Newark Penn" while
         getTrainStopList says "Newark Penn Station". The DN -> NP board must
         list the live OBSERVED journey, not drop it as expired."""
-        await _collect(db_session, njt_client, "Newark Penn", "Newark Penn Station")
+        await _collect(
+            db_session, njt_client, stops, "Newark Penn", "Newark Penn Station"
+        )
 
         response = await DepartureService().get_departures(
             db=db_session,
