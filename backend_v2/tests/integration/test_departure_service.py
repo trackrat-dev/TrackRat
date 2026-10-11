@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
-from trackrat.collectors.njt.client import TrainNotFoundError
+from trackrat.collectors.njt.client import NJTransitAPIError
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.services.departure import DepartureService
 from trackrat.utils.time import now_et
@@ -821,11 +821,11 @@ class TestDepartureServiceIntegration:
                 return_value={"ITEMS": mock_items}
             )
             # The second (per-train) pass re-fetches the still-stale NJT rows
-            # via getTrainStopList; these trains don't exist upstream. Without
-            # this the AsyncMock's auto-generated return value reaches
-            # dateutil, which spins forever reading it as a stream.
+            # via getTrainStopList; simulate it failing upstream. Without this
+            # the AsyncMock's auto-generated return value reaches dateutil,
+            # which spins forever reading it as a stream.
             mock_client.get_train_stop_list = AsyncMock(
-                side_effect=TrainNotFoundError("train not found")
+                side_effect=NJTransitAPIError("upstream error")
             )
             mock_client.close = AsyncMock()
             mock_njt.return_value = mock_client
@@ -882,6 +882,11 @@ class TestDepartureServiceIntegration:
             mock_client = AsyncMock()
             mock_client.get_train_schedule_with_stops = AsyncMock(
                 return_value={"ITEMS": []}
+            )
+            # The per-train second pass then fails upstream, which stamps the
+            # attempt without counting an update.
+            mock_client.get_train_stop_list = AsyncMock(
+                side_effect=NJTransitAPIError("upstream error")
             )
             mock_client.close = AsyncMock()
             mock_njt.return_value = mock_client
