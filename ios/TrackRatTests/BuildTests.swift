@@ -149,6 +149,80 @@ final class TrackPredictionViewTests: XCTestCase {
         )
     }
 
+    func testLowConfidenceRequiresEveryTrackBelowThreshold() {
+        let flat = TrackPredictionSegment.makeSegments(
+            from: ["1": 0.16, "2": 0.16, "3": 0.16, "4": 0.16, "5": 0.16, "6": 0.2],
+            groupTracksAtNYPenn: false
+        )
+        let allLow = TrackPredictionSegment.makeSegments(
+            from: ["1": 0.16, "2": 0.16, "3": 0.16, "4": 0.16, "5": 0.16, "6": 0.16],
+            groupTracksAtNYPenn: false
+        )
+
+        XCTAssertFalse(
+            flat.hasOnlyLowConfidencePredictions,
+            "One track at 20% is a favorite: \(flat.map { ($0.platformName, $0.probability) })"
+        )
+        XCTAssertTrue(
+            allLow.hasOnlyLowConfidencePredictions,
+            "Every track under 17% is no clear favorite: \(allLow.map { ($0.platformName, $0.probability) })"
+        )
+        XCTAssertFalse(
+            [TrackPredictionSegment]().hasOnlyLowConfidencePredictions,
+            "An empty distribution draws nothing, so it must not claim 'No clear favorite'"
+        )
+    }
+
+    /// The card's header and bar are one button, so its accessibility value is
+    /// the only place VoiceOver hears the bar's summary.
+    func testCardAccessibilityValueCarriesSummaryAndExpansionState() {
+        let segments = TrackPredictionSegment.makeSegments(
+            from: ["1": 0.4, "2": 0.3, "3": 0.2, "4": 0.1],
+            groupTracksAtNYPenn: false
+        )
+
+        XCTAssertEqual(
+            SegmentedTrackPredictionView.predictionAccessibilityValue(
+                isLoading: false, isExpanded: false, segments: segments
+            ),
+            "Track 1, 40%, Track 2, 30%, Track 3, 20%, and 1 more, Collapsed"
+        )
+        XCTAssertEqual(
+            SegmentedTrackPredictionView.predictionAccessibilityValue(
+                isLoading: false, isExpanded: true, segments: segments
+            ),
+            "Track 1, 40%, Track 2, 30%, Track 3, 20%, and 1 more, Expanded"
+        )
+    }
+
+    func testCardAccessibilityValueForLoadingEmptyAndNoClearFavorite() {
+        let lowConfidence = TrackPredictionSegment.makeSegments(
+            from: ["1": 0.16, "2": 0.16, "3": 0.16, "4": 0.16, "5": 0.16, "6": 0.16],
+            groupTracksAtNYPenn: false
+        )
+
+        XCTAssertEqual(
+            SegmentedTrackPredictionView.predictionAccessibilityValue(
+                isLoading: true, isExpanded: false, segments: lowConfidence
+            ),
+            "Loading",
+            "Loading wins even if stale segments are still held"
+        )
+        XCTAssertEqual(
+            SegmentedTrackPredictionView.predictionAccessibilityValue(
+                isLoading: false, isExpanded: false, segments: []
+            ),
+            "Collapsed"
+        )
+        XCTAssertEqual(
+            SegmentedTrackPredictionView.predictionAccessibilityValue(
+                isLoading: false, isExpanded: false, segments: lowConfidence
+            ),
+            "No clear favorite, Collapsed",
+            "The bar is replaced by 'No clear favorite', so VoiceOver must say the same"
+        )
+    }
+
     func testTrackLabelsAreReadableForAccessibility() {
         let grouped = TrackPredictionSegment(
             id: "7 & 8",
