@@ -5,10 +5,12 @@ Tests train discovery logic, NYP filtering, and result formatting.
 """
 
 import pytest
+from datetime import datetime
 from unittest.mock import AsyncMock, Mock
 
 from structlog.testing import capture_logs
 
+from trackrat.collectors.amtrak.client import AmtrakClient
 from trackrat.collectors.amtrak.discovery import AmtrakDiscoveryCollector
 from trackrat.models.api import AmtrakTrainData
 from tests.fixtures.amtrak_api_responses import (
@@ -365,9 +367,16 @@ class TestAmtrakDiscoveryCollector:
         assert collector._unmapped_stations([train]) == {}
         assert collector._unmapped_stations([]) == {}
 
-    async def test_discovery_warns_about_unmapped_stations(
-        self, collector, mock_client
-    ):
+    @staticmethod
+    def _client_serving(trains_by_num):
+        """A real AmtrakClient holding a just-fetched feed in its cache, so
+        discover_trains runs end to end without a network call or a mock."""
+        client = AmtrakClient()
+        client._cache = trains_by_num
+        client._cache_time = datetime.now()
+        return client
+
+    async def test_discovery_warns_about_unmapped_stations(self, collector):
         """discover_trains logs amtrak_unmapped_stations once per run, naming
         each unmapped stop on the trains it discovered."""
         hub_train = create_amtrak_train_data(
@@ -377,8 +386,7 @@ class TestAmtrakDiscoveryCollector:
                 create_amtrak_station_data(name="Not A Station", code="ZZQ"),
             ],
         )
-        mock_client.get_all_trains.return_value = {"93": [hub_train]}
-        collector.client = mock_client
+        collector.client = self._client_serving({"93": [hub_train]})
 
         with capture_logs() as captured:
             result = await collector.discover_trains()
@@ -389,9 +397,7 @@ class TestAmtrakDiscoveryCollector:
         assert warnings[0]["log_level"] == "warning"
         assert warnings[0]["stations"] == {"ZZQ": "Not A Station"}
 
-    async def test_discovery_does_not_warn_when_all_stops_are_mapped(
-        self, collector, mock_client
-    ):
+    async def test_discovery_does_not_warn_when_all_stops_are_mapped(self, collector):
         """No warning when every stop on every discovered train is mapped, and
         none for undiscovered trains (e.g. VIA Rail trains, whose Canadian stops
         TrackRat does not track, never pass a discovery hub)."""
@@ -402,11 +408,12 @@ class TestAmtrakDiscoveryCollector:
                 create_amtrak_station_data(name="Toronto Union", code="TRTO"),
             ],
         )
-        mock_client.get_all_trains.return_value = {
-            "2150": [create_amtrak_train_data(stops_at_nyp=True)],
-            "VIA65": [via_train],
-        }
-        collector.client = mock_client
+        collector.client = self._client_serving(
+            {
+                "2150": [create_amtrak_train_data(stops_at_nyp=True)],
+                "VIA65": [via_train],
+            }
+        )
 
         with capture_logs() as captured:
             result = await collector.discover_trains()
