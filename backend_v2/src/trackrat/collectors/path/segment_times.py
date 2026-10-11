@@ -215,10 +215,13 @@ def get_cumulative_time(
     # Try to use GTFS-based times
     if route_id and route_id in segment_times:
         segments = segment_times[route_id]
-        # Build a quick lookup: (from, to) -> minutes
-        segment_lookup: dict[tuple[str, str], float] = {
-            (s[0], s[1]): s[2] for s in segments
-        }
+        # Segments are stored in PATH_ROUTE_STOPS order, but trains running the
+        # other way pass their stop list reversed — key both orders, or that
+        # whole direction falls back to the flat default (issue #1752).
+        segment_lookup: dict[tuple[str, str], float] = {}
+        for from_station, to_station, minutes in segments:
+            segment_lookup[(from_station, to_station)] = minutes
+            segment_lookup[(to_station, from_station)] = minutes
 
         total = 0.0
         all_found = True

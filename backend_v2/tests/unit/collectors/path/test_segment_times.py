@@ -9,7 +9,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from trackrat.collectors.path.collector import PathCollector
+from trackrat.collectors.path.collector import PathCollector, get_path_route_and_stops
 from trackrat.collectors.path.segment_times import (
     DEFAULT_MINUTES_PER_SEGMENT,
     SegmentTimesMap,
@@ -99,6 +99,37 @@ class TestGetCumulativeTime:
             SAMPLE_SEGMENT_TIMES, NWK_WTC_STOPS, 3, 0, "862"
         )
         assert forward == reversed_result
+
+    def test_train_running_against_listed_stop_order_uses_gtfs_times(self):
+        """A WTC -> Newark train must use the same segment times as Newark -> WTC.
+
+        Segments are stored in ``PATH_ROUTE_STOPS`` order, but half of all
+        trains run the other way and arrive here with their stop list reversed
+        (``get_path_route_and_stops``). Looking those segments up by
+        (from, to) missed every one of them, so the whole direction silently
+        fell back to 3 min/segment — 15 min instead of 16 here, and up to
+        ~11 min of origin back-calculation error on real NWK-WTC times, where
+        JSQ -> Harrison alone is 11 (issue #1752).
+        """
+        route_id, stops = get_path_route_and_stops("PWC", "PNK", line_color="D93A30")
+        assert route_id == "862" and stops == list(
+            reversed(NWK_WTC_STOPS)
+        ), f"Expected the reversed NWK-WTC stop list, got {route_id} {stops}"
+
+        full = get_cumulative_time(
+            SAMPLE_SEGMENT_TIMES, stops, 0, len(stops) - 1, "862"
+        )
+        # PWC -> PJS crosses PWC-PEX (3) + PEX-PGR (2) + PGR-PJS (2) = 7
+        partial = get_cumulative_time(
+            SAMPLE_SEGMENT_TIMES, stops, 0, stops.index("PJS"), "862"
+        )
+
+        print(f"WTC->Newark full={full} (forward is 16.0), WTC->JSQ={partial}")
+        assert full == 16.0, (
+            f"Reverse-direction full run should be 16.0 min like the forward run, "
+            f"got {full} (15.0 means the 3 min/segment fallback fired)"
+        )
+        assert partial == 7.0, f"WTC -> JSQ should be 3+2+2=7.0, got {partial}"
 
     def test_fallback_when_no_route_data(self):
         """Falls back to DEFAULT_MINUTES_PER_SEGMENT when route not in map."""
