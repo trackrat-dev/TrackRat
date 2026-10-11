@@ -7,6 +7,8 @@ Tests train discovery logic, NYP filtering, and result formatting.
 import pytest
 from unittest.mock import AsyncMock, Mock
 
+from structlog.testing import capture_logs
+
 from trackrat.collectors.amtrak.discovery import AmtrakDiscoveryCollector
 from trackrat.models.api import AmtrakTrainData
 from tests.fixtures.amtrak_api_responses import (
@@ -323,3 +325,92 @@ class TestAmtrakDiscoveryCollector:
 
         # Should have correct result
         assert result["discovered_trains"] > 0
+
+    def test_unmapped_stations_reports_stops_the_collector_would_drop(self, collector):
+        """Stops missing from AMTRAK_TO_INTERNAL_STATION_MAP are silently dropped
+        by the journey collector, so discovery must name them (issue #1866:
+        Bridgeport was keyed under "BPT" while the feed sends "BRP", and
+        disappeared from every NEC train with no log line anywhere)."""
+        nec_train = create_amtrak_train_data(
+            train_num="93",
+            route="Northeast Regional",
+            stations=[
+                create_amtrak_station_data(name="Boston South Station", code="BOS"),
+                create_amtrak_station_data(name="Bridgeport", code="BRP"),
+                create_amtrak_station_data(name="Not A Station", code="ZZQ"),
+                create_amtrak_station_data(name="New York Penn Station", code="NYP"),
+            ],
+        )
+        empire_train = create_amtrak_train_data(
+            train_num="284",
+            route="Empire Service",
+            stations=[
+                create_amtrak_station_data(name="Albany-Rensselaer", code="ALB"),
+                create_amtrak_station_data(name="Also Not A Station", code="AAQ"),
+                create_amtrak_station_data(name="Not A Station", code="ZZQ"),
+            ],
+        )
+
+        unmapped = collector._unmapped_stations([nec_train, empire_train])
+
+        assert unmapped == {
+            "AAQ": "Also Not A Station",
+            "ZZQ": "Not A Station",
+        }, f"Expected only the two fake codes, deduplicated across trains: {unmapped}"
+        assert list(unmapped) == sorted(unmapped), f"Codes not sorted: {list(unmapped)}"
+
+    def test_unmapped_stations_empty_for_fully_mapped_trains(self, collector):
+        """A train whose every stop is mapped yields no warning payload."""
+        train = create_amtrak_train_data(stops_at_nyp=True)
+        assert collector._unmapped_stations([train]) == {}
+        assert collector._unmapped_stations([]) == {}
+
+    async def test_discovery_warns_about_unmapped_stations(
+        self, collector, mock_client
+    ):
+        """discover_trains logs amtrak_unmapped_stations once per run, naming
+        each unmapped stop on the trains it discovered."""
+        hub_train = create_amtrak_train_data(
+            train_num="93",
+            stations=[
+                create_amtrak_station_data(name="New York Penn Station", code="NYP"),
+                create_amtrak_station_data(name="Not A Station", code="ZZQ"),
+            ],
+        )
+        mock_client.get_all_trains.return_value = {"93": [hub_train]}
+        collector.client = mock_client
+
+        with capture_logs() as captured:
+            result = await collector.discover_trains()
+
+        assert result == ["93-5"]
+        warnings = [e for e in captured if e["event"] == "amtrak_unmapped_stations"]
+        assert len(warnings) == 1, f"Expected one warning, got: {captured}"
+        assert warnings[0]["log_level"] == "warning"
+        assert warnings[0]["stations"] == {"ZZQ": "Not A Station"}
+
+    async def test_discovery_does_not_warn_when_all_stops_are_mapped(
+        self, collector, mock_client
+    ):
+        """No warning when every stop on every discovered train is mapped, and
+        none for undiscovered trains (e.g. VIA Rail trains, whose Canadian stops
+        TrackRat does not track, never pass a discovery hub)."""
+        via_train = create_amtrak_train_data(
+            train_num="VIA65",
+            stations=[
+                create_amtrak_station_data(name="Ottawa", code="OTTW"),
+                create_amtrak_station_data(name="Toronto Union", code="TRTO"),
+            ],
+        )
+        mock_client.get_all_trains.return_value = {
+            "2150": [create_amtrak_train_data(stops_at_nyp=True)],
+            "VIA65": [via_train],
+        }
+        collector.client = mock_client
+
+        with capture_logs() as captured:
+            result = await collector.discover_trains()
+
+        assert result == ["2150-5"]
+        warnings = [e for e in captured if e["event"] == "amtrak_unmapped_stations"]
+        assert warnings == [], f"Unexpected unmapped-station warning: {warnings}"

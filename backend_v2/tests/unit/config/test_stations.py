@@ -7,9 +7,12 @@ NJT GTFS stop mappings, and station coordinate validity.
 
 import pytest
 
+import trackrat.config.stations as stations_config
 from trackrat.config.stations import (
+    AMTRAK_STATION_NAMES,
     AMTRAK_TO_INTERNAL_STATION_MAP,
     CROSS_MODAL_HUBS,
+    INTERNAL_TO_AMTRAK_STATION_MAP,
     INTERNAL_TO_MNR_GTFS_STOP_MAP,
     INTERNAL_TO_SUBWAY_GTFS_STOP_MAP,
     MNR_GTFS_STOP_TO_INTERNAL_MAP,
@@ -135,13 +138,14 @@ class TestStationMapping:
                 code in mapped_internal_codes
             ), f"Internal code {code} missing from mapping"
 
-    def test_multiple_amtrak_codes_to_same_internal(self):
-        """Test that multiple Amtrak codes can map to the same internal code."""
-        # Expected: NWK (Newark Penn) and EWR (Newark Airport) both map to NP
+    def test_newark_airport_is_not_folded_into_newark_penn(self):
+        """NWK and EWR are separate stops ~5 minutes apart. Mapping both to NP
+        made a southbound train's later EWR stop overwrite its NWK row, so
+        Newark Penn showed Newark Airport's times (issue #1866). EWR maps to
+        NA, the Newark Airport code NJT already uses."""
         assert AMTRAK_TO_INTERNAL_STATION_MAP["NWK"] == "NP"
-        assert AMTRAK_TO_INTERNAL_STATION_MAP["EWR"] == "NP"
-
-        # This is correct behavior - both Newark stations map to Newark Penn internally
+        assert AMTRAK_TO_INTERNAL_STATION_MAP["EWR"] == "NA"
+        assert get_station_name("NA") == "Newark Airport"
 
     def test_mapping_keys_format(self):
         """Test that all Amtrak station codes follow expected format."""
@@ -156,9 +160,13 @@ class TestStationMapping:
             ), f"Amtrak code {amtrak_code} unexpected length"
 
     def test_mapping_values_format(self):
-        """Test that all internal codes follow expected format."""
+        """Test that all internal codes follow expected format.
+
+        Internal codes are 2-3 letters, except where the Amtrak code is
+        already another system's internal code: those take a state suffix
+        (MIDPA, ASDVA — PATCO owns ASD) so the stations stay distinct.
+        """
         for internal_code in AMTRAK_TO_INTERNAL_STATION_MAP.values():
-            # Should be uppercase letters, typically 2 characters
             assert (
                 internal_code.isupper()
             ), f"Internal code {internal_code} not uppercase"
@@ -166,7 +174,7 @@ class TestStationMapping:
                 internal_code.isalpha()
             ), f"Internal code {internal_code} contains non-letters"
             assert (
-                1 <= len(internal_code) <= 3
+                1 <= len(internal_code) <= 5
             ), f"Internal code {internal_code} unexpected length"
 
     @pytest.mark.parametrize(
@@ -202,6 +210,128 @@ class TestStationMapping:
             if result is not None:
                 assert isinstance(result, str)
                 assert len(result) > 0
+
+    @pytest.mark.parametrize(
+        "amtrak_code,expected_internal,expected_name",
+        [
+            # Wrong key: "BPT" is not an Amtrak code (it is LIRR Bellport)
+            ("BRP", "BRP", "Bridgeport"),
+            # Wrong key: Amtrak sends GRV; GVL is the existing internal code
+            ("GRV", "GVL", "Greenville"),
+            # MID is Middletown, PA — was mislabeled "Middletown, CT", which has
+            # no Amtrak service; clients already use MIDPA
+            ("MID", "MIDPA", "Middletown PA"),
+            # Keystone stops clients already listed but the backend dropped
+            ("ELT", "ELT", "Elizabethtown"),
+            ("MJY", "MJY", "Mount Joy"),
+            # Ashland, VA: PATCO owns ASD, so it takes a state suffix
+            ("ASD", "ASDVA", "Ashland, VA"),
+            ("NEW", "NEW", "Newton, KS"),
+            # San Joaquins stops (absent from Amtrak's own GTFS)
+            ("ACA", "ACA", "Antioch-Pittsburg"),
+            ("MOD", "MOD", "Modesto"),
+            ("TRK", "TRK", "Turlock-Denair"),
+            ("MDR", "MDR", "Madera"),
+            ("COC", "COC", "Corcoran"),
+            ("WAC", "WAC", "Wasco"),
+            # Canadian stops: the feed now sends VIA codes for these
+            ("MTRL", "MTR", "Montreal"),
+            ("SLAM", "SLQ", "St-Lambert"),
+            ("TRTO", "TWO", "Toronto"),
+            ("OAKV", "OKL", "Oakville"),
+            ("ALDR", "AST", "Aldershot"),
+            ("GRIM", "GMS", "Grimsby"),
+            ("SCAT", "SCA", "St. Catherines"),
+            ("NIAG", "NFS", "Niagara Falls"),
+            ("VCVR", "VAC", "Vancouver, BC"),
+        ],
+    )
+    def test_feed_codes_for_previously_dropped_stops(
+        self, amtrak_code, expected_internal, expected_name
+    ):
+        """Every code here appeared on live Amtrak trains but had no mapping,
+        so the collector dropped the stop (issue #1866: Bridgeport missing
+        from train 93). Each must map, round-trip, and render with a name
+        and a map position."""
+        internal = map_amtrak_station_code(amtrak_code)
+        assert (
+            internal == expected_internal
+        ), f"{amtrak_code} mapped to {internal!r}, expected {expected_internal!r}"
+        assert INTERNAL_TO_AMTRAK_STATION_MAP[internal] == amtrak_code, (
+            f"{internal} reverse-maps to "
+            f"{INTERNAL_TO_AMTRAK_STATION_MAP.get(internal)!r}, expected {amtrak_code!r}"
+        )
+        assert get_station_name(internal) == expected_name
+        assert internal in STATION_COORDINATES, f"{internal} has no coordinates"
+
+    def test_reverse_map_is_exact_inverse(self):
+        """INTERNAL_TO_AMTRAK_STATION_MAP must invert the forward map exactly.
+        Validation and the pattern scheduler translate internal codes back to
+        Amtrak codes, so a stale reverse entry (e.g. BRP -> BPT) silently
+        breaks those lookups."""
+        inverted = {v: k for k, v in AMTRAK_TO_INTERNAL_STATION_MAP.items()}
+        assert len(inverted) == len(AMTRAK_TO_INTERNAL_STATION_MAP), (
+            "Two Amtrak codes share one internal code, so one stop would "
+            "overwrite the other on any train serving both"
+        )
+        mismatches = {
+            internal: (INTERNAL_TO_AMTRAK_STATION_MAP.get(internal), amtrak)
+            for internal, amtrak in inverted.items()
+            if INTERNAL_TO_AMTRAK_STATION_MAP.get(internal) != amtrak
+        }
+        assert mismatches == {}, f"internal: (reverse, expected): {mismatches}"
+        assert set(INTERNAL_TO_AMTRAK_STATION_MAP) == set(inverted)
+
+    def test_internal_codes_shared_with_other_systems_are_intentional(self):
+        """An Amtrak internal code that is also another system's station code
+        merges the two in STATION_NAMES and departure queries. That is right
+        for the same physical station (NJT's NEC stops, MBTA's shared
+        terminals) and wrong otherwise — identity-mapping Amtrak ASD (Ashland,
+        VA) would have shown its trains at PATCO's Ashland. New overlaps must
+        be added here deliberately, or the Amtrak code given a state suffix."""
+        other_system_names = [
+            getattr(stations_config, name)
+            for name in dir(stations_config)
+            if name.endswith("_STATION_NAMES") and name != "AMTRAK_STATION_NAMES"
+        ]
+        shared = {
+            internal
+            for internal in AMTRAK_TO_INTERNAL_STATION_MAP.values()
+            if any(internal in names for names in other_system_names)
+        }
+        assert shared == {
+            # NJT Northeast Corridor stations
+            "NY",
+            "NP",
+            "NA",
+            "MP",
+            "NB",
+            "PJ",
+            "TR",
+            "PH",
+            "WI",
+            "BL",
+            "BA",
+            # MBTA stations Amtrak also serves
+            "BOS",
+            "BBY",
+            "PVD",
+            "RTE",
+            "WOR",
+        }
+
+    def test_every_amtrak_internal_code_has_a_name(self):
+        """A mapped stop with no name renders as its raw code in every client."""
+        unnamed = sorted(
+            internal
+            for internal in set(AMTRAK_TO_INTERNAL_STATION_MAP.values())
+            if get_station_name(internal) == internal
+        )
+        assert unnamed == [], f"Amtrak internal codes without a name: {unnamed}"
+        orphaned = sorted(
+            set(AMTRAK_STATION_NAMES) - set(AMTRAK_TO_INTERNAL_STATION_MAP.values())
+        )
+        assert orphaned == [], f"Amtrak names no mapping can produce: {orphaned}"
 
 
 class TestPathStopsByOriginDestination:

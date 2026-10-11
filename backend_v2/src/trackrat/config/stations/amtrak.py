@@ -28,6 +28,7 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "PVD": "Providence",
     "WLY": "Westerly",
     "ALX": "Alexandria",
+    "ASDVA": "Ashland, VA",
     "CVS": "Charlottesville",
     "LOR": "Lorton",
     "MSS": "Manassas",
@@ -152,6 +153,7 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "BHM": "Birmingham",
     "MOE": "Mobile",
     # California Amtrak stations
+    "ACA": "Antioch-Pittsburg",
     "ANA": "Anaheim",
     "ARC": "Arcata",
     "ARN": "Auburn",
@@ -163,6 +165,7 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "CIC": "Chico",
     "CLM": "Claremont",
     "CML": "Camarillo",
+    "COC": "Corcoran",
     "COX": "Colfax",
     "CPN": "Carpinteria",
     "CWT": "Chatsworth",
@@ -187,6 +190,8 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "LPS": "Lompoc-Surf",
     "LVS": "Las Vegas",
     "MCD": "Merced",
+    "MDR": "Madera",
+    "MOD": "Modesto",
     "MPK": "Moorpark",
     "MRV": "Marysville",
     "MTZ": "Martinez",
@@ -218,10 +223,12 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "SNS": "Salinas",
     "SOL": "Solana Beach",
     "SUI": "Suisun-Fairfield",
+    "TRK": "Turlock-Denair",
     "VAL": "Vallejo",
     "VEC": "Ventura",
     "VNC": "Van Nuys",
     "VRV": "Victorville",
+    "WAC": "Wasco",
     "WNN": "Winnemucca",
     "WTS": "Willits Calif Western Railroad Depot",
     # Great Lakes Amtrak stations
@@ -263,6 +270,7 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "CWH": "Cornwells Heights",
     "DOW": "Downingtown",
     "EDG": "Edgewood",
+    "ELT": "Elizabethtown",
     "EXT": "Exton",
     "GNB": "Greensburg",
     "GUI": "Guilford",
@@ -273,7 +281,8 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "LAB": "Latrobe",
     "LEW": "Lewistown",
     "MDS": "Madison, CT",
-    "MID": "Middletown, CT",
+    "MIDPA": "Middletown PA",
+    "MJY": "Mount Joy",
     "MRB": "Martinsburg",
     "MSA": "Martin Airport",
     "MYS": "Mystic",
@@ -405,6 +414,7 @@ AMTRAK_STATION_NAMES: dict[str, str] = {
     "MOT": "Minot",
     "MTP": "Mt. Pleasant",
     "MVN": "Malvern",
+    "NEW": "Newton, KS",
     "NIB": "New Iberia",
     "NOR": "Norman",
     "OSC": "Osceola",
@@ -608,7 +618,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "PJC": "PJ",  # Princeton Junction
     "MET": "MP",  # Metropark
     "NBK": "NB",  # New Brunswick
-    "EWR": "NP",  # Newark Airport → Newark Penn
+    "EWR": "NA",  # Newark Airport
     "WAS": "WS",  # Washington Union Station
     "PHL": "PH",  # Philadelphia
     "WIL": "WI",  # Wilmington
@@ -617,7 +627,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "BOS": "BOS",  # Boston South Station
     "BBY": "BBY",  # Boston Back Bay
     # Additional Amtrak stations
-    "BPT": "BRP",  # Bridgeport, CT
+    "BRP": "BRP",  # Bridgeport, CT
     "HFD": "HFD",  # Hartford, CT
     "MDN": "MDN",  # Meriden, CT
     "NHV": "NHV",  # New Haven, CT
@@ -639,6 +649,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "PVD": "PVD",  # Providence, RI
     "WLY": "WLY",  # Westerly, RI
     "ALX": "ALX",  # Alexandria, VA
+    "ASD": "ASDVA",  # Ashland, VA (PATCO owns ASD)
     "CVS": "CVS",  # Charlottesville, VA
     "LOR": "LOR",  # Lorton, VA
     "MSS": "MSS",  # Manassas, VA
@@ -686,7 +697,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "SAL": "SAL",  # Salisbury, NC
     "GAS": "GAS",  # Gastonia, NC
     "SPB": "SPB",  # Spartanburg, SC
-    "GVL": "GVL",  # Greenville, SC
+    "GRV": "GVL",  # Greenville, SC
     "ATL": "ATL",  # Atlanta, GA
     "GAI": "GAI",  # Gainesville, GA, GA
     "TOC": "TOC",  # Toccoa, GA
@@ -758,7 +769,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "SYR": "SYR",  # Syracuse
     "ROC": "ROC",  # Rochester
     "BUF": "BUF",  # Buffalo Depew
-    "MTR": "MTR",  # Montreal
+    "MTRL": "MTR",  # Montreal
     "POR": "POR",  # Portland ME
     "ESX": "ESX",  # Essex Junction
     "BTN": "BTN",  # Burlington VT
@@ -770,6 +781,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "BHM": "BHM",  # Birmingham
     "MOE": "MOE",  # Mobile
     # California
+    "ACA": "ACA",  # Antioch-Pittsburg
     "ANA": "ANA",  # Anaheim
     "ARC": "ARC",  # Arcata
     "ARN": "ARN",  # Auburn
@@ -781,6 +793,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "CIC": "CIC",  # Chico
     "CLM": "CLM",  # Claremont
     "CML": "CML",  # Camarillo
+    "COC": "COC",  # Corcoran
     "COX": "COX",  # Colfax
     "CPN": "CPN",  # Carpinteria
     "CWT": "CWT",  # Chatsworth
@@ -805,6 +818,8 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "LPS": "LPS",  # Lompoc-Surf
     "LVS": "LVS",  # Las Vegas
     "MCD": "MCD",  # Merced
+    "MDR": "MDR",  # Madera
+    "MOD": "MOD",  # Modesto
     "MPK": "MPK",  # Moorpark
     "MRV": "MRV",  # Marysville
     "MTZ": "MTZ",  # Martinez
@@ -836,10 +851,12 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "SNS": "SNS",  # Salinas
     "SOL": "SOL",  # Solana Beach
     "SUI": "SUI",  # Suisun-Fairfield
+    "TRK": "TRK",  # Turlock-Denair
     "VAL": "VAL",  # Vallejo
     "VEC": "VEC",  # Ventura
     "VNC": "VNC",  # Van Nuys
     "VRV": "VRV",  # Victorville
+    "WAC": "WAC",  # Wasco
     "WNN": "WNN",  # Winnemucca
     "WTS": "WTS",  # Willits Calif Western Railroad Depot
     # Great Lakes
@@ -880,6 +897,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "CWH": "CWH",  # Cornwells Heights
     "DOW": "DOW",  # Downingtown
     "EDG": "EDG",  # Edgewood
+    "ELT": "ELT",  # Elizabethtown, PA
     "EXT": "EXT",  # Exton
     "GNB": "GNB",  # Greensburg
     "GUI": "GUI",  # Guilford
@@ -890,7 +908,8 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "LAB": "LAB",  # Latrobe
     "LEW": "LEW",  # Lewistown
     "MDS": "MDS",  # Madison, CT
-    "MID": "MID",  # Middletown, CT
+    "MID": "MIDPA",  # Middletown, PA
+    "MJY": "MJY",  # Mount Joy, PA
     "MRB": "MRB",  # Martinsburg
     "MSA": "MSA",  # Martin Airport
     "MYS": "MYS",  # Mystic
@@ -1019,6 +1038,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "MOT": "MOT",  # Minot
     "MTP": "MTP",  # Mt. Pleasant
     "MVN": "MVN",  # Malvern
+    "NEW": "NEW",  # Newton, KS
     "NIB": "NIB",  # New Iberia
     "NOR": "NOR",  # Norman
     "OSC": "OSC",  # Osceola
@@ -1054,7 +1074,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "YAZ": "YAZ",  # Yazoo City
     # New England
     "AMS": "AMS",  # Amsterdam
-    "AST": "AST",  # Aldershot
+    "ALDR": "AST",  # Aldershot
     "BFX": "BFX",  # Buffalo
     "BLF": "BLF",  # Bellows Falls
     "BON": "BON",  # Boston North
@@ -1067,15 +1087,15 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "FRE": "FRE",  # Freeport
     "FTC": "FTC",  # Ticonderoga
     "GFD": "GFD",  # Greenfield
-    "GMS": "GMS",  # Grimsby
+    "GRIM": "GMS",  # Grimsby
     "HHL": "HHL",  # Haverhill
     "HLK": "HLK",  # Holyoke
     "MBY": "MBY",  # Middlebury
     "MPR": "MPR",  # Montpelier-Berlin
     "NFL": "NFL",  # Niagara Falls
-    "NFS": "NFS",  # Niagara Falls
+    "NIAG": "NFS",  # Niagara Falls
     "NHT": "NHT",  # Northampton
-    "OKL": "OKL",  # Oakville
+    "OAKV": "OKL",  # Oakville
     "ORB": "ORB",  # Old Orchard Beach
     "PIT": "PIT",  # Pittsfield
     "PLB": "PLB",  # Plattsburgh
@@ -1087,9 +1107,9 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "RUD": "RUD",  # Rutland
     "SAB": "SAB",  # St. Albans
     "SAO": "SAO",  # Saco
-    "SCA": "SCA",  # St. Catherines
-    "SLQ": "SLQ",  # St-Lambert
-    "TWO": "TWO",  # Toronto
+    "SCAT": "SCA",  # St. Catherines
+    "SLAM": "SLQ",  # St-Lambert
+    "TRTO": "TWO",  # Toronto
     "UCA": "UCA",  # Utica
     "VRN": "VRN",  # Ferrisburgh
     "WAB": "WAB",  # Waterbury-Stowe
@@ -1128,7 +1148,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "SPT": "SPT",  # Sandpoint
     "STW": "STW",  # Stanwood
     "TUK": "TUK",  # Tukwila
-    "VAC": "VAC",  # Vancouver
+    "VCVR": "VAC",  # Vancouver
     "VAN": "VAN",  # Vancouver
     "WEN": "WEN",  # Wenatchee
     "WGL": "WGL",  # West Glacier
@@ -1214,6 +1234,7 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
 INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "NY": "NYP",
     "NP": "NWK",
+    "NA": "EWR",
     "TR": "TRE",
     "PJ": "PJC",
     "MP": "MET",
@@ -1226,7 +1247,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "BOS": "BOS",
     "BBY": "BBY",
     # Additional Amtrak stations
-    "BRP": "BPT",  # Bridgeport, CT
+    "BRP": "BRP",  # Bridgeport, CT
     "HFD": "HFD",  # Hartford, CT
     "MDN": "MDN",  # Meriden, CT
     "NHV": "NHV",  # New Haven, CT
@@ -1248,6 +1269,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "PVD": "PVD",  # Providence, RI
     "WLY": "WLY",  # Westerly, RI
     "ALX": "ALX",  # Alexandria, VA
+    "ASDVA": "ASD",  # Ashland, VA
     "CVS": "CVS",  # Charlottesville, VA
     "LOR": "LOR",  # Lorton, VA
     "MSS": "MSS",  # Manassas, VA
@@ -1295,7 +1317,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "SAL": "SAL",  # Salisbury, NC
     "GAS": "GAS",  # Gastonia, NC
     "SPB": "SPB",  # Spartanburg, SC
-    "GVL": "GVL",  # Greenville, SC
+    "GVL": "GRV",  # Greenville, SC
     "ATL": "ATL",  # Atlanta, GA
     "GAI": "GAI",  # Gainesville, GA, GA
     "TOC": "TOC",  # Toccoa, GA
@@ -1367,7 +1389,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "SYR": "SYR",  # Syracuse
     "ROC": "ROC",  # Rochester
     "BUF": "BUF",  # Buffalo Depew
-    "MTR": "MTR",  # Montreal
+    "MTR": "MTRL",  # Montreal
     "POR": "POR",  # Portland ME
     "ESX": "ESX",  # Essex Junction
     "BTN": "BTN",  # Burlington VT
@@ -1379,6 +1401,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "BHM": "BHM",  # Birmingham
     "MOE": "MOE",  # Mobile
     # California
+    "ACA": "ACA",  # Antioch-Pittsburg
     "ANA": "ANA",  # Anaheim
     "ARC": "ARC",  # Arcata
     "ARN": "ARN",  # Auburn
@@ -1390,6 +1413,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "CIC": "CIC",  # Chico
     "CLM": "CLM",  # Claremont
     "CML": "CML",  # Camarillo
+    "COC": "COC",  # Corcoran
     "COX": "COX",  # Colfax
     "CPN": "CPN",  # Carpinteria
     "CWT": "CWT",  # Chatsworth
@@ -1414,6 +1438,8 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "LPS": "LPS",  # Lompoc-Surf
     "LVS": "LVS",  # Las Vegas
     "MCD": "MCD",  # Merced
+    "MDR": "MDR",  # Madera
+    "MOD": "MOD",  # Modesto
     "MPK": "MPK",  # Moorpark
     "MRV": "MRV",  # Marysville
     "MTZ": "MTZ",  # Martinez
@@ -1445,10 +1471,12 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "SNS": "SNS",  # Salinas
     "SOL": "SOL",  # Solana Beach
     "SUI": "SUI",  # Suisun-Fairfield
+    "TRK": "TRK",  # Turlock-Denair
     "VAL": "VAL",  # Vallejo
     "VEC": "VEC",  # Ventura
     "VNC": "VNC",  # Van Nuys
     "VRV": "VRV",  # Victorville
+    "WAC": "WAC",  # Wasco
     "WNN": "WNN",  # Winnemucca
     "WTS": "WTS",  # Willits Calif Western Railroad Depot
     # Great Lakes
@@ -1489,6 +1517,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "CWH": "CWH",  # Cornwells Heights
     "DOW": "DOW",  # Downingtown
     "EDG": "EDG",  # Edgewood
+    "ELT": "ELT",  # Elizabethtown, PA
     "EXT": "EXT",  # Exton
     "GNB": "GNB",  # Greensburg
     "GUI": "GUI",  # Guilford
@@ -1499,7 +1528,8 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "LAB": "LAB",  # Latrobe
     "LEW": "LEW",  # Lewistown
     "MDS": "MDS",  # Madison, CT
-    "MID": "MID",  # Middletown, CT
+    "MIDPA": "MID",  # Middletown, PA
+    "MJY": "MJY",  # Mount Joy, PA
     "MRB": "MRB",  # Martinsburg
     "MSA": "MSA",  # Martin Airport
     "MYS": "MYS",  # Mystic
@@ -1628,6 +1658,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "MOT": "MOT",  # Minot
     "MTP": "MTP",  # Mt. Pleasant
     "MVN": "MVN",  # Malvern
+    "NEW": "NEW",  # Newton, KS
     "NIB": "NIB",  # New Iberia
     "NOR": "NOR",  # Norman
     "OSC": "OSC",  # Osceola
@@ -1663,7 +1694,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "YAZ": "YAZ",  # Yazoo City
     # New England
     "AMS": "AMS",  # Amsterdam
-    "AST": "AST",  # Aldershot
+    "AST": "ALDR",  # Aldershot
     "BFX": "BFX",  # Buffalo
     "BLF": "BLF",  # Bellows Falls
     "BON": "BON",  # Boston North
@@ -1676,15 +1707,15 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "FRE": "FRE",  # Freeport
     "FTC": "FTC",  # Ticonderoga
     "GFD": "GFD",  # Greenfield
-    "GMS": "GMS",  # Grimsby
+    "GMS": "GRIM",  # Grimsby
     "HHL": "HHL",  # Haverhill
     "HLK": "HLK",  # Holyoke
     "MBY": "MBY",  # Middlebury
     "MPR": "MPR",  # Montpelier-Berlin
     "NFL": "NFL",  # Niagara Falls
-    "NFS": "NFS",  # Niagara Falls
+    "NFS": "NIAG",  # Niagara Falls
     "NHT": "NHT",  # Northampton
-    "OKL": "OKL",  # Oakville
+    "OKL": "OAKV",  # Oakville
     "ORB": "ORB",  # Old Orchard Beach
     "PIT": "PIT",  # Pittsfield
     "PLB": "PLB",  # Plattsburgh
@@ -1696,9 +1727,9 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "RUD": "RUD",  # Rutland
     "SAB": "SAB",  # St. Albans
     "SAO": "SAO",  # Saco
-    "SCA": "SCA",  # St. Catherines
-    "SLQ": "SLQ",  # St-Lambert
-    "TWO": "TWO",  # Toronto
+    "SCA": "SCAT",  # St. Catherines
+    "SLQ": "SLAM",  # St-Lambert
+    "TWO": "TRTO",  # Toronto
     "UCA": "UCA",  # Utica
     "VRN": "VRN",  # Ferrisburgh
     "WAB": "WAB",  # Waterbury-Stowe
@@ -1737,7 +1768,7 @@ INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "SPT": "SPT",  # Sandpoint
     "STW": "STW",  # Stanwood
     "TUK": "TUK",  # Tukwila
-    "VAC": "VAC",  # Vancouver
+    "VAC": "VCVR",  # Vancouver
     "VAN": "VAN",  # Vancouver
     "WEN": "WEN",  # Wenatchee
     "WGL": "WGL",  # West Glacier

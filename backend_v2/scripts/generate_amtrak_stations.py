@@ -27,7 +27,7 @@ EXISTING_STATIONS = {
     "NYP", "NWK", "TRE", "PJC", "MET", "NBK", "EWR", "WAS", "PHL", "WIL",
     "BAL", "BWI", "BOS", "BBY",
     # Connecticut/New England
-    "BPT", "HFD", "MDN", "NHV", "NLC", "OSB", "STM", "WFD", "WNL",
+    "BRP", "HFD", "MDN", "NHV", "NLC", "OSB", "STM", "WFD", "WNL",
     # Maryland
     "ABE", "NCR",
     # Massachusetts
@@ -60,8 +60,9 @@ EXISTING_STATIONS = {
     "ALB", "SYR", "ROC", "BUF", "MTR", "POR", "ESX", "BTN",
     # Virginia / Southeast (already added)
     "LYH", "NPN", "WBG", "CLB", "BHM", "MOE",
-    # Codes that conflict with existing NJT/PATH/PATCO
-    "ASD", "BRP", "ELT", "GRV", "MJY", "NEW",
+    # Mapped by hand (ASD -> ASDVA because PATCO owns ASD, GRV -> GVL,
+    # MID -> MIDPA)
+    "ASD", "ELT", "GRV", "MID", "MJY", "NEW",
 }
 
 
