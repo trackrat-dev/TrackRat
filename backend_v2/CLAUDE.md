@@ -410,6 +410,8 @@ The APScheduler runs in-process and handles:
   - MIN_OCCURRENCES: 2 times in 3 weeks
   - TIME_VARIANCE_THRESHOLD: 35 minutes
   - Creates SCHEDULED records for trains not yet OBSERVED
+  - Drops patterns whose train number the stored Amtrak GTFS knows but doesn't run that day (and deletes an already-projected SCHEDULED row), so a timetable change can't leave phantoms (issue #1881). Fails open for numbers absent from GTFS (San Joaquins) and dates the feed doesn't cover. Before 03:00 ET a pattern may also match the previous GTFS service day: Amtrak files late-evening Central/Pacific departures under their local day with the Eastern clock wrapped (Sunset Limited Fri 22:00 PT = Fri "1:00:00", dated Sat by TrackRat)
+  - Never displayed as OBSERVED until discovery/JIT actually sees the train (`get_effective_observation_type`), so departures' stale-SCHEDULED filter hides an unseen projection near its departure
 
 #### Transit Analytics System
 

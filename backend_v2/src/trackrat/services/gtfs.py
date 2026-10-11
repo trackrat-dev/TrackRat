@@ -1711,6 +1711,52 @@ class GTFSService:
 
         return active_services
 
+    async def get_train_ids_not_running(
+        self,
+        db: AsyncSession,
+        data_source: str,
+        train_ids: Iterable[str],
+        target_date: date,
+    ) -> set[str] | None:
+        """Return the train_ids the stored timetable says do not run on target_date.
+
+        A train_id is returned only when the feed *knows* its train number (some
+        trip carries it) yet no trip with that number has service on
+        ``target_date``. Numbers the feed has never heard of are not returned:
+        absence from the feed is not evidence the train doesn't run — Amtrak's
+        national GTFS omits whole state-supported services (the San Joaquins)
+        that are real and live (issue #1881).
+
+        Returns ``None`` when the feed has no service at all on ``target_date``
+        (no feed stored, or its calendar does not cover the date). That is
+        "unknown", not "nothing runs", and callers must fail open on it.
+        """
+        service_ids = await self.get_active_service_ids(db, data_source, target_date)
+        if not service_ids:
+            return None
+
+        result = await db.execute(
+            select(GTFSTrip.train_id, GTFSTrip.service_id)
+            .where(
+                GTFSTrip.data_source == data_source,
+                GTFSTrip.train_id.is_not(None),
+            )
+            .distinct()
+        )
+        known: set[str] = set()
+        running: set[str] = set()
+        for number, service_id in result.all():
+            known.add(number)
+            if service_id in service_ids:
+                running.add(number)
+
+        return {
+            train_id
+            for train_id in train_ids
+            if (number := _strip_source_prefix(train_id, data_source)) in known
+            and number not in running
+        }
+
     async def get_path_route_stop_times(
         self,
         db: AsyncSession,
