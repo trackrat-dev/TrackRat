@@ -17,9 +17,10 @@ from enum import Enum
 from typing import Any
 
 import httpx
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, delete, exists, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 from structlog import get_logger
 
 from trackrat.config.stations import (
@@ -2260,10 +2261,19 @@ class GTFSService:
             if time_from is not None
             else None
         )
+        later_stop = aliased(GTFSStopTime)
         where_clauses = [
             GTFSTrip.data_source == data_source,
             GTFSTrip.service_id.in_(service_ids),
             GTFSStopTime.station_code.in_(expand_station_codes(from_station)),
+            # A trip's last stop is where it arrives and terminates, not a
+            # departure (issue #1882). Filtered in SQL so terminating trips
+            # can't consume the row cap below at terminals (GCT, Hoboken,
+            # SEPTA's Center City handover stations).
+            exists().where(
+                later_stop.trip_id == GTFSStopTime.trip_id,
+                later_stop.stop_sequence > GTFSStopTime.stop_sequence,
+            ),
         ]
         if time_from_cutoff is not None:
             where_clauses.append(GTFSStopTime.departure_time >= time_from_cutoff)

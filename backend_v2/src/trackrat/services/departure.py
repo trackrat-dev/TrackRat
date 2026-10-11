@@ -50,6 +50,7 @@ from trackrat.utils.train import (
     get_effective_observation_type,
     is_amtrak_train,
     is_njt_stop_cancelled,
+    journey_terminates_at_station,
     njt_cancellation_reason,
     normalize_njt_destination,
     parse_njt_line_code,
@@ -358,32 +359,21 @@ class DepartureService:
 
     @staticmethod
     def _effective_updated_time(
-        journey: TrainJourney,
-        from_stop: JourneyStop,
-        sorted_stops: list[JourneyStop],
+        journey: TrainJourney, from_stop: JourneyStop
     ) -> datetime | None:
         """Live time to display for a from-stop on a departure board.
 
         Routes through the canonical effective_njt_updated_times helper
         (issue #1505) so the NJT TIME/DEP_TIME inversion correction lives in
         exactly one place: at intermediate stops the max() surfaces the live
-        delayed estimate; at the journey terminal the max() must be skipped —
-        DEP_TIME there can be a later turnaround departure that inflates the
-        displayed time past the train's true arrival (issue #1492) — and the
-        meaningful live time for a terminating train is its arrival.
-        terminal_stop_index() only trusts positional terminal detection on
-        fully-sequenced journeys, so partially-collected journeys
-        conservatively keep the max().
+        delayed estimate. A from-stop is never a proven terminal — the boards
+        skip journeys that terminate at the board station (issue #1882) — so
+        the #1492 terminal exemption never applies here; a partially collected
+        journey's last-sorted stop conservatively keeps the max().
         """
-        terminal_idx = terminal_stop_index(sorted_stops, journey.terminal_station_code)
-        is_terminal = (
-            terminal_idx is not None and sorted_stops[terminal_idx] is from_stop
-        )
         eff_arrival, eff_departure = effective_njt_updated_times(
-            from_stop, journey.data_source, is_terminal=is_terminal
+            from_stop, journey.data_source
         )
-        if is_terminal:
-            return eff_arrival or eff_departure
         return eff_departure or eff_arrival
 
     @staticmethod
@@ -756,6 +746,17 @@ class DepartureService:
             if not from_stop or (to_station and not to_stop):
                 continue
 
+            # A journey that ends here arrives rather than departs: a from-only
+            # board listed it with the board station as its destination, and a
+            # SEPTA through-train twice at its handover station (issue #1882).
+            # A to-stop already implies a later stop, so this only changes
+            # from-only boards. Unsequenced (partially collected) journeys
+            # can't prove their terminal and are kept.
+            if journey_terminates_at_station(
+                sorted_stops, journey.terminal_station_code, from_codes
+            ):
+                continue
+
             # Calculate train position
             train_position = self._calculate_train_position(journey)
 
@@ -783,11 +784,8 @@ class DepartureService:
                     name=get_station_name(board_code),
                     scheduled_time=from_stop.scheduled_departure
                     or from_stop.scheduled_arrival,
-                    # NJT inversion correction with the #1492 terminal
-                    # exemption — see _effective_updated_time.
-                    updated_time=self._effective_updated_time(
-                        journey, from_stop, sorted_stops
-                    ),
+                    # NJT inversion correction — see _effective_updated_time.
+                    updated_time=self._effective_updated_time(journey, from_stop),
                     actual_time=from_stop.actual_departure or from_stop.actual_arrival,
                     track=from_stop.track,
                 ),
@@ -1083,6 +1081,13 @@ class DepartureService:
             if not from_stop or (to_station and not to_stop):
                 continue
 
+            # Terminating journeys arrive here, not depart (issue #1882) —
+            # same rule as get_departures.
+            if journey_terminates_at_station(
+                sorted_stops, journey.terminal_station_code, from_codes
+            ):
+                continue
+
             train_position = self._calculate_train_position(journey)
             departure = TrainDeparture(
                 train_id=journey.train_id,
@@ -1098,13 +1103,8 @@ class DepartureService:
                     name=get_station_name(from_station),
                     scheduled_time=from_stop.scheduled_departure
                     or from_stop.scheduled_arrival,
-                    # NJT inversion correction with the #1492 terminal
-                    # exemption — see _effective_updated_time. Terminating
-                    # trains DO land on this board (no to-station filter),
-                    # which is where the exemption matters.
-                    updated_time=self._effective_updated_time(
-                        journey, from_stop, sorted_stops
-                    ),
+                    # NJT inversion correction — see _effective_updated_time.
+                    updated_time=self._effective_updated_time(journey, from_stop),
                     actual_time=from_stop.actual_departure or from_stop.actual_arrival,
                     track=from_stop.track,
                 ),
