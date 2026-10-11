@@ -32,6 +32,12 @@
   // leaving it to a default, which wrangler warns about whenever it flips one.
   "workers_dev": false,
 
+  // Off for the same reason: when enabled, every uploaded version gets its own
+  // public `<version>-<worker>.<subdomain>.workers.dev` URL, another origin
+  // outside the trackrat.net zone. Unset, wrangler leaves whatever Cloudflare
+  // already has, so it must be set to be known.
+  "preview_urls": false,
+
   "assets": {
     "directory": "./dist/",
 

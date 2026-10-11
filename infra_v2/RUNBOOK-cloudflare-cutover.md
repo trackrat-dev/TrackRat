@@ -613,7 +613,8 @@ early.
    than degrading to a `workers.dev` one. It is now set to `false` on purpose
    (issue #1763): that fallback would not have helped, because `trackrat.net`
    users get nothing either way, and a `workers.dev` alias serves the same
-   version as the custom domains, so it is no preview slot.
+   version as the custom domains, so it is no preview slot. `preview_urls` is
+   `false` too, so no per-version `workers.dev` URL exists either.
 5. **Done (issue #1763).** After the soak, the `sync`, `cache-html` and
    `cache-assets` steps and the `_WEBPAGE_BUCKET` substitution were deleted
    from `cloudbuild-webpage.yaml`. This changed the pipeline only:
