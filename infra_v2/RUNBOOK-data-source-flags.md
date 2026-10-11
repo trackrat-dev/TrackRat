@@ -27,7 +27,6 @@ and production diverge deliberately and visibly in version control.
    passes only `environment` and `project_id`; every other value comes from the
    committed default. A `-var` override applied by hand is silently reverted by
    the next push to a deploy branch. This matches the existing discipline on
-   `consolidate_api_lb`, `frontend_via_cloudflare`, and
    `enable_cloudflare_tunnel`.
 2. **A source is enabled by its absence.** Codes must match `ALL_DATA_SOURCES`
    in the backend. `settings.py` ignores an unrecognized code rather than

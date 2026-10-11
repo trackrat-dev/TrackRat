@@ -1,12 +1,7 @@
 # Outputs
 
-output "load_balancer_ip" {
-  description = "External IP of the load balancer (staging only; production has no load balancer — it is fronted by the Cloudflare Tunnel)"
-  value       = try(google_compute_global_address.trackrat[0].address, "consolidated-into-webpage-lb")
-}
-
 output "api_url" {
-  description = "Public URL clients use to reach the API. In staging this is the Cloudflare-fronted staging-api.trackrat.net, which is deliberately NOT the name on the LB's managed cert (local.domain) — see the locals block in main.tf."
+  description = "Public URL clients use to reach the API. Both environments are fronted by a Cloudflare Tunnel; staging's hostname is staging-api.trackrat.net — see the locals block in main.tf."
   value       = "https://${var.domain != "" ? var.domain : local.public_api_domain}"
 }
 
