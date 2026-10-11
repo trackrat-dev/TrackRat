@@ -71,6 +71,15 @@ always prefer them for schedule-to-schedule comparisons (#1496: comparing
 the origin's live `DEP_TIME` against a stored schedule falsely expired every
 train delayed >10 min before departure).
 
+`DESTINATION` is **not** an identity signal (#1878): the schedule and
+real-time APIs spell one terminal differently ("Newark Penn" / "Newark Penn
+Station", "Long Branch" / "Long Branch with connecting service to Bay Head"),
+and NJT diverts running trains (New York → Hoboken). `_is_same_journey`
+decides identity by the origin's scheduled departure alone, and
+`update_journey_metadata` adopts the API's destination. Rejecting on
+destination expired 40–80 live trains a day, each re-expired after every
+discovery reactivation, without ever catching a different run.
+
 ### Consumer rules
 
 1. **Never read `updated_arrival`/`updated_departure` raw for NJT.** Route

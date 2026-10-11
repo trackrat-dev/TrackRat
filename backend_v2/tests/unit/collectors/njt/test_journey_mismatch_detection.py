@@ -160,16 +160,15 @@ class TestStaleOriginDetection:
         self, db_session: AsyncSession, journey_collector
     ):
         """
-        Test that actual journey mismatches are still detected correctly.
+        A genuinely different run under this train_id is still detected — by
+        its scheduled departure, not its destination (issue #1878).
 
-        Scenario: Train ID reused for a completely different journey.
-        - Journey 3879 originally NY → Trenton at 7:20 PM
-        - Train ID reused for a new journey with different destination/time
-        - Should correctly return False (different journey)
+        Scenario: Journey 3879 stored as NY → Trenton at 7:20 PM; the API
+        returns a NY → Long Branch run scheduled 45 minutes later.
         """
         base_time = now_et().replace(hour=19, minute=20, second=0, microsecond=0)
+        other_run_time = base_time + timedelta(minutes=45)
 
-        # Create journey for original run
         journey = TrainJourney(
             train_id="3879",
             journey_date=date.today(),
@@ -187,7 +186,6 @@ class TestStaleOriginDetection:
         db_session.add(journey)
         await db_session.flush()
 
-        # Create stops matching the journey
         stop = JourneyStop(
             journey_id=journey.id,
             journey_date=journey.journey_date,
@@ -199,49 +197,50 @@ class TestStaleOriginDetection:
         db_session.add(stop)
         await db_session.flush()
 
-        # API response for a DIFFERENT journey (different destination)
         builder = StopBuilder()
         api_response = create_stop_list_response(
             train_id="3879",
             line_code="NE",
-            destination="Long Branch",  # Different destination
+            destination="Long Branch",
             stops=[
                 builder.build_stop(
-                    "NY", "New York Penn Station", base_time.strftime(NJT_TIME_FORMAT)
+                    "NY",
+                    "New York Penn Station",
+                    other_run_time.strftime(NJT_TIME_FORMAT),
+                    sched_dep_date=other_run_time.strftime(NJT_TIME_FORMAT),
                 ),
             ],
         )
 
-        # Should return DESTINATION_MISMATCH - different destination
         result = await journey_collector._is_same_journey(
             db_session, journey, api_response
         )
 
-        assert (
-            result is JourneyMatchResult.DESTINATION_MISMATCH
-        ), "Different destination should be detected as a destination mismatch"
+        print(f"stored 19:20 Trenton vs API 20:05 Long Branch -> {result}")
+        assert result is JourneyMatchResult.DEPARTURE_TIME_MISMATCH, (
+            "A run scheduled 45 minutes apart is a different journey and must "
+            "be flagged by the departure-time check"
+        )
 
     @pytest.mark.asyncio
-    async def test_transit_center_suffix_not_treated_as_mismatch(
+    async def test_destination_change_alone_is_not_a_mismatch(
         self, db_session: AsyncSession, journey_collector
     ):
-        """A row merged/promoted from a SCHEDULED record carries NJT's
-        schedule-API destination ("TRENTON TRANSIT CENTER") while the
-        getTrainStopList feed returns the short name ("Trenton"). These name
-        the same station and must compare equal — otherwise the journey is
-        falsely expired on the next collection pass before
-        update_journey_metadata can heal the destination field (issue #1329).
         """
-        base_time = now_et().replace(hour=19, minute=20, second=0, microsecond=0)
+        Same scheduled departure, different destination is the same train
+        (issue #1878): NJT diverted Morris & Essex train 6620 from New York to
+        Hoboken. Only a timing skew may reject the API data.
+        """
+        base_time = now_et().replace(hour=17, minute=5, second=0, microsecond=0)
 
         journey = TrainJourney(
-            train_id="3865",
+            train_id="6620",
             journey_date=date.today(),
-            line_code="NE",
-            line_name="Northeast Corridor",
-            destination="TRENTON TRANSIT CENTER",  # schedule-API form (merged row)
-            origin_station_code="NY",
-            terminal_station_code="TR",
+            line_code="ME",
+            line_name="Morris & Essex",
+            destination="New York",
+            origin_station_code="DV",
+            terminal_station_code="NY",
             data_source="NJT",
             scheduled_departure=base_time,
             has_complete_journey=True,
@@ -254,8 +253,8 @@ class TestStaleOriginDetection:
         stop = JourneyStop(
             journey_id=journey.id,
             journey_date=journey.journey_date,
-            station_code="NY",
-            station_name="New York Penn Station",
+            station_code="DV",
+            station_name="Dover",
             stop_sequence=0,
             scheduled_departure=base_time,
         )
@@ -264,12 +263,15 @@ class TestStaleOriginDetection:
 
         builder = StopBuilder()
         api_response = create_stop_list_response(
-            train_id="3865",
-            line_code="NE",
-            destination="Trenton",  # real-time short form
+            train_id="6620",
+            line_code="ME",
+            destination="Hoboken",
             stops=[
                 builder.build_stop(
-                    "NY", "New York Penn Station", base_time.strftime(NJT_TIME_FORMAT)
+                    "DV",
+                    "Dover",
+                    base_time.strftime(NJT_TIME_FORMAT),
+                    sched_dep_date=base_time.strftime(NJT_TIME_FORMAT),
                 ),
             ],
         )
@@ -278,10 +280,10 @@ class TestStaleOriginDetection:
             db_session, journey, api_response
         )
 
+        print(f"stored New York vs API Hoboken, same 17:05 departure -> {result}")
         assert result is JourneyMatchResult.MATCH, (
-            "'TRENTON TRANSIT CENTER' (schedule API) and 'Trenton' (real-time) "
-            "name the same station and must not be flagged as a destination "
-            "mismatch"
+            "A diverted train (same scheduled departure, new destination) is "
+            "the same journey and must not be rejected"
         )
 
     @pytest.mark.asyncio
