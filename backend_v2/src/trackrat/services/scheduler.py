@@ -84,7 +84,7 @@ ACTIVE_JOURNEY_LOOKBACK_HOURS = 3
 # (~57% used) the entire time (issue #1826).
 #
 # On Container-Optimized OS the container's `/` is an overlay whose upper layer
-# lives under /var/lib/docker on the VM's 10 GB boot disk, so statvfs here
+# lives under /var/lib/docker on the VM's boot disk, so statvfs here
 # reports the filesystem that runs out — the same one `/health` and `/metrics`
 # read before #1344 moved them to the data disk.
 BOOT_DISK_PATH = "/"

@@ -29,14 +29,17 @@ resource "google_compute_instance_template" "trackrat" {
     source_image = data.google_compute_image.cos.self_link
     auto_delete  = true
     boot         = true
-    # COS minimum. Container images (~0.6GB) AND container logs live here
-    # (/var/lib/docker/containers); application *state* is on the data disk.
-    # The logs were the false premise in the original note: unrotated, they
-    # filled this disk in ~2 weeks and killed all log shipping for 19 days
-    # (issue #1825). They are bounded in backend_v2/docker-compose.yml now, so
-    # this stays at 10GB deliberately — growing it changes the instance
-    # template and forces another MIG rollout.
-    disk_size_gb = 10
+    # Container images, the COS toolbox (gcloud, used by the startup script)
+    # and container logs (/var/lib/docker/containers) live here; application
+    # *state* is on the data disk. Only COS's stateful partition is writable:
+    # 5.68 GB at the 10 GB COS minimum, ~4.5 GB of it already used on a freshly
+    # booted VM before any logs. Logs are bounded in
+    # backend_v2/docker-compose.yml (issue #1825) and superseded images are
+    # pruned by the startup script, yet at 10 GB steady state still sat above
+    # the 85% critical boot-disk alert (issue #1879). COS expands the stateful
+    # partition to fill the disk, so 20 GB should add the full 10 GB to it —
+    # boot_disk_usage_check's total (~15.7 GB, was 5.68) confirms it did.
+    disk_size_gb = 20
   }
 
   network_interface {
@@ -443,6 +446,14 @@ TUNNELEOF
         $COMPOSE_PATH -f docker-compose.yml -f docker-compose.tunnel.yml up -d --no-deps cloudflared \
           || echo "WARN: cloudflared failed to start — api/db remain up and serving"
       fi
+
+      # Remove superseded images. Production deploys `rolling-action restart`
+      # this same VM, so the boot disk persists and every deploy's pull leaves
+      # the previous api image dangling — unbounded boot-disk growth (issue
+      # #1879). Dangling-only (no -a): the toolbox image and a cached image kept
+      # by a failed pull are tagged and stay. Runs after `up` so nothing it
+      # removes can be one the bring-up needed, and is non-fatal under set -e.
+      docker image prune -f || echo "WARN: docker image prune failed — superseded images remain on the boot disk"
 
       echo ""
       echo "=== TrackRat started successfully ==="
