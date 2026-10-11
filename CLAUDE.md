@@ -123,7 +123,11 @@ and since every listed line must match, including them would silently make a pai
 unexcusable. The tradeoff: on planned-work-heavy weekends the 0-trains check on
 single-line pairs frequently downgrades to WARN even though an alert's presence doesn't
 prove the line is actually closed — `--coverage --fail-empty` is the backstop for a line
-going genuinely dark. Amtrak is likewise exempt from the "0 SCHEDULED trains" assertion
+going genuinely dark. Subway *transfer* trip-search pairs use a different rule (#1884): each lists
+its leg groups (`"L;4,5"` = the L, then the 4 or 5), and an empty result is a WARN only when some
+leg has **every** line that can serve it under a *suspension* — a `No [X] between …` or
+`[X] is suspended` headline for that line, classified against the full alert text. Skip-stops,
+local running, reduced frequency and single-station closures never excuse a transfer pair. Amtrak is likewise exempt from the "0 SCHEDULED trains" assertion
 after 20:00 ET when at least one train is OBSERVED: the 00:45 job generates SCHEDULED
 rows for today *and* tomorrow, but the departures query window ends at 02:00 ET
 tomorrow, so an all-OBSERVED evening board is expected.

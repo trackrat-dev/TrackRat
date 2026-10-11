@@ -1,4 +1,5 @@
-"""Static validation of the hardcoded ROUTES table in scripts/e2e-api-test.sh.
+"""Static validation of the hardcoded ROUTES table in scripts/e2e-api-test.sh,
+plus the planned-work excuse for transfer trip searches (end of file).
 
 The E2E suite probes a hand-maintained list of station pairs. Nothing checked
 that list against the station config, so a stale or mistyped code sat in it
@@ -14,13 +15,17 @@ point — #1795 was a valid, correctly-spelled pair that SEPTA had stopped
 serving, which only a live probe (the line-coverage sweep) can see.
 """
 
+import json
 import re
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
 
 from trackrat.config.route_topology import (
     find_route_for_segment,
+    get_routes_for_data_source,
     is_directionally_reachable,
     models_directions_separately,
 )
@@ -304,4 +309,253 @@ def test_parser_sees_every_quoted_entry_in_the_array() -> None:
     assert len(ROUTES) >= 40, (
         f"Only {len(ROUTES)} route entries parsed; the array has historically "
         f"held ~49. A sharp drop means the parser or the array shape changed."
+    )
+
+
+# ── Planned-work excuses for transfer trip searches (issue #1884) ───────────
+#
+# A transfer itinerary is excused only when one of its required legs has every
+# line that can serve it suspended. The pieces live in the script as a Python
+# heredoc (the alert indexer) and two shell functions; these tests run the real
+# text of each, extracted from the script, against fixture inputs.
+
+
+def _indexer_source() -> str:
+    """The alert-indexer heredoc, verbatim."""
+    text = E2E_SCRIPT.read_text()
+    match = re.search(r"<<'PY'[^\n]*\n(.*?)\nPY\n", text, flags=re.DOTALL)
+    assert match, "No <<'PY' heredoc found in the script — the indexer moved"
+    return match.group(1)
+
+
+def _shell_function(name: str) -> str:
+    """A top-level shell function definition, from `name() {` to its `}`."""
+    match = re.search(
+        rf"^{name}\(\) \{{\n.*?^\}}$", E2E_SCRIPT.read_text(), re.DOTALL | re.MULTILINE
+    )
+    assert match, f"No top-level '{name}() {{' function in {E2E_SCRIPT.name}"
+    return match.group(0)
+
+
+def _run_indexer(tmp_path: Path, alerts: list[dict]) -> dict[tuple[str, str], str]:
+    """Run the indexer on `alerts`; return {(route_id, headline): suspended}."""
+    alerts_file, tsv = tmp_path / "alerts.json", tmp_path / "planned_work.tsv"
+    alerts_file.write_text(json.dumps({"alerts": alerts}))
+    script = tmp_path / "indexer.py"
+    script.write_text(_indexer_source())
+    subprocess.run(
+        [sys.executable, "-I", str(script), str(alerts_file), str(tsv)], check=True
+    )
+    rows = [line.split("\t") for line in tsv.read_text().splitlines()]
+    print("indexed rows:", *rows, sep="\n  ")
+    assert all(len(r) == 4 for r in rows), f"expected 4 TSV columns: {rows}"
+    return {(route, headline): suspended for _, route, headline, suspended in rows}
+
+
+def _subway_alert(header_text: str, *routes: str) -> dict:
+    # No active_periods: the indexer treats the alert as in force now.
+    return {
+        "alert_type": "planned_work",
+        "data_source": "SUBWAY",
+        "header_text": header_text,
+        "affected_route_ids": list(routes),
+    }
+
+
+# Two clauses, each suspending a different line; the [6] one starts past the
+# 120-character headline cut, so it is only visible in the full header_text.
+TWO_LINE_SUSPENSION = (
+    "No [4] between Grand Central-42 St, Manhattan and Utica Av/New Lots Av, "
+    "Brooklyn. Take the [5] or [2] instead for service along the route. "
+    "No [6] between Grand Central-42 St and Brooklyn Bridge-City Hall"
+)
+
+
+@pytest.mark.parametrize(
+    "header_text,route,expected",
+    [
+        # Suspensions, in every wording seen on production 2026-10-11.
+        ("No [L] between Lorimer St, Brooklyn and 8 Av, Manhattan", "L", "1"),
+        (
+            "In Upper Manhattan, no [1] between 137 St-City College and "
+            "168 St-Washington Hts",
+            "1",
+            "1",
+        ),
+        ("Overnight [3] is suspended", "3", "1"),
+        # One station closed, not the line.
+        ("In the Bronx, no [1] at Van Cortlandt Park-242 St", "1", "0"),
+        # Ordinary planned work: never a suspension.
+        ("In the Bronx, Woodlawn-bound [4] skips Burnside Av", "4", "0"),
+        (
+            "In Manhattan, [4] runs local in both directions between 125 St "
+            "and Grand Central-42 St",
+            "4",
+            "0",
+        ),
+        ("[5] runs every 20 minutes and local in both directions", "5", "0"),
+        # Another line's suspension clause must not mark this row.
+        ("No [4] between Grand Central-42 St and Utica Av. [5] runs local", "5", "0"),
+        # Known limit: bracket text that differs from the route id ([SIR] for
+        # SI) is not recognized. A miss keeps the check at FAIL, never hides one.
+        ("No [SIR] between St George and Tottenville", "SI", "0"),
+    ],
+)
+def test_indexer_marks_only_suspensions_of_the_rows_own_line(
+    tmp_path: Path, header_text: str, route: str, expected: str
+) -> None:
+    index = _run_indexer(tmp_path, [_subway_alert(header_text, route)])
+    assert index == {(route, header_text[:120]): expected}, (
+        f"route {route!r} in {header_text!r}: expected suspended={expected}, "
+        f"indexed {index}"
+    )
+
+
+def test_indexer_classifies_each_line_of_a_multi_clause_alert(tmp_path: Path) -> None:
+    """Both lines of a two-clause alert are suspended, including the late one."""
+    assert TWO_LINE_SUSPENSION.index("No [6]") > 120, "fixture no longer tests the cut"
+
+    index = _run_indexer(tmp_path, [_subway_alert(TWO_LINE_SUSPENSION, "4", "6")])
+
+    headline = TWO_LINE_SUSPENSION[:120]
+    assert index == {("4", headline): "1", ("6", headline): "1"}, (
+        "The [6] clause sits past the 120-char headline; classifying the "
+        f"truncated text would miss it. Indexed: {index}"
+    )
+
+
+def _legs_note(tmp_path: Path, rows: list[tuple[str, str, str, str]], *args: str):
+    """Call a note function from the script with a fixture planned_work.tsv.
+
+    `args` is the function name followed by its arguments. Returns (exit code,
+    stdout).
+    """
+    (tmp_path / "planned_work.tsv").write_text(
+        "".join("\t".join(r) + "\n" for r in rows)
+    )
+    njt_re = re.search(r"^NJT_CLOSURE_RE=.*$", E2E_SCRIPT.read_text(), re.MULTILINE)
+    assert njt_re, "NJT_CLOSURE_RE assignment not found"
+    program = "\n".join(
+        [
+            f"TMPDIR='{tmp_path}'",
+            njt_re.group(0),
+            _shell_function("planned_work_note"),
+            _shell_function("required_legs_note"),
+            '"$@"',
+        ]
+    )
+    result = subprocess.run(
+        ["bash", "-c", program, "bash", *args], capture_output=True, text=True
+    )
+    print(f"{' '.join(args)} -> rc={result.returncode} out={result.stdout!r}")
+    assert not result.stderr, f"shell error: {result.stderr}"
+    return result.returncode, result.stdout.strip()
+
+
+L_SUSPENDED = ("SUBWAY", "L", "No [L] between Lorimer St and 8 Av", "1")
+Q_SUSPENDED = ("SUBWAY", "Q", "No [Q] between Prospect Park and Coney Island", "1")
+FOUR_LOCAL = ("SUBWAY", "4", "[4] runs local between 125 St and Grand Central", "0")
+FIVE_LOCAL = ("SUBWAY", "5", "[5] runs local between 125 St and Grand Central", "0")
+
+
+def test_required_legs_excused_when_one_leg_is_fully_suspended(tmp_path: Path) -> None:
+    rc, out = _legs_note(
+        tmp_path, [FOUR_LOCAL, L_SUSPENDED], "required_legs_note", "SUBWAY", "L;4,5"
+    )
+    assert (rc, out) == (0, L_SUSPENDED[2])
+
+
+def test_required_legs_not_excused_while_another_line_serves_the_leg(
+    tmp_path: Path,
+) -> None:
+    """Coney Island is reached by D, F, N and Q; a Q suspension leaves three."""
+    rc, out = _legs_note(
+        tmp_path, [Q_SUSPENDED], "required_legs_note", "SUBWAY", "A;D,F,N,Q"
+    )
+    assert (rc, out) == (1, "")
+
+
+def test_required_legs_ignore_planned_work_that_is_not_a_suspension(
+    tmp_path: Path,
+) -> None:
+    """Every line of the 4/5 leg has planned work, but none is suspended."""
+    rc, out = _legs_note(
+        tmp_path, [FOUR_LOCAL, FIVE_LOCAL], "required_legs_note", "SUBWAY", "L;4,5"
+    )
+    assert (rc, out) == (1, "")
+
+
+def test_required_legs_match_only_the_given_source(tmp_path: Path) -> None:
+    rc, _ = _legs_note(tmp_path, [L_SUSPENDED], "required_legs_note", "NJT", "L")
+    assert rc == 1
+
+
+def test_required_legs_empty_never_excuses(tmp_path: Path) -> None:
+    rc, _ = _legs_note(tmp_path, [L_SUSPENDED], "required_legs_note", "SUBWAY", "")
+    assert rc == 1
+
+
+def test_lines_rule_still_accepts_any_planned_work(tmp_path: Path) -> None:
+    """The ROUTES `lines` rule (issue #1771) is unchanged by the suspension mode."""
+    rc, out = _legs_note(
+        tmp_path, [FOUR_LOCAL, FIVE_LOCAL], "planned_work_note", "SUBWAY", "4,5"
+    )
+    assert (rc, out) == (0, FOUR_LOCAL[2])
+
+
+def _trip_bidi_calls() -> list[tuple[int, list[str]]]:
+    """Every top-level `trip_bidi "…" …` call, as (line number, quoted args)."""
+    calls = []
+    for no, line in enumerate(E2E_SCRIPT.read_text().splitlines(), start=1):
+        if line.startswith("trip_bidi "):
+            calls.append((no, re.findall(r'"([^"]*)"', line)))
+    assert len(calls) >= 20, f"Only {len(calls)} trip_bidi calls parsed"
+    return calls
+
+
+TRIP_CALLS_WITH_LEGS = [(no, args) for no, args in _trip_bidi_calls() if len(args) > 7]
+SUBWAY_LINE_CODES = {
+    code for route in get_routes_for_data_source("SUBWAY") for code in route.line_codes
+}
+LEG_GROUPS_RE = re.compile(r"[^;,]+(,[^;,]+)*(;[^;,]+(,[^;,]+)*)*")
+
+
+def test_every_subway_transfer_pair_has_leg_groups() -> None:
+    """Without leg groups, a weekend suspension fails the deploy gate (#1884)."""
+    missing = [
+        f"e2e-api-test.sh:{no}: {args[0]}"
+        for no, args in _trip_bidi_calls()
+        if args[0].startswith("SUBWAY")
+        and args[3] == "transfer"
+        and (len(args) < 8 or not args[7])
+    ]
+    assert not missing, "Subway transfer pairs without leg groups:\n" + "\n".join(
+        missing
+    )
+
+
+@pytest.mark.parametrize(
+    "line_no,args",
+    TRIP_CALLS_WITH_LEGS,
+    ids=[f"L{no}:{args[0]}" for no, args in TRIP_CALLS_WITH_LEGS],
+)
+def test_leg_groups_are_well_formed_subway_line_codes(
+    line_no: int, args: list[str]
+) -> None:
+    label, source, legs = args[0], args[5], args[7]
+    assert source == "SUBWAY", (
+        f"e2e-api-test.sh:{line_no}: {label} sets leg groups with source "
+        f"{source!r}; only SUBWAY alerts carry the `No [X] between` wording "
+        f"the suspension classifier recognizes"
+    )
+    assert LEG_GROUPS_RE.fullmatch(legs), (
+        f"e2e-api-test.sh:{line_no}: {label} legs={legs!r} is not "
+        f"';'-separated groups of ','-separated line codes"
+    )
+    codes = set(re.split("[;,]", legs))
+    unknown = codes - SUBWAY_LINE_CODES
+    assert not unknown, (
+        f"e2e-api-test.sh:{line_no}: {label} legs={legs!r} names "
+        f"{sorted(unknown)}, which are not SUBWAY line codes in route_topology; "
+        f"no alert row can ever match them, so that leg can never be excused"
     )
