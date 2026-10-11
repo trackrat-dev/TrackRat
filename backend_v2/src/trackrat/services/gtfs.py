@@ -1730,7 +1730,14 @@ class GTFSService:
         Returns ``None`` when the feed has no service at all on ``target_date``
         (no feed stored, or its calendar does not cover the date). That is
         "unknown", not "nothing runs", and callers must fail open on it.
+
+        Reads service IDs fresh rather than from ``_service_id_cache``: that
+        cache is per-process and only the process that refreshes the feed
+        clears it, so another replica could hold the previous bundle's IDs.
+        Matched against the new bundle's trips, they would report every known
+        train as not running, and callers act destructively on this result.
         """
+        GTFSService._service_id_cache.pop((data_source, target_date), None)
         service_ids = await self.get_active_service_ids(db, data_source, target_date)
         if not service_ids:
             return None

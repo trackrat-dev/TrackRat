@@ -250,6 +250,25 @@ class TestGetTrainIdsNotRunning:
         assert result is None, f"expected None for {UNCOVERED_DATE}, got {result}"
 
     @pytest.mark.asyncio
+    async def test_ignores_stale_cached_service_ids(self, db_session):
+        """Another replica may still cache the previous bundle's service IDs
+        (only the refreshing process clears the cache). Matched against the
+        new trips they'd mark every known train not running; the check must
+        read service IDs fresh."""
+        await _seed_amtrak_gtfs(db_session)
+        GTFSService._service_id_cache[("AMTRAK", SATURDAY)] = {"OLD-BUNDLE-ID"}
+
+        result = await GTFSService().get_train_ids_not_running(
+            db_session, "AMTRAK", ["A2260", "A2150"], SATURDAY
+        )
+
+        print(f"not running with stale cache seeded: {result}")
+        assert result == {"A2260"}, (
+            "stale cached service IDs must not mark the Saturday-running 2150 "
+            f"as not running; got {result}"
+        )
+
+    @pytest.mark.asyncio
     async def test_no_feed_stored_is_unknown(self, db_session):
         result = await GTFSService().get_train_ids_not_running(
             db_session, "AMTRAK", ["A2260"], SATURDAY
