@@ -220,7 +220,7 @@ resource "google_monitoring_alert_policy" "data_disk_usage_critical" {
   ]
 }
 
-# Alert policies - boot filesystem utilization on the VM's 10 GB boot disk.
+# Alert policies - boot filesystem utilization on the VM's boot disk.
 # Backed by google_logging_metric.boot_disk_usage_percent (see metrics.tf),
 # populated by SchedulerService.check_resource_usage every 15 minutes.
 #
@@ -229,10 +229,11 @@ resource "google_monitoring_alert_policy" "data_disk_usage_critical" {
 # disk filled on 2026-09-01 the data disk was healthy (~57%) and reported as
 # such — the alerts were correct and silent while the machine was broken.
 #
-# Same 75%/85% tiers as the data disk. On a 10 GB boot disk filling at the
-# observed rate (~10 GB over ~2 weeks) those leave roughly 3.5 and 2 days of
-# warning respectively, which is the window this is for: Docker's log writing
-# only breaks at 100%, so anything that pages before then is actionable.
+# Same 75%/85% tiers as the data disk. On the 20 GB boot disk's ~15.7 GB
+# writable partition they sit ~3.9 and ~2.4 GB below full — weeks of warning
+# at the ~0.1 GB/day growth measured on staging (issue #1879). That window is
+# what this is for: Docker's log writing only breaks at 100%, so anything that
+# pages before then is actionable.
 resource "time_sleep" "wait_boot_disk_usage_metric" {
   count = var.environment == "production" ? 1 : 0
 

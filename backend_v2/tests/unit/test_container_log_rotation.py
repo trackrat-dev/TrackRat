@@ -43,10 +43,9 @@ _TUNNEL_COMPOSE = _BACKEND_DIR / "docker-compose.tunnel.yml"
 
 _COMPOSE_FILES = (_BASE_COMPOSE, _TUNNEL_COMPOSE)
 
-# The boot disk is 10 GB and holds ~0.6 GB of container images
-# (infra_v2/terraform/compute.tf). A total log budget anywhere near that is not
-# a fix. 2 GB leaves the disk with room an order of magnitude above what the
-# logs can claim.
+# The boot disk's writable partition (~15.7 GB) already has ~4.5 GB used on a
+# fresh VM, before any logs (infra_v2/terraform/compute.tf, issue #1879). A total log budget anywhere near the remainder is not a fix.
+# 2 GB keeps the logs well clear of the 75% boot-disk alert.
 _MAX_TOTAL_LOG_BUDGET_BYTES = 2 * 1024**3
 
 _SIZE_SUFFIXES = {"b": 1, "k": 1024, "m": 1024**2, "g": 1024**3}
@@ -87,7 +86,7 @@ def test_every_service_configures_bounded_log_rotation():
         assert logging_config, (
             f"service {name!r} in {path.name} has no `logging:` block, so it "
             "inherits Docker's unbounded json-file default and writes without "
-            "limit to the 10 GB boot disk. That filled the disk and killed all "
+            "limit to the boot disk. That filled the disk and killed all "
             "log shipping to Cloud Logging for 19 days (issue #1825)."
         )
 
@@ -136,7 +135,7 @@ def test_total_log_budget_stays_small_against_the_boot_disk():
         breakdown.append(f"{path.name}:{name}={budget / 1024**2:.0f}MB")
 
     assert total <= _MAX_TOTAL_LOG_BUDGET_BYTES, (
-        f"container logs may claim up to {total / 1024**3:.2f} GB of the 10 GB "
+        f"container logs may claim up to {total / 1024**3:.2f} GB of the "
         f"boot disk ({', '.join(breakdown)}), which is too close to the failure "
         "this rotation exists to prevent (issue #1825)"
     )

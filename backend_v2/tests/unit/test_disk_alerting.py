@@ -286,10 +286,11 @@ class TestBootDiskMonitoring:
     def test_boot_disk_alert_tiers(self, monitoring_tf, policy, threshold):
         """Two tiers, matching the data disk.
 
-        Docker's log writing only breaks at 100%, so on a 10 GB boot disk
-        filling at the observed rate (~10 GB over ~2 weeks) these leave roughly
-        3.5 and 2 days of warning. That window is the entire point: the failure
-        is gradual and the detection was not.
+        Docker's log writing only breaks at 100%, so on the boot disk's ~15.7 GB
+        writable partition these sit ~3.9 and ~2.4 GB below full — weeks of
+        warning at the ~0.1 GB/day growth measured on staging (issue #1879).
+        That window is the entire point: the failure is gradual and the
+        detection was not.
         """
         body = _extract_block(
             monitoring_tf,
