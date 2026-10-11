@@ -1175,8 +1175,8 @@ trip_bidi "PATH Grove St↔33rd St"            "PGR"  "P33"  "direct"
 # The last argument lists each pair's leg groups (required_legs_note), read
 # from live trip-search responses on 2026-10-11. A group lists every line that
 # can serve that leg, so one line's suspension never excuses a leg another line
-# still serves; part-time lines (the W) are left out, since a line that isn't
-# running has no alert and would block a legitimate excuse.
+# still serves. A line is listed only on days it runs: one that isn't running
+# has no alert and would block a legitimate excuse.
 # Different physical stations (true multi-leg transfer)
 # Metropolitan Av(G) is in the Lorimer St complex: the trip rides the L, then the 4/5
 trip_bidi "SUBWAY G↔4/5 MetroAv↔WallSt"     "SG29" "S419" "transfer" "true" "SUBWAY" "" "L;4,5"
@@ -1184,8 +1184,13 @@ trip_bidi "SUBWAY L↔4/5 BedfordAv↔WallSt"    "SL08" "S419" "transfer" "true"
 # Inwood-207St(A) ↔ Coney Island(D/F/N/Q) — requires A↔D/F/N transfer
 # (W 4 St, Canal St or 145 St; any of the four lines can take the Coney Island leg)
 trip_bidi "SUBWAY A↔D Inwood↔ConeyIsland"    "SA02" "SD43" "transfer" "true" "SUBWAY" "" "A;D,F,N,Q"
-# Flushing(7) ↔ Astoria(N/W) — no shared stations, requires 7↔N transfer
-trip_bidi "SUBWAY 7↔N Flushing↔Astoria"      "S701" "SR01" "transfer" "true" "SUBWAY" "" "7;N"
+# Flushing(7) ↔ Astoria(N/W) — no shared stations, requires 7↔N transfer.
+# The W serves Astoria on weekdays only.
+if [[ "$DOW" -le 5 ]]; then
+  trip_bidi "SUBWAY 7↔N Flushing↔Astoria"    "S701" "SR01" "transfer" "true" "SUBWAY" "" "7;N,W"
+else
+  trip_bidi "SUBWAY 7↔N Flushing↔Astoria"    "S701" "SR01" "transfer" "true" "SUBWAY" "" "7;N"
+fi
 # Pelham Bay(6) ↔ Canarsie(L) — requires 6↔L transfer
 trip_bidi "SUBWAY 6↔L PelhamBay↔Canarsie"    "S601" "SL29" "transfer" "true" "SUBWAY" "" "6;L"
 # Same-complex pairs: both codes are platforms in ONE physical station complex

@@ -504,10 +504,14 @@ def test_lines_rule_still_accepts_any_planned_work(tmp_path: Path) -> None:
 
 
 def _trip_bidi_calls() -> list[tuple[int, list[str]]]:
-    """Every top-level `trip_bidi "…" …` call, as (line number, quoted args)."""
+    """Every `trip_bidi "…" …` call, as (line number, quoted args).
+
+    Includes indented calls: a pair whose leg groups vary by day is called from
+    both branches of an `if`, and each branch must be checked.
+    """
     calls = []
     for no, line in enumerate(E2E_SCRIPT.read_text().splitlines(), start=1):
-        if line.startswith("trip_bidi "):
+        if line.lstrip().startswith("trip_bidi "):
             calls.append((no, re.findall(r'"([^"]*)"', line)))
     assert len(calls) >= 20, f"Only {len(calls)} trip_bidi calls parsed"
     return calls
