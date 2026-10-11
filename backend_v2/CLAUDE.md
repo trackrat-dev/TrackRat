@@ -184,7 +184,7 @@ validation_results (
 
 -- Device tokens for push notifications
 device_tokens (
-    id, device_id, apns_token, created_at, updated_at
+    id, device_id, apns_token, created_at, updated_at, last_registered_at
 )
 
 -- Route alert subscriptions
@@ -365,7 +365,7 @@ The APScheduler runs in-process and handles:
 - **Daily at 12:45 AM ET**: Amtrak pattern-based schedule generation
 - **Daily at 1:00 AM ET**: Lock manager cleanup
 - **Daily at 3:00 AM ET**: GTFS static schedule refresh
-- **Daily at 3:30 AM ET**: Data retention cleanup (deletes journeys, discovery runs, validation results, and inactive service alerts older than `TRACKRAT_RETENTION_DAYS`; active alerts are kept regardless of age). SUBWAY journeys use the shorter `TRACKRAT_SUBWAY_RETENTION_DAYS` window (it is ~70% of journey storage and real-time/frequency-based). Also tops up the `journey_stops`/`segment_transit_times` rolling partition window and drops partitions entirely older than `TRACKRAT_RETENTION_DAYS` — see "Partitioning" below.
+- **Daily at 3:30 AM ET**: Data retention cleanup (deletes journeys, discovery runs, validation results, and inactive service alerts older than `TRACKRAT_RETENTION_DAYS`; active alerts are kept regardless of age). SUBWAY journeys use the shorter `TRACKRAT_SUBWAY_RETENTION_DAYS` window (it is ~70% of journey storage and real-time/frequency-based). Also tops up the `journey_stops`/`segment_transit_times` rolling partition window and drops partitions entirely older than `TRACKRAT_RETENTION_DAYS` — see "Partitioning" below. Finally deletes device registrations with **no alert subscriptions** whose `last_registered_at` (set on every `/devices/register`, i.e. every iOS launch) is older than `TRACKRAT_DEVICE_REGISTRATION_RETENTION_DAYS`; their `route_preferences` cascade. Devices with subscriptions are never swept — the app does not relaunch on an alert, so an alert-only user can go months without re-registering — and are pruned only by an APNS 410 (issue #1858).
 - **Every 30 min**: NJT and Amtrak train discovery from major stations
 - **Every 4 min**: PATH collection (unified, RidePATH API)
 - **Every 4 min**: LIRR collection (unified, MTA GTFS-RT)
@@ -597,6 +597,7 @@ TRACKRAT_SKIP_MIGRATIONS=false                   # Skip auto-migrations on start
 TRACKRAT_BACKUP_INTERVAL_SECONDS=300             # GCS backup frequency (default 5min)
 TRACKRAT_RETENTION_DAYS=60                       # Days to retain journey data (min 30)
 TRACKRAT_SUBWAY_RETENTION_DAYS=14                # Days to retain SUBWAY journey data (shorter; high-volume/real-time, min 1)
+TRACKRAT_DEVICE_REGISTRATION_RETENTION_DAYS=90   # Days unseen before a subscription-less device registration is deleted (min 30)
 TRACKRAT_DATA_DISK_PATH=/mnt/disks/data           # Mount path of the persistent data disk to monitor
 
 # APNS Auth Key Content (alternative to file path)

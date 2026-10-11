@@ -43,6 +43,7 @@ from trackrat.services.alert_evaluator import (
     evaluate_morning_digests,
     evaluate_route_alerts,
     evaluate_service_alerts,
+    prune_stale_device_registrations,
 )
 from trackrat.services.amtrak_pattern_scheduler import AmtrakPatternScheduler
 from trackrat.services.apns import ApnsSendResult, SimpleAPNSService
@@ -2922,12 +2923,14 @@ class SchedulerService:
         journey_stops and segment_transit_times are partitioned by month
         (issue #1343) and are instead reclaimed by dropping whole aged-out
         partitions — see phase 5). Also prunes discovery_runs,
-        validation_results, and inactive service_alerts that haven't been
-        refreshed by the collector.
+        validation_results, inactive service_alerts that haven't been
+        refreshed by the collector, and stale subscription-less device
+        registrations (phase 6).
         """
         settings = get_settings()
         cutoff_days = settings.retention_days
         subway_cutoff_days = settings.subway_retention_days
+        device_cutoff_days = settings.device_registration_retention_days
 
         async def do_retention_work() -> None:
             batch_size = 1000
@@ -2935,6 +2938,7 @@ class SchedulerService:
             total_discovery = 0
             total_validation = 0
             total_service_alerts = 0
+            total_devices = 0
             partitions_dropped: dict[str, list[str]] = {}
 
             try:
@@ -3086,6 +3090,15 @@ class SchedulerService:
                 async with get_session() as db:
                     partitions_dropped = await drop_old_partitions(db, cutoff_date)
 
+                # Phase 6: Delete device registrations with no alert
+                # subscriptions that haven't re-registered within
+                # device_cutoff_days (issue #1858). Hundreds of rows, so a
+                # single statement; route_preferences cascade.
+                async with get_session() as db:
+                    total_devices = await prune_stale_device_registrations(
+                        db, device_cutoff_days
+                    )
+
                 if topup_error is not None:
                     raise topup_error
 
@@ -3097,6 +3110,8 @@ class SchedulerService:
                     validation_results_deleted=total_validation,
                     service_alerts_deleted=total_service_alerts,
                     partitions_dropped=partitions_dropped,
+                    device_cutoff_days=device_cutoff_days,
+                    stale_device_registrations_deleted=total_devices,
                 )
 
             except Exception as e:
@@ -3109,6 +3124,7 @@ class SchedulerService:
                     validation_results_deleted_so_far=total_validation,
                     service_alerts_deleted_so_far=total_service_alerts,
                     partitions_dropped_so_far=partitions_dropped,
+                    stale_device_registrations_deleted_so_far=total_devices,
                 )
                 # Re-raise so run_with_freshness_check records this as a failed
                 # run. Swallowing it here let a failed cleanup masquerade as a

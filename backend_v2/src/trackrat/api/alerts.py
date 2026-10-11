@@ -10,7 +10,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, model_validator
-from sqlalchemy import ColumnElement, delete, select
+from sqlalchemy import ColumnElement, delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
@@ -179,6 +179,9 @@ async def register_device(
 
     if device:
         device.apns_token = request.apns_token
+        # Always written, so an unchanged token still records the visit — the
+        # stale-registration sweep keys on it (issue #1858).
+        device.last_registered_at = func.now()
     else:
         device = DeviceToken(
             device_id=request.device_id,

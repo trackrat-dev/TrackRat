@@ -10,6 +10,7 @@ setting is properly configured.
 from unittest.mock import AsyncMock, MagicMock, Mock, patch
 
 import pytest
+from pydantic import ValidationError
 
 from trackrat.settings import Settings
 
@@ -25,6 +26,14 @@ def make_empty_partition_drop_session() -> AsyncMock:
     empty_result = MagicMock()
     empty_result.__iter__ = Mock(return_value=iter([]))
     session.execute = AsyncMock(return_value=empty_result)
+    return session
+
+
+def make_device_prune_session(deleted: int = 0) -> AsyncMock:
+    """Session stub for retention_cleanup's phase 6
+    (prune_stale_device_registrations), reporting `deleted` rows."""
+    session = AsyncMock()
+    session.execute = AsyncMock(return_value=Mock(rowcount=deleted))
     return session
 
 
@@ -98,6 +107,19 @@ class TestRetentionSettings:
         )
         assert settings.subway_retention_days == 14
 
+    def test_default_device_registration_retention_days(self):
+        """Default device_registration_retention_days should be 90 (#1858)."""
+        settings = Settings(database_url="postgresql+asyncpg://x:x@localhost/x")
+        assert settings.device_registration_retention_days == 90
+
+    def test_device_registration_retention_days_minimum_enforced(self):
+        """A window under 30 days would sweep users on a short break."""
+        with pytest.raises(ValidationError, match="device_registration_retention_days"):
+            Settings(
+                database_url="postgresql+asyncpg://x:x@localhost/x",
+                device_registration_retention_days=7,
+            )
+
     def test_subway_retention_days_zero_rejected(self):
         """subway_retention_days below 1 should be rejected."""
         with pytest.raises(Exception):
@@ -152,6 +174,7 @@ class TestRetentionCleanupBatchLogic:
         settings = Mock()
         settings.retention_days = 120
         settings.subway_retention_days = 14
+        settings.device_registration_retention_days = 90
         return settings
 
     @pytest.mark.asyncio
@@ -190,7 +213,7 @@ class TestRetentionCleanupBatchLogic:
 
             # Sessions in call order: freshness, phase-0 partition bootstrap,
             # 4 batch deletes (journey/discovery/validation/service_alerts),
-            # phase-5 partition drop.
+            # phase-5 partition drop, phase-6 device prune.
             ctxs = []
             ctx_fresh = AsyncMock()
             ctx_fresh.__aenter__ = AsyncMock(return_value=freshness_session)
@@ -207,6 +230,7 @@ class TestRetentionCleanupBatchLogic:
                 ctxs.append(make_ctx(s))
 
             ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
+            ctxs.append(make_ctx(make_device_prune_session()))  # phase 6
 
             mock_get_session.side_effect = ctxs
 
@@ -254,7 +278,8 @@ class TestRetentionCleanupBatchLogic:
             mock_freshness.side_effect = execute_task_func
 
             # First call = freshness session, then partition-bootstrap (phase 0),
-            # then 4 batch sessions, then partition-drop (phase 5)
+            # then 4 batch sessions, then partition-drop (phase 5), then
+            # device-prune (phase 6)
             ctxs = []
             # Freshness session (opened first)
             ctx_fresh = AsyncMock()
@@ -276,6 +301,7 @@ class TestRetentionCleanupBatchLogic:
                 ctxs.append(_make_batch_ctx(result))
 
             ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
+            ctxs.append(make_ctx(make_device_prune_session()))  # phase 6
 
             mock_get_session.side_effect = ctxs
 
@@ -283,8 +309,8 @@ class TestRetentionCleanupBatchLogic:
 
             # 1 freshness + 1 partition-bootstrap + 2 journey batches
             # + 1 discovery + 1 validation + 1 service_alerts
-            # + 1 partition-drop = 8 sessions
-            assert mock_get_session.call_count == 8
+            # + 1 partition-drop + 1 device-prune = 9 sessions
+            assert mock_get_session.call_count == 9
 
     @pytest.mark.asyncio
     async def test_cleanup_skipped_when_still_fresh(self, mock_settings):
@@ -327,6 +353,7 @@ class TestRetentionCleanupBatchLogic:
         mock_settings = Mock()
         mock_settings.retention_days = 90
         mock_settings.subway_retention_days = 14
+        mock_settings.device_registration_retention_days = 90
 
         empty_result = Mock()
         empty_result.rowcount = 0
@@ -380,6 +407,7 @@ class TestRetentionCleanupBatchLogic:
                 ctxs.append(ctx)
 
             ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
+            ctxs.append(make_ctx(make_device_prune_session()))  # phase 6
 
             mock_get_session.side_effect = ctxs
 
@@ -407,6 +435,7 @@ class TestRetentionCleanupBatchLogic:
         mock_settings = Mock()
         mock_settings.retention_days = 120
         mock_settings.subway_retention_days = 14
+        mock_settings.device_registration_retention_days = 90
 
         empty_result = Mock(rowcount=0)
         captured: list[tuple[str, dict]] = []
@@ -461,6 +490,7 @@ class TestRetentionCleanupBatchLogic:
                 ctxs.append(ctx)
 
             ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
+            ctxs.append(make_ctx(make_device_prune_session()))  # phase 6
 
             mock_get_session.side_effect = ctxs
 
@@ -730,6 +760,7 @@ class TestServiceAlertsRetention:
         settings = Mock()
         settings.retention_days = 120
         settings.subway_retention_days = 14
+        settings.device_registration_retention_days = 90
         return settings
 
     @pytest.mark.asyncio
@@ -789,14 +820,16 @@ class TestServiceAlertsRetention:
                 ctxs.append(ctx)
 
             ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
+            ctxs.append(make_ctx(make_device_prune_session()))  # phase 6
 
             mock_get_session.side_effect = ctxs
 
             await service.retention_cleanup()
 
             # 1 freshness + 1 partition-bootstrap + 1 journey + 1 discovery
-            # + 1 validation + 3 service_alerts + 1 partition-drop = 9 sessions
-            assert mock_get_session.call_count == 9
+            # + 1 validation + 3 service_alerts + 1 partition-drop
+            # + 1 device-prune = 10 sessions
+            assert mock_get_session.call_count == 10
 
     @pytest.mark.asyncio
     async def test_service_alerts_delete_passes_correct_params(self, mock_settings):
@@ -863,6 +896,7 @@ class TestServiceAlertsRetention:
                 ctxs.append(ctx)
 
             ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
+            ctxs.append(make_ctx(make_device_prune_session()))  # phase 6
 
             mock_get_session.side_effect = ctxs
 
@@ -881,8 +915,11 @@ class TestServiceAlertsRetention:
                 assert params["batch_size"] == 1000
 
     @pytest.mark.asyncio
-    async def test_completion_log_includes_service_alerts_count(self, mock_settings):
-        """The success log should report service_alerts_deleted."""
+    async def test_completion_log_includes_service_alerts_and_device_counts(
+        self, mock_settings
+    ):
+        """The success log should report service_alerts_deleted and the phase-6
+        stale device registration count with its cutoff (issue #1858)."""
         from trackrat.services.scheduler import SchedulerService
 
         service = SchedulerService.__new__(SchedulerService)
@@ -934,6 +971,7 @@ class TestServiceAlertsRetention:
                 ctxs.append(ctx)
 
             ctxs.append(make_ctx(make_empty_partition_drop_session()))  # phase 5
+            ctxs.append(make_ctx(make_device_prune_session(deleted=7)))  # phase 6
 
             mock_get_session.side_effect = ctxs
 
@@ -950,6 +988,8 @@ class TestServiceAlertsRetention:
             assert kwargs["journeys_deleted"] == 0
             assert kwargs["discovery_runs_deleted"] == 0
             assert kwargs["validation_results_deleted"] == 0
+            assert kwargs["stale_device_registrations_deleted"] == 7
+            assert kwargs["device_cutoff_days"] == 90
 
     @pytest.mark.asyncio
     async def test_failure_log_includes_service_alerts_so_far(self, mock_settings):

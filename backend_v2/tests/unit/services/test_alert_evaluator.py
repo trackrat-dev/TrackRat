@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, patch
 from zoneinfo import ZoneInfo
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.config.route_topology import Route
@@ -18,6 +18,7 @@ from trackrat.models.database import (
     DeviceToken,
     JourneyStop,
     RouteAlertSubscription,
+    RoutePreference,
     TrainJourney,
 )
 from trackrat.services.alert_evaluator import (
@@ -36,6 +37,7 @@ from trackrat.services.alert_evaluator import (
     _is_within_time_window,
     evaluate_morning_digests,
     evaluate_route_alerts,
+    prune_stale_device_registrations,
 )
 from trackrat.services.apns import ApnsSendResult
 from trackrat.utils.time import ET, now_et
@@ -3045,3 +3047,105 @@ class TestPruningIsRestrictedToConclusiveFailures:
         )
         assert len(subs) == 1, "The re-registered device keeps its subscriptions"
         print("  Verified: stale 410 left the re-registered device intact")
+
+
+async def _backdate_registration(db: AsyncSession, device_id: str, days: int) -> None:
+    """Set a device's last_registered_at to `days` ago (database clock)."""
+    await db.execute(
+        update(DeviceToken)
+        .where(DeviceToken.device_id == device_id)
+        .values(last_registered_at=func.now() - timedelta(days=days))
+    )
+    await db.commit()
+
+
+@pytest.mark.asyncio
+class TestPruneStaleDeviceRegistrations:
+    """`prune_stale_device_registrations` (issue #1858).
+
+    Registrations with no subscriptions are never pushed to, so the APNS 410
+    path can never prune them; this sweep is their only cleanup. Runs against
+    real PostgreSQL so the route_preferences ON DELETE CASCADE is exercised.
+    """
+
+    async def test_stale_subscriptionless_device_is_deleted_with_preferences(
+        self, db_session: AsyncSession
+    ):
+        """A long-unseen device with no subscriptions goes, taking its prefs."""
+        db_session.add(DeviceToken(device_id="gone-device", apns_token="gone-tok"))
+        await db_session.flush()
+        db_session.add(
+            RoutePreference(
+                device_id="gone-device",
+                from_station_code="NY",
+                to_station_code="TR",
+                enabled_systems={"NJT": ["NE"]},
+            )
+        )
+        await db_session.commit()
+        await _backdate_registration(db_session, "gone-device", days=120)
+
+        deleted = await prune_stale_device_registrations(db_session, 90)
+        await db_session.commit()
+
+        devices = (await db_session.execute(select(DeviceToken))).scalars().all()
+        prefs = (await db_session.execute(select(RoutePreference))).scalars().all()
+        print(
+            f"  deleted={deleted} remaining_devices={[d.device_id for d in devices]} "
+            f"remaining_prefs={len(prefs)}"
+        )
+        assert deleted == 1
+        assert devices == [], "A 120-day-unseen device with no subscriptions is gone"
+        assert prefs == [], "Its route preferences must cascade with it"
+
+    async def test_stale_device_with_subscription_is_kept(
+        self, db_session: AsyncSession
+    ):
+        """Devices with subscriptions are never swept, however old.
+
+        The app does not relaunch when an alert arrives, so a user who only
+        reads their alerts may not re-register for months. Their liveness is
+        proven by the 410 path instead.
+        """
+        _make_device_and_sub(
+            db_session,
+            device_id="alert-only-user",
+            apns_token="alert-tok",
+            data_source="NJT",
+            from_station="NY",
+            to_station="TR",
+        )
+        await db_session.commit()
+        await _backdate_registration(db_session, "alert-only-user", days=365)
+
+        deleted = await prune_stale_device_registrations(db_session, 90)
+        await db_session.commit()
+
+        devices = (await db_session.execute(select(DeviceToken))).scalars().all()
+        subs = (
+            (await db_session.execute(select(RouteAlertSubscription))).scalars().all()
+        )
+        print(f"  deleted={deleted} devices={len(devices)} subs={len(subs)}")
+        assert deleted == 0
+        assert [d.device_id for d in devices] == ["alert-only-user"]
+        assert len(subs) == 1, "The subscription must be untouched"
+
+    async def test_only_devices_past_the_window_are_deleted(
+        self, db_session: AsyncSession
+    ):
+        """A device seen within N days survives; one just past N does not."""
+        for device_id in ("fresh-device", "inside-window", "past-window"):
+            db_session.add(DeviceToken(device_id=device_id, apns_token="tok"))
+        await db_session.commit()
+        await _backdate_registration(db_session, "inside-window", days=89)
+        await _backdate_registration(db_session, "past-window", days=91)
+
+        deleted = await prune_stale_device_registrations(db_session, 90)
+        await db_session.commit()
+
+        remaining = sorted(
+            (await db_session.execute(select(DeviceToken.device_id))).scalars().all()
+        )
+        print(f"  deleted={deleted} remaining={remaining}")
+        assert deleted == 1
+        assert remaining == ["fresh-device", "inside-window"]
