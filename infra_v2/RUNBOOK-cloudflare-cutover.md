@@ -608,16 +608,19 @@ early.
    `Authentication error` (code 10000) on `/zones/{id}/dns_records`. Use the
    dashboard, or add DNS:Edit to a token if this should ever be automated.
 
-   Note also that `workers_dev` is not set in `wrangler.jsonc`, so wrangler
-   disables it by default. When the custom domains fail to attach there is no
-   `workers.dev` fallback either, which is why the failure above reported **no**
-   targets rather than degrading to one.
-5. **Soak ≥24h.** Then delete the `sync`, `cache-html` and `cache-assets` steps
-   and the `_WEBPAGE_BUCKET` substitution from `cloudbuild-webpage.yaml`.
-   This changes the pipeline only: `scripts/deploy-webpage.sh` used to key its
-   production guard off the `sync` step's existence, but its guard is now
-   unconditional and its messaging already reflects the Worker serving the
-   apex, so nothing in the script retires or changes here.
+   `workers_dev` was not set in `wrangler.jsonc` at the time, so wrangler
+   disabled it by default and the failure above reported **no** targets rather
+   than degrading to a `workers.dev` one. It is now set to `false` on purpose
+   (issue #1763): that fallback would not have helped, because `trackrat.net`
+   users get nothing either way, and a `workers.dev` alias serves the same
+   version as the custom domains, so it is no preview slot.
+5. **Done (issue #1763).** After the soak, the `sync`, `cache-html` and
+   `cache-assets` steps and the `_WEBPAGE_BUCKET` substitution were deleted
+   from `cloudbuild-webpage.yaml`. This changed the pipeline only:
+   `scripts/deploy-webpage.sh` used to key its production guard off the `sync`
+   step's existence, but its guard is now unconditional and its messaging
+   already reflects the Worker serving the apex, so nothing in the script
+   retired or changed.
 
 Universal links are worth a real check here, not just a curl: Apple's CDN
 caches the AASA file, so an installed app may keep working for a while off the
@@ -627,8 +630,8 @@ old copy. Confirm a shared `/train/...` link still opens the app.
 recreate the grey `A` records pointing at `136.110.151.144`, let the
 still-current bucket serve — no longer exists: the load balancer behind that IP
 was deleted on 2026-08-08, before P5.4 ran, so those records would point at
-nothing. The bucket still receives every build (until step 5) but nothing
-serves it. Rollback now means redeploying a known-good build to the Worker
+nothing. The bucket stopped receiving builds at step 5, and nothing serves
+it. Rollback now means redeploying a known-good build to the Worker
 (`git checkout <good-commit>` then
 `./scripts/deploy-webpage.sh production --cloudflare-only`); do **not** remove
 the `routes` block — that just takes the site down.
