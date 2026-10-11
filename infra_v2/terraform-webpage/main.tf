@@ -125,8 +125,9 @@ output "staging_webpage_bucket" {
 # rebuilt LB comes back on a new IP. HSTS now comes from
 # webpage_v2/public/_headers, not the backend bucket's custom_response_headers.
 #
-# cloudbuild-webpage.yaml still syncs each build here, but nothing serves the
-# bucket; runbook P5 step 5 retires that sync.
+# Nothing writes to or serves the bucket any more: cloudbuild-webpage.yaml
+# stopped syncing builds here (runbook P5 step 5, issue #1763). It holds the
+# last pre-cutover build only until it is deleted.
 
 # GCS bucket for production webpage
 resource "google_storage_bucket" "webpage_production" {

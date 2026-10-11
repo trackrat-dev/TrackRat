@@ -22,6 +22,22 @@
   "name": "trackrat-webpage",
   "compatibility_date": "2026-08-02",
 
+  // Deliberately off for both environments (issue #1763). A workers.dev URL is
+  // an alias of the same Worker version the custom domain serves, so it is no
+  // preview slot (staging.trackrat.net is), and no fallback either: when the
+  // custom domains fail to attach, trackrat.net users get nothing regardless.
+  // Enabling it would only add a second public origin for the site that
+  // bypasses the trackrat.net zone. Wrangler already defaults it off for any
+  // environment with `routes`; setting it records the decision instead of
+  // leaving it to a default, which wrangler warns about whenever it flips one.
+  "workers_dev": false,
+
+  // Off for the same reason: when enabled, every uploaded version gets its own
+  // public `<version>-<worker>.<subdomain>.workers.dev` URL, another origin
+  // outside the trackrat.net zone. Unset, wrangler leaves whatever Cloudflare
+  // already has, so it must be set to be known.
+  "preview_urls": false,
+
   "assets": {
     "directory": "./dist/",
 
