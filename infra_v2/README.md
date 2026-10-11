@@ -384,7 +384,7 @@ Deployed as a Cloud Run service, triggered by Pub/Sub messages from the backend.
 - **Spot VMs (staging only)**: ~60-70% cost reduction vs on-demand; production runs `STANDARD` for stability
 - **Staging auto-shutdown**: Scales to 0 after production deploy
 - **Single instance**: No redundancy, but auto-healing handles failures
-- **30-day artifact cleanup**: Prevents registry bloat
+- **30-day artifact cleanup**: Prevents registry bloat; the `production-latest` / `staging-latest` images the VMs boot from are always kept (issue #1892)
 - **Regional resources**: All in us-east4 to minimize egress
 
 ## Troubleshooting

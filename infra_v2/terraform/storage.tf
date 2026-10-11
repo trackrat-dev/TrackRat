@@ -16,6 +16,23 @@ resource "google_artifact_registry_repository" "trackrat" {
     }
   }
 
+  # The `<env>-latest` tags are the MIG's bootstrap source: the startup script
+  # pulls them on every boot (compute.tf). Without this rule, staging's frequent
+  # pushes evicted production's image from keep-recent within days, and 30 days
+  # after the last production deploy delete-old removed the live tag — leaving
+  # the running VM's boot disk as the only copy, so any recreate could not boot
+  # (issue #1892, same family as #1823). KEEP overrides DELETE. When a tag moves
+  # to a new build, the previous version keeps only its `<env>-<sha>` tag and
+  # ages out normally, so this protects at most one version per environment.
+  cleanup_policies {
+    id     = "keep-bootstrap-tags"
+    action = "KEEP"
+    condition {
+      tag_state    = "TAGGED"
+      tag_prefixes = ["production-latest", "staging-latest"]
+    }
+  }
+
   cleanup_policies {
     id     = "delete-old"
     action = "DELETE"
