@@ -120,14 +120,51 @@ def _format_bound(d: date, column_type: str) -> str:
     return d.isoformat()
 
 
+def _month_bounds(pt: PartitionedTable, year: int, month: int) -> tuple[str, str]:
+    """(inclusive start, exclusive end) bound literals for one month."""
+    return (
+        _format_bound(month_start(year, month), pt.column_type),
+        _format_bound(month_end_exclusive(year, month), pt.column_type),
+    )
+
+
 def create_partition_sql(pt: PartitionedTable, year: int, month: int) -> str:
     name = partition_name(pt.name, year, month)
-    start = _format_bound(month_start(year, month), pt.column_type)
-    end = _format_bound(month_end_exclusive(year, month), pt.column_type)
+    start, end = _month_bounds(pt, year, month)
     return (
         f"CREATE TABLE IF NOT EXISTS {name} PARTITION OF {pt.name} "
         f"FOR VALUES FROM ('{start}') TO ('{end}')"
     )
+
+
+def month_range_predicate(pt: PartitionedTable, year: int, month: int) -> str:
+    """WHERE-clause predicate matching exactly the rows one month's partition
+    would hold."""
+    start, end = _month_bounds(pt, year, month)
+    return f"{pt.partition_column} >= '{start}' AND {pt.partition_column} < '{end}'"
+
+
+def move_default_rows_sql(pt: PartitionedTable, year: int, month: int) -> list[str]:
+    """Create one month's partition when the DEFAULT partition already holds
+    rows in its range (issue #1877).
+
+    Postgres refuses to create a partition whose range overlaps rows already in
+    DEFAULT, so a single row written beyond the rolling window would otherwise
+    block that month's partition permanently. Detaching DEFAULT lets the
+    partition be created; its in-range rows are then re-routed through the
+    parent (keeping their ids — the identity columns are BY DEFAULT) and
+    DEFAULT is re-attached. Must run in one transaction: the detach holds an
+    ACCESS EXCLUSIVE lock on the parent, so no writer sees DEFAULT missing.
+    """
+    default = default_partition_name(pt.name)
+    in_range = month_range_predicate(pt, year, month)
+    return [
+        f"ALTER TABLE {pt.name} DETACH PARTITION {default}",
+        create_partition_sql(pt, year, month),
+        f"INSERT INTO {pt.name} SELECT * FROM {default} WHERE {in_range}",
+        f"DELETE FROM {default} WHERE {in_range}",
+        f"ALTER TABLE {pt.name} ATTACH PARTITION {default} DEFAULT",
+    ]
 
 
 def create_default_partition_sql(pt: PartitionedTable) -> str:
@@ -137,6 +174,16 @@ def create_default_partition_sql(pt: PartitionedTable) -> str:
     )
 
 
+def _window_months(
+    reference_date: date, months_back: int, months_forward: int
+) -> list[tuple[int, int]]:
+    """(year, month) pairs of the rolling window around ``reference_date``."""
+    return [
+        _add_months(reference_date.year, reference_date.month, delta)
+        for delta in range(-months_back, months_forward + 1)
+    ]
+
+
 def rolling_window_sql(
     pt: PartitionedTable,
     reference_date: date,
@@ -144,11 +191,10 @@ def rolling_window_sql(
     months_forward: int = MONTHS_FORWARD,
 ) -> list[str]:
     """Idempotent SQL statements to ensure the rolling partition window exists."""
-    statements = [create_default_partition_sql(pt)]
-    for delta in range(-months_back, months_forward + 1):
-        year, month = _add_months(reference_date.year, reference_date.month, delta)
-        statements.append(create_partition_sql(pt, year, month))
-    return statements
+    return [create_default_partition_sql(pt)] + [
+        create_partition_sql(pt, year, month)
+        for year, month in _window_months(reference_date, months_back, months_forward)
+    ]
 
 
 def get_partitioned_table(name: str) -> PartitionedTable:
@@ -207,10 +253,34 @@ async def ensure_future_partitions(
     db: AsyncSession, reference_date: date | None = None
 ) -> None:
     """Top up the rolling partition window for all managed tables. Idempotent —
-    safe to call on every retention_cleanup run."""
+    safe to call on every retention_cleanup run.
+
+    Unlike the sync bootstrap (which only ever runs against empty tables), this
+    runs against live data: a month whose rows already sit in the DEFAULT
+    partition is created via ``move_default_rows_sql`` instead of failing."""
     ref = reference_date or date.today()
-    for statement in initial_setup_sql(ref):
-        await db.execute(text(statement))
+    for pt in PARTITIONED_TABLES:
+        await db.execute(text(create_default_partition_sql(pt)))
+        for year, month in _window_months(ref, MONTHS_BACK, MONTHS_FORWARD):
+            # Zero whenever the partition already exists: Postgres keeps
+            # DEFAULT free of rows that belong to an attached partition.
+            stranded = await db.scalar(
+                text(
+                    f"SELECT count(*) FROM {default_partition_name(pt.name)} "
+                    f"WHERE {month_range_predicate(pt, year, month)}"
+                )
+            )
+            if not stranded:
+                await db.execute(text(create_partition_sql(pt, year, month)))
+                continue
+            for statement in move_default_rows_sql(pt, year, month):
+                await db.execute(text(statement))
+            logger.warning(
+                "partition_default_rows_moved",
+                table=pt.name,
+                partition=partition_name(pt.name, year, month),
+                rows=stranded,
+            )
 
 
 async def _list_partitions(db: AsyncSession, table: str) -> list[str]:

@@ -28,9 +28,11 @@ from datetime import UTC, date, datetime, timedelta
 from unittest.mock import Mock, patch
 
 import pytest
-from sqlalchemy import select
+from sqlalchemy import select, text
+from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from trackrat.db.partitioning import month_end_exclusive, partition_name
 from trackrat.models.database import (
     DiscoveryRun,
     SchedulerTaskRun,
@@ -207,6 +209,76 @@ class TestRetentionCleanupRealPostgres:
         assert alerts_left == [
             "active-1"
         ], f"phase 4 should delete only the aged inactive alert; got {alerts_left!r}"
+
+    async def test_partition_topup_failure_does_not_block_other_phases(
+        self, db_engine, db_session: AsyncSession
+    ):
+        """Issue #1877: a Phase 0 (partition top-up) failure aborted the whole
+        job, so for ten nights no expired journey was deleted. Phases 1-5 don't
+        depend on Phase 0: they must still run, and the job must still raise so
+        run_with_freshness_check records the run as failed.
+
+        Phase 0 is made to fail for real: the month two ahead (inside the
+        rolling window) is replaced by a half-month partition, so recreating
+        the full month overlaps it and Postgres rejects the CREATE.
+        """
+        sessionmaker = _sessionmaker(db_engine)
+
+        first = date.today().replace(day=1)
+        for _ in range(2):
+            first = month_end_exclusive(first.year, first.month)
+        await db_session.execute(
+            text(
+                f"DROP TABLE {partition_name('journey_stops', first.year, first.month)}"
+            )
+        )
+        await db_session.execute(
+            text(
+                "CREATE TABLE journey_stops_overlap PARTITION OF journey_stops "
+                f"FOR VALUES FROM ('{first}') TO ('{first + timedelta(days=15)}')"
+            )
+        )
+        db_session.add(_make_journey("NJT_OLD", "NJT", days_ago=90))
+        db_session.add(_make_journey("NJT_MID", "NJT", days_ago=30))
+        await db_session.commit()
+
+        mock_settings = Mock()
+        mock_settings.retention_days = 60
+        mock_settings.subway_retention_days = 14
+        service = SchedulerService.__new__(SchedulerService)
+
+        with (
+            patch(
+                "trackrat.services.scheduler.get_settings",
+                return_value=mock_settings,
+            ),
+            patch(
+                "trackrat.services.scheduler.get_session",
+                _patched_get_session(sessionmaker),
+            ),
+            patch(
+                "trackrat.services.scheduler.run_with_freshness_check",
+                side_effect=_passthrough_freshness,
+            ),
+            pytest.raises(DBAPIError, match="would overlap partition") as raised,
+        ):
+            await service.retention_cleanup()
+        print(f"retention_cleanup raised: {raised.value}")
+
+        async with sessionmaker() as verify:
+            journeys_left = (
+                (
+                    await verify.execute(
+                        select(TrainJourney.train_id).order_by(TrainJourney.train_id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        assert journeys_left == ["NJT_MID"], (
+            "phase 1 must still delete expired journeys after a phase 0 failure; "
+            f"got {journeys_left!r}"
+        )
 
     async def test_failed_run_is_not_recorded_as_successful(
         self, db_engine, db_session: AsyncSession

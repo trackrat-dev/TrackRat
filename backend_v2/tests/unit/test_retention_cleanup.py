@@ -524,16 +524,25 @@ class TestRetentionCleanupBatchLogic:
 
             mock_freshness.side_effect = execute_task_func
 
-            # First call = freshness session, second = batch session that errors
+            # Sessions: freshness, phase 0 (succeeds), then the phase 1 journey
+            # DELETE session that errors. Phase 0 failures no longer abort the
+            # job (#1877), so the error must come from a DELETE phase.
             ctx_fresh = AsyncMock()
             ctx_fresh.__aenter__ = AsyncMock(return_value=freshness_session)
             ctx_fresh.__aexit__ = AsyncMock(return_value=False)
+
+            phase0_session = AsyncMock()
+            phase0_session.scalar = AsyncMock(return_value=0)
 
             ctx_batch = AsyncMock()
             ctx_batch.__aenter__ = AsyncMock(return_value=error_session)
             ctx_batch.__aexit__ = AsyncMock(return_value=False)
 
-            mock_get_session.side_effect = [ctx_fresh, ctx_batch]
+            mock_get_session.side_effect = [
+                ctx_fresh,
+                make_ctx(phase0_session),
+                ctx_batch,
+            ]
 
             # Should not raise
             await service.retention_cleanup()
@@ -997,6 +1006,12 @@ class TestServiceAlertsRetention:
             ctx_fresh.__aenter__ = AsyncMock(return_value=freshness_session)
             ctx_fresh.__aexit__ = AsyncMock(return_value=False)
             ctxs.append(ctx_fresh)
+
+            # Phase 0 gets its own session so its statements don't advance
+            # call_idx — the 4th counted call must be the service_alerts DELETE.
+            phase0_session = AsyncMock()
+            phase0_session.scalar = AsyncMock(return_value=0)
+            ctxs.append(make_ctx(phase0_session))
 
             for _ in range(4):
                 ctx = AsyncMock()
