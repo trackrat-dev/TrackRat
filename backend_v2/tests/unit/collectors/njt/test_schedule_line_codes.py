@@ -7,6 +7,7 @@ The parse_njt_line_code function handles both formats.
 """
 
 import pytest
+from structlog.testing import capture_logs
 
 from trackrat.utils.train import parse_njt_line_code
 
@@ -186,3 +187,38 @@ class TestParseNjtLineCode:
         result = parse_njt_line_code("Port Jervis Line")
         assert result != "Po"
         assert result == "PJ"
+
+    # --- Real-time names outside the NJT line set (issue #1883) ---
+
+    @pytest.mark.parametrize(
+        ("line", "expected"),
+        [
+            ("Septa", "SP"),
+            ("SP", "SP"),
+            ("BetMGM Meadowlands", "SL"),
+            ("DoorDash Meadowlands Line", "SL"),
+            ("Meadowlands Rail Line", "SL"),
+            ("SL", "SL"),
+        ],
+    )
+    def test_septa_and_meadowlands_names(self, line: str, expected: str):
+        """Discovery's real-time LINE must resolve to the same code as
+        getTrainStopList's LINECODE ("SP" / "SL"), or each pass flips the
+        stored line_code, and must not hit the unknown-name fallback."""
+        with capture_logs() as captured:
+            result = parse_njt_line_code(line)
+        unknown = [e for e in captured if e["event"] == "unknown_njt_line_name"]
+        print(f"{line!r} -> {result!r}, unknown-name logs: {unknown}")
+        assert result == expected
+        assert unknown == []
+
+    @pytest.mark.parametrize(
+        "line",
+        ["BetMGM Meadowlands", "DoorDash Meadowlands Line", "Bergen Meadowlands"],
+    )
+    def test_meadowlands_never_resolves_to_bergen(self, line: str):
+        """Truncating "BetMGM Meadowlands" gave "Be", Bergen County's legacy
+        alias, so event trains were counted as Bergen County Line trains. The
+        Meadowlands rule must win even over a name that starts with "bergen"."""
+        result = parse_njt_line_code(line)
+        assert result not in ("BE", "Be"), f"{line!r} -> {result!r}"

@@ -538,6 +538,8 @@ _NJT_LINE_NAME_PREFIXES: list[tuple[str, str]] = [
     ("port jervis", "PJ"),
     ("atl", "AC"),  # "Atlantic City Rail Line" and "Atl. City Line"
     ("princeton", "PR"),
+    # SEPTA trains NJT lists at Trenton; "SP" is their LINECODE (issue #1883)
+    ("septa", "SP"),
 ]
 
 # NJT's own short line codes (``LINECODE`` on ``getTrainStopList``, and some
@@ -568,6 +570,12 @@ def parse_njt_line_code(line: str) -> str:
         return NJT_LINECODE_ALIASES.get(line, line[:2])
     # Full names from schedule API — match by known prefix
     lower = line.lower()
+    # Meadowlands event trains are named after a changing sponsor ("BetMGM
+    # Meadowlands", "DoorDash Meadowlands Line"), so no prefix can match them.
+    # Truncation turned "BetMGM…" into "Be", Bergen County's legacy alias
+    # (issue #1883); "SL" is NJT's own LINECODE for these trains.
+    if "meadowlands" in lower:
+        return "SL"
     for prefix, code in _NJT_LINE_NAME_PREFIXES:
         if lower.startswith(prefix):
             return code
