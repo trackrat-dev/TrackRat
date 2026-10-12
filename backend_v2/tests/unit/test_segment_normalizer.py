@@ -776,6 +776,30 @@ class TestIsSegmentAnomalous:
         """
         assert _is_segment_anomalous("PL", "CW", "NJT")
 
+    @pytest.mark.parametrize(
+        "from_station,to_station",
+        [
+            # Amtrak EWR maps to NA (#1866); NEC trains run NWK-EWR-MET or
+            # skip MET straight to TRE/PJC
+            ("NP", "NA"),
+            ("NA", "MP"),
+            ("NA", "TR"),
+            ("PJ", "NA"),
+            # Keystone stops between Lancaster and Harrisburg
+            ("LNC", "MJY"),
+            ("MJY", "ELT"),
+            ("ELT", "MIDPA"),
+            ("MIDPA", "HAR"),
+            ("ELT", "HAR"),
+        ],
+    )
+    def test_newly_mapped_amtrak_stops_are_on_route(self, from_station, to_station):
+        """Segments through stations the Amtrak collector newly keeps must
+        not be dropped from congestion as off-route. Before NA and the
+        Keystone stops were in the topology, mapping them split NP->TR and
+        LNC->HAR into segments that were all discarded."""
+        assert not _is_segment_anomalous(from_station, to_station, "AMTRAK")
+
     def test_non_gtfsrt_sources_not_checked(self):
         """Test that non-GTFS-RT sources without branching are not subject to route-match filtering.
 

@@ -769,7 +769,8 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "SYR": "SYR",  # Syracuse
     "ROC": "ROC",  # Rochester
     "BUF": "BUF",  # Buffalo Depew
-    "MTRL": "MTR",  # Montreal
+    "MTRL": "MTR",  # Montreal (Amtraker sends the VIA code)
+    "MTR": "MTR",  # Montreal (Amtrak GTFS still sends this)
     "POR": "POR",  # Portland ME
     "ESX": "ESX",  # Essex Junction
     "BTN": "BTN",  # Burlington VT
@@ -1074,7 +1075,8 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "YAZ": "YAZ",  # Yazoo City
     # New England
     "AMS": "AMS",  # Amsterdam
-    "ALDR": "AST",  # Aldershot
+    "ALDR": "AST",  # Aldershot (Amtraker sends the VIA code)
+    "AST": "AST",  # Aldershot (Amtrak GTFS still sends this)
     "BFX": "BFX",  # Buffalo
     "BLF": "BLF",  # Bellows Falls
     "BON": "BON",  # Boston North
@@ -1087,15 +1089,18 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "FRE": "FRE",  # Freeport
     "FTC": "FTC",  # Ticonderoga
     "GFD": "GFD",  # Greenfield
-    "GRIM": "GMS",  # Grimsby
+    "GRIM": "GMS",  # Grimsby (Amtraker sends the VIA code)
+    "GMS": "GMS",  # Grimsby (Amtrak GTFS still sends this)
     "HHL": "HHL",  # Haverhill
     "HLK": "HLK",  # Holyoke
     "MBY": "MBY",  # Middlebury
     "MPR": "MPR",  # Montpelier-Berlin
     "NFL": "NFL",  # Niagara Falls
-    "NIAG": "NFS",  # Niagara Falls
+    "NIAG": "NFS",  # Niagara Falls (Amtraker sends the VIA code)
+    "NFS": "NFS",  # Niagara Falls (Amtrak GTFS still sends this)
     "NHT": "NHT",  # Northampton
-    "OAKV": "OKL",  # Oakville
+    "OAKV": "OKL",  # Oakville (Amtraker sends the VIA code)
+    "OKL": "OKL",  # Oakville (Amtrak GTFS still sends this)
     "ORB": "ORB",  # Old Orchard Beach
     "PIT": "PIT",  # Pittsfield
     "PLB": "PLB",  # Plattsburgh
@@ -1107,9 +1112,12 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "RUD": "RUD",  # Rutland
     "SAB": "SAB",  # St. Albans
     "SAO": "SAO",  # Saco
-    "SCAT": "SCA",  # St. Catherines
-    "SLAM": "SLQ",  # St-Lambert
-    "TRTO": "TWO",  # Toronto
+    "SCAT": "SCA",  # St. Catherines (Amtraker sends the VIA code)
+    "SCA": "SCA",  # St. Catherines (Amtrak GTFS still sends this)
+    "SLAM": "SLQ",  # St-Lambert (Amtraker sends the VIA code)
+    "SLQ": "SLQ",  # St-Lambert (Amtrak GTFS still sends this)
+    "TRTO": "TWO",  # Toronto (Amtraker sends the VIA code)
+    "TWO": "TWO",  # Toronto (Amtrak GTFS still sends this)
     "UCA": "UCA",  # Utica
     "VRN": "VRN",  # Ferrisburgh
     "WAB": "WAB",  # Waterbury-Stowe
@@ -1148,7 +1156,8 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "SPT": "SPT",  # Sandpoint
     "STW": "STW",  # Stanwood
     "TUK": "TUK",  # Tukwila
-    "VCVR": "VAC",  # Vancouver
+    "VCVR": "VAC",  # Vancouver (Amtraker sends the VIA code)
+    "VAC": "VAC",  # Vancouver (Amtrak GTFS still sends this)
     "VAN": "VAN",  # Vancouver
     "WEN": "WEN",  # Wenatchee
     "WGL": "WGL",  # West Glacier
@@ -1230,7 +1239,10 @@ AMTRAK_TO_INTERNAL_STATION_MAP: dict[str, str] = {
     "YUM": "YUM",  # Yuma
 }
 
-# Reverse mapping from internal codes to Amtrak codes (for the first match)
+# Reverse mapping from internal codes to Amtrak codes. Where two Amtrak codes
+# share an internal code (Canadian stops: VIA code in Amtraker, old code in
+# Amtrak GTFS), this gives the Amtraker spelling, since validation matches it
+# against Amtraker trains.
 INTERNAL_TO_AMTRAK_STATION_MAP: dict[str, str] = {
     "NY": "NYP",
     "NP": "NWK",

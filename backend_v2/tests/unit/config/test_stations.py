@@ -264,23 +264,68 @@ class TestStationMapping:
         assert get_station_name(internal) == expected_name
         assert internal in STATION_COORDINATES, f"{internal} has no coordinates"
 
-    def test_reverse_map_is_exact_inverse(self):
-        """INTERNAL_TO_AMTRAK_STATION_MAP must invert the forward map exactly.
-        Validation and the pattern scheduler translate internal codes back to
-        Amtrak codes, so a stale reverse entry (e.g. BRP -> BPT) silently
-        breaks those lookups."""
-        inverted = {v: k for k, v in AMTRAK_TO_INTERNAL_STATION_MAP.items()}
-        assert len(inverted) == len(AMTRAK_TO_INTERNAL_STATION_MAP), (
-            "Two Amtrak codes share one internal code, so one stop would "
-            "overwrite the other on any train serving both"
-        )
-        mismatches = {
-            internal: (INTERNAL_TO_AMTRAK_STATION_MAP.get(internal), amtrak)
-            for internal, amtrak in inverted.items()
-            if INTERNAL_TO_AMTRAK_STATION_MAP.get(internal) != amtrak
+    # Internal code -> (Amtraker spelling, Amtrak GTFS spelling). Amtraker
+    # sends VIA codes for these Canadian stops; Amtrak's GTFS stops.txt still
+    # uses the old codes, and both feeds translate through the forward map.
+    GTFS_SPELLINGS = {
+        "MTR": ("MTRL", "MTR"),  # Montreal
+        "SLQ": ("SLAM", "SLQ"),  # St-Lambert
+        "TWO": ("TRTO", "TWO"),  # Toronto
+        "OKL": ("OAKV", "OKL"),  # Oakville
+        "AST": ("ALDR", "AST"),  # Aldershot
+        "GMS": ("GRIM", "GMS"),  # Grimsby
+        "SCA": ("SCAT", "SCA"),  # St. Catharines
+        "NFS": ("NIAG", "NFS"),  # Niagara Falls, ON
+        "VAC": ("VCVR", "VAC"),  # Vancouver, BC
+    }
+
+    def test_reverse_map_round_trips(self):
+        """Every reverse entry must lead back to its internal code, and every
+        internal code must have one. Validation and the pattern scheduler
+        translate internal codes back to Amtrak codes, so a stale reverse
+        entry (e.g. BRP -> BPT) silently breaks those lookups."""
+        broken = {
+            internal: (amtrak, AMTRAK_TO_INTERNAL_STATION_MAP.get(amtrak))
+            for internal, amtrak in INTERNAL_TO_AMTRAK_STATION_MAP.items()
+            if AMTRAK_TO_INTERNAL_STATION_MAP.get(amtrak) != internal
         }
-        assert mismatches == {}, f"internal: (reverse, expected): {mismatches}"
-        assert set(INTERNAL_TO_AMTRAK_STATION_MAP) == set(inverted)
+        assert broken == {}, f"internal: (reverse, forward of reverse): {broken}"
+        assert set(INTERNAL_TO_AMTRAK_STATION_MAP) == set(
+            AMTRAK_TO_INTERNAL_STATION_MAP.values()
+        )
+
+    def test_shared_internal_codes_are_only_gtfs_spellings(self):
+        """Two Amtrak codes may share an internal code only when they are two
+        feeds' spellings of one station. Any other collision would let one stop
+        overwrite the other on a train serving both. Where they do share, the
+        reverse map must give the Amtraker spelling, which validation matches
+        against live trains."""
+        by_internal: dict[str, set[str]] = {}
+        for amtrak, internal in AMTRAK_TO_INTERNAL_STATION_MAP.items():
+            by_internal.setdefault(internal, set()).add(amtrak)
+        shared = {i: codes for i, codes in by_internal.items() if len(codes) > 1}
+        assert shared == {
+            i: set(spellings) for i, spellings in self.GTFS_SPELLINGS.items()
+        }, f"Amtrak codes sharing an internal code: {shared}"
+        for internal, (amtraker, _gtfs) in self.GTFS_SPELLINGS.items():
+            assert INTERNAL_TO_AMTRAK_STATION_MAP[internal] == amtraker, (
+                f"{internal} reverse-maps to "
+                f"{INTERNAL_TO_AMTRAK_STATION_MAP[internal]!r}, expected the "
+                f"Amtraker spelling {amtraker!r}"
+            )
+
+    @pytest.mark.parametrize("internal", sorted(GTFS_SPELLINGS))
+    def test_gtfs_and_amtraker_spellings_reach_the_same_station(self, internal):
+        """Scheduled Amtrak journeys come from GTFS stop_times, which drop any
+        stop whose stop_id has no mapping. Rekeying these onto VIA codes alone
+        would erase the Canadian stops from every scheduled journey."""
+        amtraker, gtfs = self.GTFS_SPELLINGS[internal]
+        from_gtfs = map_gtfs_stop_to_station_code(gtfs, "", "AMTRAK")
+        from_amtraker = map_amtrak_station_code(amtraker)
+        assert (from_gtfs, from_amtraker) == (internal, internal), (
+            f"GTFS {gtfs} -> {from_gtfs!r}, Amtraker {amtraker} -> "
+            f"{from_amtraker!r}, expected both {internal!r}"
+        )
 
     def test_internal_codes_shared_with_other_systems_are_intentional(self):
         """An Amtrak internal code that is also another system's station code
