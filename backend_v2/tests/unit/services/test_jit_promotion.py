@@ -132,7 +132,12 @@ class TestJitPromotion:
                 side_effect=mock_retry_on_deadlock,
             ),
         ):
-            await service._ensure_fresh_station_data(mock_db, "SO", now_et().date())
+            # Bulk pass only (as the inline refresh calls it): promotion
+            # happens there, and the per-train getTrainStopList pass would
+            # need its own upstream response.
+            await service._ensure_fresh_station_data(
+                mock_db, "SO", now_et().date(), skip_individual_refresh=True
+            )
 
         assert journey.observation_type == "OBSERVED", (
             "SCHEDULED journey should be promoted to OBSERVED when NJT "
@@ -176,7 +181,12 @@ class TestJitPromotion:
                 side_effect=mock_retry_on_deadlock,
             ),
         ):
-            await service._ensure_fresh_station_data(mock_db, "SO", now_et().date())
+            # Bulk pass only (as the inline refresh calls it): promotion
+            # happens there, and the per-train getTrainStopList pass would
+            # need its own upstream response.
+            await service._ensure_fresh_station_data(
+                mock_db, "SO", now_et().date(), skip_individual_refresh=True
+            )
 
         assert journey.observation_type == "SCHEDULED", (
             "SCHEDULED journey should NOT be promoted when NJT API "
@@ -216,7 +226,12 @@ class TestJitPromotion:
                 side_effect=mock_retry_on_deadlock,
             ),
         ):
-            await service._ensure_fresh_station_data(mock_db, "SO", now_et().date())
+            # Bulk pass only (as the inline refresh calls it): promotion
+            # happens there, and the per-train getTrainStopList pass would
+            # need its own upstream response.
+            await service._ensure_fresh_station_data(
+                mock_db, "SO", now_et().date(), skip_individual_refresh=True
+            )
 
         assert journey.observation_type == "OBSERVED"
 
