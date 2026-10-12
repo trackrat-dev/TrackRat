@@ -728,6 +728,11 @@ class DepartureService:
 
         # Build departures list
         departures = []
+        # Primary dedup keys of journeys skipped as ending at this station.
+        # Their GTFS twin can still list onward stops (a short-turned run, or
+        # trailing stops GTFS maps that real time doesn't), and without its
+        # real-time row the merge would add it as a SCHEDULED departure.
+        terminating_here: set[str] = set()
         for journey in journeys:
             # Find from and to stops
             from_stop = None
@@ -755,6 +760,12 @@ class DepartureService:
             if journey_terminates_at_station(
                 sorted_stops, journey.terminal_station_code, from_codes
             ):
+                if journey.journey_date and journey.data_source:
+                    terminating_key = self._primary_dedup_key(
+                        journey.train_id, journey.journey_date, journey.data_source
+                    )
+                    if terminating_key:
+                        terminating_here.add(terminating_key)
                 continue
 
             # Calculate train position
@@ -930,6 +941,7 @@ class DepartureService:
                 departures = self._merge_departures(
                     realtime=departures,
                     gtfs=gtfs_future,
+                    suppressed_primary_keys=terminating_here,
                 )
             except Exception as e:
                 # GTFS merge failed - log warning but return real-time results
@@ -2063,6 +2075,18 @@ class DepartureService:
             return NJT_LINE_CANONICALIZATION.get(line_code, line_code)
         return line_code
 
+    @staticmethod
+    def _primary_dedup_key(
+        train_id: str | None, journey_date: date, data_source: str
+    ) -> str | None:
+        """Normalized train_id merge key, or None if the id is missing/unreliable."""
+        if not train_id or train_id == "Unknown":
+            return None
+        # Normalize Amtrak IDs: "A2205" → "2205" for matching with GTFS
+        if data_source == "AMTRAK":
+            train_id = train_id.lstrip("A")
+        return f"{train_id}:{journey_date}:{data_source}"
+
     def _make_dedup_keys(
         self,
         dep: TrainDeparture,
@@ -2086,14 +2110,9 @@ class DepartureService:
             - fallback_keys is a list of HH:MM-bucketed keys spanning the
               tolerance window in both directions
         """
-        # Primary: normalized train_id
-        primary_key = None
-        if dep.train_id and dep.train_id not in ("Unknown", ""):
-            train_id = dep.train_id
-            # Normalize Amtrak IDs: "A2205" → "2205" for matching with GTFS
-            if dep.data_source == "AMTRAK":
-                train_id = train_id.lstrip("A")
-            primary_key = f"{train_id}:{dep.journey_date}:{dep.data_source}"
+        primary_key = self._primary_dedup_key(
+            dep.train_id, dep.journey_date, dep.data_source
+        )
 
         # Fallback: line + scheduled time with tolerance
         # - Normalize line codes to handle NJT API inconsistencies
@@ -2210,6 +2229,7 @@ class DepartureService:
         self,
         realtime: list[TrainDeparture],
         gtfs: list[TrainDeparture],
+        suppressed_primary_keys: set[str] | None = None,
     ) -> list[TrainDeparture]:
         """Merge real-time and GTFS departures, preferring real-time.
 
@@ -2217,8 +2237,14 @@ class DepartureService:
         1. Primary: normalized train_id (handles Amtrak A-prefix mismatch)
         2. Fallback: normalized line + time with ±1 minute tolerance
 
-        Cancelled real-time trains suppress their GTFS counterparts.
+        Cancelled real-time trains suppress their GTFS counterparts, and so
+        does any primary key in ``suppressed_primary_keys``: real-time rows the
+        caller dropped (a train ending at the board station, issue #1882).
+        Only the train_id key is used for those, never line+time: at a
+        terminal that would also hide the departing train of the same line
+        at the same minute.
         """
+        suppressed = suppressed_primary_keys or set()
         # Build indexes from real-time departures
         primary_keys: set[str] = set()
         fallback_keys: set[str] = set()
@@ -2258,6 +2284,8 @@ class DepartureService:
             if primary and primary in primary_keys:
                 continue
             if primary and primary in cancelled_primary:
+                continue
+            if primary and primary in suppressed:
                 continue
 
             # Check fallback key match - any of the fallback keys matching is sufficient
