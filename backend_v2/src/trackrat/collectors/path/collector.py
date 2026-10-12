@@ -57,11 +57,22 @@ logger = get_logger(__name__)
 MATCH_TOLERANCE_MINUTES = 5
 
 # Maximum spread between origin-departure estimates back-calculated from two
-# sightings of the SAME train in one collection cycle, exclusive: sightings must
-# be closer together than two trains on one line ever are. PATH's tightest
-# per-line headway is ~2 minutes (the 2-minute figure quoted for the system as a
-# whole is the shared trunk, which mixes lines that group separately here), so
-# at exactly 2 minutes apart the sightings are two trains, not one.
+# sightings of the SAME train in one collection cycle, exclusive. It sits midway
+# between one train (spread ~0) and the next on its line: PATH's tightest
+# per-line headway is 4 minutes (JSQ-33 weekdays; NWK-WTC is 5, both Hoboken
+# lines 8 — PATH GTFS, weekday 06:00-20:00), so at 2 minutes apart two
+# estimates are as close to the neighbouring train as to each other.
+#
+# Measured against 12 live RidePATH snapshots (171 trains seen at 2+ stations,
+# a Sunday afternoon in October 2026, issue #1752), same-train spread is median
+# 0.50 / p99 1.44 / max 1.95 minutes; the max is JSQ-33H, whose reversal dwell
+# at Hoboken a direction-agnostic segment median cannot place. That holds only
+# while the inputs are sound: segment times looked up in the train's direction
+# of travel, taken as the median across GTFS trips rather than one arbitrary
+# (often construction-variant) trip, and countdowns from secondsToArrival.
+# Before those fixes same-train sightings spread up to ~11 minutes and
+# whole-minute countdowns landed pairs on exactly 2.00 — so a split here is a
+# signal to check those inputs, not to widen this.
 #
 # Below that the ambiguity is irreducible: when two trains on the same line,
 # origin and destination run closer together than the back-calculation noise,

@@ -265,6 +265,76 @@ class TestRidePathClient:
         assert client._parse_minutes("invalid") is None
         assert client._parse_minutes(None) is None
 
+    def test_parse_seconds(self, client):
+        """secondsToArrival parses to non-negative seconds, else None."""
+        assert client._parse_seconds("1101") == 1101
+        assert client._parse_seconds(94) == 94
+        assert client._parse_seconds("0") == 0
+        assert client._parse_seconds("-5") is None
+        assert client._parse_seconds("") is None
+        assert client._parse_seconds("soon") is None
+        assert client._parse_seconds(None) is None
+
+    def test_arrival_time_uses_seconds_to_arrival(self, client):
+        """arrival_time uses secondsToArrival, not the whole-minute message.
+
+        Taken from a live payload: "19 min" with secondsToArrival 1101 (18.35
+        min). Using the message put the train 39s late — and the origin
+        departure back-calculated from it with it (issue #1752).
+        """
+        from trackrat.utils.time import now_et
+
+        now = now_et()
+        last_updated_time = now - timedelta(seconds=20)
+        msg = {
+            "headSign": "World Trade Center",
+            "arrivalTimeMessage": "19 min",
+            "secondsToArrival": "1101",
+            "lastUpdated": last_updated_time.isoformat(),
+            "lineColor": "D93A30",
+        }
+
+        arrival = client._parse_arrival_message("PNK", "ToNY", msg, now)
+
+        assert arrival is not None
+        expected = last_updated_time + timedelta(seconds=1101)
+        delta = (arrival.arrival_time - expected).total_seconds()
+        print(f"arrival_time={arrival.arrival_time} expected={expected} delta={delta}s")
+        assert abs(delta) < 1, (
+            f"arrival_time should be lastUpdated + 1101s, got {delta:+.1f}s off "
+            f"(+39s means the '19 min' message was used)"
+        )
+        assert arrival.minutes_away == 19, "minutes_away still reflects the message"
+
+    @pytest.mark.parametrize("raw_seconds", [None, "", "soon", "-30"])
+    def test_arrival_time_falls_back_to_minutes_without_usable_seconds(
+        self, client, raw_seconds
+    ):
+        """Missing or unusable secondsToArrival falls back to the minute message."""
+        from trackrat.utils.time import now_et
+
+        now = now_et()
+        last_updated_time = now - timedelta(seconds=20)
+        msg = {
+            "headSign": "World Trade Center",
+            "arrivalTimeMessage": "19 min",
+            "lastUpdated": last_updated_time.isoformat(),
+            "lineColor": "D93A30",
+        }
+        if raw_seconds is not None:
+            msg["secondsToArrival"] = raw_seconds
+
+        arrival = client._parse_arrival_message("PNK", "ToNY", msg, now)
+
+        assert arrival is not None
+        expected = last_updated_time + timedelta(minutes=19)
+        delta = (arrival.arrival_time - expected).total_seconds()
+        print(f"secondsToArrival={raw_seconds!r} delta={delta}s")
+        assert abs(delta) < 1, (
+            f"secondsToArrival={raw_seconds!r} should fall back to lastUpdated + "
+            f"19 min, got {delta:+.1f}s off"
+        )
+
     def test_parse_timestamp_valid(self, client):
         """Test parsing valid ISO timestamps."""
         ts = client._parse_timestamp("2026-01-19T07:36:57.674251-05:00")
