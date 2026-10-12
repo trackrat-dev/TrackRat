@@ -1122,7 +1122,22 @@ AMTRAK_SAN_JOAQUINS_SAC = Route(
     name="San Joaquins (Sacramento)",
     data_source="AMTRAK",
     line_codes=frozenset({"AM"}),
-    stations=("SAC", "SKT", "LOD", "MCD", "HNF", "BFD"),
+    # Every stop Amtraker reports (#1866 mapped MOD, TRK, MDR, COC, WAC, ACA):
+    # a stop on no Amtrak route is dropped from congestion as off-route.
+    stations=(
+        "SAC",
+        "LOD",
+        "SKT",
+        "MOD",
+        "TRK",
+        "MCD",
+        "MDR",
+        "FNO",
+        "HNF",
+        "COC",
+        "WAC",
+        "BFD",
+    ),
 )
 
 AMTRAK_SAN_JOAQUINS_OAK = Route(
@@ -1130,7 +1145,23 @@ AMTRAK_SAN_JOAQUINS_OAK = Route(
     name="San Joaquins (Oakland)",
     data_source="AMTRAK",
     line_codes=frozenset({"AM"}),
-    stations=("OKJ", "SKN", "MCD", "HNF", "BFD"),
+    stations=(
+        "OKJ",
+        "EMY",
+        "RIC",
+        "MTZ",
+        "ACA",
+        "SKN",
+        "MOD",
+        "TRK",
+        "MCD",
+        "MDR",
+        "FNO",
+        "HNF",
+        "COC",
+        "WAC",
+        "BFD",
+    ),
 )
 
 AMTRAK_WOLVERINE = Route(

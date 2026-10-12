@@ -800,6 +800,24 @@ class TestIsSegmentAnomalous:
         LNC->HAR into segments that were all discarded."""
         assert not _is_segment_anomalous(from_station, to_station, "AMTRAK")
 
+    def test_san_joaquins_711_keeps_every_hop(self):
+        """Live San Joaquins 711 (Bakersfield -> Oakland, 2026-10-12). Once
+        #1866 mapped its small stops, 11 of its 14 hops touched a station on
+        no Amtrak route and were dropped from congestion, including the
+        Bakersfield-Hanford and Merced-Stockton segments that survived before.
+        """
+        stops = [
+            "BFD", "WAC", "COC", "HNF", "FNO", "MDR", "MCD",
+            "TRK", "MOD", "SKN", "ACA", "MTZ", "RIC", "EMY", "OKJ",
+        ]  # fmt: skip
+        dropped = [
+            (a, b)
+            for a, b in zip(stops, stops[1:], strict=False)
+            if _is_segment_anomalous(a, b, "AMTRAK")
+        ]
+        print(f"711 hops dropped as off-route: {dropped}")
+        assert dropped == []
+
     def test_non_gtfsrt_sources_not_checked(self):
         """Test that non-GTFS-RT sources without branching are not subject to route-match filtering.
 

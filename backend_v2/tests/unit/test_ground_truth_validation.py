@@ -1920,3 +1920,56 @@ class TestGtLabelPrintsThePairedField:
         tr_line = f"TrackRat train {tr.train_id} has no ground truth match"
 
         assert "L717" in gt_line and "L717" in tr_line
+
+
+class TestAmtrakGroundTruthProvider:
+    """Amtraker's /v3/trains also lists VIA Rail and Brightline trains. #1866
+    mapped VIA's station codes (TRTO, OAKV, ...) onto Amtrak's Canadian stops,
+    so without a provider filter every VIA corridor train became Amtrak ground
+    truth that TrackRat never collects, reported as a missing train."""
+
+    @staticmethod
+    def _seeded_client(trains_by_num):
+        """A real AmtrakClient holding a just-fetched feed in its cache, so the
+        fetch runs end to end without a network call."""
+        from trackrat.collectors.amtrak.client import AmtrakClient
+
+        client = AmtrakClient()
+        client._cache = trains_by_num
+        client._cache_time = datetime.now()
+        return client
+
+    def test_only_amtrak_operated_trains_become_ground_truth(self):
+        from unittest.mock import patch
+
+        from tests.factories.amtrak import (
+            create_amtrak_station_data,
+            create_amtrak_train_data,
+        )
+
+        soon = datetime.now(timezone.utc) + timedelta(minutes=20)
+        later = soon + timedelta(minutes=30)
+
+        def corridor(train_num, first, second):
+            return create_amtrak_train_data(
+                train_num=train_num,
+                stations=[
+                    create_amtrak_station_data(
+                        name=first, code=first, sch_dep=soon.isoformat()
+                    ),
+                    create_amtrak_station_data(
+                        name=second, code=second, sch_arr=later.isoformat()
+                    ),
+                ],
+            )
+
+        maple_leaf = corridor("63", "TRTO", "OAKV")  # Amtrak-operated
+        via = corridor("v45", "TRTO", "OAKV").model_copy(update={"provider": "Via"})
+
+        client = self._seeded_client({"63": [maple_leaf], "v45": [via]})
+        with patch("trackrat.collectors.amtrak.client.AmtrakClient", lambda: client):
+            arrivals = gtv.fetch_amtrak_ground_truth()
+
+        ids = sorted({a.train_id for a in arrivals})
+        print(f"ground-truth train ids: {ids}")
+        assert ids == ["A63"], f"VIA v45 must be excluded, got {ids}"
