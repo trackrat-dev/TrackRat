@@ -134,7 +134,7 @@ gcloud builds submit --config=cloudbuild.yaml .
 
 The React webpage (`webpage_v2/`) deploys separately from the API via its own Cloud Build triggers (defined in `terraform-webpage/`), to **Cloudflare Workers Static Assets** (issue #1713):
 - **Push to `main`** (with `webpage_v2/` or `cloudbuild-webpage-staging.yaml` changes) → `trackrat-webpage-staging` trigger → Worker `trackrat-webpage-staging` (`staging.trackrat.net`)
-- **Push to `production`** (with `webpage_v2/` or `cloudbuild-webpage.yaml` changes) → `trackrat-webpage-production` trigger → Worker `trackrat-webpage-production` (`trackrat.net` / `www.trackrat.net`). The pipeline still also syncs to `gs://trackrat-webpage-production`; nothing serves that bucket since the DNS cutover completed (2026-08-08), and those `sync`/`cache-html`/`cache-assets` steps are leftover cleanup
+- **Push to `production`** (with `webpage_v2/` or `cloudbuild-webpage.yaml` changes) → `trackrat-webpage-production` trigger → Worker `trackrat-webpage-production` (`trackrat.net` / `www.trackrat.net`). Since issue #1763 the pipeline no longer syncs to `gs://trackrat-webpage-production`; the bucket holds the last pre-cutover build only until it is deleted
 
 Each cloudbuild file is in its own trigger's path filter because it bakes `_API_BASE_URL` into the bundle as `VITE_API_BASE_URL` at build time — editing that substitution alone must redeploy, or the live site keeps calling the previous API host.
 
@@ -163,7 +163,7 @@ The `production` Worker's custom domains serve `trackrat.net` and `www.trackrat.
 | `region` | us-east4 | GCP region |
 | `zone` | us-east4-a | GCP zone |
 | `machine_type` | t2d-standard-1 | VM machine type, shared by staging and production |
-| `disk_size_gb` | 40 | Persistent disk size |
+| `disk_size_gb` | 50 | Persistent data disk size (grown from 40 in issue #1828). Never lower it: a decrease replaces the Postgres data disk. The 20 GB boot disk is fixed in `compute.tf` (issue #1879) |
 | `snapshot_retention_days` | 7 | Snapshot retention period |
 | `environment` | *(required)* | Workspace environment; validated to `staging` or `production` |
 | `domain` | `""` | Overrides the derived public API hostname when set |
@@ -442,7 +442,7 @@ infra_v2/
 │   │   └── test_main.py
 │   └── train_follow_notifier/   # Train-follow Slack notification service
 ├── terraform-webpage/
-│   └── main.tf                  # Webpage Cloud Build triggers + GCS buckets (rollback artifacts only). No load balancer — see "Frontend Topology"
+│   └── main.tf                  # Webpage Cloud Build triggers + GCS buckets (no longer written or served; pending deletion, #1763). No load balancer — see "Frontend Topology"
 └── terraform/
     ├── main.tf                  # Provider and backend config
     ├── variables.tf             # Input variables
@@ -452,7 +452,7 @@ infra_v2/
     ├── network.tf               # Firewall rules (incl. health-check probes for MIG auto-healing)
     ├── storage.tf               # Artifact Registry, persistent disk, GCS
     ├── secrets.tf               # Secret Manager refs, IAM, service account
-    ├── metrics.tf               # Log-based metrics (8 google_logging_metric resources)
+    ├── metrics.tf               # Log-based metrics (9 google_logging_metric resources)
     ├── monitoring.tf            # Alerting policies and notification channels
     └── backup.tf                # Snapshot schedule and policy
 ```

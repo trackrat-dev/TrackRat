@@ -198,6 +198,7 @@ GET  /api/v2/trips/search                  # Multi-leg trip search with transfer
 GET  /api/v2/routes/preferences            # User route preferences
 PUT  /api/v2/routes/preferences            # Update route preferences
 POST /api/v2/feedback                      # Submit user feedback
+POST /api/v2/telemetry/onboarding          # iOS onboarding telemetry (log-only)
 GET  /share/train/{train_id}                # OG meta tag HTML for link previews
 GET  /share/train/{train_id}/image          # PNG share image for link previews
 GET  /admin/stats                           # Server usage statistics (HTML)

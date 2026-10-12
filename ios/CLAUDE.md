@@ -44,7 +44,7 @@ TrackRat/
 │   ├── Components/   # 28 reusable UI components
 │   └── Paywall/      # PaywallView, ProFeatureLockView
 ├── Models/           # Train, TrainV2, V2APIModels, TrainSystem, TripOption, CompletedTrip, DeepLink
-├── Services/         # 15 singleton services
+├── Services/         # 17 singleton services
 ├── Shared/           # Stations, StationData, StationCoordinates, StationDepartures, LiveActivityModels, RouteTopology, RouteShapes, SubwayLines
 ├── Theme/            # TrackRatTheme.swift
 ├── Utilities/        # Extensions.swift, Logger.swift
@@ -72,6 +72,8 @@ TrackRatTests/               # Unit tests
 | TripRecordingService | Trip recording |
 | StaticTrackDistributionService | Static track distribution data |
 | ThemeManager | Theme management |
+| LocationService | One-shot location fix to pick a system and rank nearby stations during setup (never leaves the device) |
+| NotificationPermissionService | Defers the notification prompt until route alerts need it |
 
 ## API Endpoints
 
