@@ -442,6 +442,117 @@ class TestDropPatternsNotInTimetable:
         )
         assert dates == [next_sat], f"only {SATURDAY} should be deleted, got {dates}"
 
+    @pytest.mark.asyncio
+    async def test_implausible_mass_drop_is_refused(self, db_session):
+        """At a timetable change the 00:45 job runs against the outgoing bundle.
+        If its main service ended yesterday while one long-dated service still
+        runs, the date looks covered and every other known train reads as not
+        running. Dropping 11 of 12 patterns (and deleting their projected rows)
+        is not believable, so the check must fail open and touch nothing."""
+        route = GTFSRoute(
+            data_source="AMTRAK",
+            route_id="lapsing",
+            route_short_name="Northeast Regional",
+            route_long_name="Northeast Regional",
+            route_color="004B87",
+        )
+        db_session.add(route)
+        await db_session.flush()
+        every_day = dict(
+            monday=True,
+            tuesday=True,
+            wednesday=True,
+            thursday=True,
+            friday=True,
+            saturday=True,
+            sunday=True,
+        )
+        db_session.add_all(
+            [
+                GTFSCalendar(
+                    data_source="AMTRAK",
+                    service_id="ENDED",
+                    start_date=date(2026, 6, 1),
+                    end_date=SATURDAY - timedelta(days=1),
+                    **every_day,
+                ),
+                GTFSCalendar(
+                    data_source="AMTRAK",
+                    service_id="LONG",
+                    start_date=date(2026, 6, 1),
+                    end_date=date(2027, 6, 1),
+                    **every_day,
+                ),
+                GTFSTrip(
+                    data_source="AMTRAK",
+                    trip_id="t-2150",
+                    route_id=route.id,
+                    service_id="LONG",
+                    trip_headsign="Boston",
+                    train_id="2150",
+                ),
+            ]
+            + [
+                GTFSTrip(
+                    data_source="AMTRAK",
+                    trip_id=f"t-{n}",
+                    route_id=route.id,
+                    service_id="ENDED",
+                    trip_headsign="Boston",
+                    train_id=str(n),
+                )
+                for n in range(171, 182)
+            ]
+        )
+        t = ET.localize(datetime_at(SATURDAY))
+        db_session.add(_journey("A171", SATURDAY, "SCHEDULED", [("WS", t)]))
+        await db_session.commit()
+
+        patterns = [_pattern("A2150")] + [_pattern(f"A{n}") for n in range(171, 182)]
+        with patch(
+            "trackrat.services.amtrak_pattern_scheduler.get_session",
+            _session_factory(db_session),
+        ):
+            kept = await AmtrakPatternScheduler().drop_patterns_not_in_timetable(
+                patterns, SATURDAY
+            )
+
+        remaining = (
+            (await db_session.execute(select(TrainJourney.train_id))).scalars().all()
+        )
+        print(f"kept {len(kept)} of {len(patterns)} patterns, rows={remaining}")
+        assert kept == patterns, (
+            "an 11-of-12 drop must be refused and every pattern kept; "
+            f"kept {[p['train_number'] for p in kept]}"
+        )
+        assert remaining == ["A171"], f"no row should be deleted, got {remaining}"
+
+    @pytest.mark.asyncio
+    async def test_check_failure_keeps_patterns(self, db_session):
+        """The timetable check is an optional filter: if it raises, the day's
+        patterns must come back unfiltered instead of the error aborting all
+        Amtrak schedule generation."""
+        await _seed_amtrak_gtfs(db_session)
+        patterns = [_pattern("A2260"), _pattern("A2150")]
+
+        with (
+            patch(
+                "trackrat.services.amtrak_pattern_scheduler.get_session",
+                _session_factory(db_session),
+            ),
+            patch.object(
+                GTFSService,
+                "get_train_ids_not_running",
+                side_effect=RuntimeError("gtfs tables unavailable"),
+            ),
+        ):
+            kept = await AmtrakPatternScheduler().drop_patterns_not_in_timetable(
+                patterns, SATURDAY
+            )
+
+        print(f"kept after a failing check: {[p['train_number'] for p in kept]}")
+        assert kept == patterns, f"expected fail-open on error, got {kept}"
+
 
 # ---------------------------------------------------------------------------
 # B. Departures: an unseen pattern row is no longer served as live

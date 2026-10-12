@@ -53,6 +53,16 @@ class AmtrakPatternScheduler:
     # pattern may match a GTFS trip on the previous day. 03:00 covers the
     # largest Eastern/Pacific offset.
     PREVIOUS_SERVICE_DAY_CUTOFF = time(3, 0)
+    # A timetable check that would drop more than this share of the day's
+    # patterns is distrusted and skipped. At a timetable change the 00:45 job
+    # runs before the 03:00 GTFS refresh, against the outgoing bundle; if its
+    # main services have ended while a few long-dated ones remain, the date
+    # still looks covered and nearly every known train reads as not running.
+    # Real changes drop far less: GTFS's NE Regional renumbering for
+    # 2026-10-12 dropped 319 of 1,279 projections over a week (25%). The
+    # minimum keeps small pattern sets (a quiet day, tests) from tripping it.
+    IMPLAUSIBLE_DROP_FRACTION = 0.5
+    IMPLAUSIBLE_DROP_MIN_TRAINS = 10
 
     @staticmethod
     def _train_id_matches_number(train_id_column: Any, train_number: str) -> Any:
@@ -682,55 +692,83 @@ class AmtrakPatternScheduler:
         (the nightly job builds tomorrow's rows too) is deleted, so the drop
         takes effect for that day. The delete is conditioned on
         ``observation_type`` so a row discovery promoted meanwhile survives.
+
+        This is an optional filter, so any failure is logged and the patterns
+        are returned unfiltered rather than aborting the day's schedule. It
+        also refuses an implausible drop (see IMPLAUSIBLE_DROP_FRACTION): a
+        stored bundle whose main services have ended while a few long-dated
+        ones still run would otherwise report nearly every train as not
+        running and wipe the day's projections.
         """
         if not patterns:
             return patterns
 
         gtfs = GTFSService()
-        async with get_session() as session:
-            not_running = await gtfs.get_train_ids_not_running(
-                session,
-                "AMTRAK",
-                [pattern["train_number"] for pattern in patterns],
-                target_date,
-            )
-            if not_running is None:
-                logger.warning(
-                    "amtrak_timetable_check_skipped_no_gtfs_service",
-                    target_date=target_date.isoformat(),
-                    pattern_count=len(patterns),
-                )
-                return patterns
-
-            after_midnight = {
-                p["train_number"]
-                for p in patterns
-                if p["train_number"] in not_running
-                and p["median_departure"] < self.PREVIOUS_SERVICE_DAY_CUTOFF
-            }
-            if after_midnight:
-                not_running_day_before = await gtfs.get_train_ids_not_running(
+        try:
+            async with get_session() as session:
+                not_running = await gtfs.get_train_ids_not_running(
                     session,
                     "AMTRAK",
-                    after_midnight,
-                    target_date - timedelta(days=1),
+                    [pattern["train_number"] for pattern in patterns],
+                    target_date,
                 )
-                not_running -= after_midnight - (not_running_day_before or set())
-
-            if not not_running:
-                return patterns
-
-            result = cast(
-                CursorResult[tuple[()]],
-                await session.execute(
-                    delete(TrainJourney).where(
-                        TrainJourney.train_id.in_(not_running),
-                        TrainJourney.journey_date == target_date,
-                        TrainJourney.data_source == "AMTRAK",
-                        TrainJourney.observation_type == "SCHEDULED",
+                if not_running is None:
+                    logger.warning(
+                        "amtrak_timetable_check_skipped_no_gtfs_service",
+                        target_date=target_date.isoformat(),
+                        pattern_count=len(patterns),
                     )
-                ),
+                    return patterns
+
+                after_midnight = {
+                    p["train_number"]
+                    for p in patterns
+                    if p["train_number"] in not_running
+                    and p["median_departure"] < self.PREVIOUS_SERVICE_DAY_CUTOFF
+                }
+                if after_midnight:
+                    not_running_day_before = await gtfs.get_train_ids_not_running(
+                        session,
+                        "AMTRAK",
+                        after_midnight,
+                        target_date - timedelta(days=1),
+                    )
+                    not_running -= after_midnight - (not_running_day_before or set())
+
+                if not not_running:
+                    return patterns
+
+                if len(not_running) >= self.IMPLAUSIBLE_DROP_MIN_TRAINS and len(
+                    not_running
+                ) > (len(patterns) * self.IMPLAUSIBLE_DROP_FRACTION):
+                    logger.error(
+                        "amtrak_timetable_check_implausible",
+                        target_date=target_date.isoformat(),
+                        dropped_count=len(not_running),
+                        pattern_count=len(patterns),
+                        train_numbers=sorted(not_running),
+                    )
+                    return patterns
+
+                result = cast(
+                    CursorResult[tuple[()]],
+                    await session.execute(
+                        delete(TrainJourney).where(
+                            TrainJourney.train_id.in_(not_running),
+                            TrainJourney.journey_date == target_date,
+                            TrainJourney.data_source == "AMTRAK",
+                            TrainJourney.observation_type == "SCHEDULED",
+                        )
+                    ),
+                )
+        except Exception as e:
+            logger.error(
+                "amtrak_timetable_check_failed",
+                error=str(e),
+                error_type=type(e).__name__,
+                target_date=target_date.isoformat(),
             )
+            return patterns
 
         logger.info(
             "amtrak_patterns_dropped_not_in_timetable",
