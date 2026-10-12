@@ -458,14 +458,17 @@ class TestDropPatternsNotInTimetable:
         )
         db_session.add(route)
         await db_session.flush()
-        every_day = dict(
-            monday=True,
-            tuesday=True,
-            wednesday=True,
-            thursday=True,
-            friday=True,
-            saturday=True,
-            sunday=True,
+        every_day = dict.fromkeys(
+            (
+                "monday",
+                "tuesday",
+                "wednesday",
+                "thursday",
+                "friday",
+                "saturday",
+                "sunday",
+            ),
+            True,
         )
         db_session.add_all(
             [
