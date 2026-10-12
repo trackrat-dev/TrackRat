@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 if TYPE_CHECKING:
     from trackrat.services.summary import SummaryService
 
-from sqlalchemy import Time, and_, cast, delete, extract, or_, select
+from sqlalchemy import Time, and_, cast, delete, exists, extract, or_, select
 from sqlalchemy import func as sqla_func
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -201,9 +201,10 @@ async def _prune_dead_device(
     """Delete a device registration whose APNS token is permanently invalid.
 
     Called only for `ApnsSendResult.INVALID_TOKEN` — a 410, meaning the app
-    was uninstalled or push disabled. Nothing else in the codebase prunes
-    these rows, so without this every evaluation cycle re-sends to the same
-    dead token forever (issue #1794).
+    was uninstalled or push disabled. Without this every evaluation cycle
+    re-sends to the same dead token forever (issue #1794). This is the only
+    pruning path for devices with subscriptions; subscription-less ones are
+    never pushed to and are swept by `prune_stale_device_registrations`.
 
     Deliberately NOT called for `TOKEN_REJECTED` (a permanent 400). That
     response is indistinguishable from what a wrong ``apns_environment`` or
@@ -255,6 +256,43 @@ async def _prune_dead_device(
         logger.info(
             "alert_device_token_prune_skipped_token_changed", device_id=device_id
         )
+
+
+async def prune_stale_device_registrations(
+    db: AsyncSession, older_than_days: int
+) -> int:
+    """Delete subscription-less registrations not re-registered in N days.
+
+    iOS calls ``/devices/register`` on every launch whether or not the user
+    has alert subscriptions. A registration with no subscriptions is never
+    pushed to, so it never draws the APNS 410 that `_prune_dead_device` acts
+    on, and would otherwise live forever (issue #1858).
+
+    Devices **with** subscriptions are deliberately exempt. The app does not
+    relaunch when an alert arrives, so a user who only reads their alerts can
+    go months without re-registering; sweeping them would silently stop the
+    alerts they rely on. They are the devices we push to, so an uninstall is
+    caught by the 410 path instead.
+
+    ``RoutePreference`` cascades with the row (``ondelete="CASCADE"``). The
+    cutoff is computed in the database against the same ``now()`` that
+    ``/devices/register`` writes, so app/DB clock skew cannot shift it.
+
+    Returns the number of registrations deleted.
+    """
+    result = typing_cast(
+        CursorResult[tuple[()]],
+        await db.execute(
+            delete(DeviceToken).where(
+                DeviceToken.last_registered_at
+                < sqla_func.now() - timedelta(days=older_than_days),
+                ~exists().where(
+                    RouteAlertSubscription.device_id == DeviceToken.device_id
+                ),
+            )
+        ),
+    )
+    return result.rowcount or 0
 
 
 async def evaluate_route_alerts(

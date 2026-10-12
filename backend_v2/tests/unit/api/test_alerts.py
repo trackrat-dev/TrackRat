@@ -4,9 +4,10 @@ Tests for the route alert subscription API endpoints.
 Uses the e2e_client fixture for real database integration.
 """
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select
+from sqlalchemy import select, update
+from sqlalchemy.orm import Session
 from starlette.testclient import TestClient
 
 from trackrat.api.alerts import (
@@ -14,7 +15,7 @@ from trackrat.api.alerts import (
     _subscription_identity,
     _subscription_identity_from_item,
 )
-from trackrat.models.database import RouteAlertSubscription
+from trackrat.models.database import DeviceToken, RouteAlertSubscription
 
 
 class TestDeviceRegistration:
@@ -41,6 +42,50 @@ class TestDeviceRegistration:
             json={"device_id": "dev-2", "apns_token": "tok-new"},
         )
         assert resp.status_code == 200
+
+    def test_reregister_unchanged_token_advances_last_registered_at(
+        self, e2e_client: TestClient, sync_engine
+    ):
+        """An unchanged-token re-register must still record the visit (#1858).
+
+        iOS re-registers on every launch, almost always with the same token.
+        Assigning an identical apns_token is a no-op UPDATE, so without an
+        explicit write a daily user's last_registered_at would never move and
+        the stale-registration sweep would delete them.
+        """
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-same", "apns_token": "tok-same"},
+        )
+        backdated = datetime.now(UTC) - timedelta(days=100)
+        with Session(sync_engine) as session:
+            session.execute(
+                update(DeviceToken)
+                .where(DeviceToken.device_id == "dev-same")
+                .values(last_registered_at=backdated)
+            )
+            session.commit()
+
+        resp = e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-same", "apns_token": "tok-same"},
+        )
+        assert resp.status_code == 200
+
+        with Session(sync_engine) as session:
+            device = session.execute(
+                select(DeviceToken).where(DeviceToken.device_id == "dev-same")
+            ).scalar_one()
+        age = datetime.now(UTC) - device.last_registered_at
+        print(
+            f"  backdated={backdated.isoformat()} "
+            f"after_reregister={device.last_registered_at.isoformat()} age={age}"
+        )
+        assert device.apns_token == "tok-same"
+        assert age < timedelta(minutes=1), (
+            "Re-registering with an unchanged token must reset "
+            f"last_registered_at to now; it is still {age} old"
+        )
 
 
 class TestSyncSubscriptions:

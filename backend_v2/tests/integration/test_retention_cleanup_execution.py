@@ -34,7 +34,9 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from trackrat.db.partitioning import month_end_exclusive, partition_name
 from trackrat.models.database import (
+    DeviceToken,
     DiscoveryRun,
+    RouteAlertSubscription,
     SchedulerTaskRun,
     ServiceAlert,
     TrainJourney,
@@ -97,11 +99,12 @@ class TestRetentionCleanupRealPostgres:
     async def test_prunes_every_phase_on_real_postgres(
         self, db_engine, db_session: AsyncSession
     ):
-        """All four DELETE phases must execute against real Postgres and prune
+        """All five DELETE phases must execute against real Postgres and prune
         the right rows: SUBWAY past its 14-day window and other sources past the
         60-day window (train_journeys), plus aged discovery_runs /
-        validation_results / inactive service_alerts — while leaving in-window
-        journeys and still-active alerts.
+        validation_results / inactive service_alerts and stale subscription-less
+        device registrations — while leaving in-window journeys, still-active
+        alerts, and devices that are recent or hold a subscription.
 
         Guards against both the ``:name::int`` / ``make_interval(days => text)``
         SQL regressions (any of which makes a phase raise) and any per-source
@@ -155,11 +158,32 @@ class TestRetentionCleanupRealPostgres:
                 updated_at=old,
             )
         )
+        # Phase 6 fixtures (#1858): unseen past the 90-day window with no
+        # subscription -> deleted; unseen as long but subscribed -> kept;
+        # registered just now -> kept.
+        unseen = datetime.now(UTC) - timedelta(days=120)
+        for device_id in ("dev-stale", "dev-subscribed"):
+            db_session.add(
+                DeviceToken(
+                    device_id=device_id, apns_token="tok", last_registered_at=unseen
+                )
+            )
+        db_session.add(DeviceToken(device_id="dev-fresh", apns_token="tok"))
+        await db_session.flush()
+        db_session.add(
+            RouteAlertSubscription(
+                device_id="dev-subscribed",
+                data_source="NJT",
+                from_station_code="NY",
+                to_station_code="TR",
+            )
+        )
         await db_session.commit()
 
         mock_settings = Mock()
         mock_settings.retention_days = 60
         mock_settings.subway_retention_days = 14
+        mock_settings.device_registration_retention_days = 90
         service = SchedulerService.__new__(SchedulerService)
 
         with (
@@ -197,6 +221,15 @@ class TestRetentionCleanupRealPostgres:
             alerts_left = (
                 (await verify.execute(select(ServiceAlert.alert_id))).scalars().all()
             )
+            devices_left = (
+                (
+                    await verify.execute(
+                        select(DeviceToken.device_id).order_by(DeviceToken.device_id)
+                    )
+                )
+                .scalars()
+                .all()
+            )
 
         assert journeys_left == ["NJT_MID", "SUB_NEW"], (
             "phase 1 should keep only in-window journeys; got "
@@ -209,6 +242,10 @@ class TestRetentionCleanupRealPostgres:
         assert alerts_left == [
             "active-1"
         ], f"phase 4 should delete only the aged inactive alert; got {alerts_left!r}"
+        assert devices_left == ["dev-fresh", "dev-subscribed"], (
+            "phase 6 should delete only the stale subscription-less device; got "
+            f"{devices_left!r}"
+        )
 
     async def test_partition_topup_failure_does_not_block_other_phases(
         self, db_engine, db_session: AsyncSession
@@ -245,6 +282,7 @@ class TestRetentionCleanupRealPostgres:
         mock_settings = Mock()
         mock_settings.retention_days = 60
         mock_settings.subway_retention_days = 14
+        mock_settings.device_registration_retention_days = 90
         service = SchedulerService.__new__(SchedulerService)
 
         with (
@@ -307,6 +345,7 @@ class TestRetentionCleanupRealPostgres:
         mock_settings = Mock()
         mock_settings.retention_days = 60
         mock_settings.subway_retention_days = 14
+        mock_settings.device_registration_retention_days = 90
         service = SchedulerService.__new__(SchedulerService)
 
         boom = RuntimeError("phase 0 blew up")

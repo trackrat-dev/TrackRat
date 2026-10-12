@@ -187,6 +187,16 @@ class Settings(BaseSettings):
         ),
         ge=1,
     )
+    device_registration_retention_days: int = Field(
+        default=90,
+        description=(
+            "Days since a device's last /devices/register call after which a "
+            "registration with no alert subscriptions is deleted (issue #1858). "
+            "iOS re-registers on every launch, so any install that is opened "
+            "at all stays well inside this window."
+        ),
+        ge=30,
+    )
 
     # Resource Monitoring
     data_disk_path: str = Field(

@@ -414,6 +414,11 @@ class DeviceToken(Base):
     updated_at = Column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
     )
+    # Set on every /devices/register call, including an unchanged token (which
+    # leaves updated_at alone). Drives the stale-registration sweep (#1858).
+    last_registered_at = Column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
     # Relationships
     subscriptions: Mapped[list["RouteAlertSubscription"]] = relationship(
