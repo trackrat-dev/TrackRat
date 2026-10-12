@@ -387,3 +387,123 @@ async def test_gtfs_board_excludes_terminating_trips_before_cap(
         "A from+to GTFS search ending at the terminating trips' last stop must "
         f"still return them; got {[d.train_id for d in upstream.departures]}"
     )
+
+
+@pytest.mark.asyncio
+async def test_gtfs_twin_of_terminating_train_not_added_back(
+    db_session: AsyncSession,
+) -> None:
+    """Real time proves A93 ends at NY Penn, but its GTFS trip lists a stop
+    beyond (a short-turned run, or a trailing stop real time doesn't map).
+    Skipping the real-time row used to let the GTFS twin through the merge as
+    a SCHEDULED departure, re-listing the arrival the skip just removed. The
+    twin is matched by train number only: GTFS train 171, leaving NY on the
+    same line at the same minute, is a real departure and stays."""
+    service_date = date(2026, 7, 23)
+    fixed_now = ET.localize(datetime.combine(service_date, time(12)))
+    at_ny = fixed_now + timedelta(hours=1)
+    GTFSService._service_id_cache.clear()
+
+    db_session.add(
+        _journey(
+            train_id="A93",
+            data_source="AMTRAK",
+            stops=[
+                ("WS", 1, at_ny - timedelta(hours=3)),
+                ("PH", 2, at_ny - timedelta(hours=1, minutes=30)),
+                ("NY", 3, at_ny),
+            ],
+            terminal="NY",
+            destination="New York Penn",
+        )
+    )
+
+    route = GTFSRoute(
+        data_source="AMTRAK",
+        route_id="NEC",
+        route_short_name="Northeast Regional",
+        route_long_name="Northeast Regional",
+        route_color="004B87",
+    )
+    db_session.add(route)
+    await db_session.flush()
+    db_session.add(
+        GTFSCalendar(
+            data_source="AMTRAK",
+            service_id="DAILY",
+            monday=True,
+            tuesday=True,
+            wednesday=True,
+            thursday=True,
+            friday=True,
+            saturday=True,
+            sunday=True,
+            start_date=service_date - timedelta(days=1),
+            end_date=service_date + timedelta(days=1),
+        )
+    )
+    twin = GTFSTrip(
+        data_source="AMTRAK",
+        trip_id="t-93",
+        route_id=route.id,
+        service_id="DAILY",
+        trip_headsign="Newark",
+        train_id="93",
+    )
+    departing = GTFSTrip(
+        data_source="AMTRAK",
+        trip_id="t-171",
+        route_id=route.id,
+        service_id="DAILY",
+        trip_headsign="Boston",
+        train_id="171",
+    )
+    db_session.add_all([twin, departing])
+    await db_session.flush()
+    for trip, onward in ((twin, "NP"), (departing, "NRO")):
+        db_session.add_all(
+            [
+                GTFSStopTime(
+                    trip_id=trip.id,
+                    stop_sequence=1,
+                    gtfs_stop_id="NYP",
+                    station_code="NY",
+                    arrival_time="13:00:00",
+                    departure_time="13:00:00",
+                ),
+                GTFSStopTime(
+                    trip_id=trip.id,
+                    stop_sequence=2,
+                    gtfs_stop_id=onward,
+                    station_code=onward,
+                    arrival_time="13:15:00",
+                    departure_time="13:15:00",
+                ),
+            ]
+        )
+    await db_session.commit()
+
+    with (
+        patch("trackrat.services.departure.now_et", return_value=fixed_now),
+        patch("trackrat.services.gtfs.now_et", return_value=fixed_now),
+    ):
+        board = await DepartureService().get_departures(
+            db_session,
+            "NY",
+            None,
+            date=service_date,
+            limit=50,
+            data_sources=["AMTRAK"],
+            skip_individual_refresh=True,
+        )
+
+    rows = [(d.train_id, d.observation_type) for d in board.departures]
+    print(f"NY board: {rows}")
+    train_ids = [d.train_id for d in board.departures]
+    assert not any(t in ("93", "A93") for t in train_ids), (
+        "A93 terminates at NY in real time; its GTFS twin must not be added "
+        f"back as a departure. Board: {rows}"
+    )
+    assert any(
+        t in ("171", "A171") for t in train_ids
+    ), f"GTFS train 171 departs NY and must stay on the board. Board: {rows}"

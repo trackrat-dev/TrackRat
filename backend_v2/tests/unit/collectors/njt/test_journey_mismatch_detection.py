@@ -581,8 +581,7 @@ class TestStaleOriginDetection:
         self, db_session: AsyncSession, journey_collector
     ):
         """A heavily delayed train (>10 min vs scheduled origin departure)
-        must surface as DEPARTURE_TIME_MISMATCH rather than a destination
-        mismatch. The caller in collect_journey_details treats this as a
+        must surface as DEPARTURE_TIME_MISMATCH. The caller in collect_journey_details treats this as a
         soft skip — it must not flag the journey as expired, since that
         would cause Live Activities for the in-progress trip to receive
         a premature end push.

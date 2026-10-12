@@ -17,7 +17,9 @@ from trackrat.models.database import GTFSRoute, GTFSStopTime, GTFSTrip
 
 logger = get_logger(__name__)
 
-# Type alias: route_id -> list of (from_station, to_station, minutes)
+# Type alias: route_id -> list of (from_station, to_station, minutes). Each hop
+# appears in PATH_ROUTE_STOPS order, plus in the reverse order when GTFS has a
+# trip running it that way (see _load_segment_times_from_gtfs).
 SegmentTimesMap = dict[str, list[tuple[str, str, float]]]
 
 # Default fallback when GTFS data is unavailable
@@ -42,15 +44,39 @@ def _parse_gtfs_time_to_seconds(time_str: str) -> int:
     return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
 
 
+def _sane_median(
+    route_id: str, from_station: str, to_station: str, times: list[float]
+) -> float:
+    """Median of one hop's observed times, or the default if implausible."""
+    minutes = median(times)
+    # Sanity check: segment time should be 0.5-15 minutes
+    if not 0.5 <= minutes <= 15.0:
+        logger.warning(
+            "path_gtfs_segment_time_outlier",
+            route_id=route_id,
+            from_station=from_station,
+            to_station=to_station,
+            minutes=minutes,
+        )
+        return DEFAULT_MINUTES_PER_SEGMENT
+    return minutes
+
+
 async def _load_segment_times_from_gtfs(db: AsyncSession) -> SegmentTimesMap:
     """Load segment travel times from GTFS static data.
 
-    Each segment's time is the median across every PATH trip that runs it, in
-    either direction. One representative trip per route is not safe: the feed
+    Each segment's time is the median across every PATH trip that runs it in
+    that direction. One representative trip per route is not safe: the feed
     mixes the regular timetable with construction and holiday variants that
     hold trains 5-10 minutes at JSQ or WTC, and it lists them first. Whichever
     trip ``LIMIT 1`` returned baked its hold into a segment, enough on its own
     to split one train into two journeys (issue #1752).
+
+    Times run departure to departure, so a hop carries the dwell at its far
+    end, which differs by direction: at the Hoboken reversal the hold lands on
+    PNP->PHO one way and PCH->PHO the other. A median pooled across both
+    directions would put it on the wrong hop for one of them. A hop with no
+    trip in one direction borrows the other direction's median.
 
     Args:
         db: Database session
@@ -74,8 +100,8 @@ async def _load_segment_times_from_gtfs(db: AsyncSession) -> SegmentTimesMap:
         .order_by(GTFSStopTime.trip_id, GTFSStopTime.stop_sequence)
     )
 
-    # (route_id, {station, station}) -> minutes for each trip running that hop
-    observed: dict[tuple[str, frozenset[str]], list[float]] = defaultdict(list)
+    # (route_id, (from, to)) -> minutes for each trip running that hop that way
+    observed: dict[tuple[str, tuple[str, str]], list[float]] = defaultdict(list)
     previous: tuple[int, str, int] | None = None  # (trip_id, station, seconds)
     async for route_id, trip_id, station_code, departure, arrival in await db.stream(
         stmt
@@ -85,7 +111,7 @@ async def _load_segment_times_from_gtfs(db: AsyncSession) -> SegmentTimesMap:
             continue
         seconds = _parse_gtfs_time_to_seconds(time_str)
         if previous is not None and previous[0] == trip_id:
-            hop = frozenset((previous[1], station_code))
+            hop = (previous[1], station_code)
             observed[(route_id, hop)].append(abs(seconds - previous[2]) / 60.0)
         previous = (trip_id, station_code, seconds)
 
@@ -99,24 +125,30 @@ async def _load_segment_times_from_gtfs(db: AsyncSession) -> SegmentTimesMap:
         for from_station, to_station in zip(
             expected_stops, expected_stops[1:], strict=False
         ):
-            times = observed.get((route_id_str, frozenset((from_station, to_station))))
-            if not times:
+            forward = observed.get((route_id_str, (from_station, to_station)), [])
+            reverse = observed.get((route_id_str, (to_station, from_station)), [])
+            if not forward and not reverse:
                 # No trip runs this hop - use default
                 segments.append((from_station, to_station, DEFAULT_MINUTES_PER_SEGMENT))
                 continue
             found_any = True
-            minutes = median(times)
-            # Sanity check: segment time should be 1-15 minutes
-            if not 0.5 <= minutes <= 15.0:
-                logger.warning(
-                    "path_gtfs_segment_time_outlier",
-                    route_id=route_id_str,
-                    from_station=from_station,
-                    to_station=to_station,
-                    minutes=minutes,
+            segments.append(
+                (
+                    from_station,
+                    to_station,
+                    _sane_median(
+                        route_id_str, from_station, to_station, forward or reverse
+                    ),
                 )
-                minutes = DEFAULT_MINUTES_PER_SEGMENT
-            segments.append((from_station, to_station, minutes))
+            )
+            if reverse:
+                segments.append(
+                    (
+                        to_station,
+                        from_station,
+                        _sane_median(route_id_str, to_station, from_station, reverse),
+                    )
+                )
 
         if found_any:
             result[route_id_str] = segments
@@ -138,7 +170,11 @@ async def _load_segment_times_from_gtfs(db: AsyncSession) -> SegmentTimesMap:
 async def get_segment_times(db: AsyncSession) -> SegmentTimesMap:
     """Get segment travel times, loading from GTFS on first call.
 
-    Results are cached in-memory for the lifetime of the process.
+    A successful load is cached until ``clear_cache`` (the PATH GTFS refresh
+    calls it). An empty or failed load is not cached: on a fresh deploy the
+    collector can run before the first GTFS download lands, and caching that
+    result pinned every PATH train to the flat default for the life of the
+    process, the shape that split trains in issue #1752.
 
     Args:
         db: Database session
@@ -151,12 +187,14 @@ async def get_segment_times(db: AsyncSession) -> SegmentTimesMap:
         return _cached_segment_times
 
     try:
-        _cached_segment_times = await _load_segment_times_from_gtfs(db)
+        loaded = await _load_segment_times_from_gtfs(db)
     except Exception as e:
         logger.error("path_segment_times_load_failed", error=str(e))
-        _cached_segment_times = {}
+        return {}
 
-    return _cached_segment_times
+    if loaded:
+        _cached_segment_times = loaded
+    return loaded
 
 
 def get_cumulative_time(
@@ -193,25 +231,24 @@ def get_cumulative_time(
 
     # Try to use GTFS-based times
     if route_id and route_id in segment_times:
-        segments = segment_times[route_id]
-        # Segments are stored in PATH_ROUTE_STOPS order, but trains running the
-        # other way pass their stop list reversed — key both orders, or that
-        # whole direction falls back to the flat default (issue #1752).
-        segment_lookup: dict[tuple[str, str], float] = {}
-        for from_station, to_station, minutes in segments:
-            segment_lookup[(from_station, to_station)] = minutes
-            segment_lookup[(to_station, from_station)] = minutes
+        segment_lookup = {
+            (from_station, to_station): minutes
+            for from_station, to_station, minutes in segment_times[route_id]
+        }
 
         total = 0.0
         all_found = True
         for i in range(from_idx, to_idx):
             if i + 1 < len(route_stops):
                 key = (route_stops[i], route_stops[i + 1])
-                if key in segment_lookup:
-                    total += segment_lookup[key]
-                else:
+                # Prefer this direction's own time; a hop known only the other
+                # way falls back to it, or the whole direction would drop to
+                # the flat default (issue #1752).
+                minutes = segment_lookup.get(key, segment_lookup.get(key[::-1]))
+                if minutes is None:
                     all_found = False
                     break
+                total += minutes
 
         if all_found:
             return total
@@ -221,6 +258,6 @@ def get_cumulative_time(
 
 
 def clear_cache() -> None:
-    """Clear the cached segment times. Used for testing."""
+    """Clear the cached segment times so the next lookup reloads from GTFS."""
     global _cached_segment_times
     _cached_segment_times = None

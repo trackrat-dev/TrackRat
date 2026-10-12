@@ -44,6 +44,7 @@ from trackrat.utils.train import (
     njt_cancellation_reason,
     parse_njt_line_code,
     resolve_actual_departure,
+    strip_njt_connecting_service,
 )
 
 logger = get_logger(__name__)
@@ -275,11 +276,14 @@ class JourneyCollector:
         """
         Verify if API data represents the same journey as our stored record.
 
-        Identity is decided by the first stop's scheduled departure
+        For a complete journey (``has_complete_journey``), identity is decided
+        by the first stop's scheduled departure
         (±10 min tolerance, compared against the immutable SCHED_DEP_DATE when
         present): a skew beyond 6h on a prior-day row is NJT reusing the
         train_id for a later service day (STALE_PRIOR_RUN); a smaller skew may
         be a journey swap or a heavily delayed train (DEPARTURE_TIME_MISMATCH).
+        An incomplete journey is accepted as MATCH unchecked: discovery may
+        have recorded the wrong origin or departure time.
 
         Neither destination nor line code is an identity signal. NJT spells
         the same terminal differently across its APIs ("Newark Penn" vs
@@ -287,7 +291,7 @@ class JourneyCollector:
         service to Bay Head") and genuinely changes a running train's
         destination (diversions to Hoboken), and it returns inconsistent line
         codes between discovery ("No") and journey details ("NC"). Rejecting
-        on destination expired thousands of live trains a day without ever
+        on destination expired 40–80 live trains a day without ever
         catching a different run (issue #1878); update_journey_metadata adopts
         the API's destination instead.
         """
@@ -849,7 +853,7 @@ class JourneyCollector:
             train_data: Train data from API
         """
         # Update basic info
-        journey.destination = train_data.DESTINATION
+        journey.destination = strip_njt_connecting_service(train_data.DESTINATION)
         journey.line_color = train_data.BACKCOLOR.strip()
 
         # Update origin and terminal stations from actual journey data

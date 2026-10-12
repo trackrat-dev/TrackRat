@@ -1577,29 +1577,54 @@ class TestAmtrakSanJoaquins:
         assert "amtrak-san-joaquins-oak" in route_ids
 
     def test_sac_branch_stations(self):
+        """Sacramento-Lodi-Stockton (San Joaquin St) in geographic order, then
+        every stop south of Stockton that Amtraker reports."""
         assert AMTRAK_SAN_JOAQUINS_SAC.stations == (
             "SAC",
-            "SKT",
             "LOD",
+            "SKT",
+            "MOD",
+            "TRK",
             "MCD",
+            "MDR",
+            "FNO",
             "HNF",
+            "COC",
+            "WAC",
             "BFD",
         )
 
     def test_oak_branch_stations(self):
+        """Stop order of live San Joaquins 711 (2026-10-12), reversed."""
         assert AMTRAK_SAN_JOAQUINS_OAK.stations == (
             "OKJ",
+            "EMY",
+            "RIC",
+            "MTZ",
+            "ACA",
             "SKN",
+            "MOD",
+            "TRK",
             "MCD",
+            "MDR",
+            "FNO",
             "HNF",
+            "COC",
+            "WAC",
             "BFD",
         )
 
     def test_shared_segment_mcd_to_bfd(self):
-        """Both branches share MCD→HNF→BFD."""
+        """Both branches share the trunk south of Merced, stop by stop."""
         canonical = get_canonical_segments("AMTRAK", "MCD", "BFD")
-        assert len(canonical) == 2, f"Expected 2 segments, got: {canonical}"
-        assert canonical == [("MCD", "HNF"), ("HNF", "BFD")]
+        assert canonical == [
+            ("MCD", "MDR"),
+            ("MDR", "FNO"),
+            ("FNO", "HNF"),
+            ("HNF", "COC"),
+            ("COC", "WAC"),
+            ("WAC", "BFD"),
+        ], f"Got: {canonical}"
 
 
 class TestAmtrakWolverine:

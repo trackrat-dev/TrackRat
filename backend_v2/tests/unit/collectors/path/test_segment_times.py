@@ -16,6 +16,7 @@ from trackrat.collectors.path.segment_times import (
     _load_segment_times_from_gtfs,
     clear_cache,
     get_cumulative_time,
+    get_segment_times,
 )
 from trackrat.models.database import GTFSRoute, GTFSStopTime, GTFSTrip, JourneyStop
 
@@ -562,8 +563,7 @@ class TestLoadSegmentTimesFromGTFS:
         the loader used to take one arbitrary trip per route (``LIMIT 1``).
         A 10-minute hold at JSQ in that trip became JSQ -> Grove's travel
         time, and every sighting past JSQ back-calculated an origin 6 minutes
-        early (issue #1752). The median across trips, in both directions,
-        ignores it.
+        early (issue #1752). The median across trips ignores it.
         """
         route = GTFSRoute(data_source="PATH", route_id="862", route_long_name="NWK-WTC")
         db_session.add(route)
@@ -622,12 +622,19 @@ class TestLoadSegmentTimesFromGTFS:
             f"JSQ -> Grove should be the 4-min median across trips, got "
             f"{segments[('PJS', 'PGR')]} (10.0 means the construction hold won)"
         )
+        # Each direction keeps its own median: the reverse trip alone defines
+        # the WTC -> Newark hops.
         assert segments == {
             ("PNK", "PHR"): 3.0,
             ("PHR", "PJS"): 11.0,
             ("PJS", "PGR"): 4.0,
             ("PGR", "PEX"): 3.0,
             ("PEX", "PWC"): 5.0,
+            ("PWC", "PEX"): 5.0,
+            ("PEX", "PGR"): 3.0,
+            ("PGR", "PJS"): 4.0,
+            ("PJS", "PHR"): 11.0,
+            ("PHR", "PNK"): 3.0,
         }
         assert "861" not in segment_times, "Routes with no GTFS data stay absent"
 
@@ -653,3 +660,93 @@ class TestLoadSegmentTimesFromGTFS:
             ("PNP", "PEX", DEFAULT_MINUTES_PER_SEGMENT),
             ("PEX", "PWC", DEFAULT_MINUTES_PER_SEGMENT),
         ]
+
+    async def test_each_direction_keeps_its_own_dwell(self, db_session):
+        """Times run departure to departure, so a hop carries the dwell at its
+        far end, and the two directions put it on different hops. Pooling both
+        directions into one median moved Hoboken's 4-minute reversal hold onto
+        the wrong hop for one of them; each direction must sum its own times.
+        """
+        route = GTFSRoute(
+            data_source="PATH", route_id="1024", route_long_name="JSQ-33 via HOB"
+        )
+        db_session.add(route)
+        await db_session.flush()
+        # Toward 33rd St the HOB hold sits on PNP -> PHO; toward JSQ it sits on
+        # PCH -> PHO. Two trips each way so the median is each direction's own.
+        for index, start in enumerate((8, 9)):
+            await _add_path_trip(
+                db_session,
+                route,
+                f"to-33-{index}",
+                "WEEKDAY",
+                [
+                    ("PNP", f"{start:02d}:00:00"),
+                    ("PHO", f"{start:02d}:07:00"),  # 3 min run + 4 min hold
+                    ("PCH", f"{start:02d}:11:00"),
+                ],
+            )
+            await _add_path_trip(
+                db_session,
+                route,
+                f"to-jsq-{index}",
+                "WEEKDAY",
+                [
+                    ("PCH", f"{start:02d}:30:00"),
+                    ("PHO", f"{start:02d}:38:00"),  # 4 min run + 4 min hold
+                    ("PNP", f"{start:02d}:41:00"),
+                ],
+            )
+
+        segment_times = await _load_segment_times_from_gtfs(db_session)
+
+        to_33 = get_cumulative_time(segment_times, ["PNP", "PHO", "PCH"], 0, 2, "1024")
+        to_jsq = get_cumulative_time(segment_times, ["PCH", "PHO", "PNP"], 0, 2, "1024")
+        print(
+            f"1024 segments: {segment_times['1024'][:4]} to_33={to_33} to_jsq={to_jsq}"
+        )
+        assert to_33 == 11.0, f"PNP -> PCH is 11 min in GTFS, got {to_33}"
+        assert to_jsq == 11.0, f"PCH -> PNP is 11 min in GTFS, got {to_jsq}"
+        assert (
+            get_cumulative_time(segment_times, ["PNP", "PHO", "PCH"], 0, 1, "1024")
+            == 7.0
+        ), "PNP -> PHO carries the hold toward 33rd St"
+        assert (
+            get_cumulative_time(segment_times, ["PCH", "PHO", "PNP"], 0, 1, "1024")
+            == 8.0
+        ), "PCH -> PHO carries the hold toward JSQ"
+
+
+class TestGetSegmentTimesCaching:
+    """A missing or failed load must not be cached for the process lifetime."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh_cache(self):
+        clear_cache()
+        yield
+        clear_cache()
+
+    async def test_empty_load_is_retried(self, db_session):
+        """On a fresh deploy the collector can run before PATH GTFS is stored.
+        Caching that empty result pinned every train to the flat 3 min/segment
+        default until the process restarted (the #1752 split shape)."""
+        before = await get_segment_times(db_session)
+
+        route = GTFSRoute(data_source="PATH", route_id="862", route_long_name="NWK-WTC")
+        db_session.add(route)
+        await db_session.flush()
+        await _add_path_trip(
+            db_session,
+            route,
+            "regular",
+            "WEEKDAY",
+            [("PNK", "08:00:00"), ("PHR", "08:03:00")],
+        )
+        after = await get_segment_times(db_session)
+
+        print(f"before GTFS: {before}; after: {after.get('862')}")
+        assert before == {}
+        assert ("PNK", "PHR", 3.0) in after["862"], (
+            "the second call must reload now that GTFS is stored, not return "
+            f"a cached empty map; got {after}"
+        )

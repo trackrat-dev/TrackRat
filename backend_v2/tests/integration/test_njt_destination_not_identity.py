@@ -54,6 +54,14 @@ SPELLING_VARIANTS = [
     ("Princeton Junction", "Princeton Jct."),
     ("TRENTON TRANSIT CENTER", "Trenton"),
 ]
+# getTrainStopList names the onward connection; collection stores the terminal
+# alone, matching the schedule API's spelling and every client's label.
+STORED_AS = {
+    "Newark Penn with connecting service to Long Branch": "Newark Penn",
+    "Long Branch with connecting service to Bay Head": "Long Branch",
+    "Long Branch with connecting service to Penn Station New York": "Long Branch",
+    "Matawan with connecting service to Bay Head": "Matawan",
+}
 REAL_DESTINATION_CHANGES = [
     ("Philadelphia", "North Phil"),
     ("New York", "Hoboken"),
@@ -201,9 +209,10 @@ class TestDestinationIsNotIdentity:
             f"Destination {stored!r} -> {api!r} must not count as a strike "
             f"(api_error_count={journey.api_error_count})"
         )
-        assert journey.destination == api, (
-            f"Collection must adopt the API's destination {api!r}, "
-            f"row still says {journey.destination!r}"
+        expected = STORED_AS.get(api, api)
+        assert journey.destination == expected, (
+            f"Collection must adopt the API's destination {api!r} as "
+            f"{expected!r}, row says {journey.destination!r}"
         )
 
     async def test_live_train_stays_on_departure_board(

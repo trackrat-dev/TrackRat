@@ -23,6 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 from structlog import get_logger
 
+from trackrat.collectors.path.segment_times import (
+    clear_cache as clear_path_segment_times,
+)
 from trackrat.config.stations import (
     expand_station_codes,
     get_bart_route_info,
@@ -859,6 +862,10 @@ class GTFSService:
             }
             if data_source == "SUBWAY":
                 self.clear_subway_realtime_trip_cache()
+            if data_source == "PATH":
+                # Segment times are derived from these stop_times; drop the
+                # cached copy so the collector reloads from the new bundle.
+                clear_path_segment_times()
 
             logger.info(
                 "GTFS feed refreshed successfully",

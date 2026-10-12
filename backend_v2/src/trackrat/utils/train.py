@@ -481,6 +481,24 @@ def resolve_actual_departure(
 NJT_DESTINATION_SEC_MARKER_PATTERN = r"(\s*-sec)?(\s*&#9992;?)?\s*$"
 NJT_DESTINATION_TRANSIT_CENTER_PATTERN = r"\s+transit center$"
 
+# getTrainStopList appends the train's onward connection to the terminal
+# ("Long Branch with connecting service to Penn Station New York"); every other
+# NJT source names the terminal alone.
+_NJT_CONNECTING_SERVICE_SUFFIX = re.compile(
+    r"\s+with connecting service to\b.*$", re.IGNORECASE
+)
+
+
+def strip_njt_connecting_service(destination: str) -> str:
+    """Drop getTrainStopList's "with connecting service to ..." suffix.
+
+    Collection adopts the API's destination in place (issue #1878), so without
+    this the long form reached every client's destination label and escaped
+    the departures dedup (``_destination_prefix``), which compares against
+    the schedule API's "Long Branch". The terminal itself is kept as sent.
+    """
+    return _NJT_CONNECTING_SERVICE_SUFFIX.sub("", destination)
+
 
 def normalize_njt_destination(destination: str | None) -> str:
     """Normalize an NJT destination string for cross-source matching.

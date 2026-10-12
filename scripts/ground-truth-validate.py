@@ -399,6 +399,12 @@ def fetch_amtrak_ground_truth() -> list[GroundTruthArrival]:
 
         for train_num, train_list in trains_by_num.items():
             for train in train_list:
+                # Amtraker also lists VIA Rail and Brightline trains, which
+                # TrackRat never collects. Since #1866 mapped VIA's station
+                # codes (TRTO, MTRL, ...), VIA corridor trains would otherwise
+                # surface as ground truth with no TrackRat match.
+                if train.provider != "Amtrak":
+                    continue
                 stations = train.stations
                 if not stations:
                     continue
