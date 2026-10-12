@@ -1345,11 +1345,53 @@ class TestAmtrakNECExpanded:
         assert len(canonical) == 3, f"Expected 3 segments, got: {canonical}"
         assert canonical == [("WI", "ABE"), ("ABE", "BL"), ("BL", "BA")]
 
+    def test_na_between_np_and_mp(self):
+        """Newark Airport (NA) sits between Newark Penn and Metropark. Amtrak's
+        EWR stop maps to NA (#1866); without NA on the route every segment
+        touching it is dropped from congestion as off-route."""
+        stations = AMTRAK_NEC.stations
+        np_idx = stations.index("NP")
+        assert stations[np_idx : np_idx + 3] == (
+            "NP",
+            "NA",
+            "MP",
+        ), f"Around NP: {stations[np_idx - 1 : np_idx + 4]}"
+
     def test_nec_total_station_count(self):
-        """NEC should now have 27 stations (was 24, added RTE, ABE, NCR)."""
+        """NEC has 28 stations (was 24; added RTE, ABE, NCR, then NA)."""
         assert (
-            len(AMTRAK_NEC.stations) == 27
-        ), f"Expected 27 stations, got {len(AMTRAK_NEC.stations)}: {AMTRAK_NEC.stations}"
+            len(AMTRAK_NEC.stations) == 28
+        ), f"Expected 28 stations, got {len(AMTRAK_NEC.stations)}: {AMTRAK_NEC.stations}"
+
+
+class TestAmtrakKeystoneWesternStops:
+    """Mount Joy, Elizabethtown and Middletown PA between Lancaster and
+    Harrisburg (#1866 started mapping them; before that the feed's stops were
+    dropped and trains appeared to run LNC -> HAR nonstop)."""
+
+    def test_stops_between_lnc_and_har_in_order(self):
+        from trackrat.config.route_topology import AMTRAK_KEYSTONE
+
+        stations = AMTRAK_KEYSTONE.stations
+        lnc_idx = stations.index("LNC")
+        assert stations[lnc_idx:] == (
+            "LNC",
+            "MJY",
+            "ELT",
+            "MIDPA",
+            "HAR",
+        ), f"Keystone west of PAR: {stations[lnc_idx - 1 :]}"
+
+    def test_lnc_to_har_expands_through_every_stop(self):
+        """Trains skipping the small stops (Pennsylvanian, some Keystones)
+        still attribute congestion to the same canonical hops."""
+        canonical = get_canonical_segments("AMTRAK", "LNC", "HAR")
+        assert canonical == [
+            ("LNC", "MJY"),
+            ("MJY", "ELT"),
+            ("ELT", "MIDPA"),
+            ("MIDPA", "HAR"),
+        ], f"Got: {canonical}"
 
 
 class TestAmtrakEmpireServiceExpanded:

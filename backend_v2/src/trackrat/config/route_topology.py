@@ -570,6 +570,7 @@ AMTRAK_NEC = Route(
         "NRO",
         "NY",
         "NP",
+        "NA",
         "MP",
         "NB",
         "PJ",
@@ -607,6 +608,9 @@ AMTRAK_KEYSTONE = Route(
         "COT",
         "PAR",
         "LNC",
+        "MJY",
+        "ELT",
+        "MIDPA",
         "HAR",
     ),
 )
