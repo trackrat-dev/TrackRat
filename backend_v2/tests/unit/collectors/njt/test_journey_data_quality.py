@@ -1198,11 +1198,11 @@ class TestEffectiveObservationType:
         result = get_effective_observation_type(journey)
         assert result == "OBSERVED"
 
-    def test_amtrak_scheduled_still_promoted(self):
-        """An Amtrak SCHEDULED train should still be promoted to OBSERVED
-        after departure time passes. Amtrak uses pattern-based scheduling
-        and relies on auto-promotion for trains that haven't been discovered
-        yet. Unlike NJT, Amtrak has no reconciliation job."""
+    def test_amtrak_scheduled_not_promoted_after_departure(self):
+        """A pattern-scheduled Amtrak train past its origin time with no
+        sighting must stay SCHEDULED (issue #1881). Promoting it labelled
+        trains dropped in a timetable change as live, and let them bypass
+        departures' stale-SCHEDULED filter."""
         from trackrat.utils.train import get_effective_observation_type
 
         past_time = now_et() - timedelta(hours=1)
@@ -1218,9 +1218,9 @@ class TestEffectiveObservationType:
         journey.stops = [stop]
 
         result = get_effective_observation_type(journey)
-        assert result == "OBSERVED", (
-            f"Amtrak SCHEDULED train should still be promoted after departure, "
-            f"got {result}"
+        assert result == "SCHEDULED", (
+            f"Amtrak SCHEDULED train past origin time ({past_time.isoformat()}) "
+            f"with no sighting should stay SCHEDULED, got {result}"
         )
 
     def test_patco_scheduled_promoted_after_departure(self):

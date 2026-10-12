@@ -42,11 +42,15 @@ def get_effective_observation_type(journey: "TrainJourney") -> str:
     has actually departed. This prevents showing "Scheduled" for trains that
     are running but lack real-time confirmation.
 
-    For NJT, SCHEDULED trains that were never observed should NOT be promoted
-    — they are likely cancelled. The reconciliation job will eventually mark
-    them as such. Other real-time systems still auto-promote because they
-    either don't create SCHEDULED records (PATH, LIRR, MNR) or rely on
-    auto-promotion for pattern-scheduled trains (Amtrak).
+    For NJT and Amtrak, SCHEDULED trains that were never observed should NOT
+    be promoted — there is no evidence they exist. NJT's reconciliation job
+    eventually marks them cancelled. Amtrak's are pattern projections that a
+    timetable change can leave behind (issue #1881); a real train is promoted
+    in the database by discovery or JIT once it appears in the feed, and
+    departures hides one still unseen near its departure time
+    (``_filter_stale_scheduled_trains``) — a check this promotion used to
+    bypass. Other real-time systems don't create SCHEDULED records (PATH,
+    LIRR, MNR).
 
     Args:
         journey: The train journey record
@@ -59,12 +63,9 @@ def get_effective_observation_type(journey: "TrainJourney") -> str:
     if journey.observation_type != "SCHEDULED":
         return journey.observation_type or "OBSERVED"
 
-    # For NJT, don't promote SCHEDULED trains that have no evidence of
-    # actually running. NJT has a reconciliation job that marks unobserved
-    # trains as cancelled. Other real-time systems (Amtrak, PATH, LIRR, MNR)
-    # either don't create SCHEDULED records or rely on auto-promotion for
-    # pattern-scheduled trains that haven't been discovered yet.
-    if journey.data_source == "NJT":
+    # Don't promote SCHEDULED NJT/Amtrak trains that have no evidence of
+    # actually running (see docstring).
+    if journey.data_source in ("NJT", "AMTRAK"):
         return "SCHEDULED"
 
     # For schedule-only systems (PATCO): promote if departure time has passed.

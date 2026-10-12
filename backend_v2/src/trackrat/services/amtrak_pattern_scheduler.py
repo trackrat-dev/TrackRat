@@ -6,9 +6,10 @@ for trains that haven't appeared yet but are expected based on past behavior.
 """
 
 from datetime import date, datetime, time, timedelta
-from typing import Any
+from typing import Any, cast
 
 from sqlalchemy import and_, delete, func, or_, select, text
+from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from structlog import get_logger
@@ -20,6 +21,7 @@ from trackrat.config.stations import (
 )
 from trackrat.db.engine import get_session
 from trackrat.models.database import JourneyStop, TrainJourney
+from trackrat.services.gtfs import GTFSService
 from trackrat.settings import get_settings
 from trackrat.utils.time import ET, now_et
 
@@ -44,6 +46,13 @@ class AmtrakPatternScheduler:
     TIME_VARIANCE_THRESHOLD = 35  # Minutes - if times vary by more, don't schedule
     STOP_CONSENSUS_RUNS = 5  # Recent matching runs used to infer scheduled stops
     MIN_STOP_CONSENSUS_RUNS = 2  # Avoid trusting a one-off route variant
+    # Amtrak's GTFS files a late-evening Central/Pacific departure under its
+    # local service day with the Eastern clock time wrapped past midnight
+    # (Sunset Limited: Fri 22:00 PT is listed as Fri "1:00:00"), while
+    # journey_date is the Eastern date (Sat). Before this Eastern time a
+    # pattern may match a GTFS trip on the previous day. 03:00 covers the
+    # largest Eastern/Pacific offset.
+    PREVIOUS_SERVICE_DAY_CUTOFF = time(3, 0)
 
     @staticmethod
     def _train_id_matches_number(train_id_column: Any, train_number: str) -> Any:
@@ -89,7 +98,10 @@ class AmtrakPatternScheduler:
                     method="in_memory",
                 )
 
-            # 2. Generate scheduled journeys from patterns
+            # 2. Drop trains the published timetable says won't run that day
+            patterns = await self.drop_patterns_not_in_timetable(patterns, target_date)
+
+            # 3. Generate scheduled journeys from patterns
             scheduled_journeys = await self.create_scheduled_journeys(
                 patterns, target_date
             )
@@ -99,7 +111,7 @@ class AmtrakPatternScheduler:
                 target_date=target_date.isoformat(),
             )
 
-            # 3. Store in database
+            # 4. Store in database
             stats = await self.save_scheduled_journeys(scheduled_journeys)
             logger.info(
                 "amtrak_schedules_saved",
@@ -647,6 +659,86 @@ class AmtrakPatternScheduler:
         )
 
         return stops
+
+    async def drop_patterns_not_in_timetable(
+        self, patterns: list[dict[str, Any]], target_date: date
+    ) -> list[dict[str, Any]]:
+        """Remove patterns for trains Amtrak's published GTFS says won't run.
+
+        Weekday patterns survive a timetable change: a train dropped from
+        Saturdays keeps being projected until its last real runs age out of
+        LOOKBACK_DAYS, and riders saw those phantoms on departure boards
+        (issue #1881). The stored Amtrak GTFS is the authority on whether a
+        train runs on ``target_date``.
+
+        Fails open: train numbers the feed doesn't know (the San Joaquins are
+        absent from the national GTFS) are kept, and when the feed has no
+        service on ``target_date`` at all (missing or lapsed) every pattern is
+        kept. A pattern departing before PREVIOUS_SERVICE_DAY_CUTOFF is also
+        kept when the train runs on the previous GTFS service day, or when
+        that day's service is unknown.
+
+        A SCHEDULED row an earlier run already projected for a dropped train
+        (the nightly job builds tomorrow's rows too) is deleted, so the drop
+        takes effect for that day. The delete is conditioned on
+        ``observation_type`` so a row discovery promoted meanwhile survives.
+        """
+        if not patterns:
+            return patterns
+
+        gtfs = GTFSService()
+        async with get_session() as session:
+            not_running = await gtfs.get_train_ids_not_running(
+                session,
+                "AMTRAK",
+                [pattern["train_number"] for pattern in patterns],
+                target_date,
+            )
+            if not_running is None:
+                logger.warning(
+                    "amtrak_timetable_check_skipped_no_gtfs_service",
+                    target_date=target_date.isoformat(),
+                    pattern_count=len(patterns),
+                )
+                return patterns
+
+            after_midnight = {
+                p["train_number"]
+                for p in patterns
+                if p["train_number"] in not_running
+                and p["median_departure"] < self.PREVIOUS_SERVICE_DAY_CUTOFF
+            }
+            if after_midnight:
+                not_running_day_before = await gtfs.get_train_ids_not_running(
+                    session,
+                    "AMTRAK",
+                    after_midnight,
+                    target_date - timedelta(days=1),
+                )
+                not_running -= after_midnight - (not_running_day_before or set())
+
+            if not not_running:
+                return patterns
+
+            result = cast(
+                CursorResult[tuple[()]],
+                await session.execute(
+                    delete(TrainJourney).where(
+                        TrainJourney.train_id.in_(not_running),
+                        TrainJourney.journey_date == target_date,
+                        TrainJourney.data_source == "AMTRAK",
+                        TrainJourney.observation_type == "SCHEDULED",
+                    )
+                ),
+            )
+
+        logger.info(
+            "amtrak_patterns_dropped_not_in_timetable",
+            target_date=target_date.isoformat(),
+            train_numbers=sorted(not_running),
+            stale_scheduled_deleted=result.rowcount,
+        )
+        return [p for p in patterns if p["train_number"] not in not_running]
 
     async def create_scheduled_journeys(
         self, patterns: list[dict[str, Any]], target_date: date
