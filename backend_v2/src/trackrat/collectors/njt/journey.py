@@ -44,6 +44,7 @@ from trackrat.utils.train import (
     njt_cancellation_reason,
     parse_njt_line_code,
     resolve_actual_departure,
+    strip_njt_connecting_service,
 )
 
 logger = get_logger(__name__)
@@ -852,7 +853,7 @@ class JourneyCollector:
             train_data: Train data from API
         """
         # Update basic info
-        journey.destination = train_data.DESTINATION
+        journey.destination = strip_njt_connecting_service(train_data.DESTINATION)
         journey.line_color = train_data.BACKCOLOR.strip()
 
         # Update origin and terminal stations from actual journey data
