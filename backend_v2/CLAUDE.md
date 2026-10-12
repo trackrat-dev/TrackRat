@@ -331,6 +331,9 @@ GET /validation/results/{route}/{source}             # Route-specific validation
 # Feedback
 POST /feedback                                       # Submit user feedback
 
+# Telemetry
+POST /telemetry/onboarding                           # iOS onboarding-funnel event (log-only, no station codes or IP)
+
 # Live Activities Management
 POST /live-activities/register    # Register Live Activity
 DELETE /live-activities/{token}   # Unregister Live Activity

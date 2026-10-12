@@ -564,7 +564,7 @@ terraform apply -var="environment=production"
 
 **Deployment Triggers**: Push to `main` → staging, push to `production` → production.
 
-**CI (GitHub Actions)**: `.github/workflows/ci-cd-v2.yml` runs backend tests, terraform validation, and web/Docker builds on `backend_v2/`, `infra_v2/`, or `webpage_v2/` changes — plus `ios/TrackRat/Shared/RouteTopology.swift`, because the route-topology parity test lives in `backend_v2` but reads that Swift file, and an iOS-only topology edit would otherwise run `ios-ci.yml` (Xcode only) and merge the drift unnoticed. `.github/workflows/ios-ci.yml` builds and tests the iOS app on `ios/` changes (runs on `macos-26` for the iOS 26 SDK; dynamically selects an available simulator).
+**CI (GitHub Actions)**: `.github/workflows/ci-cd-v2.yml` runs backend tests, terraform validation, and web/Docker builds on `backend_v2/`, `infra_v2/`, or `webpage_v2/` changes — plus `ios/TrackRat/Shared/RouteTopology.swift`, because the route-topology parity test lives in `backend_v2` but reads that Swift file, and an iOS-only topology edit would otherwise run `ios-ci.yml` (Xcode only) and merge the drift unnoticed. `.github/workflows/ios-ci.yml` builds and tests the iOS app on `ios/` changes (runs on the `xcode-27` image for the iOS 27 SDK; selects the newest available iOS simulator runtime).
 
 ## GCP Log Viewing (Cloud Environment)
 
@@ -722,6 +722,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 
 # Feedback
 /api/v2/feedback                   # Submit user feedback
+/api/v2/telemetry/onboarding       # iOS onboarding-funnel telemetry (POST, log-only)
 
 # Route Preferences
 /api/v2/routes/preferences         # User route preferences (GET/PUT)

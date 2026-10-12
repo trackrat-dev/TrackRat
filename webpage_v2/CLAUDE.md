@@ -4,8 +4,8 @@
 
 ## Technology Stack
 
-- **Framework**: React 19.2 + TypeScript 7.0 + PWA (vite-plugin-pwa)
-- **Build Tool**: Vite 8.2 (fast dev server, optimized builds; needs Node 20.19+ / 22.12+)
+- **Framework**: React 19.2 + TypeScript 7.0 + PWA (vite-plugin-pwa 2.0)
+- **Build Tool**: Vite 8.3 (fast dev server, optimized builds; needs Node 20.19+ / 22.12+)
 - **Styling**: Tailwind CSS 4.3 (utility-first, custom design system)
 - **State Management**: Zustand 5.0 (lightweight, no boilerplate)
 - **Routing**: React Router DOM 7.18
@@ -133,6 +133,7 @@ webpage_v2/
 │   │   ├── StationPicker.tsx # Searchable station selector (grouped by system)
 │   │   ├── TrainCard.tsx    # Departure list item (visual states: departed/boarding/cancelled/scheduled)
 │   │   ├── StopCard.tsx     # Individual stop in train details (timing hierarchy)
+│   │   ├── JourneyStopList.tsx # Stops trimmed to the rider's journey, with previous/later toggles
 │   │   ├── TrackPredictionBar.tsx # Track/platform predictions
 │   │   ├── ShareButton.tsx  # Web Share API with clipboard fallback
 │   │   ├── LoadingSpinner.tsx
