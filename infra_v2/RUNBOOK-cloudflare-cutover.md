@@ -411,14 +411,10 @@ idempotent — but a route silently dropped on redeploy would take
 Also load the site in a browser: the service worker should register, and API
 calls should go to `https://staging-api.trackrat.net/api/v2` (#1712).
 
-**Rollback:** the GCS bucket `trackrat-webpage-staging` still holds the last
-pre-migration build, but nothing serves it — the staging LB is gone. Rollback
-is therefore forward-only: fix and redeploy. This is acceptable precisely
-because staging is already dark.
-
-**After a ≥24h soak:** delete `google_storage_bucket.webpage_staging`, its IAM
-member, and the `staging_webpage_bucket` output from
-`infra_v2/terraform-webpage/main.tf`, then apply that root manually.
+**Rollback:** forward-only — fix and redeploy. The staging LB is gone, so
+nothing could serve the old GCS build; this is acceptable precisely because
+staging is already dark. The `trackrat-webpage-staging` bucket was deleted
+with the production one in P5 step 6.
 
 ### S9. Push #2 — tear down the staging LB
 
@@ -539,10 +535,9 @@ at it again.
 ### P5. Static site on Workers Static Assets
 
 Same shape as S8 against the `production` environment, but production is live,
-so the order below matters. `infra_v2/cloudbuild-webpage.yaml` deploys to
-**both** GCS and the Worker on purpose: it removes the window where one
-destination is serving while the other goes stale. Do not delete the GCS steps
-early.
+so the order below matters. Until step 5, `infra_v2/cloudbuild-webpage.yaml`
+deployed to **both** GCS and the Worker on purpose: it removed the window where
+one destination is serving while the other goes stale.
 
 1. Merge `main` → `production` so the dual-deploy pipeline is live. The
    `production` env in `wrangler.jsonc` has **no `routes`** yet, so this
@@ -622,6 +617,37 @@ early.
    step's existence, but its guard is now unconditional and its messaging
    already reflects the Worker serving the apex, so nothing in the script
    retired or changed.
+6. **Delete both GCS buckets (issue #1763).** Only once step 5's pipeline has
+   run on a real promotion (install, test, build, `deploy-worker`) and
+   `trackrat.net` serves the new bundle. `infra_v2/terraform-webpage/main.tf`
+   no longer declares `trackrat-webpage-staging`, `trackrat-webpage-production`,
+   their `allUsers` IAM members or their outputs. Nothing reads or writes
+   either bucket, and their old builds are no rollback: nothing can serve
+   them, and any build is reproducible from git. No archive is kept.
+
+   The production bucket was created with `force_destroy = false`, and
+   Terraform destroys with the value in state, so empty it first or the apply
+   fails part-way. The staging bucket is `force_destroy = true` and needs
+   nothing.
+   ```bash
+   gcloud storage rm --all-versions 'gs://trackrat-webpage-production/**'
+
+   cd infra_v2/terraform-webpage
+   terraform init
+   terraform plan
+   ```
+   The plan must show **exactly four destroys** — `google_storage_bucket.webpage_staging`,
+   `google_storage_bucket.webpage_production`,
+   `google_storage_bucket_iam_member.staging_public_access`,
+   `google_storage_bucket_iam_member.production_public_access` — plus the two
+   removed outputs, and **zero creates**. A fifth destroy,
+   `google_compute_global_address.webpage_production_ip`, means P6's apply
+   never ran: stop and do P6's DNS check first. Anything else, stop.
+   ```bash
+   terraform apply
+   terraform plan                                                                  # expect: No changes
+   gcloud storage buckets list --project=trackrat-v2 --filter='name~^trackrat-webpage-'   # expect EMPTY
+   ```
 
 Universal links are worth a real check here, not just a curl: Apple's CDN
 caches the AASA file, so an installed app may keep working for a while off the
@@ -631,9 +657,8 @@ old copy. Confirm a shared `/train/...` link still opens the app.
 recreate the grey `A` records pointing at `136.110.151.144`, let the
 still-current bucket serve — no longer exists: the load balancer behind that IP
 was deleted on 2026-08-08, before P5.4 ran, so those records would point at
-nothing. The bucket stopped receiving builds at step 5, and nothing serves
-it. Rollback now means redeploying a known-good build to the Worker
-(`git checkout <good-commit>` then
+nothing, and the bucket itself was deleted at step 6. Rollback now means
+redeploying a known-good build to the Worker (`git checkout <good-commit>` then
 `./scripts/deploy-webpage.sh production --cloudflare-only`); do **not** remove
 the `routes` block — that just takes the site down.
 
@@ -659,7 +684,8 @@ The config side is done: `infra_v2/terraform-webpage/main.tf` no longer declares
 - `data "google_compute_backend_service" "api_production"`
 - the `production_webpage_ip` output
 
-Both GCS buckets and the webpage Cloud Build triggers stay.
+The webpage Cloud Build triggers stay. The GCS buckets stayed here too, and
+were deleted later in P5 step 6.
 
 **Remaining manual step — reconcile state and release the IP.** No trigger
 exists for this root:
