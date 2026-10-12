@@ -31,8 +31,12 @@ class TestDeviceRegistration:
         data = resp.json()
         assert data["status"] == "registered"
 
-    def test_register_updates_existing_device(self, e2e_client: TestClient):
-        """Re-registering same device_id with new token updates the token."""
+    def test_register_updates_existing_device(
+        self, e2e_client: TestClient, sync_engine
+    ):
+        """Re-registering same device_id with new token updates the token in
+        place: the upsert's conflict branch must write the new token, not keep
+        the old one or insert a second row."""
         e2e_client.post(
             "/api/v2/devices/register",
             json={"device_id": "dev-2", "apns_token": "tok-old"},
@@ -42,6 +46,19 @@ class TestDeviceRegistration:
             json={"device_id": "dev-2", "apns_token": "tok-new"},
         )
         assert resp.status_code == 200
+
+        with Session(sync_engine) as session:
+            tokens = (
+                session.execute(
+                    select(DeviceToken.apns_token).where(
+                        DeviceToken.device_id == "dev-2"
+                    )
+                )
+                .scalars()
+                .all()
+            )
+        print(f"  dev-2 stored tokens after re-register: {tokens}")
+        assert tokens == ["tok-new"], f"expected one row with tok-new, got {tokens}"
 
     def test_reregister_unchanged_token_advances_last_registered_at(
         self, e2e_client: TestClient, sync_engine
