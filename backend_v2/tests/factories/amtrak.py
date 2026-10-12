@@ -143,6 +143,7 @@ def create_amtrak_train_data(
 def create_amtrak_journey(
     train_id: str = "A2150",
     origin: str = "NY",
+    terminal: str = "WAS",
     destination: str = "Washington Union Station",
     scheduled_departure: datetime | None = None,
     data_source: str = "AMTRAK",
@@ -165,7 +166,10 @@ def create_amtrak_journey(
         line_color=line_color,
         destination=destination,
         origin_station_code=origin,
-        terminal_station_code=origin,  # Will be updated when stops are added
+        # The collector sets the terminal to the train's last tracked stop, so
+        # a fixture whose stops end at its origin would read as a train
+        # terminating there and drop off that station's board (issue #1882).
+        terminal_station_code=terminal,
         scheduled_departure=scheduled_departure,
         first_seen_at=now_et(),
         last_updated_at=now_et(),
