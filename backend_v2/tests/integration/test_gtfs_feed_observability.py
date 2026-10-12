@@ -25,6 +25,7 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from tests.fixtures.gtfs_bundles import build_gtfs_zip
+from trackrat.collectors.path import segment_times as path_segment_times
 from trackrat.models.database import GTFSFeedInfo, GTFSStopTime, GTFSTrip
 from trackrat.services.gtfs import (
     GTFS_EXPIRY_EXEMPT_SOURCES,
@@ -2104,3 +2105,41 @@ class TestHealthExposesFeedFreshness:
         assert check["stale_sources"] == []
         assert check["lapsed_sources"] == []
         assert not disabled & set(check["feeds"])
+
+
+@pytest.mark.asyncio
+class TestPathRefreshReloadsSegmentTimes:
+    """The PATH collector caches segment times derived from PATH stop_times.
+    A refresh that replaces those stop_times must drop the cached copy, or the
+    process keeps timing trains off the previous bundle until it restarts."""
+
+    @pytest.fixture(autouse=True)
+    def _fresh_cache(self):
+        path_segment_times.clear_cache()
+        yield
+        path_segment_times.clear_cache()
+
+    async def test_path_refresh_clears_cached_segment_times(
+        self, db_session: AsyncSession
+    ):
+        stale = {"862": [("PNK", "PHR", 99.0)]}
+        path_segment_times._cached_segment_times = stale
+
+        with _stub_download(build_gtfs_zip(trips=2, start_date=_gtfs_date(-7))):
+            outcome = await GTFSService().refresh_feed(db_session, "PATH", force=True)
+
+        cached = path_segment_times._cached_segment_times
+        print(f"outcome={outcome} cached after refresh={cached}")
+        assert outcome is GTFSRefreshOutcome.REFRESHED
+        assert cached is None, f"stale segment times survived the refresh: {cached}"
+
+    async def test_other_sources_leave_path_segment_times_alone(
+        self, db_session: AsyncSession
+    ):
+        cached = {"862": [("PNK", "PHR", 3.0)]}
+        path_segment_times._cached_segment_times = cached
+
+        with _stub_download(build_gtfs_zip(trips=2, start_date=_gtfs_date(-7))):
+            await GTFSService().refresh_feed(db_session, "SEPTA_RR", force=True)
+
+        assert path_segment_times._cached_segment_times is cached
