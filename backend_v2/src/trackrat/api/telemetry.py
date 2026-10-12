@@ -14,10 +14,11 @@ anyone follows up on. ``ONBOARDING_PATH`` is excluded from
 ``request_stats_middleware`` in ``main.py`` for the same reason — that middleware
 retains a client IP per request in the app's own stats.
 
-The IP is not gone end to end: the load balancer's request logs record the
-remote IP, path and time of every request, this one included, under their
-normal retention. The payload never reaches those logs, so what the pair can
-reveal is limited to which systems a given IP selected.
+The IP is not gone end to end: requests arrive through the Cloudflare Tunnel
+(#1759), so Cloudflare's edge sees the remote IP, path and time of every
+request, this one included. The payload never reaches Cloudflare's request
+metadata, so what the pair can reveal is limited to which systems a given IP
+selected.
 """
 
 from datetime import UTC, datetime

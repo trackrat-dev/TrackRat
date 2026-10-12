@@ -134,7 +134,7 @@ gcloud builds submit --config=cloudbuild.yaml .
 
 The React webpage (`webpage_v2/`) deploys separately from the API via its own Cloud Build triggers (defined in `terraform-webpage/`), to **Cloudflare Workers Static Assets** (issue #1713):
 - **Push to `main`** (with `webpage_v2/` or `cloudbuild-webpage-staging.yaml` changes) → `trackrat-webpage-staging` trigger → Worker `trackrat-webpage-staging` (`staging.trackrat.net`)
-- **Push to `production`** (with `webpage_v2/` or `cloudbuild-webpage.yaml` changes) → `trackrat-webpage-production` trigger → Worker `trackrat-webpage-production` (`trackrat.net` / `www.trackrat.net`). Since issue #1763 the pipeline no longer syncs to `gs://trackrat-webpage-production`; the bucket holds the last pre-cutover build only until it is deleted
+- **Push to `production`** (with `webpage_v2/` or `cloudbuild-webpage.yaml` changes) → `trackrat-webpage-production` trigger → Worker `trackrat-webpage-production` (`trackrat.net` / `www.trackrat.net`). Since issue #1763 the pipeline no longer syncs to `gs://trackrat-webpage-production`; Terraform no longer declares the bucket, which is deleted by the manual apply in `RUNBOOK-cloudflare-cutover.md` P5 step 6
 
 Each cloudbuild file is in its own trigger's path filter because it bakes `_API_BASE_URL` into the bundle as `VITE_API_BASE_URL` at build time — editing that substitution alone must redeploy, or the live site keeps calling the previous API host.
 
@@ -442,7 +442,7 @@ infra_v2/
 │   │   └── test_main.py
 │   └── train_follow_notifier/   # Train-follow Slack notification service
 ├── terraform-webpage/
-│   └── main.tf                  # Webpage Cloud Build triggers + GCS buckets (no longer written or served; pending deletion, #1763). No load balancer — see "Frontend Topology"
+│   └── main.tf                  # Webpage Cloud Build triggers only (GCS buckets removed, #1763). No load balancer — see "Frontend Topology"
 └── terraform/
     ├── main.tf                  # Provider and backend config
     ├── variables.tf             # Input variables

@@ -2625,10 +2625,11 @@ class TestDeadDeviceTokenPruning:
     """A permanently invalid APNS token must delete the device registration
     (issue #1794).
 
-    APNS 410 means the app was uninstalled or push was disabled. Nothing else
-    in the codebase prunes `device_tokens` — there is no cleanup job for that
-    table — so before this fix every evaluation cycle re-sent to the same dead
-    token forever, at ~13-minute intervals, indefinitely.
+    APNS 410 means the app was uninstalled or push was disabled. The daily
+    stale-registration sweep (#1858) never touches a device with
+    subscriptions, so this is the only path that prunes one — before this fix
+    every evaluation cycle re-sent to the same dead token forever, at
+    ~13-minute intervals, indefinitely.
 
     The paired invariant matters as much as the prune itself: a TRANSIENT
     failure (5xx, timeout, network blip, unconfigured APNS) must NOT delete

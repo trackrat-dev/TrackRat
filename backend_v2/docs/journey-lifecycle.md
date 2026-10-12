@@ -75,7 +75,9 @@ train delayed >10 min before departure).
 real-time APIs spell one terminal differently ("Newark Penn" / "Newark Penn
 Station", "Long Branch" / "Long Branch with connecting service to Bay Head"),
 and NJT diverts running trains (New York → Hoboken). `_is_same_journey`
-decides identity by the origin's scheduled departure alone, and
+decides identity by the origin's scheduled departure alone — and only for a
+complete journey (`has_complete_journey`); an incomplete row is accepted
+unchecked, since its origin may be a discovery placeholder — and
 `update_journey_metadata` adopts the API's destination. Rejecting on
 destination expired 40–80 live trains a day, each re-expired after every
 discovery reactivation, without ever catching a different run.
@@ -96,7 +98,11 @@ discovery reactivation, without ever catching a different run.
    `data_source = 'NJT' AND both IS NOT NULL` (see the congestion
    `stop_pairs` CTE, #1503). Segment from-stops are never terminals when
    consumers filter `to_station IS NOT NULL`, so no terminal exemption is
-   needed there.
+   needed there. Departure boards rely on the same property:
+   `DepartureService._effective_updated_time` has no terminal exemption
+   because both board loops skip a journey that terminates at the board
+   station (#1882). Letting terminating trains onto a board again would
+   bring back #1492 there.
 4. The **arrival side is safe**: `updated_arrival or updated_departure` is
    correct for NJT at both intermediate and terminal stops.
 5. Non-NJT providers carry genuine live estimates in both fields — the
