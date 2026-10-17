@@ -114,7 +114,7 @@ struct TrainSystemDetailView: View {
             alertService.syncIfPossible()
         }
         .sheet(isPresented: $showingPaywall) {
-            PaywallView(context: .routeAlerts)
+            PaywallView()
         }
         .sheet(item: $routeStatusContext) { context in
             RouteStatusView(context: context)
@@ -287,11 +287,6 @@ struct TrainSystemDetailView: View {
 
     private var isSubscribed: Bool { !matchingSubscriptions.isEmpty }
 
-    private var atFreeRouteAlertLimit: Bool {
-        !subscriptionService.isPro
-            && alertService.subscriptions.count >= SubscriptionService.freeRouteAlertLimit
-    }
-
     /// Single binding for alert configuration. Uses the matching system-wide
     /// subscription if one exists; otherwise falls back to the draft.
     private var alertConfigBinding: Binding<RouteAlertSubscription> {
@@ -324,7 +319,7 @@ struct TrainSystemDetailView: View {
     /// returns to zero. Mirrors the per-route flow in `RouteStatusView`.
     private func handleActiveDaysChange(_ newDays: Int) {
         if newDays > 0 && !isSubscribed {
-            if atFreeRouteAlertLimit {
+            if alertService.isAtFreeLimit(isPro: subscriptionService.isPro) {
                 // Revert the UI to "None" when the paywall is dismissed.
                 draftSubscription?.activeDays = 0
                 showingPaywall = true

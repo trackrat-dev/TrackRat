@@ -111,7 +111,7 @@ jobs:
           terraform_version: '1.6'
 
       - name: Terraform Format Check
-        working-directory: infra_v2/terraform
+        working-directory: infra_v2
         run: terraform fmt -check -recursive
 
       - name: Terraform Init
@@ -120,6 +120,16 @@ jobs:
 
       - name: Terraform Validate
         working-directory: infra_v2/terraform
+        run: terraform validate
+
+      # terraform-webpage/ has no apply trigger, so CI is the only thing that
+      # looks at it between hand applies (issue #1762).
+      - name: Terraform Init (webpage)
+        working-directory: infra_v2/terraform-webpage
+        run: terraform init -backend=false
+
+      - name: Terraform Validate (webpage)
+        working-directory: infra_v2/terraform-webpage
         run: terraform validate
 
   # ============================================

@@ -6,8 +6,6 @@ struct PaywallView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var subscriptionService = SubscriptionService.shared
 
-    let context: PaywallContext
-
     @State private var selectedProduct: Product?
     @State private var isPurchasing = false
     @State private var showError = false
@@ -16,10 +14,10 @@ struct PaywallView: View {
     @State private var restoreMessage = ""
     @State private var isRestoring = false
     @State private var showPurchaseSuccess = false
-
-    init(context: PaywallContext = .generic) {
-        self.context = context
-    }
+    /// Whether this Apple ID can still redeem an introductory offer. Eligibility is
+    /// per subscription group, so anyone who ever held monthly or yearly has used it.
+    /// Starts false so the paywall never promises a trial it has not confirmed.
+    @State private var isEligibleForIntroOffer = false
 
     var body: some View {
         ZStack {
@@ -64,7 +62,7 @@ struct PaywallView: View {
                             .lineSpacing(4)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        Text("All features are free to use with one transit system. Subscribing unlocks unlimited systems & route alerts \u{2014} and helps me keep the servers running.")
+                        Text("Every transit system is free to use, as are your first \(SubscriptionService.freeRouteAlertLimit) route alerts. Subscribing unlocks unlimited route alerts \u{2014} and helps me keep the servers running.")
                             .font(.subheadline)
                             .foregroundColor(.white.opacity(0.8))
                             .multilineTextAlignment(.leading)
@@ -272,11 +270,15 @@ struct PaywallView: View {
                 selectedProduct = monthly
             }
         }
+        .task(id: selectedProduct?.id) {
+            isEligibleForIntroOffer = await selectedProduct?.subscription?.isEligibleForIntroOffer ?? false
+        }
     }
 
-    /// Whether the selected product has a free trial introductory offer
+    /// Whether the selected product has a free trial this user can redeem
     private var hasFreeTrial: Bool {
-        guard let product = selectedProduct,
+        guard isEligibleForIntroOffer,
+              let product = selectedProduct,
               let subscription = product.subscription,
               let introOffer = subscription.introductoryOffer,
               introOffer.paymentMode == .freeTrial else {
@@ -294,9 +296,10 @@ struct PaywallView: View {
         return "Payment will be charged to your Apple ID account at the confirmation of purchase. \(renewalText)"
     }
 
-    /// Format the trial period from product subscription info
+    /// Format the trial period, or empty when no redeemable trial exists
     private func trialText(for product: Product) -> String {
-        guard let subscription = product.subscription,
+        guard isEligibleForIntroOffer,
+              let subscription = product.subscription,
               let introOffer = subscription.introductoryOffer,
               introOffer.paymentMode == .freeTrial else {
             return ""
@@ -514,5 +517,5 @@ private struct PurchaseSuccessOverlay: View {
 }
 
 #Preview {
-    PaywallView(context: .generic)
+    PaywallView()
 }

@@ -46,12 +46,13 @@ extension Stations {
         "COT": CLLocationCoordinate2D(latitude: 39.9823, longitude: -75.8233),  // Coatesville, PA (Keystone)
 
         "MJY": CLLocationCoordinate2D(latitude: 40.1071, longitude: -76.5033),  // Mount Joy, PA (Keystone)
-        "ELT": CLLocationCoordinate2D(latitude: 40.1524, longitude: -76.5258),  // Elizabethtown, PA (Keystone)
+        "ELT": CLLocationCoordinate2D(latitude: 40.1470, longitude: -76.6122),  // Elizabethtown, PA (Keystone)
         "MIDPA": CLLocationCoordinate2D(latitude: 40.1996, longitude: -76.7322),  // Middletown, PA (Keystone)
         "KIN": CLLocationCoordinate2D(latitude: 41.4885, longitude: -71.5204),  // Kingston, RI
         "PVD": CLLocationCoordinate2D(latitude: 41.8256, longitude: -71.4160),  // Providence, RI
         "WLY": CLLocationCoordinate2D(latitude: 41.3770, longitude: -71.8307),  // Westerly, RI
         "ALX": CLLocationCoordinate2D(latitude: 38.8062, longitude: -77.0626),  // Alexandria, VA
+        "ASDVA": CLLocationCoordinate2D(latitude: 37.7596, longitude: -77.4813),  // Ashland, VA
         "CVS": CLLocationCoordinate2D(latitude: 38.0320, longitude: -78.4921),  // Charlottesville, VA
         "LOR": CLLocationCoordinate2D(latitude: 38.7060, longitude: -77.2214),  // Lorton, VA
         "MSS": CLLocationCoordinate2D(latitude: 38.7511, longitude: -77.4752),  // Manassas, VA
@@ -393,6 +394,7 @@ extension Stations {
         "MOE": CLLocationCoordinate2D(latitude: 30.6959, longitude: -88.0411),  // Mobile
 
         // California
+        "ACA": CLLocationCoordinate2D(latitude: 38.0177, longitude: -121.8160),  // Antioch-Pittsburg
         "ANA": CLLocationCoordinate2D(latitude: 33.8038, longitude: -117.8773),  // Anaheim
         "ARC": CLLocationCoordinate2D(latitude: 40.8686, longitude: -124.0838),  // Arcata
         "ARN": CLLocationCoordinate2D(latitude: 38.9036, longitude: -121.0832),  // Auburn
@@ -404,6 +406,7 @@ extension Stations {
         "CIC": CLLocationCoordinate2D(latitude: 39.7233, longitude: -121.8459),  // Chico
         "CLM": CLLocationCoordinate2D(latitude: 34.0945, longitude: -117.7169),  // Claremont
         "CML": CLLocationCoordinate2D(latitude: 34.2159, longitude: -119.0341),  // Camarillo
+        "COC": CLLocationCoordinate2D(latitude: 36.0985, longitude: -119.5571),  // Corcoran
         "COX": CLLocationCoordinate2D(latitude: 39.0992, longitude: -120.9531),  // Colfax
         "CPN": CLLocationCoordinate2D(latitude: 34.3968, longitude: -119.5230),  // Carpinteria
         "CWT": CLLocationCoordinate2D(latitude: 34.2532, longitude: -118.5994),  // Chatsworth
@@ -428,6 +431,8 @@ extension Stations {
         "LPS": CLLocationCoordinate2D(latitude: 34.6827, longitude: -120.6050),  // Lompoc-Surf
         "LVS": CLLocationCoordinate2D(latitude: 36.1645, longitude: -115.1497),  // Las Vegas
         "MCD": CLLocationCoordinate2D(latitude: 37.3072, longitude: -120.4768),  // Merced
+        "MDR": CLLocationCoordinate2D(latitude: 37.0225, longitude: -120.0750),  // Madera
+        "MOD": CLLocationCoordinate2D(latitude: 37.6690, longitude: -120.9129),  // Modesto
         "MRV": CLLocationCoordinate2D(latitude: 39.1437, longitude: -121.5973),  // Marysville
         "MTZ": CLLocationCoordinate2D(latitude: 38.0189, longitude: -122.1388),  // Martinez
         "MYU": CLLocationCoordinate2D(latitude: 36.6535, longitude: -121.8014),  // Seaside-Marina
@@ -458,10 +463,12 @@ extension Stations {
         "SNS": CLLocationCoordinate2D(latitude: 36.6791, longitude: -121.6567),  // Salinas
         "SOL": CLLocationCoordinate2D(latitude: 32.9929, longitude: -117.2711),  // Solana Beach
         "SUI": CLLocationCoordinate2D(latitude: 38.2434, longitude: -122.0411),  // Suisun-Fairfield
+        "TRK": CLLocationCoordinate2D(latitude: 37.5272, longitude: -120.7980),  // Turlock-Denair
         "VAL": CLLocationCoordinate2D(latitude: 38.1003, longitude: -122.2592),  // Vallejo
         "VEC": CLLocationCoordinate2D(latitude: 34.2769, longitude: -119.2999),  // Ventura
         "VNC": CLLocationCoordinate2D(latitude: 34.2113, longitude: -118.4482),  // Van Nuys
         "VRV": CLLocationCoordinate2D(latitude: 34.5372, longitude: -117.2930),  // Victorville
+        "WAC": CLLocationCoordinate2D(latitude: 35.5941, longitude: -119.3323),  // Wasco
         "WNN": CLLocationCoordinate2D(latitude: 40.9690, longitude: -117.7322),  // Winnemucca
         "WTS": CLLocationCoordinate2D(latitude: 39.4126, longitude: -123.3510),  // Willits Calif Western Railroad Depot
 
@@ -511,7 +518,6 @@ extension Stations {
         "LAB": CLLocationCoordinate2D(latitude: 40.3174, longitude: -79.3851),  // Latrobe
         "LEW": CLLocationCoordinate2D(latitude: 40.5883, longitude: -77.5800),  // Lewistown
         "MDS": CLLocationCoordinate2D(latitude: 41.2836, longitude: -72.5994),  // Madison
-        "MID": CLLocationCoordinate2D(latitude: 40.1957, longitude: -76.7365),  // Middletown
         "MRB": CLLocationCoordinate2D(latitude: 39.4587, longitude: -77.9610),  // Martinsburg
         "MSA": CLLocationCoordinate2D(latitude: 39.3301, longitude: -76.4214),  // Martin Airport
         "MYS": CLLocationCoordinate2D(latitude: 41.3509, longitude: -71.9631),  // Mystic
@@ -615,6 +621,7 @@ extension Stations {
         "HMD": CLLocationCoordinate2D(latitude: 30.5072, longitude: -90.4622),  // Hammond
         "HOP": CLLocationCoordinate2D(latitude: 33.6689, longitude: -93.5922),  // Hope
         "HUT": CLLocationCoordinate2D(latitude: 38.0557, longitude: -97.9315),  // Hutchinson
+        "NEW": CLLocationCoordinate2D(latitude: 38.0470, longitude: -97.3449),  // Newton, KS
         "IDP": CLLocationCoordinate2D(latitude: 39.0869, longitude: -94.4297),  // Independence
         "JAN": CLLocationCoordinate2D(latitude: 32.3008, longitude: -90.1909),  // Jackson
         "JEF": CLLocationCoordinate2D(latitude: 38.5789, longitude: -92.1699),  // Jefferson City

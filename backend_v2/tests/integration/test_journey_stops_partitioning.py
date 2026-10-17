@@ -18,9 +18,27 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from trackrat.db.partitioning import (
     drop_old_partitions,
     ensure_future_partitions,
+    month_end_exclusive,
+    partition_name,
     run_legacy_backfill_batches,
 )
 from trackrat.models.database import JourneyStop, SegmentTransitTime, TrainJourney
+
+
+def _months_ahead(n: int) -> date:
+    """First day of the month ``n`` months after the current one."""
+    first = date.today().replace(day=1)
+    for _ in range(n):
+        first = month_end_exclusive(first.year, first.month)
+    return first
+
+
+async def _partition_of(db: AsyncSession, table: str, row_id: int) -> str:
+    result = await db.execute(
+        text(f"SELECT tableoid::regclass::text FROM {table} WHERE id = :id"),
+        {"id": row_id},
+    )
+    return result.scalar_one()
 
 
 def _make_journey(journey_date: date, train_id: str = "1234") -> TrainJourney:
@@ -164,6 +182,74 @@ class TestJourneyStopsPartitioning:
         # 1 default + (1 back + current + 2 forward) = 5, regardless of how
         # many times ensure_future_partitions runs.
         assert result.scalar_one() == 5
+
+    async def test_ensure_future_partitions_moves_default_rows_into_new_partition(
+        self, db_session: AsyncSession
+    ):
+        """Issue #1877: a row dated beyond the rolling window lands in DEFAULT,
+        and Postgres then refuses to create the partition for its month — which
+        failed every nightly top-up once the window reached that month. The
+        top-up must instead move the row into the new dated partition, keeping
+        its id, for both managed tables."""
+        # create_all() bootstrapped today's window (-1..+2 months); +3 is past it.
+        target = _months_ahead(3)
+        journey = _make_journey(target.replace(day=5), train_id="FAR1")
+        db_session.add(journey)
+        await db_session.flush()
+        stop = JourneyStop(journey=journey, station_code="NY", station_name="New York")
+        segment = SegmentTransitTime(
+            journey_id=journey.id,
+            from_station_code="NY",
+            to_station_code="WAS",
+            data_source="AMTRAK",
+            scheduled_minutes=180,
+            actual_minutes=185,
+            delay_minutes=5,
+            departure_time=journey.scheduled_departure,
+            hour_of_day=12,
+            day_of_week=journey.scheduled_departure.weekday(),
+        )
+        db_session.add_all([stop, segment])
+        await db_session.commit()
+
+        before = (
+            await _partition_of(db_session, "journey_stops", stop.id),
+            await _partition_of(db_session, "segment_transit_times", segment.id),
+        )
+        print(f"before top-up (stop, segment): {before}")
+        assert before == ("journey_stops_default", "segment_transit_times_default")
+
+        # Advance the window one month so it reaches the target month.
+        await ensure_future_partitions(db_session, reference_date=_months_ahead(1))
+        await db_session.commit()
+
+        stop_partition = partition_name("journey_stops", target.year, target.month)
+        segment_partition = partition_name(
+            "segment_transit_times", target.year, target.month
+        )
+        after = (
+            await _partition_of(db_session, "journey_stops", stop.id),
+            await _partition_of(db_session, "segment_transit_times", segment.id),
+        )
+        print(f"after top-up (stop, segment): {after}")
+        assert after == (stop_partition, segment_partition)
+
+        for default in ("journey_stops_default", "segment_transit_times_default"):
+            remaining = await db_session.scalar(text(f"SELECT count(*) FROM {default}"))
+            assert remaining == 0, f"{default} still holds {remaining} row(s)"
+
+        # Re-running is a no-op, and new rows route to the new partition
+        # without colliding with the moved row's id.
+        await ensure_future_partitions(db_session, reference_date=_months_ahead(1))
+        new_stop = JourneyStop(
+            journey=journey, station_code="WAS", station_name="Washington"
+        )
+        db_session.add(new_stop)
+        await db_session.commit()
+        assert new_stop.id != stop.id
+        assert await _partition_of(db_session, "journey_stops", new_stop.id) == (
+            stop_partition
+        )
 
     async def test_drop_old_partitions_reclaims_aged_out_data_only(
         self, db_session: AsyncSession

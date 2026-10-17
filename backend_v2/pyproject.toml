@@ -12,7 +12,7 @@ include = ["src/trackrat/assets/**/*"]
 python = "^3.11"
 
 # Web Framework
-fastapi = ">=0.135.3,<0.142.0"
+fastapi = ">=0.135.3,<0.143.0"
 uvicorn = {extras = ["standard"], version = ">=0.42,<0.53"}
 pydantic = "^2.12.5"
 pydantic-settings = "^2.13.1"
@@ -27,7 +27,7 @@ psycopg2-binary = "^2.9.11"  # For Alembic migrations (sync driver)
 httpx = {extras = ["http2"], version = "^0.28.1"}
 
 # GTFS Realtime (for LIRR)
-gtfs-realtime-bindings = "^2.0.0"
+gtfs-realtime-bindings = ">=2,<4"
 
 # Task Scheduling
 apscheduler = "^3.11.2"

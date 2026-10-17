@@ -48,11 +48,16 @@ struct TrackRatApp: App {
                 switch newPhase {
                 case .active:
                     print("📱 Scene Phase Active: Triggering backend wake-up...")
+                    // A foregrounded app refreshes itself; drop any queued background work.
+                    appDelegate.cancelAllPendingBackgroundTasks()
                     Task {
                         BackendWakeupService.shared.wakeupBackend()
                     }
                     // Refresh subscription status in case user cancelled in Settings
                     SubscriptionService.shared.refreshOnForeground()
+                    // Same for notification permission, which the user may have
+                    // just changed in Settings after following the alerts banner
+                    Task { await NotificationPermissionService.shared.refreshStatus() }
                     // Re-sync route alert subscriptions if stale (e.g. after server DB restore)
                     AlertSubscriptionService.shared.syncIfNeeded()
                     // Refresh Live Activity's cached train data on foreground.
@@ -68,6 +73,11 @@ struct TrackRatApp: App {
                     print("📱 Scene Phase Inactive")
                 case .background:
                     print("📱 Scene Phase Background")
+                    // Scene phase — not applicationDidEnterBackground(_:) — is the only
+                    // backgrounding signal a scene-based app is guaranteed to get. The
+                    // UIApplicationDelegate UI-state callbacks are deprecated as of iOS 26
+                    // and are not delivered once the scene life cycle is enforced.
+                    appDelegate.scheduleAppRefresh()
                 @unknown default:
                     break
                 }
@@ -82,13 +92,11 @@ struct TrackRatApp: App {
 
 // Create a new AppDelegate class to handle notification delegate methods
 class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
-    // Store device token for Live Activity registration
-    private static var storedDeviceToken: String?
-
-    @MainActor static var deviceToken: String? {
-        get { storedDeviceToken }
-        set { storedDeviceToken = newValue }
-    }
+    // Store device token for Live Activity registration.
+    // Isolated to the main actor directly: a `@MainActor` computed wrapper does not
+    // isolate its backing storage, which Swift 6 rejects as nonisolated global
+    // shared mutable state.
+    @MainActor static var deviceToken: String?
 
     /// Weak reference to AppState, set by TrackRatApp on launch
     @MainActor static weak var appState: AppState?
@@ -102,12 +110,13 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         setupNotificationCategories()
         registerBackgroundTasks()
 
-        // Request notification permissions after onboarding (don't prompt on first launch)
-        if UserDefaults.standard.bool(forKey: "hasCompletedOnboarding") {
-            Task {
-                await requestNotificationPermissions()
-            }
-            application.registerForRemoteNotifications()
+        // Registering for remote notifications never prompts the user: it yields
+        // the APNs token that Live Activity updates and silent pushes ride on.
+        // The alert prompt is deliberately NOT requested here — it is asked for
+        // in context, when the user first sets up a route alert.
+        application.registerForRemoteNotifications()
+        Task { @MainActor in
+            await NotificationPermissionService.shared.refreshStatus()
         }
 
         // Wake up backend on app launch
@@ -119,25 +128,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         return true
     }
     
-    /// Request notification permissions (required for Live Activities)
-    private func requestNotificationPermissions() async {
-        do {
-            let granted = try await UNUserNotificationCenter.current().requestAuthorization(
-                options: [.alert, .sound, .badge]
-            )
-            print("🔔 Notification permission granted: \(granted)")
-            
-            if granted {
-                print("✅ Notifications enabled - Live Activities should work")
-            } else {
-                print("❌ Notifications denied - Live Activities will not work")
-                print("💡 User needs to enable notifications in Settings for Live Activities")
-            }
-        } catch {
-            print("❌ Failed to request notification permissions: \(error)")
-        }
-    }
-
     func registerBackgroundTasks() {
         BGTaskScheduler.shared.register(forTaskWithIdentifier: BACKGROUND_REFRESH_TASK_ID, using: nil) { task in
             guard let bgTask = task as? BGAppRefreshTask else {
@@ -468,7 +458,32 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         print("📱 Notification categories configured")
     }
 
-    func scheduleAppRefresh() {
+    /// Submits a background refresh request, but only while a Live Activity is running.
+    ///
+    /// The guard lives here rather than at the call sites because there are two of them and
+    /// they have to agree: the `.background` scene phase, and `handleAppRefresh(task:)`
+    /// rescheduling its own successor. Without it, every backgrounding queues a wake — even
+    /// for a user who has never started a Live Activity — and each wake reschedules before
+    /// discovering it has nothing to do, so the chain re-arms itself for as long as the app
+    /// stays backgrounded. Foregrounding cancels the pending request, so the waste is bounded
+    /// by the next launch, but a wake that exists only to schedule the next wake is pure cost.
+    ///
+    /// Gating on `currentActivity` rather than the `isActivityActive` mirror keeps this in
+    /// step with the guard in `handleAppRefresh(task:)`, which reads the same property: if the
+    /// two disagreed, we would either schedule wakes that do nothing or skip ones that would.
+    ///
+    /// - Returns: whether a Live Activity was running and a request was therefore submitted.
+    ///   This reports the scheduling *decision*, not the submission's fate — `submit` can still
+    ///   throw, which is logged. The distinction matters for testing: BGTaskScheduler accepts
+    ///   no submissions under the simulator, so asserting on its pending list cannot tell a
+    ///   working guard from a scheduler that refuses everything, while this can.
+    @discardableResult
+    func scheduleAppRefresh() -> Bool {
+        guard LiveActivityService.shared.currentActivity != nil else {
+            print("No active Live Activity — skipping background refresh scheduling.")
+            return false
+        }
+
         let request = BGAppRefreshTaskRequest(identifier: BACKGROUND_REFRESH_TASK_ID)
         request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60) // 15 minutes from now
         do {
@@ -477,6 +492,10 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
         } catch {
             print("Could not schedule app refresh: \(error)")
         }
+
+        // True on both paths above: the return value reports the scheduling decision, not
+        // whether submit(_:) accepted it, exactly as documented. Only the guard returns false.
+        return true
     }
 
     func handleAppRefresh(task: BGAppRefreshTask) {
@@ -543,37 +562,6 @@ class AppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDele
     func cancelAllPendingBackgroundTasks() {
         BGTaskScheduler.shared.cancelAllTaskRequests()
         print("All pending background tasks cancelled.")
-    }
-    
-    func applicationDidEnterBackground(_ application: UIApplication) {
-        // Schedule background refresh when app enters background
-        scheduleAppRefresh()
-    }
-    
-    func applicationWillEnterForeground(_ application: UIApplication) {
-        // Cancel background tasks when returning to foreground
-        BGTaskScheduler.shared.cancelAllTaskRequests()
-        
-        // Wake up backend when coming from background
-        print("📱 App Foreground: Triggering backend wake-up...")
-        Task {
-            BackendWakeupService.shared.wakeupBackend()
-        }
-        
-        // Resume timer-based updates if there's an active Live Activity
-        Task {
-            await LiveActivityService.shared.refreshCurrentActivity()
-        }
-    }
-    
-    func applicationDidBecomeActive(_ application: UIApplication) {
-        // This is called more reliably when app becomes active
-        print("📱 App Active: Checking if backend wake-up needed...")
-        
-        // Wake up backend when app becomes active
-        Task {
-            BackendWakeupService.shared.wakeupBackend()
-        }
     }
 }
 

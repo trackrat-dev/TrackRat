@@ -1,6 +1,6 @@
 # TrackRat V2 Infrastructure
 
-Simplified GCP infrastructure using Managed Instance Groups with Container-Optimized OS, persistent disks, and HTTPS load balancing.
+Simplified GCP infrastructure using Managed Instance Groups with Container-Optimized OS, persistent disks, and a Cloudflare Tunnel in front of the API.
 
 ## Architecture
 
@@ -13,22 +13,23 @@ Simplified GCP infrastructure using Managed Instance Groups with Container-Optim
                                                    ▼
 ┌─────────────┐    ┌─────────────────────────────────────────────────────────┐
 │   Client    │    │                    Google Cloud Platform                 │
-│  (HTTPS)    │    │  ┌─────────────────────────────────────────────────┐    │
-└──────┬──────┘    │  │              Global Load Balancer               │    │
-       │           │  │  • Managed SSL Certificate                      │    │
-       │           │  │  • HTTP→HTTPS Redirect                          │    │
-       └──────────▶│  └─────────────────────┬───────────────────────────┘    │
-                   │                        │                                 │
-                   │                        ▼                                 │
+│  (HTTPS)    │    │                                                          │
+└──────┬──────┘    │                                                          │
+       ▼           │                                                          │
+┌─────────────┐    │  Cloudflare Tunnel: an outbound connection opened by     │
+│ Cloudflare  │◀═══╪═ the cloudflared container below. No inbound port,       │
+│ edge (TLS)  │    │  no Google load balancer.                                │
+└─────────────┘    │                                                          │
                    │  ┌─────────────────────────────────────────────────┐    │
                    │  │         Managed Instance Group (MIG)            │    │
                    │  │  • Container-Optimized OS                       │    │
-                   │  │  • Spot VMs (cost savings)                      │    │
+                   │  │  • Spot VMs in staging (cost savings)           │    │
                    │  │  • Auto-healing with health checks              │    │
                    │  │  ┌───────────────────────────────────────────┐  │    │
                    │  │  │  Docker Compose                           │  │    │
                    │  │  │  ├── PostgreSQL Container                 │  │    │
-                   │  │  │  └── TrackRat API Container               │  │    │
+                   │  │  │  ├── TrackRat API Container               │  │    │
+                   │  │  │  └── cloudflared (Cloudflare Tunnel)      │  │    │
                    │  │  └───────────────────────────────────────────┘  │    │
                    │  └─────────────────────┬───────────────────────────┘    │
                    │                        │                                 │
@@ -42,19 +43,20 @@ Simplified GCP infrastructure using Managed Instance Groups with Container-Optim
                    │                                                          │
                    │  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐   │
                    │  │Secret Manager│  │  Artifact    │  │  GCS Deploy  │   │
-                   │  │  (8 secrets) │  │  Registry    │  │    Bucket    │   │
+                   │  │  (9 secrets) │  │  Registry    │  │    Bucket    │   │
                    │  └──────────────┘  └──────────────┘  └──────────────┘   │
                    └──────────────────────────────────────────────────────────┘
 ```
 
-### Frontend Topology (LB consolidation & Cloudflare Tunnel)
+### Frontend Topology (Cloudflare Tunnel)
 
-The dedicated per-environment API load balancer above is the original topology, and **neither environment uses it any more** — `local.create_api_frontend` is false in both. Staging is served by the Cloudflare Tunnel (`frontend_via_cloudflare`); production is host-routed by the consolidated webpage LB (`consolidate_api_lb`). Which frontend a workspace gets is controlled by three committed-default switches in `terraform/variables.tf` (flipped via committed defaults, not `-var`, so push-triggered applies stay consistent):
+**Both** environments are served by a Cloudflare Tunnel: staging via `staging-api.trackrat.net`, production via `apiv2.trackrat.net`. There is no Google load balancer. The per-environment API load balancer, its consolidation into the webpage LB (`RUNBOOK-lb-consolidation.md`) and the move to the tunnel (`RUNBOOK-cloudflare-cutover.md`) are history; the last LB resources and the `consolidate_api_lb` / `frontend_via_cloudflare` switches that gated them were removed in issue #1764. HSTS with `preload` used to come from the LB's `custom_response_headers` and now comes from `webpage_v2/public/_headers`.
 
-- **`consolidate_api_lb`** (default `true`): tears down this workspace's dedicated API frontend (IP, url map, proxies, forwarding rules) because `apiv2.trackrat.net` is host-routed by the consolidated **webpage** LB (`terraform-webpage/`) to the API backend service. This collapses two global forwarding rules into one. The webpage LB also emits an HSTS header with `preload` (`terraform-webpage/main.tf`). Runbook: `RUNBOOK-lb-consolidation.md`.
-- **`enable_cloudflare_tunnel`** (default `true` since the staging pilot; originally `false`): master on/off switch for the **`cloudflared` connector itself** (issue #1578). It is global, but activation still requires the per-environment secret, so today only staging actually runs a connector. The connector lives in an isolated `backend_v2/docker-compose.tunnel.yml`; the startup script (`compute.tf`) brings `db`/`api` up from `docker-compose.yml` alone, then starts `cloudflared` in a separate, **non-fatal** `up` only when this flag is `true` **and** the `trackrat-cloudflare-tunnel-token-<env>` secret is present. Because the connector is never gated on secret-existence alone and never shares the api/db bring-up, a dormant/invalid token can no longer crash-loop it or abort the API. The on/off state is committed here, not only in Secret Manager IAM. The connector config download **fails closed** (issue #1594): startup clears any tunnel file left on the persistent disk by a prior boot, downloads to a unique temp file, validates it with `compose config`, and only then installs it — so a failed or malformed download leaves the connector off (with a `WARN` in `/var/log/startup.log`) instead of launching a stale definition.
-- **`frontend_via_cloudflare`** (default `true` since the staging LB teardown; originally `false`): once the connector above is healthy and DNS is cut over, this tears down the dedicated Google API frontend (IP, url map, proxies, forwarding rules). This is the teardown trigger and is independent of `enable_cloudflare_tunnel` (which only governs whether the connector runs); it is a no-op in production, whose frontend `consolidate_api_lb` had already removed. Note it does **not** by itself eliminate the "Cloud Load Balancer Forwarding Rule Minimum Global" charge — that SKU is a flat per-project minimum for the first 5 global rules, so it persists until the project has zero forwarding rules. Runbook: `RUNBOOK-cloudflare-cutover.md`.
+Two resources look like load balancer leftovers and are **not**: `google_compute_health_check.trackrat` (`compute.tf`) drives the MIG's `auto_healing_policies`, and `google_compute_firewall.allow_health_checks` (`network.tf`) lets those probes reach port 8000. Deleting either breaks auto-healing silently — nothing fails until an instance wedges and is not replaced.
 
+One committed-default switch remains in `terraform/variables.tf` (flipped via the committed default, not `-var`, so push-triggered applies stay consistent):
+
+- **`enable_cloudflare_tunnel`** (default `true` since the staging pilot; originally `false`): master on/off switch for the **`cloudflared` connector itself** (issue #1578). It is global, and activation also requires the per-environment secret; both `trackrat-cloudflare-tunnel-token-staging` and `-production` now exist, so both environments run a connector. The connector lives in an isolated `backend_v2/docker-compose.tunnel.yml`; the startup script (`compute.tf`) brings `db`/`api` up from `docker-compose.yml` alone, then starts `cloudflared` in a separate, **non-fatal** `up` only when this flag is `true` **and** the `trackrat-cloudflare-tunnel-token-<env>` secret is present. Because the connector is never gated on secret-existence alone and never shares the api/db bring-up, a dormant/invalid token can no longer crash-loop it or abort the API. The on/off state is committed here, not only in Secret Manager IAM. With no load balancer left, flipping this to `false` takes the API offline. The connector config download **fails closed** (issue #1594): startup clears any tunnel file left on the persistent disk by a prior boot, downloads to a unique temp file, validates it with `compose config`, and only then installs it — so a failed or malformed download leaves the connector off (with a `WARN` in `/var/log/startup.log`) instead of launching a stale definition.
 ### Disabled transit data sources
 
 - **`disabled_data_sources`** (`map(list(string))`, keyed by environment): the `TRACKRAT_DISABLED_DATA_SOURCES` value rendered into each workspace's `.env`. A disabled source is skipped for collection, schedule generation, GTFS refresh, and service-alert polling, and is filtered out of API responses. Keyed by environment (issue #1634) so a source can be soaked in staging while production stays dark; it was previously a single literal in `compute.tf` shared by both workspaces, which made a staging-only soak arm the next production apply. Same committed-default discipline as the switches above. Runbook: `RUNBOOK-data-source-flags.md`.
@@ -75,7 +77,7 @@ gcloud secrets create trackrat-wmata-api-key --data-file=-
 gcloud secrets create trackrat-metra-api-token --data-file=-
 ```
 
-The optional Cloudflare Tunnel token secret (`trackrat-cloudflare-tunnel-token-<env>`) is **not** Terraform-managed — it is created manually during the Cloudflare cutover (`RUNBOOK-cloudflare-cutover.md`). When absent, the `cloudflared` tunnel profile stays off.
+Each environment also needs its Cloudflare Tunnel token secret, `trackrat-cloudflare-tunnel-token-<env>`, created manually (`RUNBOOK-cloudflare-cutover.md`). Terraform does not create the secret but does grant the VM service account access to it (`secrets.tf`), so the apply fails if it is missing.
 
 ### Terraform State Bucket
 
@@ -132,7 +134,7 @@ gcloud builds submit --config=cloudbuild.yaml .
 
 The React webpage (`webpage_v2/`) deploys separately from the API via its own Cloud Build triggers (defined in `terraform-webpage/`), to **Cloudflare Workers Static Assets** (issue #1713):
 - **Push to `main`** (with `webpage_v2/` or `cloudbuild-webpage-staging.yaml` changes) → `trackrat-webpage-staging` trigger → Worker `trackrat-webpage-staging` (`staging.trackrat.net`)
-- **Push to `production`** (with `webpage_v2/` or `cloudbuild-webpage.yaml` changes) → `trackrat-webpage-production` trigger → Worker `trackrat-webpage-production` (`trackrat.net` / `www.trackrat.net`), **and** `gs://trackrat-webpage-production` until the DNS cutover completes
+- **Push to `production`** (with `webpage_v2/` or `cloudbuild-webpage.yaml` changes) → `trackrat-webpage-production` trigger → Worker `trackrat-webpage-production` (`trackrat.net` / `www.trackrat.net`). Since issue #1763 the pipeline no longer syncs to `gs://trackrat-webpage-production`; Terraform no longer declares the bucket, which is deleted by the manual apply in `RUNBOOK-cloudflare-cutover.md` P5 step 6
 
 Each cloudbuild file is in its own trigger's path filter because it bakes `_API_BASE_URL` into the bundle as `VITE_API_BASE_URL` at build time — editing that substitution alone must redeploy, or the live site keeps calling the previous API host.
 
@@ -161,20 +163,24 @@ The `production` Worker's custom domains serve `trackrat.net` and `www.trackrat.
 | `region` | us-east4 | GCP region |
 | `zone` | us-east4-a | GCP zone |
 | `machine_type` | t2d-standard-1 | VM machine type, shared by staging and production |
-| `disk_size_gb` | 40 | Persistent disk size |
+| `disk_size_gb` | 50 | Persistent data disk size (grown from 40 in issue #1828). Never lower it: a decrease replaces the Postgres data disk. The 20 GB boot disk is fixed in `compute.tf` (issue #1879) |
 | `snapshot_retention_days` | 7 | Snapshot retention period |
-| `consolidate_api_lb` | true | Production cutover: tear down the dedicated API frontend; `apiv2.trackrat.net` served by the consolidated webpage LB. No effect on staging. |
-| `enable_cloudflare_tunnel` | true | Master on/off switch for the `cloudflared` connector itself. Activation requires this flag **and** the `trackrat-cloudflare-tunnel-token-<env>` secret (present for staging only), so production runs no connector; flip via a committed default, not `-var`. |
-| `frontend_via_cloudflare` | true | Tear down the dedicated API frontend in favor of a Cloudflare Tunnel (`cloudflared`). Flipped after the staging connector was verified healthy and DNS cut over; a no-op in production, already fronted by the consolidated webpage LB. |
+| `environment` | *(required)* | Workspace environment; validated to `staging` or `production` |
+| `domain` | `""` | Overrides the derived public API hostname when set |
+| `disabled_data_sources` | `{staging = [BART, WMATA, MBTA, METRA], production = [BART, WMATA, MBTA, METRA]}` | Per-environment `TRACKRAT_DISABLED_DATA_SOURCES`; see the section above |
+| `alert_email` | trackrat@andymartin.cc | Destination for monitoring alert notifications |
+| `enable_cloudflare_tunnel` | true | Master on/off switch for the `cloudflared` connector itself. Activation requires this flag **and** the `trackrat-cloudflare-tunnel-token-<env>` secret; both environments now have one, so both run a connector. Flip via a committed default, not `-var`. |
 
 **Note:** Staging and production are kept in sync on resources — same `machine_type` (`t2d-standard-1`, 1 vCPU / 4 GB), same disk size, same MIG target size — so staging is a faithful rehearsal of production and a sizing change reaches both environments at once. The **only** intended divergence is the provisioning model: staging uses spot VMs for cost savings, production uses on-demand VMs for stability. Size changes go in the shared `machine_type` variable, not a per-environment override.
 
 ### Outputs
 
 ```bash
-terraform output load_balancer_ip    # IP for DNS configuration
-terraform output api_url             # HTTPS API endpoint
+terraform output api_url                # HTTPS API endpoint
 terraform output artifact_registry_url  # Docker registry URL
+terraform output mig_name               # Managed instance group name
+terraform output service_account_email  # VM service account
+terraform output deploy_bucket          # GCS bucket for deployment artifacts
 ```
 
 ## Operations
@@ -318,13 +324,13 @@ gcloud compute instance-groups managed rolling-action replace \
 2. Stops staging MIG (scale to 0)
 3. Clones production disk to staging (if production exists)
 4. Builds and pushes Docker image
-5. Uploads docker-compose.yml to GCS
+5. Uploads docker-compose.yml and docker-compose.tunnel.yml to GCS
 6. Starts staging MIG (scale to 1)
 
 ### cloudbuild.yaml (Production)
 1. Waits for any Terraform builds to complete
 2. Builds and pushes Docker image
-3. Uploads docker-compose.yml to GCS
+3. Uploads docker-compose.yml and docker-compose.tunnel.yml to GCS
 4. Rolling restart of production MIG
 5. Scales down staging to 0 (cost savings)
 
@@ -334,13 +340,27 @@ gcloud compute instance-groups managed rolling-action replace \
 3. Plans changes
 4. Applies changes automatically
 
+### GitHub Actions (pre-deploy gate)
+
+Cloud Build does the deploying; `.github/workflows/ci-cd-v2.yml` is what gates the
+change first. It runs on pushes to `main`/`production` and PRs to `main`, filtered to
+`backend_v2/**`, `infra_v2/**`, `webpage_v2/**`, `.github/workflows/ci-cd-v2.yml`, and
+`ios/TrackRat/Shared/RouteTopology.swift`. Jobs: **Backend Tests**, **Terraform
+Validation**, **Webpage Test & Build**, **Docker Build Test**, **CI Summary**.
+
+Terraform Validation runs `terraform fmt -check -recursive` before `terraform init` and
+`terraform validate` in `infra_v2/terraform` — an unformatted `.tf` file fails CI, so run
+`terraform fmt -recursive` before pushing. `.github/workflows/ios-ci.yml` is the second
+workflow and covers `ios/**` only.
+
 ## Cloud Functions
 
 ### feedback_notifier (Cloud Function)
-Sends user feedback to Slack via webhook.
+Posts user feedback to Slack via webhook, then files a GitHub issue on
+`trackrat-dev/TrackRat` for the same feedback.
 
 **Trigger**: Pub/Sub message from application logs
-**Secret Required**: `slack-feedback-webhook`
+**Secrets Required**: `slack-feedback-webhook`, `github-feedback-token`
 
 ```bash
 # Deploy function
@@ -352,16 +372,19 @@ gcloud functions deploy feedback-notifier \
 ```
 
 ### train-follow-notifier (Cloud Run)
-Sends push notifications when followed trains have status updates.
+Posts a Slack message when a user follows a train (`notify_train_follow`). No push
+notifications are sent from here — Live Activity and route-alert pushes come from the
+backend's own APNS service.
 
 Deployed as a Cloud Run service, triggered by Pub/Sub messages from the backend.
+**Secret Required**: `slack-feedback-webhook`
 
 ## Cost Optimization
 
-- **Spot VMs**: ~60-70% cost reduction vs on-demand
+- **Spot VMs (staging only)**: ~60-70% cost reduction vs on-demand; production runs `STANDARD` for stability
 - **Staging auto-shutdown**: Scales to 0 after production deploy
 - **Single instance**: No redundancy, but auto-healing handles failures
-- **30-day artifact cleanup**: Prevents registry bloat
+- **30-day artifact cleanup**: Prevents registry bloat; the `production-latest` / `staging-latest` images the VMs boot from are always kept (issue #1892)
 - **Regional resources**: All in us-east4 to minimize egress
 
 ## Troubleshooting
@@ -413,23 +436,23 @@ infra_v2/
 ├── cloudbuild-webpage.yaml      # Webpage production deployment
 ├── cloudbuild-webpage-staging.yaml  # Webpage staging deployment
 ├── functions/
-│   ├── feedback_notifier/       # Slack notification function
+│   ├── feedback_notifier/       # Slack + GitHub issue notification function
 │   │   ├── main.py
-│   │   └── requirements.txt
-│   └── train_follow_notifier/   # Train follow push notification service
+│   │   ├── requirements.txt
+│   │   └── test_main.py
+│   └── train_follow_notifier/   # Train-follow Slack notification service
 ├── terraform-webpage/
-│   └── main.tf                  # Webpage hosting (staging + production): GCS buckets, LB, SSL certs, CDN, Cloud Build triggers
+│   └── main.tf                  # Webpage Cloud Build triggers only (GCS buckets removed, #1763). No load balancer — see "Frontend Topology"
 └── terraform/
     ├── main.tf                  # Provider and backend config
     ├── variables.tf             # Input variables
     ├── outputs.tf               # Output values
     ├── apis.tf                  # GCP API enablement
     ├── compute.tf               # Instance template, MIG, health check
-    ├── network.tf               # Firewall rules
-    ├── loadbalancer.tf          # HTTPS LB, SSL cert, forwarding rules
+    ├── network.tf               # Firewall rules (incl. health-check probes for MIG auto-healing)
     ├── storage.tf               # Artifact Registry, persistent disk, GCS
     ├── secrets.tf               # Secret Manager refs, IAM, service account
-    ├── metrics.tf               # Custom metrics and dashboards
+    ├── metrics.tf               # Log-based metrics (9 google_logging_metric resources)
     ├── monitoring.tf            # Alerting policies and notification channels
     └── backup.tf                # Snapshot schedule and policy
 ```

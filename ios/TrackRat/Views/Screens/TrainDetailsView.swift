@@ -237,8 +237,7 @@ struct TrainDetailsView: View {
                                 selectedDestination: appState.selectedDestination,
                                 selectedDestinationCode: appState.destinationStationCode,
                                 displayableTrainStops: viewModel.displayableTrainStops,
-                                hasPreviousDisplayStops: viewModel.hasPreviousDisplayStops,
-                                hasMoreDisplayStops: viewModel.hasMoreDisplayStops,
+                                journeyStopRange: viewModel.journeyStopRange,
                                 journeyProgressPercentage: viewModel.journeyProgressPercentage,
                                 journeyStopsCompleted: viewModel.journeyStopsCompleted,
                                 journeyTotalStops: viewModel.journeyTotalStops,
@@ -352,8 +351,7 @@ struct CombinedDetailsCard: View {
     @EnvironmentObject private var appState: AppState
     // ViewModel provided properties
     let displayableTrainStops: [StopV2]
-    let hasPreviousDisplayStops: Bool
-    let hasMoreDisplayStops: Bool
+    let journeyStopRange: ClosedRange<Int>?
     let journeyProgressPercentage: Int
     let journeyStopsCompleted: Int
     let journeyTotalStops: Int
@@ -529,21 +527,7 @@ struct CombinedDetailsCard: View {
             // Stops section
             VStack(alignment: .leading, spacing: 12) {
                 if !displayableTrainStops.isEmpty {
-                    if hasPreviousDisplayStops {
-                        HStack {
-                            Image(systemName: "ellipsis")
-                                .font(.caption)
-                                .foregroundColor(Color(white: 0.55))
-                            Text("Train has previous stops")
-                                .font(.caption)
-                                .foregroundColor(Color(white: 0.55))
-                                .italic()
-                        }
-                        .padding(.bottom, 4)
-                        .padding(.horizontal, 20)
-                    }
-                    
-                    ForEach(displayableTrainStops) { stop in
+                    JourneyStopList(stops: train.stops ?? [], journeyRange: journeyStopRange) { stop in
                         let isDepartureStop = appState.departureStationCode != nil &&
                             Stations.areEquivalentStations(stop.stationCode, appState.departureStationCode!)
                         StopRowV2(
@@ -571,21 +555,6 @@ struct CombinedDetailsCard: View {
                             path: $appState.navigationPath
                         )
                     }
-                    
-                    if hasMoreDisplayStops {
-                        HStack {
-                            Image(systemName: "ellipsis")
-                                .font(.caption)
-                                .foregroundColor(Color(white: 0.55))
-                            Text("Train has later stops")
-                                .font(.caption)
-                                .foregroundColor(Color(white: 0.55))
-                                .italic()
-                        }
-                        .padding(.top, 4)
-                        .padding(.horizontal, 20)
-                    }
-
                 } else if isLoadingStops {
                     // Show loading indicator while fetching stops data
                     HStack(spacing: 8) {
@@ -657,6 +626,61 @@ struct ScheduledTrainInfoBanner: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color.white.opacity(0.08))
         .cornerRadius(8)
+    }
+}
+
+// MARK: - Journey Stop List
+/// A train's stops trimmed to the rider's journey, with tappable "previous" /
+/// "later" toggles that reveal the trimmed ends (issue #1840).
+struct JourneyStopList<Row: View>: View {
+    let stops: [StopV2]
+    /// Boarding...alighting indices into `stops`; nil shows every stop.
+    let journeyRange: ClosedRange<Int>?
+    @ViewBuilder let row: (StopV2) -> Row
+
+    @State private var showPrevious = false
+    @State private var showLater = false
+
+    /// Ignores a range that no longer fits `stops` (e.g. mid-refresh).
+    private var range: ClosedRange<Int> {
+        if let journeyRange, journeyRange.upperBound < stops.count { return journeyRange }
+        return 0...(stops.count - 1)
+    }
+
+    var body: some View {
+        if !stops.isEmpty {
+            if range.lowerBound > 0 {
+                toggle(showPrevious ? "Hide previous stops" : "Train has previous stops", isOn: $showPrevious)
+            }
+            ForEach(stops[(showPrevious ? 0 : range.lowerBound)...(showLater ? stops.count - 1 : range.upperBound)]) { stop in
+                row(stop)
+            }
+            if range.upperBound < stops.count - 1 {
+                toggle(showLater ? "Hide later stops" : "Train has later stops", isOn: $showLater)
+            }
+        }
+    }
+
+    private func toggle(_ title: String, isOn: Binding<Bool>) -> some View {
+        Button {
+            withAnimation { isOn.wrappedValue.toggle() }
+        } label: {
+            HStack {
+                Image(systemName: isOn.wrappedValue ? "chevron.up" : "ellipsis")
+                    .font(.caption)
+                    .accessibilityHidden(true)
+                Text(title)
+                    .font(.caption)
+                    .italic()
+            }
+            .foregroundColor(Color(white: 0.55))
+            .padding(.horizontal, 20)
+            // Whole row is the 44pt tap target, not just the caption glyphs (issue #1846).
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(isOn.wrappedValue ? "Expanded" : "Collapsed")
     }
 }
 
@@ -739,8 +763,14 @@ struct StopRowV2: View {
         // instead of echoing the schedule back as an on-time departure
         // (issue #1768). When it does fall through to the schedule the delay
         // computes to zero and no badge is shown, as before.
+        // train.bestKnownDeparture(at:) rather than stop.bestKnownDeparture:
+        // this branch runs before the isFinalDestination one, so a departed
+        // NJT terminal lands here, and StopV2 alone would hand back the later
+        // turnaround DEP_TIME — rendering "Departed: <turnaround>" with a
+        // fabricated "+Nm delay" on a train that arrived on time (issue #1799,
+        // the #1492 turnaround on a different row).
         if stop.hasDepartedStation {
-            if let departedTime = stop.bestKnownDeparture {
+            if let departedTime = train.bestKnownDeparture(at: stop) {
                 let delayText = departureDelayText(actual: departedTime, scheduled: stop.scheduledDeparture)
                 let departureText = "Departed: \(formatter.string(from: departedTime))" + (delayText.isEmpty ? "" : " (\(delayText))")
                 return (nil, departureText, [])
@@ -1164,36 +1194,22 @@ class TrainDetailsViewModel: ObservableObject {
 
     // Display properties
     @Published var displayableTrainStops: [StopV2] = []
-    
+    /// Origin...destination indices into `train.stops`; nil when unknown, so every stop shows.
+    @Published var journeyStopRange: ClosedRange<Int>?
+
     private func updateDisplayableTrainStops() {
         guard let stops = train?.stops,
               let originStationCode = currentOriginStationCode,
               let destinationStationCode = currentDestinationStationCode else {
+            journeyStopRange = nil
             displayableTrainStops = train?.stops ?? []
             return
         }
 
-        // Find indices of origin and destination stops by station CODE (reliable)
-        let originIndex = stops.firstIndex { stop in
-            Stations.areEquivalentStations(stop.stationCode, originStationCode)
-        }
-
-        let destinationIndex = stops.firstIndex { stop in
-            Stations.areEquivalentStations(stop.stationCode, destinationStationCode)
-        }
-
-        // If we found both indices, return the slice
-        if let startIdx = originIndex, let endIdx = destinationIndex, startIdx <= endIdx {
-            // Include both origin and destination (endIdx inclusive)
-            displayableTrainStops = Array(stops[startIdx...endIdx])
-        } else {
-            // Fallback to all stops if we can't find the stations or if indices are invalid
-            displayableTrainStops = stops
-        }
+        journeyStopRange = stops.journeyRange(from: originStationCode, to: destinationStationCode)
+        displayableTrainStops = journeyStopRange.map { Array(stops[$0]) } ?? stops
     }
-    
-    @Published var hasPreviousDisplayStops: Bool = false
-    @Published var hasMoreDisplayStops: Bool = false
+
     @Published var journeyProgressPercentage: Int = 0
     @Published var journeyStopsCompleted: Int = 0
     @Published var journeyTotalStops: Int = 0
@@ -1201,37 +1217,6 @@ class TrainDetailsViewModel: ObservableObject {
     private func updateComputedProperties() {
         updateDisplayableTrainStops()
         updateJourneyProgress()
-        updateDisplayStopFlags()
-    }
-    
-    private func updateDisplayStopFlags() {
-        guard let stops = train?.stops,
-              let originStationCode = currentOriginStationCode,
-              let destinationStationCode = currentDestinationStationCode else {
-            hasPreviousDisplayStops = false
-            hasMoreDisplayStops = false
-            return
-        }
-
-        // Find the origin index by station CODE
-        let originIndex = stops.firstIndex { stop in
-            Stations.areEquivalentStations(stop.stationCode, originStationCode)
-        }
-
-        // Update hasPreviousDisplayStops
-        hasPreviousDisplayStops = originIndex != nil && originIndex! > 0
-
-        // Find destination index by station CODE
-        let destinationIndex = stops.firstIndex { stop in
-            Stations.areEquivalentStations(stop.stationCode, destinationStationCode)
-        }
-
-        // Update hasMoreDisplayStops
-        if let endIdx = destinationIndex, let startIdx = originIndex, startIdx <= endIdx {
-            hasMoreDisplayStops = endIdx < stops.count - 1
-        } else {
-            hasMoreDisplayStops = false
-        }
     }
     
     private func updateJourneyProgress() {
@@ -1675,33 +1660,42 @@ struct SegmentedTrackPredictionView: View {
     @State private var showWaitingLink = false
     
     private var predictionSegments: [TrackPredictionSegment] {
-        print("🔍 [TrackPredictionView] Computing prediction segments")
-        guard let predictionData = adjustedPredictions else {
-            print("❌ [TrackPredictionView] No adjustedPredictions data")
+        guard let trackProbabilities = adjustedPredictions?.trackProbabilities else {
             return []
         }
-
-        guard let trackProbabilities = predictionData.trackProbabilities else {
-            print("❌ [TrackPredictionView] No trackProbabilities in prediction data")
-            return []
-        }
-	
-        print("✅ [TrackPredictionView] Have \(trackProbabilities.count) track probabilities")
-
-        let segments = TrackPredictionSegment.makeSegments(
+        return TrackPredictionSegment.makeSegments(
             from: trackProbabilities,
             groupTracksAtNYPenn: train.originStationCode == "NY"
         )
-        print("   Created \(segments.count) segments")
-        return segments
     }
 
     private var rankedPredictionSegments: [TrackPredictionSegment] {
         predictionSegments.sortedByProbability
     }
 
-    private var predictionAccessibilitySummary: String {
-        predictionSegments.accessibilitySummary
+    private var predictionAccessibilityValue: String {
+        Self.predictionAccessibilityValue(
+            isLoading: isLoadingPredictions,
+            isExpanded: isExpanded,
+            segments: predictionSegments
+        )
+    }
+
+    /// What VoiceOver reads for the card's tap target. The header and the bar
+    /// are one button, so the bar's summary is announced here rather than as an
+    /// element of its own.
+    static func predictionAccessibilityValue(
+        isLoading: Bool,
+        isExpanded: Bool,
+        segments: [TrackPredictionSegment]
+    ) -> String {
+        if isLoading { return "Loading" }
+        let state = isExpanded ? "Expanded" : "Collapsed"
+        guard !segments.isEmpty else { return state }
+        let summary = segments.hasOnlyLowConfidencePredictions
+            ? "No clear favorite"
+            : segments.accessibilitySummary
+        return "\(summary), \(state)"
     }
 
     private var predictionTaskID: String {
@@ -1744,10 +1738,6 @@ struct SegmentedTrackPredictionView: View {
         return "fallback:\(trainId):\(track ?? "unassigned"):\(refreshGeneration)"
     }
     
-    private var hasOnlyLowConfidencePredictions: Bool {
-        !predictionSegments.isEmpty && predictionSegments.allSatisfy { $0.probability < 0.17 }
-    }
-
     /// Which source satisfies the current prediction task.
     ///
     /// The prefetch is a first-paint shortcut and nothing more. It is fetched
@@ -1822,73 +1812,76 @@ struct SegmentedTrackPredictionView: View {
         // Hide entire section when loading complete and no prediction data (404 from API)
         if isLoadingPredictions || adjustedPredictions != nil {
             VStack(alignment: .leading, spacing: 12) {
-                // Header
+                // Header and summary are one tap target: riders tap the bar
+                // they are looking at, not the chevron.
                 Button(action: toggleExpansion) {
-                    HStack {
-                        Image(systemName: "tram.circle.fill")
-                            .foregroundColor(.black)
-                            .font(.title2)
-                            .accessibilityHidden(true)
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Image(systemName: "tram.circle.fill")
+                                .foregroundColor(.black)
+                                .font(.title2)
 
-                        Text("Track Predictions")
-                            .font(.headline)
-                            .foregroundColor(.black)
+                            Text("Track Predictions")
+                                .font(.headline)
+                                .foregroundColor(.black)
 
-                        Spacer()
+                            Spacer()
 
-                        if !predictionSegments.isEmpty {
-                            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
-                                .font(.caption)
-                                .fontWeight(.semibold)
-                                .foregroundColor(.black.opacity(0.55))
-                                .accessibilityHidden(true)
+                            if !predictionSegments.isEmpty {
+                                Image(systemName: "chevron.down")
+                                    .font(.caption)
+                                    .fontWeight(.semibold)
+                                    .foregroundColor(.black.opacity(0.55))
+                                    .rotationEffect(.degrees(isExpanded ? 180 : 0))
+                            }
+                        }
+
+                        if isLoadingPredictions {
+                            ProgressView()
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 64)
+                        } else if predictionSegments.hasOnlyLowConfidencePredictions {
+                            Text("No clear favorite")
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundColor(Color(white: 0.6))
+                                .frame(height: 64)
+                                .frame(maxWidth: .infinity)
+                        } else if !predictionSegments.isEmpty {
+                            VStack(spacing: 8) {
+                                // Labels for segments that need them above the bar
+                                if hasSegmentsWithTopLabels {
+                                    topLabelsView
+                                }
+
+                                // Main segmented bar
+                                segmentedBarView
+                                    .frame(height: 64)
+
+                                // Percentages below the bar
+                                bottomLabelsView
+                            }
+                            .padding(.top, 4)
                         }
                     }
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(CardPressButtonStyle())
                 .disabled(isLoadingPredictions || predictionSegments.isEmpty)
                 .accessibilityLabel("Track predictions")
-                .accessibilityValue(isLoadingPredictions ? "Loading" : (isExpanded ? "Expanded" : "Collapsed"))
+                .accessibilityValue(predictionAccessibilityValue)
                 .accessibilityHint(
                     isExpanded
                         ? "Hides all predicted tracks and probabilities"
                         : "Shows all predicted tracks and probabilities"
                 )
 
-                if isLoadingPredictions {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 64)
-                } else if hasOnlyLowConfidencePredictions {
-                    Text("No clear favorite")
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundColor(Color(white: 0.6))
-                        .frame(height: 64)
-                        .frame(maxWidth: .infinity)
-                } else if !predictionSegments.isEmpty {
-                    VStack(spacing: 8) {
-                        // Labels for segments that need them above the bar
-                        if hasSegmentsWithTopLabels {
-                            topLabelsView
-                        }
-
-                        // Main segmented bar
-                        segmentedBarView
-                            .frame(height: 64)
-                            .accessibilityElement(children: .ignore)
-                            .accessibilityLabel("Track prediction summary")
-                            .accessibilityValue(predictionAccessibilitySummary)
-
-                        // Percentages below the bar
-                        bottomLabelsView
-                    }
-                    .padding(.top, 4)
-                }
-
+                // Kept outside the button so VoiceOver still reads each row and
+                // the disclaimer; a tap anywhere on it collapses the card.
                 if isExpanded && !rankedPredictionSegments.isEmpty {
                     expandedPredictionsView
+                        .contentShape(Rectangle())
+                        .onTapGesture(perform: toggleExpansion)
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
@@ -2112,6 +2105,16 @@ struct SegmentedTrackPredictionView: View {
     
 }
 
+/// Dims a card-sized button while pressed. The prediction card has no button
+/// chrome, so this is the only cue that the bar responds to a tap.
+private struct CardPressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(configuration.isPressed ? 0.6 : 1)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+    }
+}
+
 // MARK: - Track Prediction Segment Model
 struct TrackPredictionSegment: Identifiable, Equatable {
     let id: String
@@ -2233,6 +2236,12 @@ extension Array where Element == TrackPredictionSegment {
             }
             return first.probability > second.probability
         }
+    }
+
+    /// No track is likely enough to call; the card says "No clear favorite"
+    /// instead of drawing the bar.
+    var hasOnlyLowConfidencePredictions: Bool {
+        !isEmpty && allSatisfy { $0.probability < 0.17 }
     }
 
     var accessibilitySummary: String {

@@ -12,6 +12,7 @@ from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from trackrat.collectors.service_alerts import _SEPTA_ROUTE_TO_LINE_CODE
@@ -30,10 +31,18 @@ from trackrat.services.alert_evaluator import (
     _line_codes_to_gtfs_ids,
     evaluate_service_alerts,
 )
+from trackrat.services.apns import ApnsSendResult
 
 
-def _make_apns(send_returns: bool = True) -> AsyncMock:
-    """Create a mock APNS service that records calls."""
+def _make_apns(
+    send_returns: ApnsSendResult = ApnsSendResult.SUCCESS,
+) -> AsyncMock:
+    """Create a mock APNS service that records calls.
+
+    Returns an `ApnsSendResult` rather than a bool: every enum member is
+    truthy, so a mock still returning True/False would let a bare `if sent:`
+    regression pass silently (issue #1794).
+    """
     apns = AsyncMock()
     apns.send_alert_notification = AsyncMock(return_value=send_returns)
     return apns
@@ -1674,7 +1683,7 @@ class TestServiceAlertDedupConvergence:
         alert_ids = self._seed_alerts(db_session, 3, "fail-retry")
         await db_session.flush()
 
-        failing = _make_apns(send_returns=False)
+        failing = _make_apns(send_returns=ApnsSendResult.TRANSIENT_FAILURE)
         count = await evaluate_service_alerts(db_session, failing)
 
         assert count == 0, f"A failed send must count zero alerts sent, got {count}"
@@ -1684,7 +1693,7 @@ class TestServiceAlertDedupConvergence:
             f"retries them, but state was recorded as {sub.last_service_alert_ids}"
         )
 
-        recovered = _make_apns(send_returns=True)
+        recovered = _make_apns(send_returns=ApnsSendResult.SUCCESS)
         count = await evaluate_service_alerts(db_session, recovered)
 
         assert count == 1, (
@@ -1878,3 +1887,103 @@ class TestServiceAlertDedupConvergence:
             "A recurring alert returning to the feed is a new occurrence and "
             "must notify again"
         )
+
+
+@pytest.mark.asyncio
+class TestServiceAlertDeadTokenPruning:
+    """The service-alert send path must prune a permanently dead registration
+    (issue #1794).
+
+    This is the loudest of the five call sites in production —
+    `service_alert_send_failed` was the 7th-noisiest warning on the server,
+    firing every ~13 minutes against tokens whose apps had been uninstalled.
+    """
+
+    async def test_invalid_token_prunes_device_and_cascades(
+        self, db_session: AsyncSession
+    ):
+        apns = _make_apns(send_returns=ApnsSendResult.INVALID_TOKEN)
+        _make_subscription(
+            db_session, device_id="sa-dead-device", apns_token="sa-dead-token"
+        )
+        _make_service_alert(db_session)
+        await db_session.commit()
+
+        count = await evaluate_service_alerts(db_session, apns)
+
+        assert count == 0, "A rejected push must not be counted as sent"
+        apns.send_alert_notification.assert_called_once()
+
+        devices = (await db_session.execute(select(DeviceToken))).scalars().all()
+        assert devices == [], "Device registration must be deleted on a 410"
+
+        subs = (
+            (await db_session.execute(select(RouteAlertSubscription))).scalars().all()
+        )
+        assert (
+            subs == []
+        ), f"The DB cascade must remove subscriptions; {len(subs)} survived"
+        print("  Verified: service alert 410 pruned device and cascaded subs")
+
+    async def test_transient_failure_retains_device_and_alert_state(
+        self, db_session: AsyncSession
+    ):
+        """The paired invariant, plus the retry guarantee.
+
+        A transient failure must leave the alert un-notified so it goes out on
+        the next cycle — marking it notified without delivery is the exact bug
+        the code comment at the send site says was already fixed once.
+        """
+        apns = _make_apns(send_returns=ApnsSendResult.TRANSIENT_FAILURE)
+        _make_subscription(
+            db_session, device_id="sa-live-device", apns_token="sa-live-token"
+        )
+        _make_service_alert(db_session, alert_id="lmm:planned_work:200")
+        await db_session.commit()
+
+        count = await evaluate_service_alerts(db_session, apns)
+
+        assert count == 0
+        devices = (await db_session.execute(select(DeviceToken))).scalars().all()
+        assert (
+            len(devices) == 1
+        ), "A transient failure must not delete a live registration"
+
+        subs = (
+            (await db_session.execute(select(RouteAlertSubscription))).scalars().all()
+        )
+        assert len(subs) == 1
+        notified = subs[0].last_service_alert_ids or []
+        assert "lmm:planned_work:200" not in notified, (
+            "An undelivered alert must stay un-notified so it retries; "
+            f"got last_service_alert_ids={notified!r}"
+        )
+        print("  Verified: transient failure retained device and left alert pending")
+
+    async def test_invalid_token_does_not_touch_other_devices(
+        self, db_session: AsyncSession
+    ):
+        apns = AsyncMock()
+        results = {
+            "sa-dead-token": ApnsSendResult.INVALID_TOKEN,
+            "sa-good-token": ApnsSendResult.SUCCESS,
+        }
+        apns.send_alert_notification = AsyncMock(
+            side_effect=lambda token, *a, **kw: results[token]
+        )
+
+        _make_subscription(
+            db_session, device_id="sa-dead-device", apns_token="sa-dead-token"
+        )
+        _make_subscription(
+            db_session, device_id="sa-good-device", apns_token="sa-good-token"
+        )
+        _make_service_alert(db_session, alert_id="lmm:planned_work:300")
+        await db_session.commit()
+
+        count = await evaluate_service_alerts(db_session, apns)
+
+        assert count == 1, "The healthy device must still receive its alert"
+        remaining = (await db_session.execute(select(DeviceToken))).scalars().all()
+        assert [d.device_id for d in remaining] == ["sa-good-device"]
+        print("  Verified: service alert prune scoped to the failing device only")

@@ -1,7 +1,11 @@
 # Network Configuration
 # Uses default VPC with minimal firewall rules
 
-# Allow health checks from GCP load balancer
+# Allow Google health-check probes to reach the API on port 8000.
+# There is no load balancer any more (issue #1764), but the MIG's
+# auto_healing_policies (compute.tf) probe from these same ranges. Deleting this
+# rule breaks auto-healing silently: nothing fails until an instance wedges and
+# is not replaced.
 resource "google_compute_firewall" "allow_health_checks" {
   name    = "trackrat-${var.environment}-allow-health-checks"
   network = "default"

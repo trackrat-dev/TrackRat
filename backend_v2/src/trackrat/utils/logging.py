@@ -36,8 +36,10 @@ def setup_logging() -> None:
     logging.getLogger("apscheduler.scheduler").setLevel(logging.WARNING)
     logging.getLogger("apscheduler.executors.default").setLevel(logging.WARNING)
 
-    # Suppress uvicorn access logs for health checks (will handle in middleware)
-    logging.getLogger("uvicorn.access").setLevel(logging.INFO)
+    # Suppress uvicorn's plain-text access log: request_stats_middleware logs
+    # each request as a structured http_request event with the real client IP,
+    # user agent and duration, which the uvicorn line lacks behind the tunnel.
+    logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
     # Processors for structlog
     processors: list[Processor] = [

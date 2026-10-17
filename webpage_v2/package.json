@@ -13,12 +13,12 @@
   },
   "dependencies": {
     "date-fns": "^4.4.0",
-    "maplibre-gl": "^6.0.0",
+    "maplibre-gl": "^6.14.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-map-gl": "^8.1.2",
-    "react-router-dom": "^7.18.2",
-    "zustand": "^5.0.14"
+    "react-router-dom": "^7.18.4",
+    "zustand": "^5.0.15"
   },
   "overrides": {
     "vite-plugin-pwa": {
@@ -27,17 +27,17 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.3.3",
-    "@testing-library/jest-dom": "^7.0.0",
-    "@testing-library/react": "^16.3.2",
+    "@testing-library/jest-dom": "^7.0.1",
+    "@testing-library/react": "^16.3.3",
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^6.0.5",
+    "@vitejs/plugin-react": "^6.1.2",
     "jsdom": "^30.0.1",
     "tailwindcss": "^4.3.3",
     "typescript": "^7.0.2",
-    "vite": "^8.2.0",
-    "vite-plugin-pwa": "^1.3.0",
-    "vitest": "^4.1.10",
-    "wrangler": "^4.119.0"
+    "vite": "^8.3.1",
+    "vite-plugin-pwa": "^2.0.0",
+    "vitest": "^5.0.3",
+    "wrangler": "^4.145.0"
   }
 }

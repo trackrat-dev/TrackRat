@@ -3,7 +3,7 @@ import SwiftUI
 /// Tracks the wider of the leading/trailing content widths so the centered
 /// title can pad symmetrically and never overlap either side.
 private struct NavSideWidthKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
+    static let defaultValue: CGFloat = 0
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
         value = max(value, nextValue())
     }

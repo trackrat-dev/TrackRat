@@ -29,35 +29,83 @@ final class AlertSubscriptionService: ObservableObject {
 
     // MARK: - Mutation
 
-    /// Add fully-configured subscriptions, deduplicating against existing ones.
-    /// Supports line (lineId+direction), station-pair (from+to), and train (trainId) subscriptions.
-    func addSubscriptions(_ subs: [RouteAlertSubscription]) {
-        for sub in subs {
-            let isDuplicate: Bool
-            if sub.isSystemWide {
-                isDuplicate = subscriptions.contains {
-                    $0.isSystemWide && $0.dataSource == sub.dataSource
-                }
-            } else if let lineId = sub.lineId, let direction = sub.direction {
-                isDuplicate = subscriptions.contains {
-                    $0.lineId == lineId && $0.dataSource == sub.dataSource && $0.direction == direction
-                }
-            } else if let from = sub.fromStationCode, let to = sub.toStationCode {
-                isDuplicate = subscriptions.contains {
-                    $0.fromStationCode == from && $0.toStationCode == to && $0.dataSource == sub.dataSource
-                }
-            } else if let trainId = sub.trainId {
-                isDuplicate = subscriptions.contains {
-                    $0.trainId == trainId && $0.dataSource == sub.dataSource
-                }
-            } else {
-                isDuplicate = false
-            }
-            if !isDuplicate {
-                subscriptions.append(sub.clearingUnsupportedAlertTypes())
+    /// Whether `sub` duplicates one already in `existing`. Identity depends on
+    /// kind: system-wide by source, line by lineId+direction, station-pair by
+    /// both codes, train by train id.
+    private func isDuplicate(_ sub: RouteAlertSubscription, in existing: [RouteAlertSubscription]) -> Bool {
+        if sub.isSystemWide {
+            return existing.contains {
+                $0.isSystemWide && $0.dataSource == sub.dataSource
             }
         }
+        if let lineId = sub.lineId, let direction = sub.direction {
+            return existing.contains {
+                $0.lineId == lineId && $0.dataSource == sub.dataSource && $0.direction == direction
+            }
+        }
+        if let from = sub.fromStationCode, let to = sub.toStationCode {
+            return existing.contains {
+                $0.fromStationCode == from && $0.toStationCode == to && $0.dataSource == sub.dataSource
+            }
+        }
+        if let trainId = sub.trainId {
+            return existing.contains {
+                $0.trainId == trainId && $0.dataSource == sub.dataSource
+            }
+        }
+        return false
+    }
+
+    /// Add fully-configured subscriptions, deduplicating against existing ones.
+    /// Supports line (lineId+direction), station-pair (from+to), and train (trainId) subscriptions.
+    ///
+    /// Also asks for notification permission: alerts are delivered by push, so the
+    /// first saved alert is the first moment the app has anything to notify about.
+    /// Asking here rather than in each view covers every entry point (Add Route
+    /// Alert, the route page's day toggles, system-wide alerts) — a path that
+    /// skipped the prompt would leave a new user's alerts silently undelivered.
+    func addSubscriptions(_ subs: [RouteAlertSubscription]) {
+        let countBefore = subscriptions.count
+        for sub in subs where !isDuplicate(sub, in: subscriptions) {
+            subscriptions.append(sub.clearingUnsupportedAlertTypes())
+        }
         saveToDefaults()
+
+        if subscriptions.count > countBefore {
+            Task { @MainActor in
+                await NotificationPermissionService.shared.requestIfNeeded()
+            }
+        }
+    }
+
+    /// How many of `subs` `addSubscriptions` would actually store. Entries that
+    /// duplicate an existing subscription — or an earlier entry in the same
+    /// batch — are not counted.
+    func newSubscriptionCount(for subs: [RouteAlertSubscription]) -> Int {
+        var projected = subscriptions
+        for sub in subs where !isDuplicate(sub, in: projected) {
+            projected.append(sub)
+        }
+        return projected.count - subscriptions.count
+    }
+
+    // MARK: - Free Tier
+
+    /// Whether a free user already holds `SubscriptionService.freeRouteAlertLimit`
+    /// alerts, before configuring anything new. Entry points use this to show the
+    /// paywall instead of opening an editor whose save could not succeed.
+    @MainActor
+    func isAtFreeLimit(isPro: Bool) -> Bool {
+        !isPro && subscriptions.count >= SubscriptionService.freeRouteAlertLimit
+    }
+
+    /// Whether storing `subs` would carry a free user past the limit. A round trip
+    /// saves both directions in one call, so being under the limit before saving
+    /// does not mean the result stays under it — the batch has to be counted.
+    @MainActor
+    func wouldExceedFreeLimit(adding subs: [RouteAlertSubscription], isPro: Bool) -> Bool {
+        !isPro
+            && subscriptions.count + newSubscriptionCount(for: subs) > SubscriptionService.freeRouteAlertLimit
     }
 
     /// Find subscriptions matching a route context (by dataSource + station codes, lineId, or system-wide).

@@ -326,6 +326,24 @@ def get_valid_tracks(station_code: str, data_source: str) -> frozenset[str] | No
 # partial lists cause false rejections of legitimate tracks.
 VALIDATED_TRACKS: dict[tuple[str, str], frozenset[str]] = {
     # Grand Central Madison — LIRR terminal on three levels, 4 tracks per level.
+    #
+    # Consequence worth stating plainly, so it is not re-litigated (issue #1792):
+    # the MTA GTFS-RT feed reports "1"-"4" here, which overlaps this set nowhere,
+    # so **every** LIRR track value at GCT is rejected and riders see no track at
+    # Grand Central Madison. That is deliberate rather than a gap. A bare "1"-"4"
+    # cannot be resolved to a platform: each level numbers its tracks x01-x04, so
+    # the feed's value is ambiguous across all three levels and there is no other
+    # signal in the feed to disambiguate it. Publishing a guess would send riders
+    # to the wrong level, which is worse than showing nothing.
+    #
+    # If MTA ever adds a level indicator, map the pair rather than widening this
+    # set — adding "1"-"4" here would surface an unresolvable track as if it were
+    # a real one. Note the track set below is unverified against GCM's published
+    # numbering: this comment records 12 tracks across 3 levels, while GCM is
+    # usually described as 8 tracks on 4 platforms across 2 levels. Confirming it
+    # needs someone with agency knowledge and is tracked separately in #1792; the
+    # rejection above holds either way, since "1"-"4" is out of every candidate
+    # set.
     ("GCT", "LIRR"): frozenset(
         {
             "201",

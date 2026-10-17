@@ -5,10 +5,6 @@
 # resources that don't vary per environment workspace.
 #
 # Manages:
-#   - Staging webpage: GCS bucket only (the staging LB frontend — IP, cert,
-#     proxies, url maps, forwarding rules — was decommissioned out-of-band as
-#     cost cleanup; the bucket remains as the staging deploy target)
-#   - Production webpage: GCS bucket + CDN + LB for trackrat.net / www.trackrat.net
 #   - Cloud Build triggers for both staging and production webpage deployments
 #
 # Usage:
@@ -19,9 +15,6 @@
 #
 # NOTE: These resources were originally managed by universal-links-deployment/
 # with local Terraform state. To import existing resources:
-#   terraform import google_storage_bucket.webpage_staging trackrat-webpage-staging
-#   terraform import google_storage_bucket_iam_member.staging_public_access \
-#     "trackrat-webpage-staging roles/storage.objectViewer allUsers"
 #   terraform import google_cloudbuild_trigger.webpage_staging \
 #     projects/trackrat-v2/locations/us-east4/triggers/trackrat-webpage-staging
 #   terraform import google_cloudbuild_trigger.webpage_production \
@@ -61,216 +54,23 @@ provider "google" {
 }
 
 # ============================================
-# Staging webpage infrastructure
+# Webpage hosting
 # ============================================
-# Bucket only. The staging LB frontend (trackrat-webpage-staging-ip
-# 35.190.73.247, cert, proxies, url maps, forwarding rules) was deleted
-# directly in GCP as cost cleanup and is intentionally not managed here —
-# re-adding it would recreate the stack on a new IP with a cert that cannot
-# provision (staging.trackrat.net DNS no longer points at it).
+# Not managed here. staging.trackrat.net, trackrat.net and www.trackrat.net are
+# served by Cloudflare Workers Static Assets (issue #1713); the Workers and
+# their custom domains are defined in webpage_v2/wrangler.jsonc and deployed by
+# the cloudbuild files the triggers below run.
 #
-# The bucket is NO LONGER A DEPLOY TARGET: staging.trackrat.net serves from
-# Cloudflare Workers Static Assets and cloudbuild-webpage-staging.yaml uploads
-# there instead (issue #1713). It is kept for exactly one reason — it holds the
-# last GCS build, so it is the rollback artifact if the cutover has to be
-# undone. DELETE IT (this resource, the IAM member below, and the output) once
-# staging has soaked; leaving it costs storage and makes it look like a live
-# destination. force_destroy = true, so the apply empties it.
-
-# GCS bucket for staging webpage
-resource "google_storage_bucket" "webpage_staging" {
-  name          = "trackrat-webpage-staging"
-  location      = "US"
-  force_destroy = true
-
-  uniform_bucket_level_access = true
-
-  website {
-    main_page_suffix = "index.html"
-    not_found_page   = "index.html" # SPA fallback
-  }
-
-  cors {
-    origin          = ["*"]
-    method          = ["GET", "HEAD"]
-    response_header = ["*"]
-    max_age_seconds = 3600
-  }
-}
-
-# Make staging bucket publicly readable
-resource "google_storage_bucket_iam_member" "staging_public_access" {
-  bucket = google_storage_bucket.webpage_staging.name
-  role   = "roles/storage.objectViewer"
-  member = "allUsers"
-}
-
-# Staging outputs
-output "staging_webpage_bucket" {
-  value       = google_storage_bucket.webpage_staging.name
-  description = "Staging GCS bucket name"
-}
-
-# ============================================
-# Production webpage infrastructure
-# ============================================
-# Mirrors staging, sized/tuned for production. Resources are created in
-# trackrat-v2 to consolidate ownership with the rest of the stack.
-# Cutover from the legacy trackrat-prod LB is a DNS-only operation: point
-# trackrat.net / www.trackrat.net A records at production_webpage_ip output.
-
-# GCS bucket for production webpage
-resource "google_storage_bucket" "webpage_production" {
-  name          = "trackrat-webpage-production"
-  location      = "US"
-  force_destroy = false # prod safety: require manual emptying before destroy
-
-  uniform_bucket_level_access = true
-
-  website {
-    main_page_suffix = "index.html"
-    not_found_page   = "index.html" # SPA fallback
-  }
-
-  cors {
-    origin          = ["*"]
-    method          = ["GET", "HEAD"]
-    response_header = ["*"]
-    max_age_seconds = 3600
-  }
-}
-
-# Make production bucket publicly readable
-resource "google_storage_bucket_iam_member" "production_public_access" {
-  bucket = google_storage_bucket.webpage_production.name
-  role   = "roles/storage.objectViewer"
-  member = "allUsers"
-}
-
-# CDN backend bucket for production
-resource "google_compute_backend_bucket" "webpage_production_backend" {
-  name        = "trackrat-webpage-production-backend"
-  description = "Backend bucket for TrackRat production webpage"
-  bucket_name = google_storage_bucket.webpage_production.name
-  enable_cdn  = true
-
-  # HSTS on the apex (trackrat.net) + www responses. Required to submit
-  # trackrat.net to the browser HSTS preload list (includeSubDomains covers
-  # apiv2/www). The apiv2 backend sets the same header via FastAPI middleware.
-  # NOTE: `preload` here is a standing commitment — do not remove it while the
-  # domain is on the preload list. See infra_v2/RUNBOOK-lb-consolidation.md.
-  custom_response_headers = [
-    "Strict-Transport-Security: max-age=31536000; includeSubDomains; preload",
-  ]
-
-  cdn_policy {
-    cache_mode       = "CACHE_ALL_STATIC"
-    default_ttl      = 3600  # 1 hour fallback (objects' own Cache-Control wins)
-    max_ttl          = 86400 # 24 hours
-    client_ttl       = 3600
-    negative_caching = true
-  }
-}
-
-# API backend service (owned by infra_v2/terraform/ production workspace).
-# Looked up by its stable name so the consolidated LB can host-route apiv2 to
-# it without cross-root state coupling. Must already exist (it does, as long
-# as the production API workspace is applied).
-data "google_compute_backend_service" "api_production" {
-  name = "trackrat-production-backend"
-}
-
-# URL map for production — consolidated load balancer:
-#   apiv2.trackrat.net        -> API backend service (VM MIG)
-#   trackrat.net / www.*      -> webpage GCS bucket (default)
-resource "google_compute_url_map" "webpage_production" {
-  name            = "trackrat-webpage-production-map"
-  description     = "Consolidated LB: apiv2 -> API backend, apex/www -> webpage bucket"
-  default_service = google_compute_backend_bucket.webpage_production_backend.id
-
-  host_rule {
-    hosts        = ["apiv2.trackrat.net"]
-    path_matcher = "api"
-  }
-
-  path_matcher {
-    name            = "api"
-    default_service = data.google_compute_backend_service.api_production.id
-  }
-}
-
-# SSL certificate covers both apex and www.
-# NOTE: Google-managed certs cannot have their `domains` list changed in
-# place — adding/removing a SAN requires creating a new cert resource.
-resource "google_compute_managed_ssl_certificate" "webpage_production_cert" {
-  name = "trackrat-webpage-production-cert"
-
-  managed {
-    domains = ["trackrat.net", "www.trackrat.net"]
-  }
-}
-
-# Global static IP for production
-resource "google_compute_global_address" "webpage_production_ip" {
-  name = "trackrat-webpage-production-ip"
-}
-
-# HTTPS proxy for production. Serves two managed certs via SNI:
-#   - webpage cert: trackrat.net, www.trackrat.net (owned here)
-#   - API cert: apiv2.trackrat.net (owned by infra_v2/terraform/ production
-#     workspace, referenced by self-link — both are already ACTIVE, so no
-#     provisioning gap during cutover). Do not delete trackrat-production-cert
-#     from the API workspace while it is attached here.
-resource "google_compute_target_https_proxy" "webpage_production_proxy" {
-  name    = "trackrat-webpage-production-https-proxy"
-  url_map = google_compute_url_map.webpage_production.id
-  ssl_certificates = [
-    google_compute_managed_ssl_certificate.webpage_production_cert.id,
-    "projects/${var.project_id}/global/sslCertificates/trackrat-production-cert",
-  ]
-}
-
-# HTTPS forwarding rule for production
-resource "google_compute_global_forwarding_rule" "webpage_production_https" {
-  name       = "trackrat-webpage-production-https"
-  target     = google_compute_target_https_proxy.webpage_production_proxy.id
-  port_range = "443"
-  ip_address = google_compute_global_address.webpage_production_ip.address
-}
-
-# HTTP to HTTPS redirect for production
-resource "google_compute_url_map" "webpage_production_https_redirect" {
-  name = "trackrat-webpage-production-https-redirect"
-
-  default_url_redirect {
-    https_redirect         = true
-    redirect_response_code = "PERMANENT_REDIRECT"
-    strip_query            = false
-  }
-}
-
-resource "google_compute_target_http_proxy" "webpage_production_http_proxy" {
-  name    = "trackrat-webpage-production-http-proxy"
-  url_map = google_compute_url_map.webpage_production_https_redirect.id
-}
-
-resource "google_compute_global_forwarding_rule" "webpage_production_http" {
-  name       = "trackrat-webpage-production-http-proxy-rule"
-  target     = google_compute_target_http_proxy.webpage_production_http_proxy.id
-  port_range = "80"
-  ip_address = google_compute_global_address.webpage_production_ip.address
-}
-
-# Production outputs
-output "production_webpage_ip" {
-  value       = google_compute_global_address.webpage_production_ip.address
-  description = "Point trackrat.net + www.trackrat.net DNS A records at this IP (Cloudflare: DNS only / grey-cloud)"
-}
-
-output "production_webpage_bucket" {
-  value       = google_storage_bucket.webpage_production.name
-  description = "Production GCS bucket name"
-}
+# None of the GCP serving path is kept. Both load balancers were
+# deleted directly in GCP (staging as cost cleanup, production on 2026-08-08),
+# the production static IP 136.110.151.144 is released by applying this root
+# (issue #1762, RUNBOOK-cloudflare-cutover.md P6), and so are the
+# trackrat-webpage-staging / trackrat-webpage-production buckets, which nothing
+# reads or writes (issue #1763, P5 step 6). Do not re-add any of it: every
+# global forwarding rule re-bills the "Cloud Load Balancer Forwarding Rule
+# Minimum Global" SKU the cutover removed, and a rebuilt LB comes back on a new
+# IP. HSTS now comes from webpage_v2/public/_headers, not a backend bucket's
+# custom_response_headers.
 
 # ============================================
 # Cloud Build triggers for webpage deployment

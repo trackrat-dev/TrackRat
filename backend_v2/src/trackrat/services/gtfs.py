@@ -10,18 +10,22 @@ import io
 import re
 import traceback
 import zipfile
-from collections.abc import Iterator, Sequence
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, time, timedelta
 from enum import Enum
 from typing import Any
 
 import httpx
-from sqlalchemy import and_, delete, select
+from sqlalchemy import and_, delete, exists, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 from structlog import get_logger
 
+from trackrat.collectors.path.segment_times import (
+    clear_cache as clear_path_segment_times,
+)
 from trackrat.config.stations import (
     expand_station_codes,
     get_bart_route_info,
@@ -94,6 +98,19 @@ GTFS_FEED_URLS = {
 # the route level cascades to trips and stop_times.
 GTFS_ROUTE_TYPE_FILTER: dict[str, frozenset[str]] = {
     "SEPTA_METRO": frozenset({"0", "1"}),
+}
+
+# Sources whose trips.txt carries the rider-facing train number in block_id
+# rather than trip_short_name, keyed to the route types where that holds. NJT
+# publishes no trip_short_name and digit-free headsigns, so without this every
+# NJT GTFS trip took its internal trip_id as its train number: GTFS rows never
+# matched their real-time train by number and showed as "Train TBD" twins, and
+# Live Activity materialized permanent ghost rows under the trip_id (issue
+# #1839). Commuter-rail blocks (route_type 2) are the train number; light-rail
+# blocks are vehicle numbers, and bus substitutions ("PJBUS", "GBUS707") are
+# not numeric.
+GTFS_BLOCK_ID_TRAIN_NUMBER_ROUTE_TYPES: dict[str, frozenset[str]] = {
+    "NJT": frozenset({"2"}),
 }
 
 # Data sources whose upstream GTFS feed ships an already-expired service
@@ -532,6 +549,59 @@ class GTFSBundleServiceStatus:
     service_begins_on: date | None
 
 
+def _service_window_verdict(
+    calendar_windows: Iterable[tuple[date, date]],
+    addition_dates: Iterable[date],
+    today: date,
+) -> tuple[bool, date | None]:
+    """Decide, per service, whether service has begun and when it next starts.
+
+    The single definition of "has this bundle's service begun?", shared by the
+    two places that have to answer it from different inputs:
+    :meth:`GTFSService._bundle_service_status` reads the windows out of a
+    downloaded zip before anything is stored, and
+    :meth:`GTFSService._parse_and_store_gtfs` reads them back out of the rows it
+    just stored. Both must answer identically — the guard declines a bundle on
+    one answer and ``/health`` reports a source pending on the other, so a
+    disagreement is a source that is either declined without being reported or
+    adopted dark without being noticed (issue #1799).
+
+    Returns ``(begun, earliest_future_start)``:
+
+    - ``begun`` — a window covers today (``start <= today <= end``, both
+      inclusive per GTFS) or an addition falls on or before today.
+    - ``earliest_future_start`` — the earliest window start or addition date
+      strictly after today, or ``None`` when nothing is scheduled to start.
+
+    The two are independent, not exclusive: a bundle in force today can also
+    name a later start, and an all-expired bundle is neither begun nor future
+    (``(False, None)``) — a lapse, which ``is_lapsed`` owns.
+
+    Deliberately *not* a "does it serve today?" test. Day-of-week bits and
+    exact-date matching are what :meth:`GTFSService.get_active_service_ids`
+    applies to pick today's trips; applying them here would make every Sunday
+    on a weekday-only calendar, and every gap between ``calendar_dates``
+    additions, read as a feed that has not started yet. A start date answers
+    when the timetable came into effect, not whether it runs a train today.
+    """
+    begun = False
+    future: list[date] = []
+
+    for start, end in calendar_windows:
+        if start <= today <= end:
+            begun = True
+        elif start > today:
+            future.append(start)
+
+    for added_on in addition_dates:
+        if added_on <= today:
+            begun = True
+        else:
+            future.append(added_on)
+
+    return begun, (min(future) if future else None)
+
+
 def _gtfs_csv_rows(f: Any) -> Iterator[dict[str, str]]:
     """Iterate a GTFS CSV file as dicts with whitespace-stripped keys/values.
 
@@ -761,7 +831,13 @@ class GTFSService:
                     )
 
             # Parse and store the data
-            stats = await self._parse_and_store_gtfs(db, data_source, zip_data)
+            # Same `today` the guard above decided on. A refresh that straddles
+            # ET midnight would otherwise let the guard rule on day N and the
+            # stats derive against day N+1 — the split verdict
+            # `_service_window_verdict` exists to prevent.
+            stats = await self._parse_and_store_gtfs(
+                db, data_source, zip_data, today=today
+            )
 
             # Update feed info with stats
             feed_info.last_successful_parse_at = now_et()
@@ -786,6 +862,10 @@ class GTFSService:
             }
             if data_source == "SUBWAY":
                 self.clear_subway_realtime_trip_cache()
+            if data_source == "PATH":
+                # Segment times are derived from these stop_times; drop the
+                # cached copy so the collector reloads from the new bundle.
+                clear_path_segment_times()
 
             logger.info(
                 "GTFS feed refreshed successfully",
@@ -952,9 +1032,8 @@ class GTFSService:
 
                 retained = self._retained_service_ids(zf, data_source)
 
-                in_force = False
-                saw_dated_row = False
-                future_dates: list[date] = []
+                calendar_windows: list[tuple[date, date]] = []
+                addition_dates: list[date] = []
 
                 if "calendar.txt" in names:
                     with zf.open("calendar.txt") as f:
@@ -966,13 +1045,12 @@ class GTFSService:
                                 continue
                             if not row.get("start_date") or not row.get("end_date"):
                                 continue
-                            saw_dated_row = True
-                            start = self._parse_gtfs_date(row["start_date"])
-                            end = self._parse_gtfs_date(row["end_date"])
-                            if start <= today <= end:
-                                in_force = True
-                            elif start > today:
-                                future_dates.append(start)
+                            calendar_windows.append(
+                                (
+                                    self._parse_gtfs_date(row["start_date"]),
+                                    self._parse_gtfs_date(row["end_date"]),
+                                )
+                            )
 
                 if "calendar_dates.txt" in names:
                     with zf.open("calendar_dates.txt") as f:
@@ -986,36 +1064,44 @@ class GTFSService:
                                 continue
                             if not row.get("date"):
                                 continue
-                            saw_dated_row = True
-                            added_on = self._parse_gtfs_date(row["date"])
-                            if added_on <= today:
-                                in_force = True
-                            else:
-                                future_dates.append(added_on)
+                            addition_dates.append(self._parse_gtfs_date(row["date"]))
         except Exception as e:
             logger.warning("gtfs_bundle_service_window_unreadable", error=str(e))
             return GTFSBundleServiceStatus(in_force=None, service_begins_on=None)
 
-        if not saw_dated_row:
+        if not calendar_windows and not addition_dates:
             return GTFSBundleServiceStatus(in_force=None, service_begins_on=None)
 
-        return GTFSBundleServiceStatus(
-            in_force=in_force,
-            service_begins_on=min(future_dates) if future_dates else None,
+        in_force, begins_on = _service_window_verdict(
+            calendar_windows, addition_dates, today
         )
+        return GTFSBundleServiceStatus(in_force=in_force, service_begins_on=begins_on)
 
     async def _parse_and_store_gtfs(
-        self, db: AsyncSession, data_source: str, zip_data: bytes
+        self,
+        db: AsyncSession,
+        data_source: str,
+        zip_data: bytes,
+        today: date | None = None,
     ) -> dict[str, Any]:
         """Parse GTFS zip and store in database.
 
         Returns stats about what was parsed. ``start_date`` / ``end_date`` are
-        the bundle's service-period bounds — min/max over the calendar windows
-        and calendar_dates additions of the services the retained trips
-        reference — and become ``gtfs_feed_info.feed_start_date`` /
-        ``feed_end_date``, which :attr:`GTFSFeedStatus.is_not_yet_active` and
+        the bundle's service-period bounds over the calendar windows and
+        calendar_dates additions of the services the retained trips reference,
+        and become ``gtfs_feed_info.feed_start_date`` / ``feed_end_date``, which
+        :attr:`GTFSFeedStatus.is_not_yet_active` and
         :attr:`GTFSFeedStatus.is_lapsed` read. Either key is absent when the
         bundle carries no calendar data for its retained trips.
+
+        ``end_date`` is a plain ``max()``. ``start_date`` is **not** a plain
+        ``min()`` — see the derivation below and issue #1799.
+
+        ``today`` is the date those bounds are judged against, passed in by
+        :meth:`refresh_feed` so the stored bounds and the guard's decline
+        verdict cannot be decided against different days on a refresh that
+        crosses ET midnight. It defaults to ``now_et().date()`` for any caller
+        that has no verdict to stay consistent with.
         """
         # Clear existing data for this source
         await self._clear_existing_data(db, data_source)
@@ -1027,8 +1113,11 @@ class GTFSService:
             logger.debug("GTFS zip contents", files=file_list)
 
             # Parse routes first (needed for FK)
+            block_train_number_routes: set[str] = set()
             if "routes.txt" in file_list:
-                routes = await self._parse_routes(db, data_source, zf)
+                routes, block_train_number_routes = await self._parse_routes(
+                    db, data_source, zf
+                )
                 stats["routes"] = len(routes)
             else:
                 logger.warning("No routes.txt in GTFS", data_source=data_source)
@@ -1053,7 +1142,9 @@ class GTFSService:
 
             # Parse trips
             if "trips.txt" in file_list:
-                trips = await self._parse_trips(db, data_source, zf, routes)
+                trips = await self._parse_trips(
+                    db, data_source, zf, routes, block_train_number_routes
+                )
                 stats["trips"] = len(trips)
             else:
                 logger.warning("No trips.txt in GTFS", data_source=data_source)
@@ -1097,8 +1188,12 @@ class GTFSService:
                     )
                 )
             ).all()
-            addition_dates = list(
-                (
+            # `GTFSCalendarDate.date` is NOT NULL, so the `is not None` filter
+            # drops nothing — it narrows the column's Optional-typed value so
+            # the dates can be compared rather than only aggregated.
+            addition_dates = [
+                d
+                for d in (
                     await db.execute(
                         select(GTFSCalendarDate.date).where(
                             and_(
@@ -1109,11 +1204,42 @@ class GTFSService:
                         )
                     )
                 ).scalars()
-            )
+                if d is not None
+            ]
             start_candidates = [row[0] for row in calendar_rows] + addition_dates
             end_candidates = [row[1] for row in calendar_rows] + addition_dates
             if start_candidates:
-                stats["start_date"] = min(start_candidates)
+                # NOT `min(start_candidates)`. A bare minimum answers "what is
+                # the oldest date this bundle mentions", and real bundles keep
+                # expired historical calendar rows — so one retained row from
+                # last season drags the minimum into the past and
+                # `is_not_yet_active` reads False for a timetable that
+                # describes no service today. That is #1770's original symptom
+                # reachable through the check built to catch it, and it lands
+                # exactly where detection is the only defense: the guard above
+                # declines a not-yet-active bundle only when a usable one is
+                # stored, and both paths that adopt one anyway
+                # (`gtfs_first_bundle_not_yet_active`,
+                # `gtfs_adopting_future_bundle_over_lapsed`) are also when a
+                # freshly published bundle is most likely to carry historical
+                # rows (issue #1799).
+                #
+                # So derive it with the same per-service predicate the guard
+                # uses. Begun => the minimum is genuinely in the past (some
+                # window covers today, so its start is <= today and the
+                # minimum is <= that) and reads as active. Not begun with a
+                # future start => report that start, so `is_not_yet_active`
+                # fires. Not begun with no future start => all-expired; keep
+                # the minimum so the bundle reads lapsed rather than pending,
+                # which is `is_lapsed`'s call to make off `end_candidates`.
+                begun, begins_on = _service_window_verdict(
+                    [(row[0], row[1]) for row in calendar_rows],
+                    addition_dates,
+                    today if today is not None else now_et().date(),
+                )
+                stats["start_date"] = (
+                    min(start_candidates) if begun or begins_on is None else begins_on
+                )
             if end_candidates:
                 stats["end_date"] = max(end_candidates)
 
@@ -1152,11 +1278,20 @@ class GTFSService:
 
     async def _parse_routes(
         self, db: AsyncSession, data_source: str, zf: zipfile.ZipFile
-    ) -> dict[str, int]:
-        """Parse routes.txt and store in database. Returns route_id -> db_id mapping."""
+    ) -> tuple[dict[str, int], set[str]]:
+        """Parse routes.txt and store in database.
+
+        Returns the route_id -> db_id mapping and the route_ids whose trips
+        carry their train number in block_id
+        (``GTFS_BLOCK_ID_TRAIN_NUMBER_ROUTE_TYPES``).
+        """
         routes: dict[str, int] = {}
+        block_train_number_routes: set[str] = set()
 
         route_type_filter = GTFS_ROUTE_TYPE_FILTER.get(data_source)
+        block_train_number_types = GTFS_BLOCK_ID_TRAIN_NUMBER_ROUTE_TYPES.get(
+            data_source, frozenset()
+        )
         with zf.open("routes.txt") as f:
             for row in _gtfs_csv_rows(f):
                 route_id = row.get("route_id", "")
@@ -1181,8 +1316,10 @@ class GTFSService:
                 await db.flush()
                 if route.route_id and route.id is not None:
                     routes[route.route_id] = route.id
+                if row.get("route_type", "") in block_train_number_types:
+                    block_train_number_routes.add(route_id)
 
-        return routes
+        return routes, block_train_number_routes
 
     async def _parse_calendar(
         self, db: AsyncSession, data_source: str, zf: zipfile.ZipFile
@@ -1267,8 +1404,13 @@ class GTFSService:
         data_source: str,
         zf: zipfile.ZipFile,
         routes: dict[str, int],
+        block_train_number_routes: set[str],
     ) -> dict[str, int]:
-        """Parse trips.txt and store in database. Returns trip_id -> db_id mapping."""
+        """Parse trips.txt and store in database. Returns trip_id -> db_id mapping.
+
+        ``block_train_number_routes`` are the route_ids whose numeric block_id
+        is the train number (see ``GTFS_BLOCK_ID_TRAIN_NUMBER_ROUTE_TYPES``).
+        """
         trips: dict[str, int] = {}
         batch: list[GTFSTrip] = []
         batch_trip_ids: list[str] = []  # Track trip_ids in current batch
@@ -1290,9 +1432,18 @@ class GTFSService:
 
                 headsign = row.get("trip_headsign", "")
 
-                # Extract train_id from trip_short_name or headsign
+                # Extract train_id from trip_short_name, a train-number
+                # block_id, or the headsign
                 short_name = row.get("trip_short_name", "")
-                train_id = short_name or self._extract_train_id(headsign)
+                block_id = row.get("block_id", "")
+                block_train_number = (
+                    block_id
+                    if route_id in block_train_number_routes and block_id.isdigit()
+                    else None
+                )
+                train_id = (
+                    short_name or block_train_number or self._extract_train_id(headsign)
+                )
 
                 direction_str = row.get("direction_id", "")
                 direction_id = int(direction_str) if direction_str.isdigit() else None
@@ -1567,6 +1718,59 @@ class GTFSService:
             GTFSService._service_id_cache[cache_key] = active_services
 
         return active_services
+
+    async def get_train_ids_not_running(
+        self,
+        db: AsyncSession,
+        data_source: str,
+        train_ids: Iterable[str],
+        target_date: date,
+    ) -> set[str] | None:
+        """Return the train_ids the stored timetable says do not run on target_date.
+
+        A train_id is returned only when the feed *knows* its train number (some
+        trip carries it) yet no trip with that number has service on
+        ``target_date``. Numbers the feed has never heard of are not returned:
+        absence from the feed is not evidence the train doesn't run — Amtrak's
+        national GTFS omits whole state-supported services (the San Joaquins)
+        that are real and live (issue #1881).
+
+        Returns ``None`` when the feed has no service at all on ``target_date``
+        (no feed stored, or its calendar does not cover the date). That is
+        "unknown", not "nothing runs", and callers must fail open on it.
+
+        Reads service IDs fresh rather than from ``_service_id_cache``: that
+        cache is per-process and only the process that refreshes the feed
+        clears it, so another replica could hold the previous bundle's IDs.
+        Matched against the new bundle's trips, they would report every known
+        train as not running, and callers act destructively on this result.
+        """
+        GTFSService._service_id_cache.pop((data_source, target_date), None)
+        service_ids = await self.get_active_service_ids(db, data_source, target_date)
+        if not service_ids:
+            return None
+
+        result = await db.execute(
+            select(GTFSTrip.train_id, GTFSTrip.service_id)
+            .where(
+                GTFSTrip.data_source == data_source,
+                GTFSTrip.train_id.is_not(None),
+            )
+            .distinct()
+        )
+        known: set[str] = set()
+        running: set[str] = set()
+        for number, service_id in result.all():
+            known.add(number)
+            if service_id in service_ids:
+                running.add(number)
+
+        return {
+            train_id
+            for train_id in train_ids
+            if (number := _strip_source_prefix(train_id, data_source)) in known
+            and number not in running
+        }
 
     async def get_path_route_stop_times(
         self,
@@ -2117,10 +2321,19 @@ class GTFSService:
             if time_from is not None
             else None
         )
+        later_stop = aliased(GTFSStopTime)
         where_clauses = [
             GTFSTrip.data_source == data_source,
             GTFSTrip.service_id.in_(service_ids),
             GTFSStopTime.station_code.in_(expand_station_codes(from_station)),
+            # A trip's last stop is where it arrives and terminates, not a
+            # departure (issue #1882). Filtered in SQL so terminating trips
+            # can't consume the row cap below at terminals (GCT, Hoboken,
+            # SEPTA's Center City handover stations).
+            exists().where(
+                later_stop.trip_id == GTFSStopTime.trip_id,
+                later_stop.stop_sequence > GTFSStopTime.stop_sequence,
+            ),
         ]
         if time_from_cutoff is not None:
             where_clauses.append(GTFSStopTime.departure_time >= time_from_cutoff)
@@ -2264,9 +2477,9 @@ class GTFSService:
             # - If train_id is set (from trip_short_name, e.g., Amtrak/NJT), use it
             # - Otherwise fall back to gtfs_trip_id for lookup purposes
             # For Amtrak, train_id will be the actual train number (e.g., "112")
-            # NJT GTFS has trip_short_name but uses different train numbers
-            # than the real-time API, so primary-key dedup won't match —
-            # fallback dedup (line + time) handles NJT matching instead.
+            # NJT GTFS has no trip_short_name; its train number comes from
+            # block_id (GTFS_BLOCK_ID_TRAIN_NUMBER_ROUTE_TYPES), so NJT rows
+            # dedup against real-time by train number like Amtrak's.
             effective_train_id = train_id if train_id else gtfs_trip_id
 
             # Add "A" prefix for Amtrak to match real-time format (e.g., "112" -> "A112")
@@ -2719,7 +2932,7 @@ class GTFSService:
             )
             return None
 
-        # Use stored_train_id (from trip_short_name) if available (e.g., Amtrak "112", NJT "3243")
+        # Use stored_train_id (trip_short_name, or NJT block_id) if available (e.g., Amtrak "112", NJT "3243")
         # Otherwise use gtfs_trip_id as fallback
         effective_train_id = stored_train_id if stored_train_id else gtfs_trip_id
 

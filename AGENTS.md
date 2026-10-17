@@ -95,6 +95,7 @@ The individual steps can still be run separately if needed:
 bash scripts/verify-deployment.sh https://staging-api.trackrat.net [--no-wait]
 
 # 2. Run E2E API tests (mimics iOS app call sequence across all providers)
+# --no-random skips the random-route phase; --seed N makes that phase reproducible
 bash scripts/e2e-api-test.sh https://staging-api.trackrat.net --no-random
 
 # 3. Check backend logs for errors
@@ -103,6 +104,33 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --env sta
 
 When E2E fails, correlate with logs using the route and timestamp from the failure output.
 The E2E script prints response bodies on HTTP errors and flags slow responses (>5s).
+A failure in the random-route phase is reproducible with `--seed N` (same N picks the
+same routes), which `validate-staging.sh` does not expose — call the script directly.
+
+The suite reads `/api/v2/alerts/service` at startup and indexes planned work that is
+active right now. A route or trip pair serving 0 trains is reported as WARN with the
+agency's own headline — rather than FAIL — when **every** line serving that pair is
+closed for planned work; weekend GO work otherwise makes hardcoded terminal-to-terminal
+pairs fail while the backend is entirely correct (#1771). Requiring *all* the pair's
+lines is deliberate: many lines carry some planned work at any hour, so excusing a pair
+because one of its lines is touched would suppress real outages. The `lines` field is
+left empty for LIRR/MNR (MTA publishes numeric route ids in alerts that don't match
+`route_topology`), for many-line trunks, and for sources that never emit `planned_work`
+alerts — an empty field means the route keeps its original strictness. Codes are
+restricted to what the alert parser actually emits: `route_topology.line_codes` carries
+pre-2026-03 Title-case database aliases (`Ra`, `Mo`, …) that never appear in an alert,
+and since every listed line must match, including them would silently make a pair
+unexcusable. The tradeoff: on planned-work-heavy weekends the 0-trains check on
+single-line pairs frequently downgrades to WARN even though an alert's presence doesn't
+prove the line is actually closed — `--coverage --fail-empty` is the backstop for a line
+going genuinely dark. Subway *transfer* trip-search pairs use a different rule (#1884): each lists
+its leg groups (`"L;4,5"` = the L, then the 4 or 5), and an empty result is a WARN only when some
+leg has **every** line that can serve it under a *suspension* — a `No [X] between …` or
+`[X] is suspended` headline for that line, classified against the full alert text. Skip-stops,
+local running, reduced frequency and single-station closures never excuse a transfer pair. Amtrak is likewise exempt from the "0 SCHEDULED trains" assertion
+after 20:00 ET when at least one train is OBSERVED: the 00:45 job generates SCHEDULED
+rows for today *and* tomorrow, but the departures query window ends at 02:00 ET
+tomorrow, so an all-OBSERVED evening board is expected.
 
 **Ground Truth Validation:**
 
@@ -199,15 +227,59 @@ and is served anyway per #1419) is excluded from `lapsed_sources`: for those an
 expired calendar is the accepted steady state, and reporting it would fail every
 deploy forever. Their `feed_end_date` / `days_until_feed_end` are still reported.
 
+The mirror image is `not_yet_active_sources`, with per-feed `feed_start_date` /
+`days_until_feed_start`. An agency publishes next week's bundle early, the refresh job
+adopts it, and the source serves *nothing* until its start date — freshly downloaded,
+weeks from expiry, and completely dark, so neither `stale_sources` nor `lapsed_sources`
+can see it. SEPTA Regional Rail served zero departures for a day and a half this way
+while `/health` reported `healthy` (#1770). `verify-deployment.sh` asserts on this list
+too. Unlike the lapse check, `GTFS_EXPIRY_EXEMPT_SOURCES` is *not* excluded here: an
+exempt feed's calendar has already expired, so its start date is firmly in the past and
+it cannot trip this check anyway — carving it out would only mask a future regression.
+
+**Future-dated GTFS bundles are declined, not adopted (#1769).** Agencies publish the
+next bundle before it takes effect, and storing one is destructive — `_parse_and_store_gtfs`
+clears the source's rows first. So `refresh_feed` decides *before* parsing whether the
+prospective bundle's service has begun (`_bundle_service_status`) and returns
+`GTFSRefreshOutcome.SKIPPED_NOT_YET_ACTIVE` when it has not and a usable bundle is
+stored; the daily refresh retries and adopts it once it applies. "Has begun" is
+per-service, not `min(calendar.start_date)`: a retained `calendar.txt` row covering
+today (dates inclusive, so a bundle starting today is adopted) or a retained
+`calendar_dates.txt` addition dated today or earlier counts — expired historical
+calendar rows don't mask an all-future timetable, calendar_dates-bridged bundles are
+not wrongly declined, and "retained" honors `GTFS_ROUTE_TYPE_FILTER` so SEPTA's bus
+calendar can't vouch for its Metro rail services. An unknown window (neither calendar
+file, as with NJT; no dated retained rows; unreadable archive) fails **open** and is
+adopted — the guard can only decline, so treating unknown as not-in-force would pin a
+source to its current bundle forever. Two paths still adopt a future-dated bundle: a
+first-ever download with nothing stored (`gtfs_first_bundle_not_yet_active` at error —
+exactly how SEPTA went dark on 2026-08-08), and a stored bundle that has itself lapsed
+(`gtfs_adopting_future_bundle_over_lapsed` — both serve nothing today, and the future
+one self-heals on its start date). A decline is a skip, not a failure — it stays out of
+`failed_sources` but is named in `declined_sources` on `gtfs_feed_refresh_complete` so
+it cannot be mistaken for a routine rate-limited skip. One interplay to know when paged:
+declines deliberately do not advance `last_successful_parse_at`, so an agency publishing
+3+ days early crosses `GTFS_STALE_FEED_HOURS` (48) mid-wait — the nightly log escalates
+to error via `stale_sources` and /health degrades until the start date arrives, with
+`declined_sources` on the same log line saying why.
+
 **Server Usage Report:**
 
 Shows how the server is being used: API traffic breakdown, route searches, train follows,
-client versions, latency, scheduler health, errors, and warnings. Queries GCP load balancer
-logs and backend endpoints. Requires GCP service account credentials (same as gcp-logs.py).
+client versions, latency, scheduler health, errors, and warnings. Traffic comes from the
+backend's own structured `http_request` log events (`cos_containers`, one per request, logged
+by `request_stats_middleware` in `main.py`) — the API sits behind the Cloudflare Tunnel, so no
+load balancer sees it (#1759). The event logs the matched route template and only the
+route-search query fields, never the raw path or query, since some carry a `device_id` or push
+token; a request that matched no route keeps only its first three path segments
+(`unmatched_path`). A client disconnect is logged as status 499, not 500. Requires GCP service account credentials (same as gcp-logs.py).
 The report also breaks traffic out by client class (`client_breakdown` in JSON, "iOS app vs
 Web app" section in text): `ios` (TrackRat iOS app), `web` (browser = the web app), and
 `other` (Android/curl/scripts), each with request count, unique users, and top routes.
-Health probes and `/metrics` are excluded server-side so a 24h window reports real traffic.
+Health probes and `/metrics` are never logged as `http_request`, so a 24h window reports real
+traffic. `traffic_source_warning` is set when the window has no `http_request` events (nothing
+recorded — e.g. a window before the backend logged them) or the query hit its page budget
+(counts cover only the newest part of the window).
 
 ```bash
 # Production, last 1 hour (default)
@@ -245,8 +317,8 @@ automatically and sends it back via the run's completion notification. The routi
 > Generate the TrackRat daily usage report. Run
 > `bash scripts/server-usage.sh --env production --hours 24 --json` (let it install GCP deps
 > if prompted). From the JSON, write a concise narrative summarizing the last 24h: total API
-> requests and unique users; any `traffic_source_warning` (when present the load-balancer
-> counts are not real traffic — lead with that caveat instead of reporting the zeros as fact);
+> requests and unique users; any `traffic_source_warning` (when present the traffic counts
+> are empty or partial — lead with that caveat instead of reporting them as fact);
 > the iOS-app vs web-app breakout (use `api_traffic.client_breakdown`
 > if present — requests, unique users, and top routes for `ios`, `web`, and `other` =
 > Android/curl/scripts; otherwise derive the split from `api_traffic.clients`); the most-searched
@@ -349,9 +421,9 @@ bash scripts/create-and-restore-db-then-train-model.sh
 - Frequency-first; served **schedule-first** (kept out of `REAL_TIME_DATA_SOURCES`) so Broad St / Market-Frankford — which SEPTA does not feed in real time — show from the timetable like PATCO, while the collector upgrades to OBSERVED whatever lines SEPTA does feed (NHSL, trolleys). No config change is needed if that real-time coverage grows (`collectors/septa_metro/`)
 - Two data sources: `SEPTA_RR` and `SEPTA_METRO`
 
-**MTA Service Alerts Collection:**
+**Service Alerts Collection:**
 - Collector in `backend_v2/src/trackrat/collectors/service_alerts.py`
-- Fetches GTFS-RT service alert feeds for Subway, LIRR, and Metro-North
+- Fetches GTFS-RT service alert feeds for Subway, LIRR, Metro-North (`MTA_ALERT_FEEDS`) and SEPTA Regional Rail + Metro (`SEPTA_ALERT_FEEDS`, remapped to TrackRat line codes with bus-only alerts dropped); NJT comes from its `getStationMSG` API and WMATA from the Rail Incidents REST API, both parsed into the same `ParsedAlert` shape
 - Three alert types: `planned_work`, `alert` (real-time), `elevator` (outages)
 - Upserts into `service_alerts` table; marks missing alerts as inactive
 - Used to send planned work / service change push notifications to subscribed users
@@ -376,7 +448,7 @@ bash scripts/create-and-restore-db-then-train-model.sh
 **Disabled Train Systems (feature flag):**
 - `TRACKRAT_DISABLED_DATA_SOURCES` (comma-separated) fully disables a data source: collection, schedule generation, GTFS refresh, service-alert polling, and API serving
 - iOS mirrors the set in `TrainSystem.disabledSystems` (use `TrainSystem.availableCases` for user-facing lists); web mirrors it in `DISABLED_SYSTEMS` in `webpage_v2/src/data/stations.ts`
-- `BART,WMATA,MBTA,METRA` are disabled in both workspaces' committed config; SEPTA (RR + Metro) was cleared in both after its staging soak (issue #1634), matching the iOS and web mirrors. **Staging serves SEPTA today; production does not yet** — each workspace applies only on a push to its own branch, so **the next promotion of `main` to the `production` branch is the SEPTA production cutover**: production has never held a SEPTA GTFS bundle, so expect a short API restart and a few minutes of SEPTA serving nothing while it downloads and parses. Promote outside peak hours and confirm with `/health` `data_sources`. Set per environment via `infra_v2/terraform/variables.tf` (resolved by `local.disabled_data_sources` in `main.tf`), so a staging soak cannot arm the next production apply — see `infra_v2/RUNBOOK-data-source-flags.md`
+- `BART,WMATA,MBTA,METRA` are disabled in both workspaces' committed config; SEPTA (RR + Metro) was cleared in both after its staging soak (issue #1634), matching the iOS and web mirrors. **The SEPTA production cutover happened on 2026-08-09** (PR #1789, `main` → `production`); both environments now serve `SEPTA_RR` and `SEPTA_METRO`. Set per environment via `infra_v2/terraform/variables.tf` (resolved by `local.disabled_data_sources` in `main.tf`), so a staging soak cannot arm the next production apply — see `infra_v2/RUNBOOK-data-source-flags.md`. Each workspace applies only on a push to its own branch, so enabling a source in production still means a MIG instance replace: a source with no GTFS bundle there yet serves nothing for the few minutes the startup refresh takes. Promote outside peak hours and confirm with `/health` `data_sources`
 
 **iOS Architecture:**
 - MVVM embedded within view files (no separate ViewModel files)
@@ -492,7 +564,7 @@ terraform apply -var="environment=production"
 
 **Deployment Triggers**: Push to `main` → staging, push to `production` → production.
 
-**CI (GitHub Actions)**: `.github/workflows/ci-cd-v2.yml` runs backend tests, terraform validation, and web/Docker builds on `backend_v2/`, `infra_v2/`, or `webpage_v2/` changes; `.github/workflows/ios-ci.yml` builds and tests the iOS app on `ios/` changes (dynamically selects an available simulator).
+**CI (GitHub Actions)**: `.github/workflows/ci-cd-v2.yml` runs backend tests, terraform validation, and web/Docker builds on `backend_v2/`, `infra_v2/`, or `webpage_v2/` changes — plus `ios/TrackRat/Shared/RouteTopology.swift`, because the route-topology parity test lives in `backend_v2` but reads that Swift file, and an iOS-only topology edit would otherwise run `ios-ci.yml` (Xcode only) and merge the drift unnoticed. `.github/workflows/ios-ci.yml` builds and tests the iOS app on `ios/` changes (runs on the `xcode-27` image for the iOS 27 SDK; selects the newest available iOS simulator runtime).
 
 ## GCP Log Viewing (Cloud Environment)
 
@@ -590,6 +662,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 - Backend utilities: `backend_v2/src/trackrat/utils/` (logging, metrics, request_stats, locks, time, train, sanitize, scheduler_utils, system_stats)
 - Backend database: `backend_v2/src/trackrat/db/` (database.py, engine.py, migrations_runner.py, partitioning.py, migrations/)
 - Backend tests: `backend_v2/tests/`
+- Backend reference docs: `backend_v2/docs/journey-lifecycle.md` (journey state machine, lifecycle-flag invariants, NJT/Amtrak field semantics — read before changing a collector)
 - iOS app: `ios/TrackRat/App/` (TrackRatApp.swift, ContentView.swift)
 - iOS views: `ios/TrackRat/Views/Screens/`, `ios/TrackRat/Views/Components/`, `ios/TrackRat/Views/Paywall/`
 - iOS services: `ios/TrackRat/Services/`
@@ -649,6 +722,7 @@ PYTHONPATH=/tmp/pylibs:$PYTHONPATH python3 .claude/scripts/gcp-logs.py --raw
 
 # Feedback
 /api/v2/feedback                   # Submit user feedback
+/api/v2/telemetry/onboarding       # iOS onboarding-funnel telemetry (POST, log-only)
 
 # Route Preferences
 /api/v2/routes/preferences         # User route preferences (GET/PUT)

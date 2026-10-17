@@ -5,7 +5,20 @@
 SwiftUI app for tracking trains across 13 transit systems: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA (DC Metro), and SEPTA (Regional Rail + Metro). Features Live Activities, track predictions (Owl), route alerts with recurring train subscriptions, congestion maps, multi-leg trip search, and Pro subscription.
 
 - **iOS 18.0+** deployment target
-- **Xcode 26+** required — the app calls iOS 26 Liquid Glass APIs (`sharedBackgroundVisibility`, `containerBackground(.navigation)`) behind `#available(iOS 26, *)` runtime gates, but the symbols must exist at compile time. Xcode 16.x (iOS 18.5 SDK) fails to build.
+- **Xcode 26+** required — the app calls iOS 26 Liquid Glass APIs (`sharedBackgroundVisibility`, `containerBackground(.navigation)`) behind `#available(iOS 26, *)` runtime gates, but the symbols must exist at compile time. Xcode 16.x (iOS 18.5 SDK) fails to build. CI builds on the `xcode-27` runner image (iOS 27 SDK); note the label is `xcode-27`, not `macos-27`.
+- **App lifecycle hooks belong in `scenePhase`, never in `UIApplicationDelegate`.** The
+  UI-state callbacks (`applicationDidEnterBackground(_:)`, `applicationWillEnterForeground(_:)`,
+  `applicationDidBecomeActive(_:)`) are deprecated as of iOS 26 and are not delivered to a
+  scene-based app, which a SwiftUI `WindowGroup` app is. `scheduleAppRefresh()` hung off
+  `applicationDidEnterBackground(_:)` and was the only thing that ever queued a
+  `BGAppRefreshTaskRequest`; it now runs from the `.background` arm of
+  `.onChange(of: scenePhase)` in `TrackRatApp.swift`. Process-level callbacks
+  (`didFinishLaunchingWithOptions`, `didRegisterForRemoteNotificationsWithDeviceToken`) are
+  unaffected and stay on `AppDelegate`.
+- **`BGAppRefreshTaskRequest` needs `fetch` in `UIBackgroundModes`**, not just an entry in
+  `BGTaskSchedulerPermittedIdentifiers`. Without it `BGTaskScheduler.submit` throws
+  `BGTaskSchedulerErrorCodeNotPermitted` and background refresh silently never runs.
+  `BuildTests` asserts both keys.
 
 ## Architecture
 
@@ -31,11 +44,11 @@ TrackRat/
 │   ├── Components/   # 28 reusable UI components
 │   └── Paywall/      # PaywallView, ProFeatureLockView
 ├── Models/           # Train, TrainV2, V2APIModels, TrainSystem, TripOption, CompletedTrip, DeepLink
-├── Services/         # 15 singleton services
+├── Services/         # 17 singleton services
 ├── Shared/           # Stations, StationData, StationCoordinates, StationDepartures, LiveActivityModels, RouteTopology, RouteShapes, SubwayLines
 ├── Theme/            # TrackRatTheme.swift
 ├── Utilities/        # Extensions.swift, Logger.swift
-└── Resources/        # Assets, Info.plist
+└── (target root)     # Assets.xcassets, Info.plist, TrackRat.entitlements, Configuration.storekit
 TrainLiveActivityExtension/  # Live Activity widget
 TrackRatTests/               # Unit tests
 ```
@@ -59,6 +72,8 @@ TrackRatTests/               # Unit tests
 | TripRecordingService | Trip recording |
 | StaticTrackDistributionService | Static track distribution data |
 | ThemeManager | Theme management |
+| LocationService | One-shot location fix to pick a system and rank nearby stations during setup (never leaves the device) |
+| NotificationPermissionService | Defers the notification prompt until route alerts need it |
 
 ## API Endpoints
 
@@ -146,8 +161,9 @@ Physical device recommended for:
 
 - All timestamps use Eastern Time zone
 - Train lookup supports both IDs and train numbers
-- `TrainSystem.disabledSystems` (BART, WMATA, MBTA, Metra) hides systems app-wide; use `TrainSystem.availableCases` for any user-facing system list (mirrors backend `TRACKRAT_DISABLED_DATA_SOURCES`). Persisted selections are sanitized on load. SEPTA (RR + Metro) was re-enabled for the issue #1634 rollout; it is served by staging today and by production from the next promotion onward, so a TestFlight build pointed at either API will exercise it.
-- Pro subscription offers 1-week free trial via Apple introductory offer
+- `TrainSystem.disabledSystems` (BART, WMATA, MBTA, Metra) hides systems app-wide; use `TrainSystem.availableCases` for any user-facing system list (mirrors backend `TRACKRAT_DISABLED_DATA_SOURCES`). Persisted selections are sanitized on load. SEPTA (RR + Metro) was re-enabled for the issue #1634 rollout and cut over to production on 2026-08-09 (PR #1789), so a build pointed at either API will exercise it.
+- Pro is sold as a monthly (`com.trackrat.pro.monthly`) or yearly (`com.trackrat.pro.yearly`) plan, both with a 1-week Apple introductory trial. The paywall only advertises the trial when StoreKit reports `isEligibleForIntroOffer` — eligibility is per subscription group, so lapsed subscribers of either plan don't get it again.
+- Route alerts beyond `SubscriptionService.freeRouteAlertLimit` are the only paywalled feature. Every transit system is free and unlimited, and both directions of a route are configurable for free — a round trip is 2 subscriptions, which is why the limit has to clear 2. Gate on `AlertSubscriptionService.isAtFreeLimit` before opening an editor and `wouldExceedFreeLimit(adding:)` when saving a batch — never a raw `count >= limit`, which a two-direction save overshoots.
 - `debugOverrideEnabled` in SubscriptionService controls Pro feature override (defaults to `false`)
 
 ---

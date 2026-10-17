@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # server-usage.sh - Quick server usage report
 #
-# Queries GCP load balancer logs and backend endpoints to show:
+# Queries the backend's http_request app logs and backend endpoints to show:
 #   - API traffic breakdown by endpoint
 #   - Route searches and train follows
 #   - Client breakdown (iOS versions, bots, etc.)

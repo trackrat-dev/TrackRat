@@ -17,7 +17,7 @@ from structlog import get_logger
 from trackrat.collectors.njt.client import NJTransitClient, TrainNotFoundError
 from trackrat.collectors.njt.journey import JourneyCollector as NJTJourneyCollector
 from trackrat.collectors.njt.journey import normalize_njt_stop_times
-from trackrat.collectors.njt.schedule import parse_njt_line_code
+from trackrat.collectors.njt.refresh_outcome import mark_refresh_attempted
 from trackrat.config.route_topology import find_route_for_segment
 from trackrat.config.stations import (
     SEPTA_METRO_SCHEDULE_ONLY_LINE_CODES,
@@ -45,12 +45,15 @@ from trackrat.utils.time import (
     safe_datetime_subtract,
 )
 from trackrat.utils.train import (
+    NJT_LINECODE_ALIASES,
     effective_njt_updated_times,
     get_effective_observation_type,
     is_amtrak_train,
     is_njt_stop_cancelled,
+    journey_terminates_at_station,
     njt_cancellation_reason,
     normalize_njt_destination,
+    parse_njt_line_code,
     resolve_actual_departure,
     stop_sequence_sort_key,
     terminal_stop_index,
@@ -131,8 +134,20 @@ NJT_LINE_CANONICALIZATION: dict[str, str] = {
     "Pa": "PV",
     "At": "AC",
     "Pr": "PR",
-    "No": "NE",  # Legacy truncation artifact
+    # Truncated real-time "No Jersey Coast" — NJCL, not NEC (issue #1839)
+    "No": "NC",
+    # NJT's own codes written raw by journey collection before #1839
+    **NJT_LINECODE_ALIASES,
 }
+
+# Other real-time lines an NJT GTFS line code can stand for. NJT's GTFS
+# publishes Main and Bergen County as a single route (MNBN -> "MA"; see
+# NJT_LINE_CODE_MAPPING in services/gtfs.py), so a GTFS "MA" departure may be
+# either line's real-time train. NJT GTFS also uses different train numbers
+# from the real-time API, so the line + time fallback key is the only way to
+# pair them; without the alternates every Bergen train showed twice, once as a
+# "Train TBD" GTFS row (issue #1839).
+NJT_GTFS_ALTERNATE_LINE_CODES: dict[str, tuple[str, ...]] = {"MA": ("BE",)}
 
 # Data sources that have real-time discovery systems.
 # SCHEDULED trains from these sources should be hidden when close to departure
@@ -302,37 +317,63 @@ def _detect_at_station(journey: TrainJourney) -> str | None:
     return None
 
 
+async def _stamp_refresh_after_rollback(
+    db: AsyncSession, journey_id: int, train_id: str | None
+) -> None:
+    """Advance a journey's freshness clock in a fresh transaction after a rollback.
+
+    The JIT second pass selects on ``last_updated_at < now - 60s``, and
+    ``collect_journey_details`` stamps the journey for every outcome it handles
+    — including the ones where NJT gave it nothing. Rolling back on a failure
+    therefore *undoes* the record that we asked, so the same journey is
+    re-selected by the next station-board view and asked again, driven by user
+    traffic with no ceiling: every page load and every 30-second web poll
+    re-attempts the same doomed refresh against NJT's 40,000/day quota
+    (issue #1827).
+
+    Stamping here records only "we asked", never a strike — an exception
+    reaching this point may be a local fault (deadlock, bad row) rather than
+    anything NJT said, and the NJT-attributable strikes have already been
+    applied inside ``collect_journey_details`` before it raised. Failures are
+    swallowed: one journey we could not stamp must not abort the refresh of the
+    rest of the board.
+    """
+    try:
+        journey = await db.get(TrainJourney, journey_id)
+        if journey is not None:
+            mark_refresh_attempted(journey)
+            await db.commit()
+    except Exception as e:  # pragma: no cover - defensive
+        await db.rollback()
+        logger.warning(
+            "stale_train_stamp_failed",
+            train_id=train_id,
+            journey_id=journey_id,
+            error=str(e) or repr(e),
+            error_type=type(e).__name__,
+        )
+
+
 class DepartureService:
     """Service for handling departure queries and processing."""
 
     @staticmethod
     def _effective_updated_time(
-        journey: TrainJourney,
-        from_stop: JourneyStop,
-        sorted_stops: list[JourneyStop],
+        journey: TrainJourney, from_stop: JourneyStop
     ) -> datetime | None:
         """Live time to display for a from-stop on a departure board.
 
         Routes through the canonical effective_njt_updated_times helper
         (issue #1505) so the NJT TIME/DEP_TIME inversion correction lives in
         exactly one place: at intermediate stops the max() surfaces the live
-        delayed estimate; at the journey terminal the max() must be skipped —
-        DEP_TIME there can be a later turnaround departure that inflates the
-        displayed time past the train's true arrival (issue #1492) — and the
-        meaningful live time for a terminating train is its arrival.
-        terminal_stop_index() only trusts positional terminal detection on
-        fully-sequenced journeys, so partially-collected journeys
-        conservatively keep the max().
+        delayed estimate. A from-stop is never a proven terminal — the boards
+        skip journeys that terminate at the board station (issue #1882) — so
+        the #1492 terminal exemption never applies here; a partially collected
+        journey's last-sorted stop conservatively keeps the max().
         """
-        terminal_idx = terminal_stop_index(sorted_stops, journey.terminal_station_code)
-        is_terminal = (
-            terminal_idx is not None and sorted_stops[terminal_idx] is from_stop
-        )
         eff_arrival, eff_departure = effective_njt_updated_times(
-            from_stop, journey.data_source, is_terminal=is_terminal
+            from_stop, journey.data_source
         )
-        if is_terminal:
-            return eff_arrival or eff_departure
         return eff_departure or eff_arrival
 
     @staticmethod
@@ -375,6 +416,7 @@ class DepartureService:
         skip_gtfs_merge: bool = False,
         line_codes: list[str] | None = None,
         label_matched_stop: bool = False,
+        skip_inline_refresh: bool = False,
     ) -> DeparturesResponse:
         """Get train departures between stations.
 
@@ -403,6 +445,25 @@ class DepartureService:
         echoes the requested code so the board reflects what the caller asked
         for; cross-modal-hub trip search (#1587 / PR #1593 review) opts in so a
         substituted hub code can't surface the wrong physical platform.
+
+        ``skip_inline_refresh`` gives up the blocking NJT refresh below — up to
+        10 seconds per call — keeping only the non-blocking background trigger.
+        It exists for callers that issue *many* boards to answer one request:
+        trip search fires one query for the direct leg plus up to two per
+        transfer point, so the same 10s wait stacks (issue #1793). This is
+        distinct from ``skip_individual_refresh``, which only drops the second
+        (per-train) pass and never affected the inline wait — the inline path
+        hardcodes that skip internally.
+
+        The cost is real and worth stating: the inline refresh exists so a
+        SCHEDULED NJT train departing within
+        ``SCHEDULED_VISIBILITY_THRESHOLDS["NJT"]`` minutes is promoted to
+        OBSERVED before ``_filter_stale_scheduled_trains`` hides it. Opting out
+        can therefore omit an imminent, not-yet-discovered NJT train from that
+        board. For a single station board that would be the wrong trade; for
+        trip search it is the right one, because the background refresh still
+        fires on the same request (so the next poll sees the train) and a
+        20-30s response is a worse failure than a missing near-term option.
         """
         today = now_et().date()
         target_date = date or today
@@ -482,8 +543,25 @@ class DepartureService:
         # Query journeys from both NJT and Amtrak data sources
         # Determine journey_date filter based on whether a specific date was provided
         if date:
-            # If a specific date was provided, use it exactly
-            journey_date_filter = TrainJourney.journey_date == date
+            # Yesterday is included because journey_date is the trip's service
+            # date, not the date its stops fall on: a PATH trip that departs
+            # before midnight keeps yesterday's date for its whole life
+            # (issue #1752), and clients ask for the calendar day they are
+            # looking at — iOS always sends its selected Date, defaulting to
+            # today. Matching the date exactly dropped exactly those trains
+            # just after the rollover, while _get_path_cutoff_time (which does
+            # see them) suppressed their timetable rows, leaving neither on the
+            # board.
+            #
+            # This only widens a partition-pruning filter. The real constraint
+            # is the JourneyStop.scheduled_departure window below, so the extra
+            # day can only admit journeys whose stops already fall inside the
+            # requested range — which is the same reasoning the no-explicit-date
+            # branch has always relied on, with a wider window still.
+            journey_date_filter = and_(
+                TrainJourney.journey_date >= date - timedelta(days=1),
+                TrainJourney.journey_date <= date,
+            )
         else:
             # For time-based queries, include a range to handle:
             # - Overnight journeys that cross date boundaries
@@ -579,8 +657,12 @@ class DepartureService:
         jit_start = time.perf_counter()
         jit_ran_inline = False
         if "NJT" in allowed_sources:
+            # skip_inline_refresh is tested first so an opting-out caller also
+            # avoids the _has_imminent_scheduled_njt probe — one query per board,
+            # and trip search issues up to 13 of them (issue #1793).
             if (
-                target_date == today
+                not skip_inline_refresh
+                and target_date == today
                 and from_station not in _refreshing_stations
                 and await self._has_imminent_scheduled_njt(
                     db, from_station, target_date
@@ -646,6 +728,11 @@ class DepartureService:
 
         # Build departures list
         departures = []
+        # Primary dedup keys of journeys skipped as ending at this station.
+        # Their GTFS twin can still list onward stops (a short-turned run, or
+        # trailing stops GTFS maps that real time doesn't), and without its
+        # real-time row the merge would add it as a SCHEDULED departure.
+        terminating_here: set[str] = set()
         for journey in journeys:
             # Find from and to stops
             from_stop = None
@@ -662,6 +749,23 @@ class DepartureService:
 
             # Skip if stops not found
             if not from_stop or (to_station and not to_stop):
+                continue
+
+            # A journey that ends here arrives rather than departs: a from-only
+            # board listed it with the board station as its destination, and a
+            # SEPTA through-train twice at its handover station (issue #1882).
+            # A to-stop already implies a later stop, so this only changes
+            # from-only boards. Unsequenced (partially collected) journeys
+            # can't prove their terminal and are kept.
+            if journey_terminates_at_station(
+                sorted_stops, journey.terminal_station_code, from_codes
+            ):
+                if journey.journey_date and journey.data_source:
+                    terminating_key = self._primary_dedup_key(
+                        journey.train_id, journey.journey_date, journey.data_source
+                    )
+                    if terminating_key:
+                        terminating_here.add(terminating_key)
                 continue
 
             # Calculate train position
@@ -691,11 +795,8 @@ class DepartureService:
                     name=get_station_name(board_code),
                     scheduled_time=from_stop.scheduled_departure
                     or from_stop.scheduled_arrival,
-                    # NJT inversion correction with the #1492 terminal
-                    # exemption — see _effective_updated_time.
-                    updated_time=self._effective_updated_time(
-                        journey, from_stop, sorted_stops
-                    ),
+                    # NJT inversion correction — see _effective_updated_time.
+                    updated_time=self._effective_updated_time(journey, from_stop),
                     actual_time=from_stop.actual_departure or from_stop.actual_arrival,
                     track=from_stop.track,
                 ),
@@ -840,6 +941,7 @@ class DepartureService:
                 departures = self._merge_departures(
                     realtime=departures,
                     gtfs=gtfs_future,
+                    suppressed_primary_keys=terminating_here,
                 )
             except Exception as e:
                 # GTFS merge failed - log warning but return real-time results
@@ -991,6 +1093,13 @@ class DepartureService:
             if not from_stop or (to_station and not to_stop):
                 continue
 
+            # Terminating journeys arrive here, not depart (issue #1882) —
+            # same rule as get_departures.
+            if journey_terminates_at_station(
+                sorted_stops, journey.terminal_station_code, from_codes
+            ):
+                continue
+
             train_position = self._calculate_train_position(journey)
             departure = TrainDeparture(
                 train_id=journey.train_id,
@@ -1006,13 +1115,8 @@ class DepartureService:
                     name=get_station_name(from_station),
                     scheduled_time=from_stop.scheduled_departure
                     or from_stop.scheduled_arrival,
-                    # NJT inversion correction with the #1492 terminal
-                    # exemption — see _effective_updated_time. Terminating
-                    # trains DO land on this board (no to-station filter),
-                    # which is where the exemption matters.
-                    updated_time=self._effective_updated_time(
-                        journey, from_stop, sorted_stops
-                    ),
+                    # NJT inversion correction — see _effective_updated_time.
+                    updated_time=self._effective_updated_time(journey, from_stop),
                     actual_time=from_stop.actual_departure or from_stop.actual_arrival,
                     track=from_stop.track,
                 ),
@@ -1211,7 +1315,17 @@ class DepartureService:
             .where(
                 TrainJourney.data_source == "PATH",
                 TrainJourney.observation_type == "OBSERVED",
-                TrainJourney.journey_date == journey_date,
+                # Yesterday counts because a PATH trip is dated by its origin
+                # departure (issue #1752), so just after midnight the trains
+                # still running are filed under yesterday. Pinning this to the
+                # target date alone would report "no forward real-time
+                # coverage" for those minutes and stop suppressing the
+                # timetable behind trains real-time is actively tracking.
+                # Nothing stale slips in: the row still has to be fresher than
+                # PATH_REALTIME_STALE_AFTER and still has to have a stop
+                # departing after `current_time`.
+                TrainJourney.journey_date >= journey_date - timedelta(days=1),
+                TrainJourney.journey_date <= journey_date,
                 TrainJourney.last_updated_at >= stale_before,
                 JourneyStop.station_code.in_(expand_station_codes(station_code)),
                 JourneyStop.scheduled_departure > current_time,
@@ -1693,12 +1807,14 @@ class DepartureService:
                         # Train no longer in NJT system - this is expected for
                         # trains that completed their journey
                         await db.rollback()
+                        await _stamp_refresh_after_rollback(db, journey_id, train_id)
                         logger.debug(
                             "stale_train_not_found",
                             train_id=train_id,
                         )
                     except Exception as e:
                         await db.rollback()
+                        await _stamp_refresh_after_rollback(db, journey_id, train_id)
                         logger.warning(
                             "stale_train_refresh_failed",
                             train_id=train_id,
@@ -1952,12 +2068,24 @@ class DepartureService:
         """Normalize line code to canonical form for deduplication.
 
         NJT line codes can vary between real-time API and GTFS:
-        - Schedule API full names truncated to "No" (fixed at source, safety net here)
+        - Real-time "No Jersey Coast" truncated to "No" (fixed at source, safety net here)
         - API "Raritan Valley" -> "RV", but GTFS maps RARV -> "Ra"
         """
         if data_source == "NJT":
             return NJT_LINE_CANONICALIZATION.get(line_code, line_code)
         return line_code
+
+    @staticmethod
+    def _primary_dedup_key(
+        train_id: str | None, journey_date: date, data_source: str
+    ) -> str | None:
+        """Normalized train_id merge key, or None if the id is missing/unreliable."""
+        if not train_id or train_id == "Unknown":
+            return None
+        # Normalize Amtrak IDs: "A2205" → "2205" for matching with GTFS
+        if data_source == "AMTRAK":
+            train_id = train_id.lstrip("A")
+        return f"{train_id}:{journey_date}:{data_source}"
 
     def _make_dedup_keys(
         self,
@@ -1982,14 +2110,9 @@ class DepartureService:
             - fallback_keys is a list of HH:MM-bucketed keys spanning the
               tolerance window in both directions
         """
-        # Primary: normalized train_id
-        primary_key = None
-        if dep.train_id and dep.train_id not in ("Unknown", ""):
-            train_id = dep.train_id
-            # Normalize Amtrak IDs: "A2205" → "2205" for matching with GTFS
-            if dep.data_source == "AMTRAK":
-                train_id = train_id.lstrip("A")
-            primary_key = f"{train_id}:{dep.journey_date}:{dep.data_source}"
+        primary_key = self._primary_dedup_key(
+            dep.train_id, dep.journey_date, dep.data_source
+        )
 
         # Fallback: line + scheduled time with tolerance
         # - Normalize line codes to handle NJT API inconsistencies
@@ -2106,6 +2229,7 @@ class DepartureService:
         self,
         realtime: list[TrainDeparture],
         gtfs: list[TrainDeparture],
+        suppressed_primary_keys: set[str] | None = None,
     ) -> list[TrainDeparture]:
         """Merge real-time and GTFS departures, preferring real-time.
 
@@ -2113,8 +2237,14 @@ class DepartureService:
         1. Primary: normalized train_id (handles Amtrak A-prefix mismatch)
         2. Fallback: normalized line + time with ±1 minute tolerance
 
-        Cancelled real-time trains suppress their GTFS counterparts.
+        Cancelled real-time trains suppress their GTFS counterparts, and so
+        does any primary key in ``suppressed_primary_keys``: real-time rows the
+        caller dropped (a train ending at the board station, issue #1882).
+        Only the train_id key is used for those, never line+time: at a
+        terminal that would also hide the departing train of the same line
+        at the same minute.
         """
+        suppressed = suppressed_primary_keys or set()
         # Build indexes from real-time departures
         primary_keys: set[str] = set()
         fallback_keys: set[str] = set()
@@ -2139,11 +2269,23 @@ class DepartureService:
         # Add GTFS trains not matched in real-time
         for gtfs_dep in gtfs:
             primary, fallbacks = self._make_dedup_keys(gtfs_dep)
+            if gtfs_dep.data_source == "NJT":
+                for line_code in NJT_GTFS_ALTERNATE_LINE_CODES.get(
+                    gtfs_dep.line.code, ()
+                ):
+                    alternate = gtfs_dep.model_copy(
+                        update={
+                            "line": gtfs_dep.line.model_copy(update={"code": line_code})
+                        }
+                    )
+                    fallbacks += self._make_dedup_keys(alternate)[1]
 
             # Check primary key match
             if primary and primary in primary_keys:
                 continue
             if primary and primary in cancelled_primary:
+                continue
+            if primary and primary in suppressed:
                 continue
 
             # Check fallback key match - any of the fallback keys matching is sufficient

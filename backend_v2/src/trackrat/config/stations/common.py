@@ -451,12 +451,13 @@ STATION_COORDINATES = {
     "HAR": {"lat": 40.2616, "lon": -76.8782},  # Harrisburg, PA
     "LNC": {"lat": 40.0538, "lon": -76.3076},  # Lancaster, PA
     "MJY": {"lat": 40.1071, "lon": -76.5033},  # Mount Joy, PA (Keystone)
-    "ELT": {"lat": 40.1524, "lon": -76.5258},  # Elizabethtown, PA (Keystone)
+    "ELT": {"lat": 40.1470, "lon": -76.6122},  # Elizabethtown, PA (Keystone)
     "MIDPA": {"lat": 40.1996, "lon": -76.7322},  # Middletown, PA (Keystone)
     "KIN": {"lat": 41.4885, "lon": -71.5204},  # Kingston, RI
     "PVD": {"lat": 41.8256, "lon": -71.4160},  # Providence, RI
     "WLY": {"lat": 41.3770, "lon": -71.8307},  # Westerly, RI
     "ALX": {"lat": 38.8062, "lon": -77.0626},  # Alexandria, VA
+    "ASDVA": {"lat": 37.7596, "lon": -77.4813},  # Ashland, VA
     "CVS": {"lat": 38.0320, "lon": -78.4921},  # Charlottesville, VA
     "LOR": {"lat": 38.7060, "lon": -77.2214},  # Lorton, VA
     "MSS": {"lat": 38.7511, "lon": -77.4752},  # Manassas, VA
@@ -564,9 +565,11 @@ STATION_COORDINATES = {
     "NPN": {"lat": 36.9814, "lon": -76.4356},  # Newport News
     "WBG": {"lat": 37.2710, "lon": -76.7075},  # Williamsburg
     "CLB": {"lat": 34.0006, "lon": -81.0349},  # Columbia SC
+    "GVL": {"lat": 34.8526, "lon": -82.3940},  # Greenville, SC
     "BHM": {"lat": 33.5206, "lon": -86.8344},  # Birmingham
     "MOE": {"lat": 30.6959, "lon": -88.0411},  # Mobile
     # California Amtrak stations
+    "ACA": {"lat": 38.0177, "lon": -121.8160},  # Antioch-Pittsburg
     "ANA": {"lat": 33.8038, "lon": -117.8773},  # Anaheim
     "ARC": {"lat": 40.8686, "lon": -124.0838},  # Arcata
     "ARN": {"lat": 38.9036, "lon": -121.0832},  # Auburn
@@ -578,6 +581,7 @@ STATION_COORDINATES = {
     "CIC": {"lat": 39.7233, "lon": -121.8459},  # Chico
     "CLM": {"lat": 34.0945, "lon": -117.7169},  # Claremont
     "CML": {"lat": 34.2159, "lon": -119.0341},  # Camarillo
+    "COC": {"lat": 36.0985, "lon": -119.5571},  # Corcoran
     "COX": {"lat": 39.0992, "lon": -120.9531},  # Colfax
     "CPN": {"lat": 34.3968, "lon": -119.5230},  # Carpinteria
     "CWT": {"lat": 34.2532, "lon": -118.5994},  # Chatsworth
@@ -602,6 +606,8 @@ STATION_COORDINATES = {
     "LPS": {"lat": 34.6827, "lon": -120.6050},  # Lompoc-Surf
     "LVS": {"lat": 36.1645, "lon": -115.1497},  # Las Vegas
     "MCD": {"lat": 37.3072, "lon": -120.4768},  # Merced
+    "MDR": {"lat": 37.0225, "lon": -120.0750},  # Madera
+    "MOD": {"lat": 37.6690, "lon": -120.9129},  # Modesto
     "MPK": {"lat": 34.2848, "lon": -118.8781},  # Moorpark
     "MRV": {"lat": 39.1437, "lon": -121.5973},  # Marysville
     "MTZ": {"lat": 38.0189, "lon": -122.1388},  # Martinez
@@ -633,10 +639,12 @@ STATION_COORDINATES = {
     "SNS": {"lat": 36.6791, "lon": -121.6567},  # Salinas
     "SOL": {"lat": 32.9929, "lon": -117.2711},  # Solana Beach
     "SUI": {"lat": 38.2434, "lon": -122.0411},  # Suisun-Fairfield
+    "TRK": {"lat": 37.5272, "lon": -120.7980},  # Turlock-Denair
     "VAL": {"lat": 38.1003, "lon": -122.2592},  # Vallejo
     "VEC": {"lat": 34.2769, "lon": -119.2999},  # Ventura
     "VNC": {"lat": 34.2113, "lon": -118.4482},  # Van Nuys
     "VRV": {"lat": 34.5372, "lon": -117.2930},  # Victorville
+    "WAC": {"lat": 35.5941, "lon": -119.3323},  # Wasco
     "WNN": {"lat": 40.9690, "lon": -117.7322},  # Winnemucca
     "WTS": {"lat": 39.4126, "lon": -123.3510},  # Willits Calif Western Railroad Depot
     # Great Lakes Amtrak stations
@@ -688,7 +696,6 @@ STATION_COORDINATES = {
     "LAB": {"lat": 40.3174, "lon": -79.3851},  # Latrobe
     "LEW": {"lat": 40.5883, "lon": -77.5800},  # Lewistown
     "MDS": {"lat": 41.2836, "lon": -72.5994},  # Madison, CT
-    "MID": {"lat": 40.1957, "lon": -76.7365},  # Middletown, CT
     "MRB": {"lat": 39.4587, "lon": -77.9610},  # Martinsburg
     "MSA": {"lat": 39.3301, "lon": -76.4214},  # Martin Airport
     "MYS": {"lat": 41.3509, "lon": -71.9631},  # Mystic
@@ -820,6 +827,7 @@ STATION_COORDINATES = {
     "MOT": {"lat": 48.2361, "lon": -101.2986},  # Minot
     "MTP": {"lat": 40.9712, "lon": -91.5508},  # Mt. Pleasant
     "MVN": {"lat": 34.3655, "lon": -92.8140},  # Malvern
+    "NEW": {"lat": 38.0470, "lon": -97.3449},  # Newton, KS
     "NIB": {"lat": 30.0084, "lon": -91.8238},  # New Iberia
     "NOR": {"lat": 35.2200, "lon": -97.4430},  # Norman
     "OSC": {"lat": 41.0371, "lon": -93.7649},  # Osceola

@@ -2,14 +2,18 @@
 Train-related utility functions for TrackRat V2.
 """
 
+import re
 from collections.abc import Container
 from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import inspect as sa_inspect
 from sqlalchemy.orm.base import NO_VALUE
+from structlog import get_logger
 
 from trackrat.utils.time import normalize_to_et
+
+logger = get_logger(__name__)
 
 if TYPE_CHECKING:
     from trackrat.models.database import JourneyStop, TrainJourney
@@ -38,11 +42,15 @@ def get_effective_observation_type(journey: "TrainJourney") -> str:
     has actually departed. This prevents showing "Scheduled" for trains that
     are running but lack real-time confirmation.
 
-    For NJT, SCHEDULED trains that were never observed should NOT be promoted
-    — they are likely cancelled. The reconciliation job will eventually mark
-    them as such. Other real-time systems still auto-promote because they
-    either don't create SCHEDULED records (PATH, LIRR, MNR) or rely on
-    auto-promotion for pattern-scheduled trains (Amtrak).
+    For NJT and Amtrak, SCHEDULED trains that were never observed should NOT
+    be promoted — there is no evidence they exist. NJT's reconciliation job
+    eventually marks them cancelled. Amtrak's are pattern projections that a
+    timetable change can leave behind (issue #1881); a real train is promoted
+    in the database by discovery or JIT once it appears in the feed, and
+    departures hides one still unseen near its departure time
+    (``_filter_stale_scheduled_trains``) — a check this promotion used to
+    bypass. Other real-time systems don't create SCHEDULED records (PATH,
+    LIRR, MNR).
 
     Args:
         journey: The train journey record
@@ -55,12 +63,9 @@ def get_effective_observation_type(journey: "TrainJourney") -> str:
     if journey.observation_type != "SCHEDULED":
         return journey.observation_type or "OBSERVED"
 
-    # For NJT, don't promote SCHEDULED trains that have no evidence of
-    # actually running. NJT has a reconciliation job that marks unobserved
-    # trains as cancelled. Other real-time systems (Amtrak, PATH, LIRR, MNR)
-    # either don't create SCHEDULED records or rely on auto-promotion for
-    # pattern-scheduled trains that haven't been discovered yet.
-    if journey.data_source == "NJT":
+    # Don't promote SCHEDULED NJT/Amtrak trains that have no evidence of
+    # actually running (see docstring).
+    if journey.data_source in ("NJT", "AMTRAK"):
         return "SCHEDULED"
 
     # For schedule-only systems (PATCO): promote if departure time has passed.
@@ -466,24 +471,133 @@ def resolve_actual_departure(
     return existing
 
 
+# Trailing decorations NJT puts on one destination format but not the other.
+# Shared with the SQL twin in ``collectors/njt/discovery.py`` (applied in this
+# order, to the lowercased, trimmed destination) so both sides normalize alike.
+# - Secaucus-connection marker: the real-time feed sends "Long Branch -SEC
+#   &#9992" where the schedule API sends "LONG BRANCH" (issue #1839).
+# - " TRANSIT CENTER": the schedule API sends "TRENTON TRANSIT CENTER" where
+#   the real-time feed sends "Trenton" (issue #1329).
+NJT_DESTINATION_SEC_MARKER_PATTERN = r"(\s*-sec)?(\s*&#9992;?)?\s*$"
+NJT_DESTINATION_TRANSIT_CENTER_PATTERN = r"\s+transit center$"
+
+# getTrainStopList appends the train's onward connection to the terminal
+# ("Long Branch with connecting service to Penn Station New York"); every other
+# NJT source names the terminal alone.
+_NJT_CONNECTING_SERVICE_SUFFIX = re.compile(
+    r"\s+with connecting service to\b.*$", re.IGNORECASE
+)
+
+
+def strip_njt_connecting_service(destination: str) -> str:
+    """Drop getTrainStopList's "with connecting service to ..." suffix.
+
+    Collection adopts the API's destination in place (issue #1878), so without
+    this the long form reached every client's destination label and escaped
+    the departures dedup (``_destination_prefix``), which compares against
+    the schedule API's "Long Branch". The terminal itself is kept as sent.
+    """
+    return _NJT_CONNECTING_SERVICE_SUFFIX.sub("", destination)
+
+
 def normalize_njt_destination(destination: str | None) -> str:
     """Normalize an NJT destination string for cross-source matching.
 
     NJT's daily schedule API (``getTrainSchedule`` used for schedule
-    generation) returns the full official station name as ``DESTINATION``
-    (e.g. "TRENTON TRANSIT CENTER"), while the real-time discovery feed
-    returns the short common name for the same station (e.g. "Trenton").
-    Without normalization, SCHEDULED rows created from the schedule API
-    never match the OBSERVED row created from the real-time feed for the
-    same physical train — the discovery merge misses it (creating a
-    duplicate journey) and the departures dedup safety net also misses it
-    (leaving the stale "Train TBD" row visible alongside the real train).
-    Strip the generic " TRANSIT CENTER" suffix so both forms compare equal.
+    generation) and its real-time discovery feed describe the same terminus
+    differently: the schedule API uses the full official station name
+    ("TRENTON TRANSIT CENTER"), while the real-time feed uses the short
+    common name ("Trenton") and appends a Secaucus-connection marker to some
+    trains ("Long Branch -SEC &#9992"). Without normalization, SCHEDULED rows
+    created from the schedule API never match the OBSERVED row created from
+    the real-time feed for the same physical train — the discovery merge
+    misses it (creating a duplicate journey) and the departures dedup safety
+    net also misses it (leaving the stale "Train TBD" row visible alongside
+    the real train). Strip both decorations so the forms compare equal.
     """
     if not destination:
         return ""
-    normalized = destination.strip().lower()
-    suffix = " transit center"
-    if normalized.endswith(suffix):
-        normalized = normalized[: -len(suffix)]
-    return normalized
+    normalized = re.sub(
+        NJT_DESTINATION_SEC_MARKER_PATTERN, "", destination.strip().lower()
+    )
+    return re.sub(NJT_DESTINATION_TRANSIT_CENTER_PATTERN, "", normalized)
+
+
+# NJT LINE field prefixes → canonical 2-char codes.
+# The schedule API returns full line names (e.g., "Northeast Corridor"); the
+# real-time discovery API returns short codes (e.g., "NEC") for some lines and
+# abbreviated names for others ("No Jersey Coast", "Atl. City Line") — the
+# latter must resolve to the same code as the schedule row or the two rows
+# for one physical train never dedupe (issue #1839).
+#
+# A miss here is near-invisible, which is why two of these were wrong for
+# months (issue #1796). The fallback truncates to `line[:2]`, and eight NJT
+# routes carry a Title-case legacy alias in `line_codes` for pre-2026-03 rows
+# ("At", "Ra", "Mo", …) — so a missed prefix usually lands on a code that
+# still resolves, hiding the defect from every topology lookup while the
+# `lines=` filter (which matches raw) silently drops the rows. Prefixes must
+# therefore be kept broad enough to survive NJT abbreviating a name:
+# "atl" rather than "atlantic", because NJT sends "Atl. City Line".
+#
+# Order matters only where one prefix is a prefix of another; "bergen" must
+# stay ahead of "main" so combined "Main/Bergen County Line" forms resolve the
+# way services/gtfs.py's MNBN mapping already does.
+_NJT_LINE_NAME_PREFIXES: list[tuple[str, str]] = [
+    ("northeast", "NE"),
+    ("north jersey", "NC"),
+    ("no jersey", "NC"),
+    ("gladstone", "GL"),
+    ("montclair", "MO"),
+    ("boonton", "MO"),
+    ("morris", "ME"),
+    ("raritan", "RV"),
+    ("pascack", "PV"),
+    ("bergen", "BE"),
+    ("main", "MA"),
+    ("port jervis", "PJ"),
+    ("atl", "AC"),  # "Atlantic City Rail Line" and "Atl. City Line"
+    ("princeton", "PR"),
+    # SEPTA trains NJT lists at Trenton; "SP" is their LINECODE (issue #1883)
+    ("septa", "SP"),
+]
+
+# NJT's own short line codes (``LINECODE`` on ``getTrainStopList``, and some
+# real-time ``LINE`` values) that differ from TrackRat's canonical codes.
+# Without this, journey collection overwrote a Main Line train's "MA" with
+# "ML" while its schedule-API twin kept "MA", so the two rows for one physical
+# train never shared a line code and both showed on the board (issue #1839).
+NJT_LINECODE_ALIASES: dict[str, str] = {
+    "ML": "MA",  # Main Line
+    "BC": "BE",  # Bergen County Line
+    "GS": "GL",  # Gladstone Branch
+    "MC": "MO",  # Montclair-Boonton Line
+}
+
+
+def parse_njt_line_code(line: str) -> str:
+    """Extract canonical 2-char NJT line code from the LINE field.
+
+    The NJT schedule API returns full line names (e.g., "Northeast Corridor")
+    while the real-time discovery API returns short codes (e.g., "NEC").
+    This function handles both formats.
+    """
+    if not line:
+        return ""
+    # Short codes (≤3 chars) from real-time API — map NJT's own codes,
+    # otherwise truncate to 2
+    if len(line) <= 3:
+        return NJT_LINECODE_ALIASES.get(line, line[:2])
+    # Full names from schedule API — match by known prefix
+    lower = line.lower()
+    # Meadowlands event trains are named after a changing sponsor ("BetMGM
+    # Meadowlands", "DoorDash Meadowlands Line"), so no prefix can match them.
+    # Truncation turned "BetMGM…" into "Be", Bergen County's legacy alias
+    # (issue #1883); "SL" is NJT's own LINECODE for these trains.
+    if "meadowlands" in lower:
+        return "SL"
+    for prefix, code in _NJT_LINE_NAME_PREFIXES:
+        if lower.startswith(prefix):
+            return code
+    # Unknown — log for investigation, fall back to truncation
+    logger.warning("unknown_njt_line_name", line=line, fallback=line[:2])
+    return line[:2]

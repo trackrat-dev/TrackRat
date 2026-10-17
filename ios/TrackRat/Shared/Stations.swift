@@ -157,6 +157,7 @@ struct Stations {
     /// - Stations not on any RouteTopology route but belonging to a non-Amtrak system
     private static let stationSystemOverrides: [String: Set<String>] = [
         "NP": ["NJT", "AMTRAK", "PATH"],  // Newark Penn Station (PATH adjacent)
+        "NA": ["NJT", "AMTRAK"],          // Newark Airport (Amtrak EWR stop)
         "HB": ["NJT", "PATH"],            // Hoboken Terminal (PATH adjacent)
         // NJT stations not in RouteTopology
         "TS": ["NJT"],   // Secaucus Lower Lvl
@@ -238,11 +239,11 @@ struct Stations {
     /// Amtrak-only stations not present in any RouteTopology route.
     /// Explicitly listed so that unknown station codes surface as bugs rather than silently defaulting.
     private static let amtrakOnlyStations: Set<String> = [
-        "ABE", "ACD", "ADM", "AKY", "ALC", "ALD", "ALI", "ALN", "ALP", "ALT", "ALY", "AMS", "ANA", "ARB",
-        "ARC", "ARD", "ARK", "ARN", "AST", "ATN", "BAM", "BAR", "BAS", "BBK", "BCV", "BDT", "BEL", "BEN",
+        "ABE", "ACA", "ACD", "ADM", "AKY", "ALC", "ALD", "ALI", "ALN", "ALP", "ALT", "ALY", "AMS", "ANA", "ARB",
+        "ARC", "ARD", "ARK", "ARN", "ASDVA", "AST", "ATN", "BAM", "BAR", "BAS", "BBK", "BCV", "BDT", "BEL", "BEN",
         "BER", "BFD", "BFX", "BHM", "BIX", "BKY", "BLF", "BMT", "BNC", "BNF", "BNG", "BNL", "BON", "BRA",
         "BRH", "BRK", "BRL", "BRO", "BTL", "BTN", "BUR", "BWE", "BYN", "CAM", "CBN", "CBR", "CBS", "CDL",
-        "CEN", "CHM", "CHW", "CIC", "CIN", "CLA", "CLB", "CLF", "CLM", "CLN", "CLP", "CML", "CMO", "CNV",
+        "CEN", "CHM", "CHW", "CIC", "CIN", "CLA", "CLB", "CLF", "CLM", "CLN", "CLP", "CML", "CMO", "CNV", "COC",
         "COI", "COV", "COX", "CPN", "CRF", "CRN", "CRV", "CSN", "CTL", "CUM", "CUT", "CVS", "CWH", "CWT",
         "CYN", "DAN", "DAV", "DBP", "DDG", "DEM", "DER", "DET", "DFB", "DHM", "DLK", "DNK", "DOA", "DOV",
         "DQN", "DRD", "DRT", "DUN", "DVL", "DWT", "DYE", "EDG", "EDM", "EFG", "EKH", "ELK", "ELT", "ELY",
@@ -255,9 +256,9 @@ struct Stations {
         "KAN", "KEE", "KEL", "KFS", "KIL", "KKI", "KNC", "KNG", "KWD", "LAB", "LAF", "LAG", "LAJ", "LAK",
         "LAP", "LAU", "LBO", "LCH", "LCN", "LDB", "LEE", "LEW", "LFT", "LIB", "LMR", "LMY", "LNK", "LNS",
         "LOD", "LOR", "LPE", "LPS", "LRC", "LSE", "LSV", "LVS", "LVW", "LWA", "LYH", "MAC", "MAL", "MAT",
-        "MAY", "MBY", "MCB", "MCD", "MCG", "MCK", "MDN", "MDS", "MDT", "MEI", "MHD", "MHL", "MID", "MIDPA",
-        "MIN", "MJY", "MKA", "MKS", "MNG", "MOE", "MOT", "MPK", "MPR", "MRB", "MRC", "MRV", "MSA", "MSS",
-        "MTP", "MTR", "MTZ", "MVN", "MVW", "MYS", "MYU", "NBN", "NBU", "NCR", "NDL", "NFK", "NFL", "NFS",
+        "MAY", "MBY", "MCB", "MCD", "MCG", "MCK", "MDN", "MDR", "MDS", "MDT", "MEI", "MHD", "MHL", "MIDPA",
+        "MIN", "MJY", "MKA", "MKS", "MNG", "MOD", "MOE", "MOT", "MPK", "MPR", "MRB", "MRC", "MRV", "MSA", "MSS",
+        "MTP", "MTR", "MTZ", "MVN", "MVW", "MYS", "MYU", "NBN", "NBU", "NCR", "NDL", "NEW", "NFK", "NFL", "NFS",
         "NHL", "NHT", "NIB", "NLS", "NOR", "NPN", "NPV", "NRG", "NRK", "OAC", "OCA", "OKC", "OKE", "OKJ",
         "OKL", "OLW", "ONA", "ORB", "ORC", "OSC", "OTM", "OTN", "OXN", "PAG", "PAK", "PBF", "PCT", "PHA",
         "PHN", "PIA", "PIC", "PIT", "PLB", "PLO", "PNT", "POG", "POH", "PON", "POR", "POS", "PRB", "PRC",
@@ -267,8 +268,8 @@ struct Stations {
         "SDY", "SEB", "SED", "SFA", "SFC", "SHR", "SIM", "SJM", "SKN", "SKT", "SKY", "SLQ", "SMC", "SMN",
         "SMT", "SNB", "SNC", "SND", "SNP", "SNS", "SOB", "SOL", "SOP", "SPG", "SPI", "SPL", "SPM", "SPT",
         "SSM", "STA", "STN", "STP", "STW", "SUI", "SVT", "SWB", "TAY", "TCA", "TCL", "THN", "THU",
-        "TOH", "TOP", "TPL", "TRI", "TRM", "TUK", "TWO", "TXA", "TYR", "UCA", "VAC", "VAL", "VAN", "VEC",
-        "VNC", "VRN", "VRV", "WAB", "WAH", "WAR", "WBG", "WBL", "WDB", "WDL", "WDO", "WEL", "WEM", "WEN",
+        "TOH", "TOP", "TPL", "TRI", "TRK", "TRM", "TUK", "TWO", "TXA", "TYR", "UCA", "VAC", "VAL", "VAN", "VEC",
+        "VNC", "VRN", "VRV", "WAB", "WAC", "WAH", "WAR", "WBG", "WBL", "WDB", "WDL", "WDO", "WEL", "WEM", "WEN",
         "WFD", "WGL", "WHL", "WIC", "WIH", "WIN", "WIP", "WLD", "WLO", "WMH", "WMN", "WND", "WNL", "WNM",
         "WNN", "WNR", "WOB", "WOR", "WPR", "WPS", "WPT", "WRJ", "WSB", "WSP", "WSS", "WTI", "WTN", "WTS",
         "WWD", "YAZ", "YEM", "YUM",

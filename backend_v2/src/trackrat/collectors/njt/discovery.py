@@ -14,17 +14,19 @@ from structlog import get_logger
 
 from trackrat.collectors.base import BaseDiscoveryCollector
 from trackrat.collectors.njt.client import NJTransitClient
-from trackrat.collectors.njt.schedule import parse_njt_line_code
 from trackrat.config.stations import DISCOVERY_STATIONS
 from trackrat.db.engine import get_session
 from trackrat.models.database import DiscoveryRun, JourneyStop, TrainJourney
 from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import now_et, parse_njt_time, validate_journey_date
 from trackrat.utils.train import (
+    NJT_DESTINATION_SEC_MARKER_PATTERN,
+    NJT_DESTINATION_TRANSIT_CENTER_PATTERN,
     is_amtrak_train,
     is_njt_stop_cancelled,
     njt_cancellation_reason,
     normalize_njt_destination,
+    parse_njt_line_code,
 )
 
 logger = get_logger(__name__)
@@ -427,11 +429,13 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
         Follows the same pattern as PATH's _find_matching_journey().
 
         Destination comparison strips the generic schedule-API " TRANSIT
-        CENTER" suffix (see ``normalize_njt_destination``) — the schedule API
-        returns "TRENTON TRANSIT CENTER" while the real-time feed returns
-        "Trenton" for the same station, and without normalization the two
-        never match here, leaving a duplicate "Train TBD" SCHEDULED row
-        alongside the real OBSERVED train (issue #1329).
+        CENTER" suffix and the real-time feed's Secaucus-connection marker
+        (see ``normalize_njt_destination``) — the schedule API returns
+        "TRENTON TRANSIT CENTER" / "LONG BRANCH" while the real-time feed
+        returns "Trenton" / "Long Branch -SEC &#9992" for the same station,
+        and without normalization the two never match here, leaving a
+        duplicate "Train TBD" SCHEDULED row alongside the real OBSERVED train
+        (issues #1329, #1839).
 
         Args:
             session: Database session
@@ -459,8 +463,12 @@ class TrainDiscoveryCollector(BaseDiscoveryCollector):
                     TrainJourney.observation_type == "SCHEDULED",
                     TrainJourney.is_cancelled.is_(False),
                     func.regexp_replace(
-                        func.lower(func.trim(TrainJourney.destination)),
-                        r"\s+transit center$",
+                        func.regexp_replace(
+                            func.lower(func.trim(TrainJourney.destination)),
+                            NJT_DESTINATION_SEC_MARKER_PATTERN,
+                            "",
+                        ),
+                        NJT_DESTINATION_TRANSIT_CENTER_PATTERN,
                         "",
                     )
                     == dest_normalized,

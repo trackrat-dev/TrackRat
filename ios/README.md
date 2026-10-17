@@ -26,7 +26,7 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metr
 - **WMATA (DC Metro)**: All 6 lines, 98 stations via WMATA REST API
 - **SEPTA Regional Rail**: All lines via SEPTA GTFS-RT (delay-based)
 - **SEPTA Metro**: Broad St, Market-Frankford, Norristown HSL, and trolleys via SEPTA GTFS-RT (schedule-first)
-- **Total Coverage**: 1,500+ stations across the United States
+- **Total Coverage**: 2,300+ stations across the United States
 - **Train Services**: NJ Transit, Amtrak, PATH, PATCO, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA, SEPTA (Regional Rail + Metro)
 
 ### Route Alerts
@@ -42,14 +42,12 @@ A comprehensive iOS app for tracking NJ Transit, Amtrak, PATH, PATCO, LIRR, Metr
 - **Map Layer Controls**: Toggleable congestion, routes, and station markers on map
 - **GTFS Future Schedules**: View train schedules for future dates via GTFS data
 
-### Pro Subscription Features
-- **Congestion Maps**: Premium map overlay showing network congestion levels
-- **Historical Analytics**: Performance data, delay statistics, and track usage patterns
-- **Penn Station Boarding Guide**: Interactive navigation assistance
-- **Delay Forecasts**: AI-powered delay predictions
-- **1-Week Free Trial**: Apple introductory offer for new subscribers
+### Pro Subscription
+- **Free tier**: Every transit system and feature, plus up to 3 route alerts (`SubscriptionService.freeRouteAlertLimit`) — enough for a round trip and one more
+- **Pro**: Unlimited route alerts, the only paywalled feature
+- **Plans**: $4.99/month or $49.99/year
+- **1-Week Free Trial**: Apple introductory offer, shown only to Apple IDs still eligible for it
 - **StoreKit 2 Integration**: Modern subscription management with PaywallView
-- **Subscription Tiers**: $4.99/month or $49.99/year after trial
 
 ### Train System Filtering
 - **App-Wide Disabled Systems**: `TrainSystem.disabledSystems` (currently BART, WMATA, MBTA, Metra) removes systems from every surface — onboarding, Settings, maps, route alerts — mirroring the backend's `TRACKRAT_DISABLED_DATA_SOURCES` flag
@@ -197,14 +195,17 @@ TrackRat/
 │   ├── Extensions.swift         # Swift extensions
 │   └── Logger.swift            # Debug logging framework
 │
-└── TrainLiveActivityExtension/  # Widget extension
-    ├── TrainLiveActivityBundle.swift
-    └── LiveActivityWidget.swift
+
+TrainLiveActivityExtension/      # Widget extension (sibling of TrackRat/, not inside it)
+├── TrainLiveActivityBundle.swift
+└── LiveActivityWidget.swift
 
 TrackRatTests/                   # Test suite
 ├── BuildTests.swift            # Build verification
 ├── Models/                     # Model tests
 ├── Services/                   # Service tests
+├── Shared/                     # Shared/cross-target code tests
+├── Utilities/                  # Utility and extension tests
 ├── ViewModels/                 # ViewModel tests
 ├── Views/                      # View tests (AlertConfiguration, LineSelection, ServiceAlertsSection, CongestionMapKitView, StationPickerSheet)
 ├── TestUtilities/              # Test helpers
@@ -223,7 +224,7 @@ TrackRatTests/                   # Test suite
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/yourusername/TrackRat.git
+   git clone https://github.com/trackrat-dev/TrackRat.git
    cd TrackRat/ios
    ```
 
@@ -244,9 +245,11 @@ TrackRatTests/                   # Test suite
 ### Configuration
 
 #### API Endpoints
-The app connects to the TrackRat backend API. Configure in `APIService.swift`:
-- **Production**: `https://apiv2.trackrat.net/api`
-- **Development**: `http://localhost:8000/api`
+The app connects to the TrackRat backend API. Base URLs live in the `ServerEnvironment`
+enum in `Services/StorageService.swift` (`APIService` only reads `environment.baseURL`):
+- **`.production`**: `https://apiv2.trackrat.net/api`
+- **`.staging`**: `https://staging-api.trackrat.net/api`
+- **`.local`**: `http://localhost:8000/api`
 
 #### Push Notifications
 For Live Activities with push updates:

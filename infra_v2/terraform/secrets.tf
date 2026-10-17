@@ -10,8 +10,8 @@
 #   - trackrat-apns-auth-key: APNS Auth Key (P8 content)
 #   - trackrat-wmata-api-key: WMATA developer API key
 #   - trackrat-metra-api-token: Metra GTFS-RT API token
-# Optional (Cloudflare pilot, staging only for now):
-#   - trackrat-cloudflare-tunnel-token-staging: staging Cloudflare Tunnel token
+#   - trackrat-cloudflare-tunnel-token-<env>: Cloudflare Tunnel token, one per
+#     environment (see infra_v2/RUNBOOK-cloudflare-cutover.md)
 
 data "google_secret_manager_secret" "db_password" {
   secret_id  = "trackrat-db-password"
@@ -50,6 +50,11 @@ data "google_secret_manager_secret" "wmata_api_key" {
 
 data "google_secret_manager_secret" "metra_api_token" {
   secret_id  = "trackrat-metra-api-token"
+  depends_on = [google_project_service.apis]
+}
+
+data "google_secret_manager_secret" "cloudflare_tunnel_token" {
+  secret_id  = "trackrat-cloudflare-tunnel-token-${var.environment}"
   depends_on = [google_project_service.apis]
 }
 
@@ -109,13 +114,14 @@ resource "google_secret_manager_secret_iam_member" "apns_auth_key" {
   member    = "serviceAccount:${google_service_account.trackrat.email}"
 }
 
-# NOTE: the optional Cloudflare Tunnel token secret
-# (trackrat-cloudflare-tunnel-token-<env>) is intentionally NOT managed here.
-# During the pilot the VM service account is granted read access via the runbook
-# (infra_v2/RUNBOOK-cloudflare-cutover.md, step 1b) at the same time the secret
-# is created, so this Terraform root stays inert on merge (an IAM binding here
-# would fail the apply until the secret existed). Fold it in once the tunnel is
-# permanent and both environments have their secret.
+# Each environment's VM reads only its own tunnel token. The grant was first
+# made by hand during the cutover (runbook step 1b); the binding is additive, so
+# applying it over the existing grant is a no-op.
+resource "google_secret_manager_secret_iam_member" "cloudflare_tunnel_token" {
+  secret_id = data.google_secret_manager_secret.cloudflare_tunnel_token.secret_id
+  role      = "roles/secretmanager.secretAccessor"
+  member    = "serviceAccount:${google_service_account.trackrat.email}"
+}
 
 # Artifact Registry read access
 resource "google_artifact_registry_repository_iam_member" "trackrat_reader" {

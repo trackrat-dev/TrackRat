@@ -188,7 +188,7 @@ struct RouteTopology {
             id: "amtrak-nec",
             name: "Northeast Corridor",
             dataSource: "AMTRAK",
-            stationCodes: ["BOS", "BBY", "PVD", "KIN", "WLY", "NLC", "OSB", "NHV", "BRP", "STM", "NRO", "NY", "NP", "MP", "NB", "PJ", "TR", "CWH", "PHN", "PH", "WI", "BL", "BA", "WS"]
+            stationCodes: ["BOS", "BBY", "PVD", "KIN", "WLY", "NLC", "OSB", "NHV", "BRP", "STM", "NRO", "NY", "NP", "NA", "MP", "NB", "PJ", "TR", "CWH", "PHN", "PH", "WI", "BL", "BA", "WS"]
         ),
 
         // Keystone Service (NY to Harrisburg)
@@ -196,7 +196,7 @@ struct RouteTopology {
             id: "amtrak-keystone",
             name: "Keystone Service",
             dataSource: "AMTRAK",
-            stationCodes: ["NY", "NP", "MP", "NB", "PJ", "TR", "CWH", "PHN", "PH", "PAO", "EXT", "DOW", "COT", "PAR", "LNC", "HAR"]
+            stationCodes: ["NY", "NP", "MP", "NB", "PJ", "TR", "CWH", "PHN", "PH", "PAO", "EXT", "DOW", "COT", "PAR", "LNC", "MJY", "ELT", "MIDPA", "HAR"]
         ),
 
         // Silver Service / Carolinian (NEC to Southeast)

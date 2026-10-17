@@ -329,27 +329,6 @@ class AlertSubscriptionServiceTests: XCTestCase {
                        "Different systems should both be added")
     }
 
-    // MARK: - Free Tier Limit Behavior
-
-    func testSubscriptionCount_atFreeLimit_afterOneSubscription() {
-        let sub = RouteAlertSubscription(
-            dataSource: "NJT", lineId: "NEC", lineName: "Northeast Corridor", direction: "NY"
-        )
-        service.addSubscriptions([sub])
-
-        XCTAssertEqual(service.subscriptions.count, 1,
-                       "Should have exactly one subscription")
-        XCTAssertTrue(service.subscriptions.count >= SubscriptionService.freeRouteAlertLimit,
-                      "One subscription should meet or exceed the free limit of \(SubscriptionService.freeRouteAlertLimit)")
-    }
-
-    func testSubscriptionCount_belowFreeLimit_whenEmpty() {
-        XCTAssertEqual(service.subscriptions.count, 0,
-                       "Should have zero subscriptions")
-        XCTAssertFalse(service.subscriptions.count >= SubscriptionService.freeRouteAlertLimit,
-                       "Zero subscriptions should be below the free limit")
-    }
-
     // MARK: - subscriptions(for:) Direction Matching
 
     func testSubscriptionsForContext_lineSubscription_matchesCorrectDirection() {

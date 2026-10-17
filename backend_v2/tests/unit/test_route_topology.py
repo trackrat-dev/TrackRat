@@ -860,7 +860,7 @@ class TestNjtLineCodeConsistency:
 
     def test_schedule_collector_codes_match_topology(self):
         """Every code from parse_njt_line_code (full names) must be in some NJT route's line_codes."""
-        from trackrat.collectors.njt.schedule import parse_njt_line_code
+        from trackrat.utils.train import parse_njt_line_code
 
         test_names = [
             ("Northeast Corridor", "NE"),
@@ -872,8 +872,18 @@ class TestNjtLineCodeConsistency:
             ("Pascack Valley Line", "PV"),
             ("Bergen County Line", "BE"),
             ("Main Line", "MA"),
+            ("Port Jervis Line", "PJ"),
             ("Atlantic City Rail Line", "AC"),
+            ("Atl. City Line", "AC"),  # NJT's own abbreviation (issue #1796)
             ("Princeton Shuttle", "PR"),
+            # Real-time discovery abbreviations (issue #1839)
+            ("No Jersey Coast", "NC"),
+            ("Atl. City Line", "AC"),
+            # NJT getTrainStopList LINECODE values (issue #1839)
+            ("ML", "MA"),
+            ("BC", "BE"),
+            ("GS", "GL"),
+            ("MC", "MO"),
         ]
         for name, expected_code in test_names:
             code = parse_njt_line_code(name)
@@ -884,6 +894,51 @@ class TestNjtLineCodeConsistency:
             assert route is not None, (
                 f"Code {code!r} from parse_njt_line_code({name!r}) "
                 f"not found in any NJT route's line_codes"
+            )
+
+    def test_every_alert_scope_name_parses_to_its_own_line(self):
+        """Cross-check the two NJT full-name tables against each other.
+
+        The list above is hand-maintained, which is precisely how issue #1796
+        survived: `Port Jervis Line` had no prefix entry at all and no test
+        named it, so it truncated to `Po` — a code no NJT route carries — and
+        resolved to nothing. A hand-written corpus cannot catch the line
+        nobody thought to write down.
+
+        `NJT_LINE_SCOPE_TO_CODES` is the independent corpus. It is keyed on
+        `MSG_LINE_SCOPE` names observed on NJT's alerts feed and covers all
+        twelve routes, so requiring every one of its names to parse to a code
+        belonging to the line the alerts table assigns it makes the two tables
+        police each other. Adding a line to either one now fails until both
+        agree.
+
+        The assertion is intersection rather than equality because the alerts
+        table maps one name to several codes where NJT's own naming is broader
+        than the topology (`Morris & Essex Line` covers Morristown and
+        Gladstone); `parse_njt_line_code` returns a single code and must land
+        inside that set.
+        """
+        from trackrat.utils.train import parse_njt_line_code
+        from trackrat.collectors.service_alerts import NJT_LINE_SCOPE_TO_CODES
+
+        for scope_name, alert_codes in NJT_LINE_SCOPE_TO_CODES.items():
+            code = parse_njt_line_code(scope_name)
+            route = get_route_by_line_code("NJT", code)
+
+            assert route is not None, (
+                f"parse_njt_line_code({scope_name!r}) = {code!r}, which is in "
+                f"no NJT route's line_codes. NJT emits this name on the alerts "
+                f"feed, so the schedule feed can send it too — add a prefix to "
+                f"_NJT_LINE_NAME_PREFIXES in utils/train.py."
+            )
+
+            assert route.line_codes & set(alert_codes), (
+                f"parse_njt_line_code({scope_name!r}) = {code!r} resolves to "
+                f"{route.name!r} (line_codes={sorted(route.line_codes)}), but "
+                f"NJT_LINE_SCOPE_TO_CODES maps that name to {alert_codes}. The "
+                f"two tables disagree about which line this name belongs to — "
+                f"a truncation fallback landing on another line's legacy alias "
+                f"looks exactly like this."
             )
 
     def test_gtfs_mapping_codes_match_topology(self):
@@ -1290,11 +1345,53 @@ class TestAmtrakNECExpanded:
         assert len(canonical) == 3, f"Expected 3 segments, got: {canonical}"
         assert canonical == [("WI", "ABE"), ("ABE", "BL"), ("BL", "BA")]
 
+    def test_na_between_np_and_mp(self):
+        """Newark Airport (NA) sits between Newark Penn and Metropark. Amtrak's
+        EWR stop maps to NA (#1866); without NA on the route every segment
+        touching it is dropped from congestion as off-route."""
+        stations = AMTRAK_NEC.stations
+        np_idx = stations.index("NP")
+        assert stations[np_idx : np_idx + 3] == (
+            "NP",
+            "NA",
+            "MP",
+        ), f"Around NP: {stations[np_idx - 1 : np_idx + 4]}"
+
     def test_nec_total_station_count(self):
-        """NEC should now have 27 stations (was 24, added RTE, ABE, NCR)."""
+        """NEC has 28 stations (was 24; added RTE, ABE, NCR, then NA)."""
         assert (
-            len(AMTRAK_NEC.stations) == 27
-        ), f"Expected 27 stations, got {len(AMTRAK_NEC.stations)}: {AMTRAK_NEC.stations}"
+            len(AMTRAK_NEC.stations) == 28
+        ), f"Expected 28 stations, got {len(AMTRAK_NEC.stations)}: {AMTRAK_NEC.stations}"
+
+
+class TestAmtrakKeystoneWesternStops:
+    """Mount Joy, Elizabethtown and Middletown PA between Lancaster and
+    Harrisburg (#1866 started mapping them; before that the feed's stops were
+    dropped and trains appeared to run LNC -> HAR nonstop)."""
+
+    def test_stops_between_lnc_and_har_in_order(self):
+        from trackrat.config.route_topology import AMTRAK_KEYSTONE
+
+        stations = AMTRAK_KEYSTONE.stations
+        lnc_idx = stations.index("LNC")
+        assert stations[lnc_idx:] == (
+            "LNC",
+            "MJY",
+            "ELT",
+            "MIDPA",
+            "HAR",
+        ), f"Keystone west of PAR: {stations[lnc_idx - 1 :]}"
+
+    def test_lnc_to_har_expands_through_every_stop(self):
+        """Trains skipping the small stops (Pennsylvanian, some Keystones)
+        still attribute congestion to the same canonical hops."""
+        canonical = get_canonical_segments("AMTRAK", "LNC", "HAR")
+        assert canonical == [
+            ("LNC", "MJY"),
+            ("MJY", "ELT"),
+            ("ELT", "MIDPA"),
+            ("MIDPA", "HAR"),
+        ], f"Got: {canonical}"
 
 
 class TestAmtrakEmpireServiceExpanded:
@@ -1480,29 +1577,54 @@ class TestAmtrakSanJoaquins:
         assert "amtrak-san-joaquins-oak" in route_ids
 
     def test_sac_branch_stations(self):
+        """Sacramento-Lodi-Stockton (San Joaquin St) in geographic order, then
+        every stop south of Stockton that Amtraker reports."""
         assert AMTRAK_SAN_JOAQUINS_SAC.stations == (
             "SAC",
-            "SKT",
             "LOD",
+            "SKT",
+            "MOD",
+            "TRK",
             "MCD",
+            "MDR",
+            "FNO",
             "HNF",
+            "COC",
+            "WAC",
             "BFD",
         )
 
     def test_oak_branch_stations(self):
+        """Stop order of live San Joaquins 711 (2026-10-12), reversed."""
         assert AMTRAK_SAN_JOAQUINS_OAK.stations == (
             "OKJ",
+            "EMY",
+            "RIC",
+            "MTZ",
+            "ACA",
             "SKN",
+            "MOD",
+            "TRK",
             "MCD",
+            "MDR",
+            "FNO",
             "HNF",
+            "COC",
+            "WAC",
             "BFD",
         )
 
     def test_shared_segment_mcd_to_bfd(self):
-        """Both branches share MCD→HNF→BFD."""
+        """Both branches share the trunk south of Merced, stop by stop."""
         canonical = get_canonical_segments("AMTRAK", "MCD", "BFD")
-        assert len(canonical) == 2, f"Expected 2 segments, got: {canonical}"
-        assert canonical == [("MCD", "HNF"), ("HNF", "BFD")]
+        assert canonical == [
+            ("MCD", "MDR"),
+            ("MDR", "FNO"),
+            ("FNO", "HNF"),
+            ("HNF", "COC"),
+            ("COC", "WAC"),
+            ("WAC", "BFD"),
+        ], f"Got: {canonical}"
 
 
 class TestAmtrakWolverine:

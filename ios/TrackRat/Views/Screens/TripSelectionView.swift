@@ -38,6 +38,11 @@ struct TripSelectionView: View {
         return appState.favoriteStations
     }
 
+    /// Whether the personalized suggestion is still missing a station it needs.
+    private var needsStationSetup: Bool {
+        ratSenseService.getHomeStation() == nil || ratSenseService.getWorkStation() == nil
+    }
+
     private var searchResults: (stations: [String], otherSystemStations: [String], trainNumbers: [String]) {
         let query = searchText.trimmingCharacters(in: .whitespaces)
 
@@ -130,8 +135,9 @@ struct TripSelectionView: View {
                 .padding(.horizontal)
                 .padding(.top, isRatSenseSuggestionVisible ? 8 : 28)
 
-                // Home station setup nudge — shown every launch until user sets a home station
-                if !isSearching && ratSenseService.getHomeStation() == nil {
+                // Station setup nudge — shown until BOTH are set, because the
+                // RatSense suggestion needs a home and a work station to fire
+                if !isSearching && needsStationSetup {
                     Button {
                         appState.pendingNavigation = .favoriteStations
                     } label: {

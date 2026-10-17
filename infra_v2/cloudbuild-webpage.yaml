@@ -1,26 +1,19 @@
 # TrackRat Webpage Production Deployment
 # Triggered by push to 'production' branch (path filter: webpage_v2/**)
-# Builds the React app pointing at production API, deploys to BOTH the
-# production GCS bucket and Cloudflare Workers Static Assets (Worker
-# `trackrat-webpage-production`).
+# Builds the React app pointing at production API, deploys to Cloudflare Workers
+# Static Assets (Worker `trackrat-webpage-production`, serving trackrat.net and
+# www.trackrat.net)
 #
-# The dual deploy is deliberate and temporary — it exists only for the DNS
-# cutover window (issue #1713, runbook step P5):
+# Serving policy (cache headers, HSTS, the AASA content type) is NOT set here
+# any more — it lives in webpage_v2/public/_headers, which Vite copies to the
+# dist root and Cloudflare parses on upload. The SPA fallback comes from
+# `assets.not_found_handling` in webpage_v2/wrangler.jsonc. See issue #1713.
 #
-#   - Deploying to Cloudflare only, before trackrat.net points at the Worker,
-#     would leave the live GCS site frozen at whatever shipped last.
-#   - Flipping DNS first and switching the pipeline afterwards has the mirror
-#     problem: the Worker would be serving the apex while going stale on each
-#     push.
-#
-# Writing to both removes the window entirely. Once trackrat.net and
-# www.trackrat.net resolve to the Worker and have soaked, delete the `sync`,
-# `cache-html` and `cache-assets` steps below and the `_WEBPAGE_BUCKET`
-# substitution; the `_headers` file already carries everything the three
-# gsutil steps were setting.
+# This used to deploy to the trackrat-webpage-production GCS bucket as well,
+# for the DNS cutover window. Nothing has served that bucket since 2026-08-08,
+# so the gsutil steps were removed (issue #1763).
 
 substitutions:
-  _WEBPAGE_BUCKET: trackrat-webpage-production
   _API_BASE_URL: 'https://apiv2.trackrat.net/api/v2'
 
 steps:
@@ -49,9 +42,9 @@ steps:
       - 'VITE_API_BASE_URL=${_API_BASE_URL}'
     waitFor: ['test']
 
-  # --- Cloudflare Workers Static Assets (the destination) -----------------
-  # Worker name and (from P5.4 onward) the trackrat.net / www custom domains
-  # come from the `production` environment in webpage_v2/wrangler.jsonc.
+  # Upload dist/ as the Worker's static assets. The Worker name and the
+  # trackrat.net / www custom domains come from the `production` environment in
+  # webpage_v2/wrangler.jsonc.
   - name: 'node:22'
     id: 'deploy-worker'
     dir: 'webpage_v2'
@@ -59,40 +52,6 @@ steps:
     args: ['wrangler', 'deploy', '--env', 'production']
     secretEnv: ['CLOUDFLARE_API_TOKEN', 'CLOUDFLARE_ACCOUNT_ID']
     waitFor: ['build']
-
-  # --- GCS bucket (retained until the DNS cutover) -------------------------
-  # Delete this step and the two below once trackrat.net serves from the Worker.
-
-  # Sync build output to production GCS bucket
-  - name: 'gcr.io/cloud-builders/gsutil'
-    id: 'sync'
-    args: ['-m', 'rsync', '-r', '-d', 'webpage_v2/dist', 'gs://${_WEBPAGE_BUCKET}']
-    waitFor: ['build']
-
-  # Set no-cache on HTML and service worker files, and Content-Type on AASA
-  - name: 'gcr.io/cloud-builders/gsutil'
-    id: 'cache-html'
-    entrypoint: 'bash'
-    args:
-      - '-c'
-      - |
-        gsutil setmeta -h "Cache-Control:no-cache, no-store, must-revalidate" \
-          "gs://${_WEBPAGE_BUCKET}/index.html"
-        gsutil setmeta -h "Cache-Control:no-cache, no-store, must-revalidate" \
-          "gs://${_WEBPAGE_BUCKET}/sw.js" 2>/dev/null || true
-        gsutil setmeta -h "Cache-Control:no-cache, no-store, must-revalidate" \
-          "gs://${_WEBPAGE_BUCKET}/registerSW.js" 2>/dev/null || true
-        # Apple App Site Association must be served as application/json (no file extension)
-        gsutil setmeta -h "Content-Type:application/json" \
-          "gs://${_WEBPAGE_BUCKET}/.well-known/apple-app-site-association" 2>/dev/null || true
-    waitFor: ['sync']
-
-  # Set long cache on hashed assets
-  - name: 'gcr.io/cloud-builders/gsutil'
-    id: 'cache-assets'
-    args: ['-m', 'setmeta', '-h', 'Cache-Control:public, max-age=31536000, immutable',
-           'gs://${_WEBPAGE_BUCKET}/assets/**']
-    waitFor: ['sync']
 
 availableSecrets:
   secretManager:

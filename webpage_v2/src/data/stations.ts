@@ -187,7 +187,7 @@ const _STATIONS_RAW: any[] = [
 
   // Pennsylvania Stations (Keystone Service)
   { code: 'MIDPA', name: 'Middletown PA' , coordinates: { lat: 40.1996, lon: -76.7322 }, system: 'AMTRAK' },
-  { code: 'ELT', name: 'Elizabethtown' , coordinates: { lat: 40.1524, lon: -76.5258 }, system: 'AMTRAK' },
+  { code: 'ELT', name: 'Elizabethtown' , coordinates: { lat: 40.1470, lon: -76.6122 }, system: 'AMTRAK' },
   { code: 'MJY', name: 'Mount Joy' , coordinates: { lat: 40.1071, lon: -76.5033 }, system: 'AMTRAK' },
   { code: 'PAR', name: 'Parkesburg' , coordinates: { lat: 39.9592, lon: -75.9221 }, system: 'AMTRAK' },
   { code: 'COT', name: 'Coatesville' , coordinates: { lat: 39.9823, lon: -75.8233 }, system: 'AMTRAK' },

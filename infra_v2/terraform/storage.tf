@@ -16,6 +16,23 @@ resource "google_artifact_registry_repository" "trackrat" {
     }
   }
 
+  # The `<env>-latest` tags are the MIG's bootstrap source: the startup script
+  # pulls them on every boot (compute.tf). Without this rule, staging's frequent
+  # pushes evicted production's image from keep-recent within days, and 30 days
+  # after the last production deploy delete-old removed the live tag — leaving
+  # the running VM's boot disk as the only copy, so any recreate could not boot
+  # (issue #1892, same family as #1823). KEEP overrides DELETE. When a tag moves
+  # to a new build, the previous version keeps only its `<env>-<sha>` tag and
+  # ages out normally, so this protects at most one version per environment.
+  cleanup_policies {
+    id     = "keep-bootstrap-tags"
+    action = "KEEP"
+    condition {
+      tag_state    = "TAGGED"
+      tag_prefixes = ["production-latest", "staging-latest"]
+    }
+  }
+
   cleanup_policies {
     id     = "delete-old"
     action = "DELETE"
@@ -60,9 +77,22 @@ resource "google_storage_bucket" "deploy" {
     enabled = true
   }
 
+  # Scoped to ARCHIVED (noncurrent) generations ONLY.
+  #
+  # Without with_state this rule deletes the LIVE object too, and this bucket is
+  # the MIG's bootstrap source: the startup script downloads docker-compose.yml
+  # and docker-compose.tunnel.yml from here on every boot (compute.tf). Going 30
+  # days without a deploy therefore aged out the live bootstrap artifacts while
+  # the running VM kept serving from its data-disk copy — so nothing broke until
+  # the next instance recreate, which then could not boot at all. That is the
+  # 33-minute production outage on 2026-09-20 (issue #1823).
+  #
+  # Versioning is enabled above, so garbage-collecting old generations after 30
+  # days keeps the original intent; the live object is now never removed.
   lifecycle_rule {
     condition {
-      age = 30
+      age        = 30
+      with_state = "ARCHIVED"
     }
     action {
       type = "Delete"

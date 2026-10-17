@@ -15,9 +15,14 @@ from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from trackrat.collectors.njt.client import (
+    NJTransitAPIError,
     NJTransitClient,
     NJTransitNullDataError,
     TrainNotFoundError,
+)
+from trackrat.collectors.njt.refresh_outcome import (
+    mark_refresh_attempted,
+    mark_refresh_failed,
 )
 from trackrat.config.stations import get_station_name
 from trackrat.models.api import NJTransitStopData, NJTransitTrainData
@@ -37,8 +42,9 @@ from trackrat.utils.train import (
     departed_stop_time,
     is_njt_stop_cancelled,
     njt_cancellation_reason,
-    normalize_njt_destination,
+    parse_njt_line_code,
     resolve_actual_departure,
+    strip_njt_connecting_service,
 )
 
 logger = get_logger(__name__)
@@ -53,7 +59,6 @@ class JourneyMatchResult(Enum):
     """
 
     MATCH = "match"
-    DESTINATION_MISMATCH = "destination_mismatch"
     DEPARTURE_TIME_MISMATCH = "departure_time_mismatch"
     STALE_PRIOR_RUN = "stale_prior_run"
 
@@ -262,41 +267,6 @@ class JourneyCollector:
                 cutoff_time=cutoff_time.isoformat(),
             )
 
-    def _normalize_destination(self, destination: str) -> str:
-        """Normalize destination name for comparison.
-
-        Handles variations like:
-        - "New York -SEC &#9992" -> "new york"
-        - "Penn Station New York" -> "new york"
-        - "Trenton" -> "trenton"
-        - "TRENTON TRANSIT CENTER" -> "trenton"
-        """
-        if not destination:
-            return ""
-
-        # Convert to lowercase and remove special characters
-        normalized = destination.lower()
-
-        # Handle New York variations
-        if any(variant in normalized for variant in ["new york", "penn station"]):
-            return "new york"
-
-        # Remove common suffixes and prefixes
-        normalized = normalized.replace(" -sec", "").replace("&#9992", "")
-        normalized = normalized.replace("penn station ", "")
-
-        # Remove extra whitespace
-        normalized = " ".join(normalized.split())
-
-        # Collapse NJT's schedule-API " TRANSIT CENTER" suffix so the full
-        # official name ("TRENTON TRANSIT CENTER") and the real-time short
-        # name ("Trenton") for the same station compare equal. A journey
-        # merged/promoted from a SCHEDULED row carries the schedule-API
-        # destination; without this it would be falsely flagged as a
-        # DESTINATION_MISMATCH and expired on the next collection pass before
-        # update_journey_metadata could heal the field (issue #1329).
-        return normalize_njt_destination(normalized)
-
     async def _is_same_journey(
         self,
         session: AsyncSession,
@@ -306,67 +276,45 @@ class JourneyCollector:
         """
         Verify if API data represents the same journey as our stored record.
 
-        Uses key signals to detect journey changes:
-        - Destination must match (after normalization) — strong identity signal
-        - First stop departure time should be similar (±10 min tolerance) —
-          weak signal that flags potential journey swaps but also fires on
-          heavily delayed real-world trains
+        For a complete journey (``has_complete_journey``), identity is decided
+        by the first stop's scheduled departure
+        (±10 min tolerance, compared against the immutable SCHED_DEP_DATE when
+        present): a skew beyond 6h on a prior-day row is NJT reusing the
+        train_id for a later service day (STALE_PRIOR_RUN); a smaller skew may
+        be a journey swap or a heavily delayed train (DEPARTURE_TIME_MISMATCH).
+        An incomplete journey is accepted as MATCH unchecked: discovery may
+        have recorded the wrong origin or departure time.
 
-        Returns a tri-state result so the caller can decide whether to expire
-        the journey row (destination mismatch) or only skip this update
-        (departure-time mismatch).
-
-        NOTE: Line code validation removed as it's unreliable across different API calls
+        Neither destination nor line code is an identity signal. NJT spells
+        the same terminal differently across its APIs ("Newark Penn" vs
+        "Newark Penn Station", "Long Branch" vs "Long Branch with connecting
+        service to Bay Head") and genuinely changes a running train's
+        destination (diversions to Hoboken), and it returns inconsistent line
+        codes between discovery ("No") and journey details ("NC"). Rejecting
+        on destination expired 40–80 live trains a day without ever
+        catching a different run (issue #1878); update_journey_metadata adopts
+        the API's destination instead.
         """
-        # Signal 1: Destination must match (after normalization)
-        stored_dest_normalized = self._normalize_destination(
-            stored_journey.destination or ""
+
+        # Update line code if API provides a different one (likely more
+        # accurate), canonicalized so NJT's own codes ("ML", "BC", ...) don't
+        # replace TrackRat's ("MA", "BE", ...) (issue #1839)
+        api_line_code = (
+            parse_njt_line_code(api_train_data.LINECODE)
+            if api_train_data.LINECODE
+            else None
         )
-        api_dest_normalized = self._normalize_destination(
-            api_train_data.DESTINATION or ""
-        )
-
-        if stored_dest_normalized != api_dest_normalized:
-            logger.warning(
-                "journey_mismatch_destination",
-                journey_id=stored_journey.id,
-                train_id=stored_journey.train_id,
-                stored_destination=stored_journey.destination,
-                api_destination=api_train_data.DESTINATION,
-                stored_normalized=stored_dest_normalized,
-                api_normalized=api_dest_normalized,
-                # Additional context
-                stored_origin=stored_journey.origin_station_code,
-                stored_line=stored_journey.line_code,
-                api_line=api_train_data.LINECODE,
-                journey_date=(
-                    stored_journey.journey_date.isoformat()
-                    if stored_journey.journey_date
-                    else None
-                ),
-                has_complete_journey=stored_journey.has_complete_journey,
-            )
-            return JourneyMatchResult.DESTINATION_MISMATCH
-
-        # NOTE: Line code check removed - NJT API returns inconsistent line codes
-        # between discovery (e.g., "No") and journey details (e.g., "NC")
-        # The destination and departure time are sufficient to identify the journey
-
-        # Update line code if API provides a different one (likely more accurate)
-        if (
-            api_train_data.LINECODE
-            and api_train_data.LINECODE != stored_journey.line_code
-        ):
+        if api_line_code and api_line_code != stored_journey.line_code:
             logger.info(
                 "updating_line_code",
                 journey_id=stored_journey.id,
                 train_id=stored_journey.train_id,
                 old_line_code=stored_journey.line_code,
-                new_line_code=api_train_data.LINECODE,
+                new_line_code=api_line_code,
             )
-            stored_journey.line_code = api_train_data.LINECODE
+            stored_journey.line_code = api_line_code
 
-        # Signal 2: First stop departure time should match (with tolerance)
+        # First stop departure time should match (with tolerance)
         # IMPORTANT: If the journey doesn't have complete data yet, skip this check
         # because discovery might have recorded the wrong origin/departure time
         if stored_journey.has_complete_journey:
@@ -588,12 +536,9 @@ class JourneyCollector:
             "journey_validation_successful",
             journey_id=stored_journey.id,
             train_id=stored_journey.train_id,
-            destinations_matched=f"{stored_dest_normalized} == {api_dest_normalized}",
             departure_time_check_skipped=not stored_journey.has_complete_journey,
             line_code_updated=(
-                (api_train_data.LINECODE != stored_journey.line_code)
-                if api_train_data.LINECODE
-                else False
+                api_line_code is not None and api_line_code != stored_journey.line_code
             ),
         )
 
@@ -653,7 +598,7 @@ class JourneyCollector:
                 # re-selected every tick for its whole in-flight window, starving
                 # trains behind it (issue #1748). The clock records "we asked",
                 # which is exactly what happened.
-                journey.last_updated_at = now_et()
+                mark_refresh_attempted(journey)
                 logger.info(
                     "train_null_data_skipped",
                     train_id=journey.train_id,
@@ -665,12 +610,7 @@ class JourneyCollector:
             except TrainNotFoundError:
                 # Train is genuinely not available (empty/None response) —
                 # increment error count toward expiry threshold.
-                journey.api_error_count = (journey.api_error_count or 0) + 1
-                journey.last_updated_at = now_et()
-                journey.update_count = (journey.update_count or 0) + 1
-
-                # After 3 failed attempts, attempt last-chance completion then expire
-                if journey.api_error_count >= 3:
+                if mark_refresh_failed(journey):
                     # Train disappeared from API — likely completed its run.
                     # Check if penultimate stop departed, which means the train
                     # reached its terminal. We can't set terminal actual_arrival
@@ -701,6 +641,42 @@ class JourneyCollector:
 
                 await session.flush()
                 return
+            except NJTransitAPIError as e:
+                # Upstream failed: HTTP error, timeout, or a body that wasn't
+                # JSON. Ordering matters — this arm must stay *below* the two
+                # subclasses above, which carry their own semantics.
+                #
+                # Stamp, no strike. `api_error_count` answers "is this train
+                # failing", and an HTTP error is evidence about NJT, not about
+                # the train — the run did not end, NJT just stopped answering.
+                # Striking here would do two wrong things: expire every
+                # in-flight journey about 15 minutes into any provider-wide
+                # outage, removing them from /departures (the query excludes
+                # expired rows) until a later discovery pass that needs the same
+                # broken API to succeed; and, because the counter is shared with
+                # the not-found path, leave a journey primed so the next genuine
+                # TrainNotFoundError expires it on the first occurrence instead
+                # of the third.
+                #
+                # The stamp alone is what #1827 needs. The storm came from
+                # journeys never leaving the head of the oldest-first batch and
+                # from the JIT path re-asking on every station-board view;
+                # advancing the clock ends both. Bounding total daily volume is
+                # a different problem — the quota guard / circuit breaker the
+                # issue raises separately — and expiring live trains is not a
+                # substitute for it.
+                mark_refresh_attempted(journey)
+                logger.warning(
+                    "train_upstream_error_skipped",
+                    train_id=journey.train_id,
+                    journey_id=journey.id,
+                    api_error_count=journey.api_error_count,
+                    error=str(e) or repr(e),
+                    error_type=type(e).__name__,
+                )
+
+                await session.flush()
+                return
 
         # Debug: Log journey validation inputs
         logger.debug(
@@ -725,46 +701,6 @@ class JourneyCollector:
 
         # Verify this API data matches our stored journey
         match_result = await self._is_same_journey(session, journey, train_data)
-        if match_result is JourneyMatchResult.DESTINATION_MISMATCH:
-            # The API is returning a genuinely different journey under this
-            # train_id (e.g., the row was originally bound to a now-cancelled
-            # run). Mark expired so future passes stop refreshing it.
-            journey.is_expired = True
-            journey.api_error_count = 99  # High value to prevent retry
-
-            logger.warning(
-                "journey_expired_due_to_mismatch",
-                journey_id=journey.id,
-                train_id=journey.train_id,
-                journey_date=(
-                    journey.journey_date.isoformat() if journey.journey_date else None
-                ),
-                reason="API returned data for different journey",
-                # Additional context about what mismatched
-                stored_destination=journey.destination,
-                api_destination=train_data.DESTINATION,
-                stored_origin=journey.origin_station_code,
-                api_first_station=(
-                    train_data.STOPS[0].STATION_2CHAR if train_data.STOPS else None
-                ),
-                stored_departure=(
-                    journey.scheduled_departure.isoformat()
-                    if journey.scheduled_departure
-                    else None
-                ),
-                api_first_departure=(
-                    train_data.STOPS[0].DEP_TIME if train_data.STOPS else None
-                ),
-                stored_line=journey.line_code,
-                api_line=train_data.LINECODE,
-                has_complete_journey=journey.has_complete_journey,
-                update_count=journey.update_count,
-                api_error_count=journey.api_error_count,
-            )
-
-            await session.flush()
-            return
-
         if match_result is JourneyMatchResult.STALE_PRIOR_RUN:
             # NJT reused this train_id for a later service day; the API is now
             # serving that day's run (~24h displaced). Our row is a prior-day
@@ -799,9 +735,8 @@ class JourneyCollector:
             return
 
         if match_result is JourneyMatchResult.DEPARTURE_TIME_MISMATCH:
-            # Destination matches but the API's first-stop time is outside the
-            # 10-minute tolerance. Usually a real-world delay rather than a
-            # journey swap, so we skip applying this snapshot but leave the
+            # The API's first-stop time is outside the 10-minute tolerance.
+            # Usually a real-world delay rather than a journey swap, so we skip applying this snapshot but leave the
             # row valid for the next collection cycle. (`_is_same_journey`
             # has already logged the detailed `journey_mismatch_departure_time`
             # warning with full context.)
@@ -918,7 +853,7 @@ class JourneyCollector:
             train_data: Train data from API
         """
         # Update basic info
-        journey.destination = train_data.DESTINATION
+        journey.destination = strip_njt_connecting_service(train_data.DESTINATION)
         journey.line_color = train_data.BACKCOLOR.strip()
 
         # Update origin and terminal stations from actual journey data

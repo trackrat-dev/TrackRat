@@ -33,7 +33,7 @@ class PathArrival(BaseModel):
     headsign: str  # "World Trade Center", "33rd Street", etc.
     direction: str  # "ToNY" or "ToNJ"
     minutes_away: int  # Parsed from "X min"
-    arrival_time: datetime  # Computed: now + minutes_away
+    arrival_time: datetime  # Computed: lastUpdated (or now) + secondsToArrival
     line_color: str  # Hex color(s), e.g., "D93A30" or "4D92FB,FF9900"
     last_updated: datetime | None  # When PATH last updated this prediction
 
@@ -226,12 +226,26 @@ class RidePathClient:
                 if 0 <= staleness <= 300:
                     baseline = last_updated
 
+            # Prefer the second-precision countdown. "X min" is a coarse
+            # rendering of it, off by -30s..+60s, and every collector time —
+            # the back-calculated origin included — inherits that error, so
+            # two sightings of one train could disagree by a full extra
+            # minute (issue #1752). Measured against lastUpdated, the seconds
+            # value holds a train's predicted arrival steady to ~0.1s across
+            # polls, versus ~20s for the minutes.
+            seconds = self._parse_seconds(msg.get("secondsToArrival"))
+            countdown = (
+                timedelta(seconds=seconds)
+                if seconds is not None
+                else timedelta(minutes=minutes)
+            )
+
             return PathArrival(
                 station_code=station_code,
                 headsign=msg.get("headSign", "Unknown"),
                 direction=direction,
                 minutes_away=minutes,
-                arrival_time=baseline + timedelta(minutes=minutes),
+                arrival_time=baseline + countdown,
                 line_color=msg.get("lineColor", ""),
                 last_updated=last_updated,
             )
@@ -272,6 +286,21 @@ class RidePathClient:
                 pass
 
         return None
+
+    def _parse_seconds(self, value: Any) -> int | None:
+        """Parse the secondsToArrival field.
+
+        Args:
+            value: Raw field value, e.g. "1101"
+
+        Returns:
+            Non-negative seconds, or None if missing or unparseable
+        """
+        try:
+            seconds = int(value)
+        except (TypeError, ValueError):
+            return None
+        return seconds if seconds >= 0 else None
 
     def _parse_timestamp(self, ts_str: str | None) -> datetime | None:
         """Parse ISO timestamp string.

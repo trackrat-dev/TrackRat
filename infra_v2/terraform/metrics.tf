@@ -215,6 +215,53 @@ resource "google_logging_metric" "data_disk_usage_percent" {
 }
 
 # =============================================================================
+# BOOT DISK USAGE METRIC
+# Tracks: the container's boot filesystem, logged periodically by
+# SchedulerService.check_resource_usage alongside the data disk.
+# Drives the "Boot Disk Usage" alerts in monitoring.tf.
+#
+# Deliberately a separate metric from data_disk_usage_percent rather than a
+# label on it: the alerts reduce with REDUCE_MEAN, so one series carrying both
+# filesystems would let a healthy data disk average a full boot disk back under
+# the threshold. That is the shape of the 2026-09-01 miss (issue #1826) — the
+# boot disk sat at 100% for 19 days while the data disk reported ~57%, and only
+# the data disk had a metric at all.
+# =============================================================================
+resource "google_logging_metric" "boot_disk_usage_percent" {
+  count = local.metrics_enabled ? 1 : 0
+
+  name        = "boot_disk_usage_percent"
+  description = "Container boot filesystem utilization percentage"
+  filter = join(" AND ", [
+    "logName=\"projects/${var.project_id}/logs/cos_containers\"",
+    "jsonPayload._HOSTNAME=~\"^trackrat-${var.environment}-\"",
+    "jsonPayload.event=\"boot_disk_usage_check\"",
+  ])
+
+  # Logs-based metrics only support counter (INT64) or DISTRIBUTION value types;
+  # a scalar value_extractor requires DISTRIBUTION (GCP rejects it on any other
+  # type). The alert reads this via ALIGN_DELTA + REDUCE_MEAN, which yields the
+  # distribution's exact mean, so bucket boundaries don't affect the threshold.
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "%"
+  }
+
+  value_extractor = "EXTRACT(jsonPayload.usage_percent)"
+
+  bucket_options {
+    linear_buckets {
+      num_finite_buckets = 20
+      width              = 5
+      offset             = 0
+    }
+  }
+
+  depends_on = [google_project_service.apis["logging.googleapis.com"]]
+}
+
+# =============================================================================
 # DATABASE SIZE METRIC
 # Tracks: Postgres database size in GB, for trend visibility (no alert —
 # see the "Data Disk Usage" alerts in monitoring.tf for the actual paging

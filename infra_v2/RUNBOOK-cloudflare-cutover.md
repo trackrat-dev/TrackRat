@@ -177,9 +177,13 @@ Phases complete: **0 of 4.** (The LB consolidation was a different runbook.)
 
 ## Repo levers
 
-- `infra_v2/terraform/variables.tf` — **`enable_cloudflare_tunnel`** (default
-  `false`). Master on/off switch for the connector. `cloudflared` starts **only**
-  when this flag is `true` **and** the token secret is present (issue #1578).
+- `infra_v2/terraform/variables.tf` — **`enable_cloudflare_tunnel`** (committed
+  default `true`, since both environments are now cut over). Master on/off switch
+  for the connector. `cloudflared` starts **only** when this flag is `true`
+  **and** the read of the token secret yields a well-formed token (issues #1578,
+  #1758). Flipping it to `false` stops the connector, which takes that
+  workspace's API offline unless its Google frontend is restored first
+  (`frontend_via_cloudflare`).
 - `infra_v2/terraform/variables.tf` — **`frontend_via_cloudflare`** (default
   `false`). Tears down *this workspace's* dedicated API frontend. Effective on
   staging; already a no-op on production (finding 3).
@@ -240,8 +244,17 @@ gcloud secrets add-iam-policy-binding trackrat-cloudflare-tunnel-token-staging \
 ```
 
 The grant stays out of Terraform so the repo state remains inert: the startup
-script reads the secret tolerantly, so a missing secret just leaves the tunnel
-off.
+script reads the secret tolerantly, so a missing secret — or a missing grant,
+or a transient Secret Manager error — just leaves the tunnel off.
+
+That tolerance is real only as of issue #1758. Before it, the read was captured
+with `VAR=$(toolbox ...)`, and because toolbox runs gcloud on a pty its stderr
+arrives on toolbox's *stdout*; a failed read therefore yielded gcloud's error
+text as a non-empty "token", which went into `.env` and boot-looped the MIG. The
+read now gates on the exit status and validates the token's shape, and a warning
+naming the failure is written to `/var/log/startup.log`. If the connector is
+unexpectedly absent, grep that log for `Cloudflare tunnel token` — the previous
+behaviour logged nothing at all and still printed "Secrets fetched successfully".
 
 ### S3. Push #1 — rebuild staging *with* the connector
 
@@ -398,14 +411,10 @@ idempotent — but a route silently dropped on redeploy would take
 Also load the site in a browser: the service worker should register, and API
 calls should go to `https://staging-api.trackrat.net/api/v2` (#1712).
 
-**Rollback:** the GCS bucket `trackrat-webpage-staging` still holds the last
-pre-migration build, but nothing serves it — the staging LB is gone. Rollback
-is therefore forward-only: fix and redeploy. This is acceptable precisely
-because staging is already dark.
-
-**After a ≥24h soak:** delete `google_storage_bucket.webpage_staging`, its IAM
-member, and the `staging_webpage_bucket` output from
-`infra_v2/terraform-webpage/main.tf`, then apply that root manually.
+**Rollback:** forward-only — fix and redeploy. The staging LB is gone, so
+nothing could serve the old GCS build; this is acceptable precisely because
+staging is already dark. The `trackrat-webpage-staging` bucket was deleted
+with the production one in P5 step 6.
 
 ### S9. Push #2 — tear down the staging LB
 
@@ -445,6 +454,11 @@ request stats / `cos_containers` app logs — and merge to `main` before P4.
 
 Client-IP attribution already works: `api/utils.get_client_ip` reads
 `CF-Connecting-IP`.
+
+**Resolved after the fact (#1759).** P4 shipped without this, and the report was
+blind from 2026-08-08 until the backend began logging each request as a structured
+`http_request` event (`request_stats_middleware`), which `server-usage.py` now
+reads from `cos_containers` in place of the load balancer logs.
 
 ### P1. Merge `main` → `production`
 
@@ -513,16 +527,17 @@ bash scripts/e2e-api-test.sh https://apiv2.trackrat.net --no-random
 
 **Soak ≥24h.** Confirm the P0 usage report still reports traffic.
 
-**Rollback:** grey `A` → `136.110.151.144` (the webpage LB still host-routes
-`apiv2`).
+**Rollback:** forward-only — restore the tunnel connector. The path written
+here originally (grey `A` → `136.110.151.144`, host-routed by the webpage LB)
+died with that LB on 2026-08-08, and P6 releases the IP: never point a record
+at it again.
 
 ### P5. Static site on Workers Static Assets
 
 Same shape as S8 against the `production` environment, but production is live,
-so the order below matters. `infra_v2/cloudbuild-webpage.yaml` deploys to
-**both** GCS and the Worker on purpose: it removes the window where one
-destination is serving while the other goes stale. Do not delete the GCS steps
-early.
+so the order below matters. Until step 5, `infra_v2/cloudbuild-webpage.yaml`
+deployed to **both** GCS and the Worker on purpose: it removed the window where
+one destination is serving while the other goes stale.
 
 1. Merge `main` → `production` so the dual-deploy pipeline is live. The
    `production` env in `wrangler.jsonc` has **no `routes`** yet, so this
@@ -588,16 +603,51 @@ early.
    `Authentication error` (code 10000) on `/zones/{id}/dns_records`. Use the
    dashboard, or add DNS:Edit to a token if this should ever be automated.
 
-   Note also that `workers_dev` is not set in `wrangler.jsonc`, so wrangler
-   disables it by default. When the custom domains fail to attach there is no
-   `workers.dev` fallback either, which is why the failure above reported **no**
-   targets rather than degrading to one.
-5. **Soak ≥24h.** Then delete the `sync`, `cache-html` and `cache-assets` steps
-   and the `_WEBPAGE_BUCKET` substitution from `cloudbuild-webpage.yaml`.
-   This changes the pipeline only: `scripts/deploy-webpage.sh` used to key its
-   production guard off the `sync` step's existence, but its guard is now
-   unconditional and its messaging already reflects the Worker serving the
-   apex, so nothing in the script retires or changes here.
+   `workers_dev` was not set in `wrangler.jsonc` at the time, so wrangler
+   disabled it by default and the failure above reported **no** targets rather
+   than degrading to a `workers.dev` one. It is now set to `false` on purpose
+   (issue #1763): that fallback would not have helped, because `trackrat.net`
+   users get nothing either way, and a `workers.dev` alias serves the same
+   version as the custom domains, so it is no preview slot. `preview_urls` is
+   `false` too, so no per-version `workers.dev` URL exists either.
+5. **Done (issue #1763).** After the soak, the `sync`, `cache-html` and
+   `cache-assets` steps and the `_WEBPAGE_BUCKET` substitution were deleted
+   from `cloudbuild-webpage.yaml`. This changed the pipeline only:
+   `scripts/deploy-webpage.sh` used to key its production guard off the `sync`
+   step's existence, but its guard is now unconditional and its messaging
+   already reflects the Worker serving the apex, so nothing in the script
+   retired or changed.
+6. **Delete both GCS buckets (issue #1763).** Only once step 5's pipeline has
+   run on a real promotion (install, test, build, `deploy-worker`) and
+   `trackrat.net` serves the new bundle. `infra_v2/terraform-webpage/main.tf`
+   no longer declares `trackrat-webpage-staging`, `trackrat-webpage-production`,
+   their `allUsers` IAM members or their outputs. Nothing reads or writes
+   either bucket, and their old builds are no rollback: nothing can serve
+   them, and any build is reproducible from git. No archive is kept.
+
+   The production bucket was created with `force_destroy = false`, and
+   Terraform destroys with the value in state, so empty it first or the apply
+   fails part-way. The staging bucket is `force_destroy = true` and needs
+   nothing.
+   ```bash
+   gcloud storage rm --all-versions 'gs://trackrat-webpage-production/**'
+
+   cd infra_v2/terraform-webpage
+   terraform init
+   terraform plan
+   ```
+   The plan must show **exactly four destroys** — `google_storage_bucket.webpage_staging`,
+   `google_storage_bucket.webpage_production`,
+   `google_storage_bucket_iam_member.staging_public_access`,
+   `google_storage_bucket_iam_member.production_public_access` — plus the two
+   removed outputs, and **zero creates**. A fifth destroy,
+   `google_compute_global_address.webpage_production_ip`, means P6's apply
+   never ran: stop and do P6's DNS check first. Anything else, stop.
+   ```bash
+   terraform apply
+   terraform plan                                                                  # expect: No changes
+   gcloud storage buckets list --project=trackrat-v2 --filter='name~^trackrat-webpage-'   # expect EMPTY
+   ```
 
 Universal links are worth a real check here, not just a curl: Apple's CDN
 caches the AASA file, so an installed app may keep working for a while off the
@@ -607,42 +657,75 @@ old copy. Confirm a shared `/train/...` link still opens the app.
 recreate the grey `A` records pointing at `136.110.151.144`, let the
 still-current bucket serve — no longer exists: the load balancer behind that IP
 was deleted on 2026-08-08, before P5.4 ran, so those records would point at
-nothing. The bucket still receives every build (until step 5) but nothing
-serves it. Rollback now means redeploying a known-good build to the Worker
-(`git checkout <good-commit>` then
+nothing, and the bucket itself was deleted at step 6. Rollback now means
+redeploying a known-good build to the Worker (`git checkout <good-commit>` then
 `./scripts/deploy-webpage.sh production --cloudflare-only`); do **not** remove
 the `routes` block — that just takes the site down.
 
 ### P6. Phase 4 — delete the webpage LB (point of no easy return)
 
-Edit `infra_v2/terraform-webpage/main.tf` and remove:
+**What actually happened.** The eight LB resources were deleted by hand in GCP
+on 2026-08-08, *before* P5.4, while `main.tf` and the root's state still held
+them. The static IP was not deleted. Nothing applies this root automatically, so
+the drift sat there: a local apply would have rebuilt the whole LB on
+`136.110.151.144` and re-billed the forwarding-rule SKU (issue #1762).
+
+The config side is done: `infra_v2/terraform-webpage/main.tf` no longer declares
 
 - both `google_compute_global_forwarding_rule.webpage_production_*`
 - both target proxies (`webpage_production_proxy`, `webpage_production_http_proxy`)
 - both url maps (`webpage_production`, `webpage_production_https_redirect`)
 - `google_compute_backend_bucket.webpage_production_backend`
 - `google_compute_managed_ssl_certificate.webpage_production_cert`
-- `google_compute_global_address.webpage_production_ip`
+- `google_compute_global_address.webpage_production_ip` — **released**, not
+  kept: nothing routes to it, an unattached global IP bills ~$0.01/h (~$88/yr,
+  a large share of what this runbook saves), and a rebuilt LB means DNS + cert
+  work regardless
 - `data "google_compute_backend_service" "api_production"`
 - the `production_webpage_ip` output
 
-Keep both GCS buckets and the webpage Cloud Build triggers.
+The webpage Cloud Build triggers stay. The GCS buckets stayed here too, and
+were deleted later in P5 step 6.
 
-No trigger exists for this root — apply it manually:
+**Remaining manual step — reconcile state and release the IP.** No trigger
+exists for this root:
 
 ```bash
 cd infra_v2/terraform-webpage
 terraform init
-terraform plan      # review carefully: must destroy only the LB resources
-terraform apply
+terraform plan
+```
 
+The plan must show **exactly one destroy**, `google_compute_global_address.webpage_production_ip`,
+and **zero creates**. The eight hand-deleted resources must not appear as
+planned actions (at most as "has been deleted" notes under "Objects have
+changed outside of Terraform"): the refresh gets a 404 for each and drops it
+from state, so there is nothing left to destroy. Do **not** `terraform state rm`
+them by hand. If the plan shows anything else, stop.
+
+Before applying, confirm **no DNS record still points at `136.110.151.144`**:
+once released, Google can hand the address to another project, and a leftover
+record would send that hostname to someone else's load balancer. In the
+Cloudflare dashboard, search the `trackrat.net` zone's DNS records for the IP
+(expect none), and spot-check the public names:
+
+```bash
+for h in trackrat.net www.trackrat.net apiv2.trackrat.net; do dig +short A "$h"; done   # expect only Cloudflare IPs
+```
+
+```bash
+terraform apply                 # releases 136.110.151.144, persists the refreshed state
+terraform plan                  # expect: No changes
+gcloud compute addresses list --global --project=trackrat-v2          # expect no trackrat-webpage-production-ip
 gcloud compute forwarding-rules list --global --project=trackrat-v2   # expect EMPTY
 ```
 
-Do this only after P4 and P5 have been stable ≥24h. It deletes the shared IP;
-rollback means re-applying with a new IP and repointing DNS.
+The forwarding-rule SKU already stopped with the 2026-08-08 deletion; this
+apply stops the unattached-IP charge.
 
-The SKU drops to $0 on the next billing cycle.
+P8 (#1764) depends on this config change, not on the apply: while
+`main.tf` still declared the `api_production` data source, deleting
+`trackrat-production-backend` broke every plan in this root.
 
 ### P7. Destroy staging durably
 
@@ -662,13 +745,13 @@ Also: delete the staging DNS records, delete
 `trackrat-cloudflare-tunnel-token-staging`, and delete the `trackrat-staging`
 tunnel in Cloudflare.
 
-### P8. Cleanup (optional, ~1 week later)
+### P8. Cleanup — done in issue #1764
 
-Removable: the API backend service (`loadbalancer.tf`) and
-`trackrat-production-cert`. Both are dead once nothing routes through a Google
-LB. They are free to keep and serve as a rollback path — leave them a week, then
-remove. Fold the two out-of-band secret IAM grants into `secrets.tf` at that
-point (the note in that file anticipates this).
+`loadbalancer.tf` (the API backend service, the managed cert and the
+already-count-0 frontend) is deleted, along with the `consolidate_api_lb` and
+`frontend_via_cloudflare` switches that gated it, so the flag names used in the
+steps above no longer exist in `variables.tf`. The two out-of-band secret IAM
+grants are folded into `secrets.tf`.
 
 **Must keep — do not delete with the load balancer:**
 
@@ -677,9 +760,9 @@ point (the note in that file anticipates this).
 | `google_compute_health_check.trackrat` | Also drives `google_compute_instance_group_manager.trackrat.auto_healing_policies`, not just the backend service |
 | `google_compute_firewall.allow_health_checks` (`network.tf:5`) | Auto-healing probes come from `130.211.0.0/22` + `35.191.0.0/16` on port 8000 — the same ranges the LB used |
 
-The health check has two consumers: the backend service in `loadbalancer.tf`
-(dies with the cutover) and the MIG's `auto_healing_policies` in `compute.tf`
-(does not). Deleting it
+The health check had two consumers: the backend service in `loadbalancer.tf`
+(removed in P8) and the MIG's `auto_healing_policies` in `compute.tf`
+(still live). Deleting it
 leaves the production MIG unable to replace a wedged instance, and the failure is
 **silent** — nothing breaks at deletion time; you find out the next time an
 instance needs auto-healing and doesn't get it. Neither resource is `count`-gated,
@@ -697,9 +780,9 @@ This matches the invariant already stated for the staging rehearsal in S9.
 | S8 | forward-only — fix and redeploy (staging LB is already gone) | minutes |
 | S9 | `git revert` + re-apply | new IP, DNS update |
 | P1–P3 | none needed (connector additive) | — |
-| P4 | grey `A` `apiv2` → `136.110.151.144` | seconds |
+| P4 | forward-only — restore the tunnel connector; the grey `A` → `136.110.151.144` path is gone (LB deleted 2026-08-08, IP released in P6) | minutes |
 | P5 | redeploy a known-good build to the Worker (`deploy-webpage.sh production --cloudflare-only`) — no GCS fallback, the LB behind `136.110.151.144` is gone | minutes |
-| **P6** | **re-apply webpage LB Terraform** | **new IP + DNS + cert reprovision** |
+| **P6** | **restore the LB blocks from git history and apply — the IP is released, so a new one** | **new IP + DNS + cert reprovision** |
 
 ## Verification cheatsheet
 

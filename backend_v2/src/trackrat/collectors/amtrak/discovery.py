@@ -10,6 +10,7 @@ from structlog import get_logger
 
 from trackrat.collectors.amtrak.client import AmtrakClient
 from trackrat.collectors.base import BaseDiscoveryCollector
+from trackrat.config.stations import AMTRAK_TO_INTERNAL_STATION_MAP
 from trackrat.models.api import AmtrakTrainData
 
 logger = get_logger(__name__)
@@ -65,12 +66,14 @@ class AmtrakDiscoveryCollector(BaseDiscoveryCollector):
             all_trains = await self.client.get_all_trains()
 
             discovered_train_ids = []
+            discovered_trains = []
 
             # Check each train to see if it stops at any discovery hub
             for train_list in all_trains.values():
                 for train in train_list:
                     if self._stops_at_any_hub(train):
                         discovered_train_ids.append(train.trainID)
+                        discovered_trains.append(train)
                         logger.debug(
                             "discovered_amtrak_train",
                             train_id=train.trainID,
@@ -81,6 +84,10 @@ class AmtrakDiscoveryCollector(BaseDiscoveryCollector):
             logger.info(
                 "amtrak_discovery_complete", discovered_count=len(discovered_train_ids)
             )
+
+            unmapped = self._unmapped_stations(discovered_trains)
+            if unmapped:
+                logger.warning("amtrak_unmapped_stations", stations=unmapped)
 
             return discovered_train_ids
 
@@ -116,3 +123,26 @@ class AmtrakDiscoveryCollector(BaseDiscoveryCollector):
         """
         train_stations = {station.code for station in train.stations}
         return bool(train_stations.intersection(DISCOVERY_HUBS))
+
+    @staticmethod
+    def _unmapped_stations(trains: list[AmtrakTrainData]) -> dict[str, str]:
+        """Find stops on the given trains that have no internal station code.
+
+        The journey collector silently drops any stop missing from
+        AMTRAK_TO_INTERNAL_STATION_MAP, so a missing or mis-keyed entry hides
+        that station from every train serving it. Bridgeport was keyed under a
+        non-Amtrak code and vanished from every NEC train unnoticed (#1866).
+
+        Args:
+            trains: Amtrak train data for the trains being tracked
+
+        Returns:
+            Unmapped Amtrak station code -> station name, sorted by code
+        """
+        unmapped = {
+            stop.code: stop.name
+            for train in trains
+            for stop in train.stations
+            if stop.code not in AMTRAK_TO_INTERNAL_STATION_MAP
+        }
+        return dict(sorted(unmapped.items()))
