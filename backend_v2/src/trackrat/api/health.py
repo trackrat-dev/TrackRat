@@ -228,13 +228,6 @@ async def health_check(
             **memory,
         }
 
-    # PostgreSQL with Cloud SQL provides automated backups
-    health_status["checks"]["backup"] = {
-        "status": "info",
-        "enabled": True,
-        "message": "Cloud SQL automated backups enabled",
-    }
-
     # Overall status
     if any(
         check.get("status") == "unhealthy" for check in health_status["checks"].values()
