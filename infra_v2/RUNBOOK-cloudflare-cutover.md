@@ -735,6 +735,12 @@ terraform init && terraform workspace select staging
 terraform destroy -var="environment=staging" -var="project_id=trackrat-v2"
 ```
 
+`google_compute_disk.data` has `prevent_destroy = true` (#1917), so this
+destroy fails at plan time. In the staging workspace, run
+`terraform state rm google_compute_disk.data` first, then the destroy, then
+`gcloud compute disks delete trackrat-staging-data --zone=<var.zone>` once the
+instance no longer holds it.
+
 Then **disable `trackrat-terraform-staging` and `trackrat-staging-deploy`**
 (Cloud Build → Triggers, region `us-east4` → Disable). Without this, finding 1
 guarantees staging returns on the next `main` push. A `--disabled` flag on
