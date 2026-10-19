@@ -330,15 +330,18 @@ async def _load_journey_for_date(
 ) -> TrainJourney | None:
     """Load a journey by train id, preferring the requested date.
 
-    Falls back to the previous day when the requested date has no such row.
-    ``journey_date`` is a trip's *service* date, so one that departed before
-    midnight keeps yesterday's for its whole life (issue #1752) — while a
-    caller asking "what is this train doing right now" naturally sends today.
-    iOS Live Activities do exactly that: ``fetchAndUpdateTrain`` passes no date
-    at all, so ``APIService`` defaults to ``Date()``, and a cross-midnight trip
-    would otherwise 404 on every 30-second refresh for the rest of its run.
+    Falls back to the previous day, then the next, when the requested date has
+    no such row. ``journey_date`` is a trip's *service* date, so one that
+    departed before midnight keeps yesterday's for its whole life (issue #1752)
+    — while a caller asking "what is this train doing right now" naturally
+    sends today. iOS Live Activities do exactly that: ``fetchAndUpdateTrain``
+    passes no date at all, so ``APIService`` defaults to ``Date()``, and a
+    cross-midnight trip would otherwise 404 on every 30-second refresh for the
+    rest of its run. The mirror case is a trip whose origin departs just after
+    midnight: RidePATH lists it ~40 minutes ahead, so before midnight it is
+    already stored under *tomorrow* and listed on today's boards (issue #1918).
 
-    The requested date always wins, and the previous-day row is accepted only
+    The requested date always wins, and an adjacent-day row is accepted only
     for PATH, whose train ids embed the origin departure's epoch and so can
     never name two different trips. Every other source reuses train numbers
     daily, and "no row today" there usually means today's run is not on record
@@ -349,7 +352,11 @@ async def _load_journey_for_date(
     post-rollback re-query paths below, where the ORM objects have been
     expired.
     """
-    for candidate_date in (journey_date, journey_date - timedelta(days=1)):
+    for candidate_date in (
+        journey_date,
+        journey_date - timedelta(days=1),
+        journey_date + timedelta(days=1),
+    ):
         stmt = select(TrainJourney).where(
             TrainJourney.train_id == train_id,
             TrainJourney.journey_date == candidate_date,
@@ -409,9 +416,15 @@ async def get_train_details(
     if date is None:
         date = (now_for_provider(data_source) if data_source else now_et()).date()
 
-    # For future dates, use GTFS static schedule data
+    # Pre-fetch existing journey so we can fall back to stale data on timeout
+    stale_journey = await _load_journey_for_date(db, train_id, date, data_source)
+
+    # For future dates, use GTFS static schedule data — except a PATH row
+    # already on record: one whose origin departs just after midnight is stored
+    # under tomorrow before midnight (issue #1918), and GTFS cannot resolve
+    # PATH's synthetic real-time ids.
     today = now_et().date()
-    if date > today:
+    if date > today and (stale_journey is None or stale_journey.data_source != "PATH"):
         gtfs_service = GTFSService()
         gtfs_details = await gtfs_service.get_train_details(
             db, train_id, date, data_source=data_source
@@ -430,12 +443,10 @@ async def get_train_details(
     if data_source in (None, "NJT") and not is_amtrak_train(train_id):
         njt_client = NJTransitClient()
 
-    # Pre-fetch existing journey so we can fall back to stale data on timeout
-    stale_journey = await _load_journey_for_date(db, train_id, date, data_source)
     if stale_journey is not None:
         # Pin to the date the row actually lives under: the JIT lookup below
         # matches journey_date exactly, so a cross-midnight PATH trip found via
-        # the previous-day fallback would otherwise still 404 (issue #1752).
+        # an adjacent-day fallback would otherwise still 404 (#1752, #1918).
         date = stale_journey.journey_date or date
 
     try:
