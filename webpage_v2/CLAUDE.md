@@ -4,14 +4,14 @@
 
 ## Technology Stack
 
-- **Framework**: React 19.2 + TypeScript 7.0 + PWA (vite-plugin-pwa 2.0)
+- **Framework**: React 19.3 + TypeScript 7.0 + PWA (vite-plugin-pwa 2.0)
 - **Build Tool**: Vite 8.3 (fast dev server, optimized builds; needs Node 20.19+ / 22.12+)
 - **Styling**: Tailwind CSS 4.3 (utility-first, custom design system)
 - **State Management**: Zustand 5.0 (lightweight, no boilerplate)
 - **Routing**: React Router DOM 7.18
 - **Date Handling**: date-fns 4.4
 - **HTTP Client**: Native `fetch` (no axios)
-- **Maps**: MapLibre GL 6.0 + react-map-gl 8.1 (shared setup in `src/utils/maplibre.ts`)
+- **Maps**: MapLibre GL 6.14 + react-map-gl 8.1 (shared setup in `src/utils/maplibre.ts`)
 - **Deployment**: Cloudflare Workers Static Assets (`scripts/deploy-webpage.sh`, `wrangler.jsonc`)
 
 ## Architecture Patterns
@@ -368,7 +368,7 @@ interface PlatformPrediction {
 
 ## Testing
 
-**Framework**: Vitest 4.x + React Testing Library + jsdom
+**Framework**: Vitest 5.x + React Testing Library + jsdom
 
 ```bash
 npm test          # Run all tests once
