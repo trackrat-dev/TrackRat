@@ -25,6 +25,12 @@ from trackrat.utils.time import normalize_to_et, now_et
 
 logger = get_logger(__name__)
 
+# How far a stop's scheduled departure may drift between two sightings of the
+# same physical run for the prior-day fallback to treat them as one. The same
+# train number's next-day run is ~24h apart at every stop, so any value well
+# under that separates the two (issue #1919).
+PRIOR_DAY_SAME_RUN_TOLERANCE = timedelta(hours=1)
+
 
 def _generate_train_id(train_num: str) -> str:
     """Generate the stable internal train ID for an Amtrak train.
@@ -256,12 +262,30 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 # duplicate D+1 row shadows the real one. Fall back to the
                 # immediately prior service day for the same train before
                 # creating, so a requeued expired row (or any mid-run
-                # overnight row) is reused, not orphaned. The is_completed
-                # guard avoids capturing a genuinely different prior-day run
-                # of the same daily train number: yesterday's run is
-                # completed by the time today's departs. Overnight service is
+                # overnight row) is reused, not orphaned. Overnight service is
                 # at most one calendar day behind the derived date, so a
                 # single-day back-window suffices.
+                #
+                # The row must also be the same physical run: it must already
+                # hold the feed's first surviving stop at the same scheduled
+                # departure. is_completed alone cannot tell yesterday's run
+                # apart, because a run that drops out of the feed is expired,
+                # never completed — so every daytime run was merged into the
+                # previous day's row, Sunday's runs never existed under a
+                # Sunday journey_date, and the pattern scheduler had no Sunday
+                # history to project from (issue #1919).
+                same_run_stop = (
+                    select(JourneyStop.id)
+                    .where(
+                        JourneyStop.journey_id == TrainJourney.id,
+                        JourneyStop.station_code == origin_code,
+                        JourneyStop.scheduled_departure.between(
+                            scheduled_departure - PRIOR_DAY_SAME_RUN_TOLERANCE,
+                            scheduled_departure + PRIOR_DAY_SAME_RUN_TOLERANCE,
+                        ),
+                    )
+                    .exists()
+                )
                 existing = await session.scalar(
                     select(TrainJourney)
                     .where(
@@ -271,6 +295,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                             == journey_date - timedelta(days=1),
                             TrainJourney.data_source == "AMTRAK",
                             TrainJourney.is_completed.is_(False),
+                            same_run_stop,
                         )
                     )
                     .with_for_update(skip_locked=True)
