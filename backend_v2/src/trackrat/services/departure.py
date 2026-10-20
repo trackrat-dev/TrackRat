@@ -558,9 +558,21 @@ class DepartureService:
             # day can only admit journeys whose stops already fall inside the
             # requested range — which is the same reasoning the no-explicit-date
             # branch has always relied on, with a wider window still.
-            journey_date_filter = and_(
-                TrainJourney.journey_date >= date - timedelta(days=1),
-                TrainJourney.journey_date <= date,
+            #
+            # PATH also admits tomorrow: its journey_date is the origin
+            # departure's, and RidePATH lists trains ~40 minutes ahead, so a
+            # train departing just after midnight is stored under tomorrow
+            # while it is still on tonight's board (issue #1918). PATH ids
+            # embed the origin epoch, so this cannot surface a different trip.
+            journey_date_filter = or_(
+                and_(
+                    TrainJourney.journey_date >= date - timedelta(days=1),
+                    TrainJourney.journey_date <= date,
+                ),
+                and_(
+                    TrainJourney.data_source == "PATH",
+                    TrainJourney.journey_date == date + timedelta(days=1),
+                ),
             )
         else:
             # For time-based queries, include a range to handle:
@@ -1323,9 +1335,12 @@ class DepartureService:
                 # timetable behind trains real-time is actively tracking.
                 # Nothing stale slips in: the row still has to be fresher than
                 # PATH_REALTIME_STALE_AFTER and still has to have a stop
-                # departing after `current_time`.
+                # departing after `current_time`. Tomorrow counts for the
+                # mirror case: a train departing just after midnight is dated
+                # tomorrow but already on tonight's board (issue #1918), so it
+                # must also suppress its own timetable row.
                 TrainJourney.journey_date >= journey_date - timedelta(days=1),
-                TrainJourney.journey_date <= journey_date,
+                TrainJourney.journey_date <= journey_date + timedelta(days=1),
                 TrainJourney.last_updated_at >= stale_before,
                 JourneyStop.station_code.in_(expand_station_codes(station_code)),
                 JourneyStop.scheduled_departure > current_time,

@@ -19,6 +19,7 @@ from sqlalchemy.orm import sessionmaker
 from trackrat.services.apns import ApnsSendResult
 from trackrat.services.scheduler import SchedulerService
 from trackrat.settings import Settings
+from trackrat.utils.time import now_et
 
 
 class TestSchedulerService:
@@ -752,6 +753,21 @@ class TestSchedulerService:
                 assert "journey_date desc" in compiled
                 assert "last_updated_at desc" in compiled
                 assert "limit 1" in compiled
+
+                # Issue #1918: a PATH trip departing just after midnight is
+                # dated tomorrow while already tracked tonight, so PATH alone
+                # may reach tomorrow. The bound must be PATH-gated — for NJT,
+                # tomorrow's SCHEDULED row would outrank today's OBSERVED one
+                # under ORDER BY journey_date DESC.
+                tomorrow = (now_et().date() + timedelta(days=1)).isoformat()
+                assert f"journey_date <= '{tomorrow}'" in compiled, (
+                    "Expected a tomorrow upper bound for PATH. "
+                    f"Compiled SQL: {compiled}"
+                )
+                assert "data_source = 'path'" in compiled, (
+                    "The tomorrow bound must be gated to PATH. "
+                    f"Compiled SQL: {compiled}"
+                )
 
     @pytest.mark.asyncio
     async def test_update_live_activities_ends_on_is_completed(
