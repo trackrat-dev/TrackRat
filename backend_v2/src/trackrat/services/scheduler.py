@@ -3677,7 +3677,7 @@ class SchedulerService:
                 if task:
                     self._running_tasks[task_id] = task
 
-                from sqlalchemy import and_, select
+                from sqlalchemy import and_, or_, select
                 from sqlalchemy.orm import selectinload, sessionmaker
 
                 # Use synchronous database access to avoid greenlet issues in scheduler context
@@ -3747,12 +3747,23 @@ class SchedulerService:
                         # stale, and ``ORDER BY journey_date DESC`` keeps
                         # tomorrow's pre-generated SCHEDULED rows from
                         # outranking today's OBSERVED one for recurring NJT
-                        # train numbers.
+                        # train numbers. PATH alone may also match tomorrow:
+                        # a train departing just after midnight is dated
+                        # tomorrow while it is already listed tonight (issue
+                        # #1918), and PATH ids embed the origin epoch, so no
+                        # other trip can share the id.
                         today = now_et().date()
                         journey_filters = [
                             TrainJourney.train_id == train_number,
                             TrainJourney.journey_date >= today - timedelta(days=1),
-                            TrainJourney.journey_date <= today,
+                            or_(
+                                TrainJourney.journey_date <= today,
+                                and_(
+                                    TrainJourney.data_source == "PATH",
+                                    TrainJourney.journey_date
+                                    <= today + timedelta(days=1),
+                                ),
+                            ),
                         ]
                         if data_source:
                             journey_filters.append(

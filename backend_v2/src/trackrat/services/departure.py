@@ -1335,9 +1335,12 @@ class DepartureService:
                 # timetable behind trains real-time is actively tracking.
                 # Nothing stale slips in: the row still has to be fresher than
                 # PATH_REALTIME_STALE_AFTER and still has to have a stop
-                # departing after `current_time`.
+                # departing after `current_time`. Tomorrow counts for the
+                # mirror case: a train departing just after midnight is dated
+                # tomorrow but already on tonight's board (issue #1918), so it
+                # must also suppress its own timetable row.
                 TrainJourney.journey_date >= journey_date - timedelta(days=1),
-                TrainJourney.journey_date <= journey_date,
+                TrainJourney.journey_date <= journey_date + timedelta(days=1),
                 TrainJourney.last_updated_at >= stale_before,
                 JourneyStop.station_code.in_(expand_station_codes(station_code)),
                 JourneyStop.scheduled_departure > current_time,
