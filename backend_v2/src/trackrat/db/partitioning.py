@@ -57,6 +57,12 @@ PARTITIONED_TABLES: tuple[PartitionedTable, ...] = (
 MONTHS_BACK = 1
 MONTHS_FORWARD = 2
 
+# How long the live top-up waits for its up-front table locks before giving up
+# with LockNotAvailable (the caller retries). While a LOCK request is queued,
+# every later reader and writer of the table queues behind it, so the wait
+# must stay short.
+TOPUP_LOCK_TIMEOUT = "5s"
+
 _PARTITION_NAME_RE = re.compile(
     r"^(?P<table>[a-z_]+)_y(?P<year>\d{4})_m(?P<month>\d{2})$"
 )
@@ -153,8 +159,9 @@ def move_default_rows_sql(pt: PartitionedTable, year: int, month: int) -> list[s
     block that month's partition permanently. Detaching DEFAULT lets the
     partition be created; its in-range rows are then re-routed through the
     parent (keeping their ids — the identity columns are BY DEFAULT) and
-    DEFAULT is re-attached. Must run in one transaction: the detach holds an
-    ACCESS EXCLUSIVE lock on the parent, so no writer sees DEFAULT missing.
+    DEFAULT is re-attached. Must run in one transaction holding the locks
+    from ``topup_lock_sql``, so no writer sees DEFAULT missing and no lock is
+    taken piecemeal mid-sequence.
     """
     default = default_partition_name(pt.name)
     in_range = month_range_predicate(pt, year, month)
@@ -164,6 +171,25 @@ def move_default_rows_sql(pt: PartitionedTable, year: int, month: int) -> list[s
         f"INSERT INTO {pt.name} SELECT * FROM {default} WHERE {in_range}",
         f"DELETE FROM {default} WHERE {in_range}",
         f"ALTER TABLE {pt.name} ATTACH PARTITION {default} DEFAULT",
+    ]
+
+
+def topup_lock_sql() -> list[str]:
+    """Statements that take every lock the live top-up needs, up front and in
+    the collectors' order (issue #1920).
+
+    Creating or attaching a partition clones its table's foreign key to
+    ``train_journeys``, which locks ``train_journeys`` *after* the partitioned
+    table. Collectors lock in the opposite order (update the journey, then
+    write its stops), so taking the locks piecemeal deadlocked against them
+    nightly. LOCK TABLE on a partitioned table also locks every partition,
+    DEFAULT included.
+    """
+    tables = ", ".join(pt.name for pt in PARTITIONED_TABLES)
+    return [
+        f"SET LOCAL lock_timeout = '{TOPUP_LOCK_TIMEOUT}'",
+        "LOCK TABLE train_journeys IN SHARE ROW EXCLUSIVE MODE",
+        f"LOCK TABLE {tables} IN ACCESS EXCLUSIVE MODE",
     ]
 
 
@@ -257,8 +283,12 @@ async def ensure_future_partitions(
 
     Unlike the sync bootstrap (which only ever runs against empty tables), this
     runs against live data: a month whose rows already sit in the DEFAULT
-    partition is created via ``move_default_rows_sql`` instead of failing."""
+    partition is created via ``move_default_rows_sql`` instead of failing.
+    Takes ``topup_lock_sql`` first, so it either holds every lock it needs or
+    raises LockNotAvailable before any DDL; it never deadlocks a collector."""
     ref = reference_date or date.today()
+    for statement in topup_lock_sql():
+        await db.execute(text(statement))
     for pt in PARTITIONED_TABLES:
         await db.execute(text(create_default_partition_sql(pt)))
         for year, month in _window_months(ref, MONTHS_BACK, MONTHS_FORWARD):

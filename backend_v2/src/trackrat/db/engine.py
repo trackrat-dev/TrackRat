@@ -67,8 +67,9 @@ def _is_retryable_after_reread(error: Exception) -> bool:
     Strictly broader than `_is_postgresql_concurrency_error`, and deliberately
     kept separate from it: that predicate also gates `with_db_retry`, whose
     callers do not all re-query between attempts. Every `retry_on_deadlock`
-    call site does (`services/jit.py`, `services/departure.py`), which is what
-    makes these two extra cases safe to retry there.
+    call site does (`services/jit.py`, `services/departure.py`,
+    `services/scheduler.py`'s partition top-up), which is what makes these
+    extra cases safe to retry there.
 
     - `JourneyLockTimeout`: another writer held the journey's advisory lock.
       Nothing is wrong with our state; wait and take it next time.
@@ -79,8 +80,13 @@ def _is_retryable_after_reread(error: Exception) -> bool:
       identity map and the re-read picks up the new rows (issue #1672). Note
       this is not a Postgres error at all, so the string-matching predicate
       above could never have caught it.
+    - Lock timeout: a `lock_timeout` expired while waiting on a busy table
+      (the partition top-up sets one, issue #1920). Nothing was changed; the
+      table is free again once the holder's transaction ends.
     """
     if isinstance(error, JourneyLockTimeout | StaleDataError):
+        return True
+    if "canceling statement due to lock timeout" in str(error).lower():
         return True
     return _is_postgresql_concurrency_error(error)
 

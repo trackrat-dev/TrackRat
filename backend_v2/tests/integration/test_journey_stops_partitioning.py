@@ -9,12 +9,14 @@ cascade delete across a partitioned child table, and reclaiming space by
 dropping an aged-out partition.
 """
 
+import asyncio
 from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from sqlalchemy import func, select, text
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from trackrat.db.engine import _is_retryable_after_reread, retry_on_deadlock
 from trackrat.db.partitioning import (
     drop_old_partitions,
     ensure_future_partitions,
@@ -402,6 +404,129 @@ async def _table_exists(db: AsyncSession, table: str) -> bool:
     return result.scalar() is not None
 
 
+async def _strand_row_past_window(db: AsyncSession) -> tuple[int, date]:
+    """Commit a stop dated past the bootstrapped window, so it sits in
+    journey_stops_default and the next top-up must move it (#1877 path).
+    Returns the stop's id, read before any rollback can expire the object."""
+    target = _months_ahead(3)
+    journey = _make_journey(target.replace(day=5), train_id="FAR1")
+    db.add(journey)
+    await db.flush()
+    stop = JourneyStop(journey=journey, station_code="NY", station_name="New York")
+    db.add(stop)
+    await db.commit()
+    assert await _partition_of(db, "journey_stops", stop.id) == (
+        "journey_stops_default"
+    )
+    return stop.id, target
+
+
+@pytest.mark.asyncio
+class TestPartitionTopUpLocking:
+    """Issue #1920: the live top-up deadlocked nightly against collectors,
+    which lock train_journeys then journey_stops, while the move took
+    journey_stops first and needed train_journeys last (the FK clone)."""
+
+    async def test_top_up_waits_behind_collector_instead_of_deadlocking(
+        self, db_session: AsyncSession, db_engine: AsyncEngine
+    ):
+        stop_id, target = await _strand_row_past_window(db_session)
+        today_journey = _make_journey(date.today(), train_id="LIVE1")
+        db_session.add(today_journey)
+        await db_session.commit()
+
+        collector_maker = async_sessionmaker(db_engine, expire_on_commit=False)
+        async with collector_maker() as collector:
+            # A collector mid-transaction: journey updated, stops not yet written.
+            await collector.execute(
+                text("UPDATE train_journeys SET update_count = 2 WHERE id = :id"),
+                {"id": today_journey.id},
+            )
+
+            async def top_up() -> None:
+                await ensure_future_partitions(
+                    db_session, reference_date=_months_ahead(1)
+                )
+                await db_session.commit()
+
+            top_up_task = asyncio.create_task(top_up())
+            await asyncio.sleep(0.5)
+            assert not top_up_task.done(), (
+                "top-up should be queued behind the collector's train_journeys "
+                "lock, not finished or failed"
+            )
+
+            # The collector now writes its stop. Pre-fix, the top-up already
+            # held ACCESS EXCLUSIVE on journey_stops here, so this insert and
+            # the top-up's FK clone deadlocked.
+            collector.add(
+                JourneyStop(
+                    journey_id=today_journey.id,
+                    journey_date=today_journey.journey_date,
+                    station_code="WAS",
+                    station_name="Washington",
+                )
+            )
+            await asyncio.wait_for(collector.flush(), timeout=10)
+            await collector.commit()
+
+        await asyncio.wait_for(top_up_task, timeout=10)
+
+        moved_to = await _partition_of(db_session, "journey_stops", stop_id)
+        print(f"stranded stop {stop_id} now in {moved_to}")
+        assert moved_to == partition_name("journey_stops", target.year, target.month)
+        live_stops = await db_session.scalar(
+            select(func.count())
+            .select_from(JourneyStop)
+            .where(JourneyStop.journey_id == today_journey.id)
+        )
+        assert live_stops == 1, "the collector's stop write must have committed"
+
+    async def test_top_up_lock_timeout_is_retried_until_reader_finishes(
+        self, db_session: AsyncSession, db_engine: AsyncEngine
+    ):
+        """A long reader holding journey_stops makes the top-up give up after
+        its lock_timeout, before any DDL — and the scheduler's
+        retry_on_deadlock wrapper treats that as retryable, so the next
+        attempt completes the move once the reader is done."""
+        stop_id, target = await _strand_row_past_window(db_session)
+
+        reader_maker = async_sessionmaker(db_engine, expire_on_commit=False)
+        reader = reader_maker()
+        await reader.execute(text("SELECT count(*) FROM journey_stops"))
+
+        errors: list[Exception] = []
+
+        async def attempt() -> None:
+            try:
+                await ensure_future_partitions(
+                    db_session, reference_date=_months_ahead(1)
+                )
+            except Exception as e:
+                errors.append(e)
+                print(f"attempt {len(errors)} failed: {e}")
+                # Release the reader so the retry can take its locks.
+                await reader.rollback()
+                raise
+
+        # Bounded: without a lock_timeout the top-up would queue behind the
+        # reader indefinitely, stalling every collector queued behind it.
+        try:
+            await asyncio.wait_for(
+                retry_on_deadlock(db_session, attempt, max_attempts=2, base_delay=0.1),
+                timeout=20,
+            )
+        finally:
+            await reader.close()
+        await db_session.commit()
+
+        assert len(errors) == 1, f"expected one lock timeout, got {errors}"
+        assert "lock timeout" in str(errors[0]).lower()
+        assert _is_retryable_after_reread(errors[0])
+        moved_to = await _partition_of(db_session, "journey_stops", stop_id)
+        assert moved_to == partition_name("journey_stops", target.year, target.month)
+
+
 @pytest.mark.asyncio
 class TestLegacyBackfill:
     async def test_backfill_copies_recent_window_derives_journey_date_and_drops(
@@ -422,9 +547,7 @@ class TestLegacyBackfill:
         await _add_legacy_stop(db_session, recent.id, "NY")
         await _add_legacy_stop(db_session, old.id, "NY")
         await _add_legacy_segment(db_session, recent.id, recent.scheduled_departure)
-        await _add_legacy_segment(
-            db_session, old.id, old.scheduled_departure
-        )
+        await _add_legacy_segment(db_session, old.id, old.scheduled_departure)
         await db_session.commit()
 
         cutoff = date.today() - timedelta(days=60)
@@ -442,8 +565,8 @@ class TestLegacyBackfill:
         assert stops[0].journey_date == recent.journey_date
 
         segments = (
-            await db_session.execute(select(SegmentTransitTime))
-        ).scalars().all()
+            (await db_session.execute(select(SegmentTransitTime))).scalars().all()
+        )
         assert len(segments) == 1
         assert segments[0].journey_id == recent.id
 
@@ -477,9 +600,7 @@ class TestLegacyBackfill:
                 db_session, cutoff, max_batches=1, batch_size=1
             )
             await db_session.commit()
-            completed = summary.get("journey_stops_legacy", {}).get(
-                "completed", True
-            )
+            completed = summary.get("journey_stops_legacy", {}).get("completed", True)
             runs += 1
 
         stop_count = await db_session.scalar(
@@ -540,9 +661,7 @@ class TestLegacyBackfill:
         # The non-colliding legacy row was still copied.
         assert stops["WAS"].journey_date == journey.journey_date
 
-    async def test_backfill_noop_when_no_legacy_tables(
-        self, db_session: AsyncSession
-    ):
+    async def test_backfill_noop_when_no_legacy_tables(self, db_session: AsyncSession):
         """Once the legacy tables are gone (steady state), the task is a cheap
         no-op that copies nothing and reports no tables."""
         summary = await run_legacy_backfill_batches(
