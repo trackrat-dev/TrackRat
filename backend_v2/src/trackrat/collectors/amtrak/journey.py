@@ -267,22 +267,44 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 # single-day back-window suffices.
                 #
                 # The row must also be the same physical run: it must already
-                # hold the feed's first surviving stop at the same scheduled
-                # departure. is_completed alone cannot tell yesterday's run
+                # hold one of the feed's tracked stops at the same scheduled
+                # time. Any stop, not just the first surviving one: a
+                # pattern-generated SCHEDULED row keeps only the stations
+                # common to every sampled run, so it can lack that stop while
+                # sharing later ones. is_completed alone cannot tell yesterday's run
                 # apart, because a run that drops out of the feed is expired,
                 # never completed — so every daytime run was merged into the
                 # previous day's row, Sunday's runs never existed under a
                 # Sunday journey_date, and the pattern scheduler had no Sunday
                 # history to project from (issue #1919).
+                same_time_stops = []
+                for stop in train_data.stations:
+                    internal_code = AMTRAK_TO_INTERNAL_STATION_MAP.get(stop.code)
+                    if not internal_code:
+                        continue
+                    for column, raw_time in (
+                        (JourneyStop.scheduled_departure, stop.schDep),
+                        (JourneyStop.scheduled_arrival, stop.schArr),
+                    ):
+                        if not raw_time:
+                            continue
+                        feed_time = self._parse_amtrak_time(raw_time)
+                        if feed_time is None:
+                            continue
+                        same_time_stops.append(
+                            and_(
+                                JourneyStop.station_code == internal_code,
+                                column.between(
+                                    feed_time - PRIOR_DAY_SAME_RUN_TOLERANCE,
+                                    feed_time + PRIOR_DAY_SAME_RUN_TOLERANCE,
+                                ),
+                            )
+                        )
                 same_run_stop = (
                     select(JourneyStop.id)
                     .where(
                         JourneyStop.journey_id == TrainJourney.id,
-                        JourneyStop.station_code == origin_code,
-                        JourneyStop.scheduled_departure.between(
-                            scheduled_departure - PRIOR_DAY_SAME_RUN_TOLERANCE,
-                            scheduled_departure + PRIOR_DAY_SAME_RUN_TOLERANCE,
-                        ),
+                        or_(*same_time_stops),
                     )
                     .exists()
                 )

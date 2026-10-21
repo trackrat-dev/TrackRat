@@ -1567,3 +1567,45 @@ class TestConvertCrossDayMatching:
         assert (
             yesterday.is_expired is True
         ), "Yesterday's row must be left alone, not rescued by today's run"
+
+    @pytest.mark.asyncio
+    async def test_scheduled_row_matched_on_later_shared_stop(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """A pattern-generated SCHEDULED row keeps only the stations common
+        to every sampled run, so it can lack the feed's first surviving stop
+        (PHL). It still holds WAS at the same scheduled arrival — the same
+        physical run — so the fallback must promote it, not create a D+1
+        duplicate beside it."""
+        post_midnight = now_et().replace(hour=0, minute=30, second=0, microsecond=0)
+        day_d = post_midnight.date() - timedelta(days=1)
+        was_sched_arr = post_midnight + timedelta(hours=2)
+
+        scheduled = self._day_d_journey(day_d, post_midnight - timedelta(hours=2))
+        scheduled.observation_type = "SCHEDULED"
+        scheduled.is_expired = False
+        scheduled.stops = [
+            JourneyStop(
+                station_code="WS",
+                station_name="Washington Union",
+                stop_sequence=5,
+                scheduled_arrival=was_sched_arr,
+                has_departed_station=False,
+            )
+        ]
+        db_session.add(scheduled)
+        await db_session.flush()
+
+        result = await journey_collector._convert_to_journey(
+            db_session, self._overnight_trimmed_feed(post_midnight)
+        )
+        await db_session.flush()
+
+        assert result is not None
+        assert result.id == scheduled.id, (
+            f"Expected the day-D SCHEDULED row (holds WS arriving "
+            f"{was_sched_arr}) to be promoted; got a new row dated "
+            f"{result.journey_date}"
+        )
+        assert result.journey_date == day_d
+        assert result.observation_type == "OBSERVED"
