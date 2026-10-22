@@ -526,6 +526,69 @@ class TestPartitionTopUpLocking:
         moved_to = await _partition_of(db_session, "journey_stops", stop_id)
         assert moved_to == partition_name("journey_stops", target.year, target.month)
 
+    async def test_top_up_yields_to_read_then_write_collector(
+        self, db_session: AsyncSession, db_engine: AsyncEngine
+    ):
+        """A collector that eager-loads a journey's stops and only then writes
+        the journey locks in the top-up's own order: its read blocks the
+        top-up's journey_stops lock while the top-up's train_journeys lock
+        blocks its write. The collector's write lands more than the 1s
+        deadlock_timeout after the top-up started waiting, the timing in which
+        the deadlock detector aborts the collector, unless the top-up has
+        already given up on its own."""
+        await _strand_row_past_window(db_session)
+        journey = _make_journey(date.today(), train_id="LIVE2")
+        db_session.add(journey)
+        await db_session.commit()
+        journey_id = journey.id  # read now; the rollback below expires it
+
+        collector_maker = async_sessionmaker(db_engine, expire_on_commit=False)
+        async with collector_maker() as collector:
+            await collector.execute(
+                text("SELECT count(*) FROM journey_stops WHERE journey_id = :id"),
+                {"id": journey_id},
+            )
+
+            top_up_task = asyncio.create_task(
+                ensure_future_partitions(db_session, reference_date=_months_ahead(1))
+            )
+            await asyncio.sleep(1.5)
+
+            collector_error: Exception | None = None
+            try:
+                await asyncio.wait_for(
+                    collector.execute(
+                        text(
+                            "UPDATE train_journeys SET update_count = 3 "
+                            "WHERE id = :id"
+                        ),
+                        {"id": journey_id},
+                    ),
+                    timeout=10,
+                )
+                await collector.commit()
+            except Exception as e:
+                collector_error = e
+                await collector.rollback()
+
+        (top_up_result,) = await asyncio.gather(top_up_task, return_exceptions=True)
+        await db_session.rollback()
+        print(f"collector error: {collector_error}")
+        print(f"top-up result: {top_up_result!r}")
+        assert (
+            collector_error is None
+        ), f"the collector must never be the deadlock victim: {collector_error}"
+        assert isinstance(top_up_result, Exception), "the top-up should have yielded"
+        assert "lock timeout" in str(top_up_result).lower(), (
+            "the top-up must yield via its own lock_timeout, not via the "
+            "deadlock detector"
+        )
+        assert _is_retryable_after_reread(top_up_result)
+        update_count = await db_session.scalar(
+            select(TrainJourney.update_count).where(TrainJourney.id == journey_id)
+        )
+        assert update_count == 3, "the collector's journey write must have committed"
+
 
 @pytest.mark.asyncio
 class TestLegacyBackfill:

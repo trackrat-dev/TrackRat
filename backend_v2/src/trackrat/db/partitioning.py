@@ -62,6 +62,13 @@ MONTHS_FORWARD = 2
 # every later reader and writer of the table queues behind it, so the wait
 # must stay short.
 TOPUP_LOCK_TIMEOUT = "5s"
+# The wait for the partitioned tables, taken while already holding
+# train_journeys. A collector that read a journey's stops and then writes the
+# journey (JOURNEY_UPDATE_LOAD_OPTIONS) blocks on that train_journeys lock while
+# the top-up waits on its read, a genuine cycle. Staying under Postgres's
+# default 1s deadlock_timeout makes the top-up give up before the deadlock
+# detector can pick the collector as its victim.
+TOPUP_PARTITIONED_LOCK_TIMEOUT = "500ms"
 
 _PARTITION_NAME_RE = re.compile(
     r"^(?P<table>[a-z_]+)_y(?P<year>\d{4})_m(?P<month>\d{2})$"
@@ -183,12 +190,15 @@ def topup_lock_sql() -> list[str]:
     table. Collectors lock in the opposite order (update the journey, then
     write its stops), so taking the locks piecemeal deadlocked against them
     nightly. LOCK TABLE on a partitioned table also locks every partition,
-    DEFAULT included.
+    DEFAULT included. Collectors that read stops before writing the journey
+    lock in the top-up's order instead, so the second wait is kept short
+    enough that the top-up, never the collector, is the one to yield.
     """
     tables = ", ".join(pt.name for pt in PARTITIONED_TABLES)
     return [
         f"SET LOCAL lock_timeout = '{TOPUP_LOCK_TIMEOUT}'",
         "LOCK TABLE train_journeys IN SHARE ROW EXCLUSIVE MODE",
+        f"SET LOCAL lock_timeout = '{TOPUP_PARTITIONED_LOCK_TIMEOUT}'",
         f"LOCK TABLE {tables} IN ACCESS EXCLUSIVE MODE",
     ]
 

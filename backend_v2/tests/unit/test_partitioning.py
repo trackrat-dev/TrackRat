@@ -36,12 +36,15 @@ class TestTopUpLockSql:
     def test_locks_referenced_table_before_partitioned_tables(self):
         """Issue #1920: collectors lock train_journeys, then journey_stops.
         The top-up must take its locks in that same order, all before any
-        DDL, under a lock_timeout so a busy table fails fast."""
+        DDL, under a lock_timeout so a busy table fails fast. The second wait
+        stays under the 1s default deadlock_timeout so a read-then-write
+        collector is never the deadlock victim."""
         statements = topup_lock_sql()
         print("\n".join(statements))
         assert statements == [
             "SET LOCAL lock_timeout = '5s'",
             "LOCK TABLE train_journeys IN SHARE ROW EXCLUSIVE MODE",
+            "SET LOCAL lock_timeout = '500ms'",
             "LOCK TABLE journey_stops, segment_transit_times IN ACCESS "
             "EXCLUSIVE MODE",
         ]
