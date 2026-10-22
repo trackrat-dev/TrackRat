@@ -1433,11 +1433,12 @@ class GTFSService:
                 headsign = row.get("trip_headsign", "")
 
                 # Extract train_id from trip_short_name, a train-number
-                # block_id, or the headsign
+                # block_id, or the headsign. NJT zero-pads 2-3 digit blocks
+                # ("0409") while real time reports the bare number (#1921).
                 short_name = row.get("trip_short_name", "")
                 block_id = row.get("block_id", "")
                 block_train_number = (
-                    block_id
+                    block_id.lstrip("0") or "0"
                     if route_id in block_train_number_routes and block_id.isdigit()
                     else None
                 )

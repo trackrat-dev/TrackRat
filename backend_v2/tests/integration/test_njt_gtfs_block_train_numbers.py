@@ -11,6 +11,10 @@ twice on 2026-10-03 boards:
   trip_id 2036 (block 1881)  Hoboken 19:16 -> Waldwick, Main/Bergen (MNBN)
   trip_id 4008 (block 7269)  NY Penn 19:07 -> Long Branch, NJCL
 
+a zero-padded block of a 3-digit-or-shorter train (issue #1921):
+
+  trip_id 2230 (block "0081")  Hoboken 21:28 -> Port Jervis, real-time "81"
+
 and the three block shapes that must NOT become train numbers: a light-rail
 block ("342JC203"), a numeric light-rail vehicle block (River Line "6"), and a
 bus substitution on a rail route ("PJBUS").
@@ -24,7 +28,7 @@ from datetime import date, datetime
 import pytest
 from alembic.migration import MigrationContext
 from alembic.operations import Operations
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
@@ -51,6 +55,7 @@ NJT_TRIPS = (
     '4,1,363,"HBLR HOBOKEN TERMINAL",0,"342JC203",363\n'
     '17,1,6111,"RvLN CAMDEN",0,"6",3788\n'
     '6,1,2216,"HOBOKEN",0,"PJBUS",797\n'
+    '6,1,2230,"PORT JERVIS",1,"0081",798\n'
 )
 NJT_STOPS = (
     "stop_id,stop_code,stop_name,stop_desc,stop_lat,stop_lon,zone_id\n"
@@ -77,6 +82,8 @@ NJT_STOP_TIMES = (
     "6111,06:29:00,06:29:00,38292,2,0,0,0.6\n"
     "2216,04:24:00,04:24:00,123,1,0,0,0\n"
     "2216,04:54:00,04:54:00,86,2,0,0,18.2\n"
+    "2230,21:28:00,21:28:00,63,1,0,0,0\n"
+    "2230,23:31:00,23:31:00,123,2,0,0,87.6\n"
 )
 
 
@@ -107,7 +114,7 @@ async def parsed_njt(db_session: AsyncSession) -> GTFSService:
         db_session, "NJT", _njt_bundle(), today=SERVICE_DATE
     )
     print(f"parse stats: {stats}")
-    assert stats["trips"] == 5
+    assert stats["trips"] == 6
     return service
 
 
@@ -128,6 +135,8 @@ class TestNjtGtfsTrainNumbers:
         # Commuter rail: block_id is the real-time train number
         assert train_ids["2036"] == "1881"
         assert train_ids["4008"] == "7269"
+        # NJT zero-pads short train numbers; real time reports "81" (#1921)
+        assert train_ids["2230"] == "81"
         # Light-rail blocks (vehicle ids, numeric or not) and bus
         # substitutions never become train numbers
         assert train_ids["363"] is None
@@ -144,6 +153,19 @@ class TestNjtGtfsTrainNumbers:
         trains = [(d.train_id, d.line.code) for d in response.departures]
         print(f"HB -> TS GTFS departures: {trains}")
         assert trains == [("1881", "MA")]
+
+    async def test_padded_block_board_shows_bare_train_number(
+        self, db_session: AsyncSession, parsed_njt: GTFSService
+    ) -> None:
+        """Production HB -> PO, 2026-10-18: the GTFS twin showed as "0081"
+        beside real-time 81 (issue #1921)."""
+        response = await parsed_njt.get_scheduled_departures(
+            db_session, "HB", "PO", SERVICE_DATE, data_sources=["NJT"]
+        )
+
+        trains = [d.train_id for d in response.departures]
+        print(f"HB -> PO GTFS departures: {trains}")
+        assert trains == ["81"]
 
     async def test_gtfs_twin_merges_with_realtime_train_by_number(
         self, db_session: AsyncSession, parsed_njt: GTFSService
@@ -299,3 +321,89 @@ class TestDeletePhantomMaterializedJourneys:
         )
         print(f"{label}: remaining id {remaining}")
         assert remaining == journey_id
+
+
+unpad_migration = importlib.import_module(
+    "trackrat.db.migrations.versions."
+    "20261022_0923-1878afd52bd6_unpad_njt_gtfs_block_train_numbers"
+)
+
+
+def _run_unpad_upgrade(session: Session) -> None:
+    context = MigrationContext.configure(session.connection())
+    with Operations.context(context):
+        unpad_migration.upgrade()
+
+
+class TestUnpadNjtBlockTrainNumbers:
+    async def test_unpads_stored_gtfs_train_numbers(
+        self, db_session: AsyncSession, parsed_njt: GTFSService
+    ) -> None:
+        """A bundle parsed before #1921 stored "0081"; the migration restores
+        the bare number without waiting for the next GTFS parse, and leaves
+        unpadded numbers and NULLs alone."""
+        await db_session.execute(
+            update(GTFSTrip)
+            .where(GTFSTrip.data_source == "NJT", GTFSTrip.trip_id == "2230")
+            .values(train_id="0081")
+        )
+
+        await db_session.run_sync(_run_unpad_upgrade)
+
+        db_session.expire_all()
+        train_ids = dict(
+            (
+                await db_session.execute(
+                    select(GTFSTrip.trip_id, GTFSTrip.train_id).where(
+                        GTFSTrip.data_source == "NJT"
+                    )
+                )
+            ).all()
+        )
+        print(f"trip_id -> train_id after migration: {train_ids}")
+        assert train_ids == {
+            "2036": "1881",
+            "4008": "7269",
+            "363": None,
+            "6111": None,
+            "2216": None,
+            "2230": "81",
+        }
+
+    @pytest.mark.parametrize(
+        ("label", "journey_kwargs", "deleted"),
+        [
+            ("padded NJT SCHEDULED phantom", {}, True),
+            ("padded, not yet swept", {"cancellation_reason": None}, True),
+            ("padded but OBSERVED", {"observation_type": "OBSERVED"}, False),
+            ("padded, other source", {"data_source": "AMTRAK"}, False),
+            ("bare number", {"train_id": "81"}, False),
+        ],
+    )
+    async def test_deletes_only_padded_njt_scheduled_journeys(
+        self,
+        db_session: AsyncSession,
+        label: str,
+        journey_kwargs: dict,
+        deleted: bool,
+    ) -> None:
+        train_id = journey_kwargs.pop("train_id", "0081")
+        journey = _journey(train_id, date(2026, 10, 18), **journey_kwargs)
+        db_session.add(journey)
+        await db_session.flush()
+        journey_id = journey.id
+
+        await db_session.run_sync(_run_unpad_upgrade)
+
+        db_session.expire_all()
+        remaining = await db_session.scalar(
+            select(TrainJourney.id).where(TrainJourney.id == journey_id)
+        )
+        stops = (
+            await db_session.scalars(
+                select(JourneyStop.id).where(JourneyStop.journey_id == journey_id)
+            )
+        ).all()
+        print(f"{label}: remaining id {remaining}, stops {stops}")
+        assert (remaining is None) == deleted
+        assert (stops == []) == deleted
