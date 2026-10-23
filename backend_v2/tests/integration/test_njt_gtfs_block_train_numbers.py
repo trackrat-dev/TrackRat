@@ -33,7 +33,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import Session
 
 from trackrat.models.api import TrainDeparture
-from trackrat.models.database import GTFSTrip, JourneyStop, TrainJourney
+from trackrat.models.database import (
+    GTFSTrip,
+    JourneyStop,
+    LiveActivityToken,
+    TrainJourney,
+)
 from trackrat.services.departure import DepartureService
 from trackrat.services.gtfs import GTFSService
 from trackrat.utils.time import ET
@@ -407,3 +412,50 @@ class TestUnpadNjtBlockTrainNumbers:
         print(f"{label}: remaining id {remaining}, stops {stops}")
         assert (remaining is None) == deleted
         assert (stops == []) == deleted
+
+    @pytest.mark.parametrize(
+        ("label", "token_kwargs", "expected_number"),
+        [
+            ("active padded NJT token", {}, "81"),
+            ("inactive padded NJT token", {"is_active": False}, "0081"),
+            ("padded, other source", {"data_source": "AMTRAK"}, "0081"),
+            ("padded, legacy NULL source", {"data_source": None}, "0081"),
+            ("bare number", {"train_number": "7269"}, "7269"),
+        ],
+    )
+    async def test_unpads_only_active_njt_live_activity_tokens(
+        self,
+        db_session: AsyncSession,
+        label: str,
+        token_kwargs: dict,
+        expected_number: str,
+    ) -> None:
+        """A Live Activity started from a pre-#1921 GTFS departure holds "0081";
+        once the padded journey is deleted the push scheduler (which
+        exact-matches train_number to train_id) would find nothing, so the
+        migration re-keys it to the real train's "81"."""
+        fields = {
+            "push_token": f"token-{label}",
+            "activity_id": "activity",
+            "train_number": "0081",
+            "origin_code": "HB",
+            "destination_code": "PO",
+            "data_source": "NJT",
+            "is_active": True,
+            **token_kwargs,
+        }
+        token = LiveActivityToken(**fields)
+        db_session.add(token)
+        await db_session.flush()
+        token_id = token.id
+
+        await db_session.run_sync(_run_unpad_upgrade)
+
+        db_session.expire_all()
+        train_number = await db_session.scalar(
+            select(LiveActivityToken.train_number).where(
+                LiveActivityToken.id == token_id
+            )
+        )
+        print(f"{label}: {fields['train_number']!r} -> {train_number!r}")
+        assert train_number == expected_number

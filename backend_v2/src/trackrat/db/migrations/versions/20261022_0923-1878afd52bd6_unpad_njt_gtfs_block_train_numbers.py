@@ -19,6 +19,11 @@ repairs what was stored before the next GTFS parse would:
   upgraded and the unobserved-train sweep turns it into a phantom
   cancellation beside the real train (the #1839 ghost pattern). OBSERVED rows
   and every other source are left alone.
+- Active NJT ``live_activity_tokens`` registered against a padded number are
+  unpadded too. The push scheduler exact-matches ``train_number`` to
+  ``TrainJourney.train_id``, so once the padded journey is deleted such a
+  token would find no journey and get no updates for the rest of its life;
+  unpadded, it follows the real train.
 """
 
 from alembic import op
@@ -32,12 +37,21 @@ depends_on = None
 _PADDED_NUMBER = "'^0[0-9]+$'"
 
 
+_UNPADDED = "COALESCE(NULLIF(ltrim({col}, '0'), ''), '0')"
+
+
 def upgrade() -> None:
-    """Unpad stored GTFS train numbers and delete phantom journeys."""
+    """Unpad stored GTFS train numbers and Live Activity tokens, and delete
+    phantom journeys."""
     op.execute(
-        "UPDATE gtfs_trips "
-        "SET train_id = COALESCE(NULLIF(ltrim(train_id, '0'), ''), '0') "
+        f"UPDATE gtfs_trips SET train_id = {_UNPADDED.format(col='train_id')} "
         f"WHERE data_source = 'NJT' AND train_id ~ {_PADDED_NUMBER}"
+    )
+    op.execute(
+        "UPDATE live_activity_tokens "
+        f"SET train_number = {_UNPADDED.format(col='train_number')} "
+        "WHERE data_source = 'NJT' AND is_active "
+        f"AND train_number ~ {_PADDED_NUMBER}"
     )
     op.execute(
         "DELETE FROM train_journeys "
