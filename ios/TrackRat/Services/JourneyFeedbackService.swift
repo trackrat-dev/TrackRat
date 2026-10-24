@@ -5,7 +5,7 @@ import StoreKit
 /// Service that manages prompting users for feedback during their train journey.
 /// Shows a feedback prompt when the train departs from the user's origin station.
 /// Cooldown: 8 days if dismissed (by the X button or by swiping the sheet away),
-/// 16 days if negative feedback, 120 days if positive feedback.
+/// 16 days if negative feedback, 365 days if positive feedback.
 @MainActor
 class JourneyFeedbackService: ObservableObject {
     static let shared = JourneyFeedbackService()
@@ -35,10 +35,10 @@ class JourneyFeedbackService: ObservableObject {
 
     private let dismissCooldownDays: Int = 8
     private let negativeFeedbackCooldownDays: Int = 16
-    /// StoreKit shows at most 3 review requests per 365 days and silently ignores
-    /// the rest (or any request from a user who has already rated), so asking a
-    /// happy user more often than this only re-shows a prompt whose "Yes!" does nothing.
-    private let positiveFeedbackCooldownDays: Int = 120
+    /// Once a user has rated, StoreKit ignores review requests until a new app version
+    /// more than 365 days later. We can't tell whether "Yes!" led to a rating, so a
+    /// shorter cooldown would re-show a prompt whose "Yes!" does nothing (#1924).
+    private let positiveFeedbackCooldownDays: Int = 365
 
     private init() {
         // Observe app becoming active to show queued prompts

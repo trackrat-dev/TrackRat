@@ -53,7 +53,7 @@ final class JourneyFeedbackServiceTests: XCTestCase {
         service.userRespondedPositively()
         service.onActivityEnded()
         print("after Yes!: cooldownDays=\(recordedCooldownDays) inCooldown=\(service.isInCooldownPeriod())")
-        XCTAssertEqual(recordedCooldownDays, 120)
+        XCTAssertEqual(recordedCooldownDays, 365, "Must match StoreKit's 365-day post-rating ineligibility window")
         XCTAssertTrue(service.isInCooldownPeriod())
 
         rideDeparts()
