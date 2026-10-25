@@ -14,6 +14,7 @@ struct LocationFix: Equatable {
 
 /// One-shot location lookup used to bootstrap setup: pick the rider's transit
 /// system and surface nearby stations instead of making them search thousands.
+/// The same permission also lets the maps show the rider's position.
 ///
 /// The fix never leaves the device — it is only used locally to rank stations,
 /// and only for the lifetime of the app run. Permission is requested when the
@@ -37,14 +38,42 @@ final class LocationService: NSObject, ObservableObject {
 
     /// Whether asking for a fix can still produce one (the user hasn't refused).
     var canRequestFix: Bool {
-        switch authorizationStatus {
-        case .notDetermined, .authorizedWhenInUse, .authorizedAlways:
-            return true
-        case .denied, .restricted:
-            return false
+        access == .notAsked || access == .granted
+    }
+
+    /// Where the rider stands on location permission, as the Settings row presents it.
+    enum Access: Equatable {
+        /// Never asked — the in-app prompt can still be shown.
+        case notAsked
+        case granted
+        /// Refused. iOS won't prompt again, so only the Settings app can change it.
+        case denied
+        /// Blocked by device management or Screen Time; the rider can't change it here.
+        case restricted
+    }
+
+    nonisolated static func access(for status: CLAuthorizationStatus) -> Access {
+        switch status {
+        case .notDetermined:
+            return .notAsked
+        case .authorizedWhenInUse, .authorizedAlways:
+            return .granted
+        case .denied:
+            return .denied
+        case .restricted:
+            return .restricted
         @unknown default:
-            return false
+            return .restricted
         }
+    }
+
+    var access: Access { Self.access(for: authorizationStatus) }
+
+    /// Show the permission prompt without asking for a fix — Settings turns
+    /// location on for the map, it isn't looking up stations. No-op once decided.
+    func requestAuthorization() {
+        guard authorizationStatus == .notDetermined else { return }
+        manager.requestWhenInUseAuthorization()
     }
 
     /// Request a single location fix, prompting for permission the first time.

@@ -41,6 +41,45 @@ final class LocationServiceTests: XCTestCase {
         )
     }
 
+    // MARK: - Settings Access
+
+    func testUndecidedPermissionCanStillBePromptedInApp() {
+        // A rider who skipped the onboarding button must get the prompt from
+        // Settings, not be sent to the iOS Settings app (#1929).
+        XCTAssertEqual(LocationService.access(for: .notDetermined), .notAsked)
+        XCTAssertEqual(SettingsSection.locationActionTitle(for: .notAsked), "Enable")
+    }
+
+    func testBothGrantLevelsReadAsOn() {
+        XCTAssertEqual(LocationService.access(for: .authorizedWhenInUse), .granted)
+        XCTAssertEqual(LocationService.access(for: .authorizedAlways), .granted)
+        XCTAssertEqual(SettingsSection.locationActionTitle(for: .granted), "On")
+    }
+
+    func testRefusalPointsToTheSettingsApp() {
+        // iOS never re-prompts after a refusal, so the row must route out.
+        XCTAssertEqual(LocationService.access(for: .denied), .denied)
+        XCTAssertEqual(SettingsSection.locationActionTitle(for: .denied), "Open Settings")
+    }
+
+    func testRestrictionIsNotMistakenForARefusal() {
+        // Device management blocks it even in the Settings app — offering
+        // "Open Settings" there would be a dead end.
+        XCTAssertEqual(LocationService.access(for: .restricted), .restricted)
+        XCTAssertEqual(SettingsSection.locationActionTitle(for: .restricted), "Restricted")
+    }
+
+    @MainActor
+    func testAccessTracksTheServiceAuthorizationStatus() {
+        let service = LocationService.shared
+
+        XCTAssertEqual(
+            service.access,
+            LocationService.access(for: service.authorizationStatus),
+            "status=\(service.authorizationStatus.rawValue)"
+        )
+    }
+
     // MARK: - Nearest Stations
 
     func testNearestCodesRanksTheStationYouAreStandingInFirst() {
