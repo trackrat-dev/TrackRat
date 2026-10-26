@@ -19,7 +19,7 @@
 
 services:
   cloudflared:
-    image: cloudflare/cloudflared:2026.7.1
+    image: cloudflare/cloudflared:2026.10.3
     container_name: trackrat-cloudflared
     # Pass the token via the TUNNEL_TOKEN env var, NOT a --token flag on a string
     # command. docker-compose parses a string `command:` with shell-word splitting,
