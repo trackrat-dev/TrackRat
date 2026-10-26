@@ -30,7 +30,7 @@ A mobile-first web application for tracking trains across 13 transit systems (NJ
 - React Router v7 (routing)
 - date-fns 4 (date formatting)
 - MapLibre GL 6 + react-map-gl 8 (route and congestion maps)
-- Vitest 4 + React Testing Library (tests)
+- Vitest 5 + React Testing Library (tests)
 
 ## Getting Started
 
