@@ -80,6 +80,26 @@ final class LocationServiceTests: XCTestCase {
         )
     }
 
+    @MainActor
+    func testRequestAuthorizationNeverStartsALocationLookup() {
+        // Settings turns location on for the map; unlike requestFix() it must not
+        // start a lookup, or the next authorization callback would fetch a fix the
+        // rider never asked for. Holds whether or not permission is decided yet.
+        let service = LocationService.shared
+        let statusBefore = service.authorizationStatus
+        let fixBefore = service.fix
+
+        service.requestAuthorization()
+
+        XCTAssertFalse(service.isLocating, "status=\(statusBefore.rawValue)")
+        XCTAssertEqual(service.fix, fixBefore, "requestAuthorization must not touch the fix")
+        XCTAssertEqual(
+            service.authorizationStatus,
+            statusBefore,
+            "Status only changes from the delegate callback, never synchronously"
+        )
+    }
+
     // MARK: - Nearest Stations
 
     func testNearestCodesRanksTheStationYouAreStandingInFirst() {
