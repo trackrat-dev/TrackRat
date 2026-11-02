@@ -4,7 +4,7 @@
 
 ## Technology Stack
 
-- **Framework**: React 19.2 + TypeScript 7.0 + PWA (vite-plugin-pwa 2.0)
+- **Framework**: React 19.3 + TypeScript 7.0 + PWA (vite-plugin-pwa 2.0)
 - **Build Tool**: Vite 8.3 (fast dev server, optimized builds; needs Node 20.19+ / 22.12+)
 - **Styling**: Tailwind CSS 4.3 (utility-first, custom design system)
 - **State Management**: Zustand 5.0 (lightweight, no boilerplate)
@@ -368,7 +368,7 @@ interface PlatformPrediction {
 
 ## Testing
 
-**Framework**: Vitest 4.x + React Testing Library + jsdom
+**Framework**: Vitest 5.x + React Testing Library + jsdom
 
 ```bash
 npm test          # Run all tests once
