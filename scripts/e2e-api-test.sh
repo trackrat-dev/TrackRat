@@ -380,7 +380,8 @@ echo ""
 # --- Routes ---
 # Format: "label|from|to|data_source|ml_station|flags|lines"
 #   ml_station: station code for ML prediction tests (empty if none)
-#   flags:  w = weekday-only (skip on weekends)
+#   flags:  w = weekday-only (skip on weekends, along with any trip search
+#               over the same pair; see is_weekday_only_pair)
 #           s = schedule-only data source (skip OBSERVED check)
 #   lines:  comma-separated line codes serving this pair, as they appear in
 #           service alerts' `affected_route_ids`. Used only to explain an empty
@@ -1085,6 +1086,22 @@ trip_test() {
   return 0
 }
 
+# True when a ROUTES entry flagged w (weekday-only) covers this pair, in either
+# direction. Lets trip searches inherit the route list's weekday flag instead of
+# restating it per call.
+is_weekday_only_pair() {
+  local entry r_label r_from r_to r_source r_ml r_flags r_lines
+  for entry in "${ROUTES[@]}"; do
+    IFS='|' read -r r_label r_from r_to r_source r_ml r_flags r_lines <<< "$entry"
+    [[ "${r_flags:-}" == *w* ]] || continue
+    if [[ "$r_from" == "$1" && "$r_to" == "$2" ]] ||
+       [[ "$r_from" == "$2" && "$r_to" == "$1" ]]; then
+      return 0
+    fi
+  done
+  return 1
+}
+
 # Test A→B and B→A. Flag asymmetry if only one direction works.
 # Usage: trip_bidi "label" from to expected [always_expect] [source] [lines] [legs]
 #   always_expect: "true" to FAIL on 0 trips (for 24/7 services like subway)
@@ -1102,6 +1119,14 @@ trip_bidi() {
      { [[ -n "$sys_to" ]] && is_source_disabled "$sys_to"; }; then
     echo -e "  ${BOLD}$label${NC}"
     skip "$label (data source disabled)"
+    return 0
+  fi
+
+  # A pair ROUTES marks weekday-only (w) serves no trains on weekends, so 0 trips
+  # then is correct, not a failure (#1970: PATH Hoboken↔WTC).
+  if [[ "$IS_WEEKEND" == "true" ]] && is_weekday_only_pair "$from" "$to"; then
+    echo -e "  ${BOLD}$label${NC}"
+    skip "$label (weekday-only, today is $DOW_NAME)"
     return 0
   fi
 

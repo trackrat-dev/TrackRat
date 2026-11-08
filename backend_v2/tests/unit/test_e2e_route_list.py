@@ -563,3 +563,97 @@ def test_leg_groups_are_well_formed_subway_line_codes(
         f"{sorted(unknown)}, which are not SUBWAY line codes in route_topology; "
         f"no alert row can ever match them, so that leg can never be excused"
     )
+
+
+# ── Weekday-only pairs in trip search (#1970) ───────────────────────
+# The ROUTES `w` flag skipped PATH HOB-WTC departures on weekends, but the
+# trip-search call over the same pair restated nothing, so every Saturday
+# reported "0 trips" plus an ASYMMETRY FAIL for a line that doesn't run.
+
+TRIP_BIDI_STUBS = """
+BOLD=""; NC=""; DOW_NAME="Saturday"
+station_system() { :; }
+is_source_disabled() { return 1; }
+skip() { echo "SKIP $*"; }
+fail() { echo "FAIL $*"; }
+trip_test() { echo "TRIP $2->$3"; return 0; }
+"""
+
+
+def _run_bash(tmp_path: Path, routes: list[str], body: str) -> tuple[int, str]:
+    """Run `body` with ROUTES set to `routes` and the real helper functions."""
+    array = " ".join(f'"{r}"' for r in routes)
+    script = tmp_path / "harness.sh"
+    script.write_text(
+        f"ROUTES=({array})\n{TRIP_BIDI_STUBS}\n"
+        f"{_shell_function('is_weekday_only_pair')}\n"
+        f"{_shell_function('trip_bidi')}\n{body}\n"
+    )
+    proc = subprocess.run(["bash", str(script)], capture_output=True, text=True)
+    print(f"rc={proc.returncode}\nstdout:\n{proc.stdout}\nstderr:\n{proc.stderr}")
+    assert not proc.stderr, f"bash wrote to stderr: {proc.stderr}"
+    return proc.returncode, proc.stdout
+
+
+FIXTURE_ROUTES = ["Weekday|AA|BB|PATH||w", "Daily|AA|CC|PATH||", "Sched|DD|EE|PATCO||s"]
+
+
+@pytest.mark.parametrize(
+    "from_code,to_code,expected",
+    [
+        ("AA", "BB", 0),  # listed direction
+        ("BB", "AA", 0),  # reverse direction of a weekday-only pair
+        ("AA", "CC", 1),  # listed, but not weekday-only
+        ("DD", "EE", 1),  # other flag only
+        ("AA", "EE", 1),  # endpoints from two different rows
+        ("ZZ", "YY", 1),  # not listed at all
+    ],
+)
+def test_is_weekday_only_pair(
+    tmp_path: Path, from_code: str, to_code: str, expected: int
+) -> None:
+    rc, _ = _run_bash(
+        tmp_path, FIXTURE_ROUTES, f"is_weekday_only_pair {from_code} {to_code}"
+    )
+    assert rc == expected, f"{from_code}->{to_code}: rc={rc}, want {expected}"
+
+
+@pytest.mark.parametrize("is_weekend,searched", [("true", False), ("false", True)])
+def test_trip_bidi_skips_weekday_only_pair_only_on_weekends(
+    tmp_path: Path, is_weekend: str, searched: bool
+) -> None:
+    _, out = _run_bash(
+        tmp_path,
+        FIXTURE_ROUTES,
+        f'IS_WEEKEND={is_weekend}\ntrip_bidi "Pair" "BB" "AA" "direct"',
+    )
+    assert ("TRIP BB->AA" in out) == searched, out
+    assert ("TRIP AA->BB" in out) == searched, out
+    assert ("SKIP Pair (weekday-only, today is Saturday)" in out) != searched, out
+    assert "FAIL" not in out, out
+
+
+def test_trip_bidi_still_searches_daily_pairs_on_weekends(tmp_path: Path) -> None:
+    _, out = _run_bash(
+        tmp_path,
+        FIXTURE_ROUTES,
+        'IS_WEEKEND=true\ntrip_bidi "Pair" "AA" "CC" "direct"',
+    )
+    assert "TRIP AA->CC" in out and "TRIP CC->AA" in out, out
+    assert "SKIP" not in out, out
+
+
+def test_path_hoboken_wtc_trip_search_is_weekday_only_in_the_real_script(
+    tmp_path: Path,
+) -> None:
+    """The #1970 pair, against the real ROUTES array and trip_bidi call."""
+    calls = [
+        args for _, args in _trip_bidi_calls() if {args[1], args[2]} == {"PHO", "PWC"}
+    ]
+    assert calls, "No PATH Hoboken↔WTC trip_bidi call found"
+    real_routes = [entry for _, entry in ROUTES]
+    for args in calls:
+        rc, _ = _run_bash(
+            tmp_path, real_routes, f'is_weekday_only_pair "{args[1]}" "{args[2]}"'
+        )
+        assert rc == 0, f"{args[0]} would still be searched on weekends"
