@@ -2086,3 +2086,109 @@ class TestSubwaySyntheticOriginRealDatabase:
             "The update branch must derive the departure from the origin stop "
             "too, or the next collection cycle reinstates the fabricated delay"
         )
+
+
+class TestSubwayReappearingTripRealDatabase:
+    """Issue #1982 — a trip NYCT drops for one snapshot must come back.
+
+    The full-replacement pass expires any OBSERVED journey missing from a
+    single snapshot. NYCT routinely drops a not-yet-assigned trip at its
+    origin terminal and re-adds it a cycle later; before the fix the update
+    branch refreshed that row but left ``is_expired=True``, and
+    ``DepartureService`` excludes expired rows, so the train stayed off every
+    board for the rest of its run while its neighbours showed as OBSERVED.
+
+    Runs three real ``collect()`` cycles against PostgreSQL. Only the MTA feed
+    fetch is substituted (it is the network boundary); the collector, the
+    GTFS service, the expiry pass and the persisted rows are all real.
+    """
+
+    @staticmethod
+    def _trip(trip_id: str) -> list[SubwayArrival]:
+        return [
+            a.model_copy(update={"trip_id": trip_id})
+            for a in _northbound_1_train(first_stop_minutes_out=2)
+        ]
+
+    @staticmethod
+    async def _journey(db_session, trip_id: str) -> TrainJourney:
+        db_session.expunge_all()
+        return (
+            await db_session.execute(
+                select(TrainJourney).where(
+                    TrainJourney.train_id == _generate_train_id(trip_id, "1")
+                )
+            )
+        ).scalar_one()
+
+    @pytest.mark.asyncio
+    async def test_trip_back_in_feed_is_unexpired(self, db_session):
+        flapping, steady = "091150_1..N03R", "091400_1..N03R"
+        client = AsyncMock(spec=SubwayClient)
+        client.get_all_arrivals.side_effect = [
+            (self._trip(flapping) + self._trip(steady), {"1234567S"}),
+            (self._trip(steady), {"1234567S"}),
+            (self._trip(flapping) + self._trip(steady), {"1234567S"}),
+        ]
+        collector = SubwayCollector(client=client)
+
+        first = await collector.collect(db_session)
+        print(f"cycle 1 stats: {first}")
+        assert first["discovered"] == 2, f"Both trips should be discovered: {first}"
+
+        second = await collector.collect(db_session)
+        print(f"cycle 2 stats: {second}")
+        dropped = await self._journey(db_session, flapping)
+        print(
+            f"after drop: is_expired={dropped.is_expired} "
+            f"api_error_count={dropped.api_error_count}"
+        )
+        assert second["expired"] == 1, f"Only the dropped trip expires: {second}"
+        assert dropped.is_expired is True, "Precondition: one missed snapshot expires"
+        update_count_when_expired = dropped.update_count
+
+        third = await collector.collect(db_session)
+        print(f"cycle 3 stats: {third}")
+        back = await self._journey(db_session, flapping)
+        print(
+            f"after return: is_expired={back.is_expired} "
+            f"api_error_count={back.api_error_count} update_count={back.update_count}"
+        )
+        assert third["updated"] == 2 and third["discovered"] == 0, (
+            "The returning trip must reuse its existing row, not create a "
+            f"second one: {third}"
+        )
+        assert back.update_count == update_count_when_expired + 1
+        assert back.is_expired is False, (
+            "A trip present in the feed again must be live again; an expired "
+            "row is excluded from every departure board (issue #1982)"
+        )
+        assert back.api_error_count == 0, (
+            "Reobservation resets the omission strike counter "
+            f"(docs/journey-lifecycle.md), got {back.api_error_count}"
+        )
+        steady_journey = await self._journey(db_session, "091400_1..N03R")
+        assert steady_journey.is_expired is False
+
+    @pytest.mark.asyncio
+    async def test_strike_counter_resets_on_reobservation(self, db_session):
+        """A long-quiet journey accrues 3-strike omissions; a reappearance
+        must clear them so later strikes count consecutive misses only."""
+        trip = "091150_1..N03R"
+        client = AsyncMock(spec=SubwayClient)
+        client.get_all_arrivals.side_effect = [
+            (self._trip(trip), {"1234567S"}),
+            (self._trip(trip), {"1234567S"}),
+        ]
+        collector = SubwayCollector(client=client)
+        await collector.collect(db_session)
+
+        journey = await self._journey(db_session, trip)
+        journey.api_error_count = 2
+        await db_session.commit()
+
+        await collector.collect(db_session)
+        journey = await self._journey(db_session, trip)
+        print(f"api_error_count after reobservation: {journey.api_error_count}")
+        assert journey.api_error_count == 0
+        assert journey.is_expired is False

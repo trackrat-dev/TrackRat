@@ -521,7 +521,13 @@ class SubwayCollector:
             return "discovered", journey
 
         else:
-            # Update existing journey
+            # Update existing journey. The expiry pass below is the only
+            # writer of is_expired for SUBWAY, and only for a journey missing
+            # from the snapshot; NYCT drops and re-adds trips (often at their
+            # origin terminal), so a trip back in the feed is live again and
+            # must return to the departure board (issue #1982).
+            journey.is_expired = False
+            journey.api_error_count = 0
             journey.actual_arrival = last_arrival.arrival_time
 
             # Use in-memory lookup from eagerly-loaded stops (avoids N+1 queries)
