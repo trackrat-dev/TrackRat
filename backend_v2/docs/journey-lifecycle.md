@@ -20,7 +20,7 @@ least one automatic writer that can clear it (see the invariant below):
 
 | Flag | Meaning | Set by | Cleared by | Blocks |
 |---|---|---|---|---|
-| `is_expired` | Row abandoned (feed lost the train / sustained mismatch) | 3-strike not-found / sustained-mismatch backstops in collectors | NJT: discovery reactivation (`reactivated_expired_train`). Amtrak: reobservation via JIT refresh, or the batch requeue of expired rows (#1500). SEPTA: a valid nonempty feed snapshot or successful JIT refresh reobserves omission-expired journeys. | JIT (`needs_refresh`), background collection candidacy |
+| `is_expired` | Row abandoned (feed lost the train / sustained mismatch) | 3-strike not-found / sustained-mismatch backstops in collectors | NJT: discovery reactivation (`reactivated_expired_train`). Amtrak: reobservation via JIT refresh, or the batch requeue of expired rows (#1500). SEPTA: a valid nonempty feed snapshot or successful JIT refresh reobserves omission-expired journeys. SUBWAY: the trip reappearing in the feed (`SubwayCollector._process_trip` update branch, #1982). | JIT (`needs_refresh`), background collection candidacy |
 | `is_completed` | Run finished | Terminal-arrival detection; completion-on-expiry backstops; Amtrak `trainState == "Terminated"` | Nothing (final state) | JIT, batch collection, Live Activity updates end |
 | `is_cancelled` | Run annulled | NJT: API `STOP_STATUS` (all stops or terminal cancelled). Amtrak: `trainState == "Cancelled"` | Amtrak: reobservation. **NJT: nothing — known one-way door, issue #1498** | JIT, all scheduler NJT update queries, discovery fuzzy re-match |
 | `api_error_count` | Strike counter toward expiry | Incremented on not-found / mismatch | Reset on any successful fetch/reobservation (all collectors and paths that use it) | ≥3 triggers the expiry backstops |
@@ -51,7 +51,10 @@ freshness-wrapped tasks in #1507.
 
 Known open gaps: the NJT `is_cancelled` clearer (#1498) and the NJT
 silent-cancellation *setter* — `JourneyCollector._reconcile_unobserved_trains`
-is dead code that nothing schedules (#1497).
+is dead code that nothing schedules (#1497). LIRR and Metro-North expire a
+journey after 3 missed snapshots but neither clears `is_expired` (nor resets
+`api_error_count`) when the trip reappears — the same shape SUBWAY had before
+#1982.
 
 ## 2. NJT `TIME` / `DEP_TIME` field semantics (the inversion)
 
