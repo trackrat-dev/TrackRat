@@ -24,7 +24,7 @@ import structlog
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from tests.fixtures.gtfs_bundles import build_gtfs_zip
+from tests.fixtures.gtfs_bundles import build_corrupt_gtfs_zip, build_gtfs_zip
 from trackrat.collectors.path import segment_times as path_segment_times
 from trackrat.models.database import GTFSFeedInfo, GTFSStopTime, GTFSTrip
 from trackrat.services.gtfs import (
@@ -149,7 +149,9 @@ def _split_route_type_zip(
 
 
 @contextlib.contextmanager
-def _stub_download(bodies: bytes | dict[str, bytes]):
+def _stub_download(
+    bodies: bytes | dict[str, bytes], content_type: str = "application/zip"
+):
     """Serve `bodies` in place of the real GTFS download, per source.
 
     Only the HTTP transport is replaced: the rate-limit check, the parse, the
@@ -159,6 +161,7 @@ def _stub_download(bodies: bytes | dict[str, bytes]):
 
     Passing a dict keys the response on the requested URL's data source, so a
     single run can give one source a good feed and another a corrupt one.
+    ``content_type`` is the response's Content-Type header.
     """
     by_url = (
         {GTFS_FEED_URLS[source]: body for source, body in bodies.items()}
@@ -169,6 +172,8 @@ def _stub_download(bodies: bytes | dict[str, bytes]):
     async def fake_get(url, **kwargs):
         response = Mock()
         response.content = bodies if by_url is None else by_url[url]
+        response.url = url
+        response.headers = {"content-type": content_type}
         response.raise_for_status = Mock(return_value=None)
         return response
 
@@ -1246,7 +1251,7 @@ class TestRealRefreshPathWritesWhatTheSweepReads:
         await _seed_feed(db_session, "MNR", parsed_hours_ago=None)
         service = GTFSService()
 
-        with _stub_download(b"this is not a zip file"):
+        with _stub_download(build_corrupt_gtfs_zip()):
             outcome = await service.refresh_feed(db_session, "MNR", force=True)
 
         assert outcome is GTFSRefreshOutcome.FAILED_PROCESS
@@ -1264,6 +1269,44 @@ class TestRealRefreshPathWritesWhatTheSweepReads:
 
         (status,) = await service.get_feed_statuses(db_session, ["MNR"])
         assert status.is_stale is True
+
+    async def test_an_html_page_served_for_a_moved_feed_is_a_download_failure(
+        self, db_session: AsyncSession
+    ):
+        """Issue #1986: MTA retired the old LIRR/MNR bundle URLs, which began
+        redirecting to the mta.info homepage — a 200 that `raise_for_status`
+        accepts. The parse then failed nightly as a bare
+        `BadZipFile: File is not a zip file`, naming neither the URL nor what
+        came back. It must be reported as a download failure that says what
+        actually arrived, and must leave the stored timetable alone.
+        """
+        service = GTFSService()
+        with _stub_download(build_gtfs_zip(trips=3, start_date=_gtfs_date(-7))):
+            assert await service.refresh_feed(db_session, "LIRR", force=True) is (
+                GTFSRefreshOutcome.REFRESHED
+            )
+        stored_before = await _stored_trip_ids(db_session, "LIRR")
+        assert stored_before == {"T1", "T2", "T3"}
+
+        homepage = b"<!DOCTYPE html><html><head><title>MTA</title></head></html>"
+        with _stub_download(homepage, content_type="text/html; charset=utf-8"):
+            outcome = await service.refresh_feed(db_session, "LIRR", force=True)
+
+        feed_info = (
+            await db_session.execute(
+                select(GTFSFeedInfo).where(GTFSFeedInfo.data_source == "LIRR")
+            )
+        ).scalar_one()
+        print(f"outcome={outcome} error_message={feed_info.error_message!r}")
+
+        assert outcome is GTFSRefreshOutcome.FAILED_DOWNLOAD
+        assert feed_info.error_message == (
+            "download: GTFS download is not a zip archive: "
+            f"final_url={GTFS_FEED_URLS['LIRR']} "
+            f"content_type=text/html; charset=utf-8 bytes={len(homepage)}"
+        )
+        assert await _stored_trip_ids(db_session, "LIRR") == stored_before
+        assert feed_info.trip_count == 3
 
     async def test_a_real_refresh_after_failure_does_not_inherit_stale_trips(
         self, db_session: AsyncSession
@@ -1783,7 +1826,7 @@ class TestNightlyRefreshJobSurfacesFailures:
             db_engine,
             enabled={
                 "PATCO": build_gtfs_zip(trips=2),
-                "SUBWAY": b"not a zip",
+                "SUBWAY": build_corrupt_gtfs_zip(),
             },
         )
 

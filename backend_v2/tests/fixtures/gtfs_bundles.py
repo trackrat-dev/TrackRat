@@ -103,3 +103,21 @@ def build_gtfs_zip(
         for name, body in files.items():
             zf.writestr(name, body)
     return buffer.getvalue()
+
+
+def build_corrupt_gtfs_zip() -> bytes:
+    """A real zip archive whose ``routes.txt`` fails its CRC check on read.
+
+    It passes ``zipfile.is_zipfile`` (the central directory is intact), so it
+    gets past the download's zip check and crashes inside
+    `_parse_and_store_gtfs` — the way to exercise the parse-failure path now
+    that a non-zip body is rejected as a download failure (issue #1986).
+    """
+    payload = b"route_id,route_type\nR1,2\n"
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_STORED) as zf:
+        zf.writestr("routes.txt", payload)
+    data = bytearray(buffer.getvalue())
+    offset = data.index(payload)
+    data[offset] ^= 0xFF
+    return bytes(data)
