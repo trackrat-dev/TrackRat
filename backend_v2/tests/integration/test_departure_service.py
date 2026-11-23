@@ -1405,6 +1405,62 @@ class TestPathCutoffTime:
             "would be served alongside the train it duplicates"
         )
 
+    async def test_tomorrow_dated_train_counts_as_coverage(
+        self, db_session: AsyncSession
+    ):
+        """A trip departing just after midnight is dated tomorrow (#1918).
+
+        RidePATH lists trains ~40 minutes ahead, so before midnight such a
+        train is stored under tomorrow while today's explicit-date board
+        already lists it. If the cutoff ignored it, the GTFS merge would see
+        no forward real-time coverage and serve the timetable row for the same
+        train beside it.
+        """
+        service = DepartureService()
+        current_time = now_et()
+        today = current_time.date()
+        tomorrow = today + timedelta(days=1)
+
+        path_journey = TrainJourney(
+            train_id="PATH_PWC_hoboken_tomorrow",
+            journey_date=tomorrow,
+            data_source="PATH",
+            observation_type="OBSERVED",
+            line_code="HOB-33",
+            line_name="Hoboken - 33rd Street",
+            line_color="#65C100",
+            destination="Hoboken",
+            origin_station_code="PWC",
+            terminal_station_code="PHO",
+            scheduled_departure=current_time + timedelta(minutes=8),
+            first_seen_at=current_time - timedelta(minutes=5),
+            last_updated_at=current_time,
+            has_complete_journey=True,
+            update_count=1,
+        )
+        path_journey.stops = [
+            JourneyStop(
+                station_code="PWC",
+                station_name="World Trade Center",
+                scheduled_departure=current_time + timedelta(minutes=8),
+                stop_sequence=0,
+                has_departed_station=False,
+            )
+        ]
+        db_session.add(path_journey)
+        await db_session.commit()
+
+        cutoff = await service._get_path_cutoff_time(
+            db_session, "PWC", current_time, today
+        )
+
+        expected = current_time + timedelta(minutes=10)  # +8 stop, +2 buffer
+        assert abs((cutoff - expected).total_seconds()) < 1, (
+            f"cutoff is {cutoff}, expected ~{expected}: the tomorrow-dated "
+            "journey was not counted as forward coverage, so the timetable "
+            "would be served alongside the train it duplicates"
+        )
+
     async def test_coverage_window_stops_before_the_day_before_yesterday(
         self, db_session: AsyncSession
     ):

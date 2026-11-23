@@ -628,3 +628,193 @@ class TestCrossMidnightConsumersCanStillFindTheJourney:
             "cannot see the journey already created for the same train, so "
             "_discover_group creates a duplicate"
         )
+
+
+class TestPreMidnightTripsDatedTomorrow:
+    """The mirror of #1752: a trip whose origin departs just after midnight.
+
+    RidePATH lists trains ~40 minutes ahead and ``journey_date`` is the origin
+    departure's, so from ~23:15 such a train is already stored under
+    *tomorrow* while trip search and dateless boards list it tonight. Every
+    reader that only looked at ``[date-1, date]`` — or treated a future date as
+    GTFS-only — lost it until 00:00, so tapping it 404'd (issue #1918).
+    """
+
+    @staticmethod
+    async def _persist_tomorrow_dated(db_session, train_id: str) -> TrainJourney:
+        now = now_et()
+        journey = await _persist_path_journey(
+            db_session,
+            train_id=train_id,
+            journey_date=now.date() + timedelta(days=1),
+            scheduled_departure=now + timedelta(minutes=10),
+        )
+        # Fresh, so the JIT pass serves the row rather than trying to refresh it.
+        journey.last_updated_at = now
+        db_session.add(
+            JourneyStop(
+                journey=journey,
+                station_code="PJS",
+                station_name="Journal Square",
+                stop_sequence=0,
+                scheduled_departure=now + timedelta(minutes=10),
+            )
+        )
+        await db_session.commit()
+        return journey
+
+    @pytest.mark.asyncio
+    async def test_train_details_serves_it_for_every_date_a_client_sends(
+        self, db_session
+    ):
+        """iOS sends today, the web sends the stored journey_date (tomorrow),
+        and Live Activities send nothing. All three 404'd in production."""
+        train_id = "PATH_PJS_33rd_tomorrow"
+        await self._persist_tomorrow_dated(db_session, train_id)
+        today = now_et().date()
+        tomorrow = today + timedelta(days=1)
+
+        for requested_date in (None, today, tomorrow):
+            for data_source in ("PATH", None):
+                response = await get_train_details(
+                    train_id=train_id,
+                    date=requested_date,
+                    refresh=False,
+                    include_predictions=False,
+                    from_station=None,
+                    data_source=data_source,
+                    db=db_session,
+                )
+                assert response.train.train_id == train_id, (
+                    f"date={requested_date} data_source={data_source}: "
+                    f"got {response.train.train_id}"
+                )
+                assert response.train.journey_date == tomorrow, (
+                    f"date={requested_date} data_source={data_source}: served "
+                    f"journey_date {response.train.journey_date}, expected the "
+                    f"origin-departure date {tomorrow}"
+                )
+
+    @pytest.mark.asyncio
+    async def test_explicit_today_board_includes_it(self, db_session):
+        """A board asked for today must show the train trip search lists."""
+        train_id = "PATH_PJS_33rd_board"
+        await self._persist_tomorrow_dated(db_session, train_id)
+        now = now_et()
+
+        result = await DepartureService().get_departures(
+            db=db_session,
+            from_station="PJS",
+            date=now.date(),
+            time_from=now - timedelta(hours=1),
+            time_to=now + timedelta(hours=1),
+            data_sources=["PATH"],
+            skip_individual_refresh=True,
+            skip_gtfs_merge=True,
+        )
+
+        train_ids = [d.train_id for d in result.departures]
+        assert train_id in train_ids, (
+            "a tomorrow-dated PATH trip departing within the window is missing "
+            f"from today's explicit-date board (got {train_ids})"
+        )
+
+    @pytest.mark.asyncio
+    async def test_explicit_today_board_does_not_widen_for_other_sources(
+        self, db_session
+    ):
+        """Only PATH ids are unique across days, so only PATH gets the extra
+        day — an NJT row dated tomorrow must stay off today's board."""
+        now = now_et()
+        journey = TrainJourney(
+            train_id="3999",
+            journey_date=now.date() + timedelta(days=1),
+            line_code="NE",
+            line_name="Northeast Corridor",
+            destination="New York",
+            origin_station_code="TR",
+            terminal_station_code="NY",
+            data_source="NJT",
+            observation_type="OBSERVED",
+            scheduled_departure=now + timedelta(minutes=10),
+            has_complete_journey=True,
+            stops_count=2,
+        )
+        db_session.add(journey)
+        db_session.add(
+            JourneyStop(
+                journey=journey,
+                station_code="TR",
+                station_name="Trenton",
+                stop_sequence=0,
+                scheduled_departure=now + timedelta(minutes=10),
+            )
+        )
+        await db_session.commit()
+
+        result = await DepartureService().get_departures(
+            db=db_session,
+            from_station="TR",
+            date=now.date(),
+            time_from=now - timedelta(hours=1),
+            time_to=now + timedelta(hours=1),
+            data_sources=["NJT"],
+            skip_individual_refresh=True,
+            skip_gtfs_merge=True,
+        )
+
+        train_ids = [d.train_id for d in result.departures]
+        assert (
+            "3999" not in train_ids
+        ), f"an NJT row dated tomorrow leaked onto today's board ({train_ids})"
+
+    @pytest.mark.asyncio
+    async def test_daily_train_numbers_never_fall_forward_to_tomorrow(self, db_session):
+        """A daily-repeating number with no row today must not resolve to
+        tomorrow's — that pre-empts the GTFS answer for today's run."""
+        now = now_et()
+        db_session.add(
+            TrainJourney(
+                train_id="1235",
+                journey_date=now.date() + timedelta(days=1),
+                line_code="BB",
+                line_name="Babylon",
+                destination="Babylon",
+                origin_station_code="NY",
+                terminal_station_code="BTA",
+                data_source="LIRR",
+                observation_type="SCHEDULED",
+                scheduled_departure=now + timedelta(days=1),
+                has_complete_journey=True,
+                stops_count=5,
+            )
+        )
+        await db_session.commit()
+
+        for data_source in ("LIRR", None):
+            found = await _load_journey_for_date(
+                db_session, "1235", now.date(), data_source
+            )
+            assert found is None, (
+                f"data_source={data_source}: returned the {found.journey_date} "
+                f"{found.data_source} run for a request about today"
+            )
+
+    @pytest.mark.asyncio
+    async def test_update_sweep_reaches_it_before_midnight(self, db_session):
+        """Otherwise the row gets no arrival updates until the rollover."""
+        train_id = "PATH_PJS_33rd_sweep"
+        await self._persist_tomorrow_dated(db_session, train_id)
+        before = (await _reload(db_session, train_id)).update_count
+
+        collector = PathCollector()
+        result = await collector._update_journeys(db_session, [], {})
+        await db_session.commit()
+
+        journey = await _reload(db_session, train_id)
+        assert (
+            result["updated"] + result["completed"] >= 1
+        ), f"the tomorrow-dated journey was not selected by the sweep {result}"
+        assert (
+            journey.update_count != before
+        ), f"update_count stayed {before}: the sweep never touched the row"

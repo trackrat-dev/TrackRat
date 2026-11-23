@@ -1345,14 +1345,20 @@ class PathCollector:
         # route is well under an hour, so a journey dated before yesterday
         # cannot still be moving, and including it would only re-open rows that
         # the 3-dry-cycle expiry below has already finished with.
+        #
+        # Tomorrow is in the window for the mirror case: a train whose origin
+        # departs just after midnight is dated tomorrow, and RidePATH lists it
+        # ~40 minutes ahead, so it is discovered before midnight and would
+        # otherwise get no arrival updates until the rollover (issue #1918).
         oldest_active_date = today - timedelta(days=1)
+        newest_active_date = today + timedelta(days=1)
 
         # Get all active PATH journeys
         result = await session.scalars(
             select(TrainJourney).where(
                 TrainJourney.data_source == "PATH",
                 TrainJourney.journey_date >= oldest_active_date,
-                TrainJourney.journey_date <= today,
+                TrainJourney.journey_date <= newest_active_date,
                 TrainJourney.is_completed == False,  # noqa: E712
                 TrainJourney.is_expired == False,  # noqa: E712
                 TrainJourney.is_cancelled == False,  # noqa: E712
