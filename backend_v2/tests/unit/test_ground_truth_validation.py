@@ -6,7 +6,7 @@ in-memory so these tests run fast and deterministically.
 
 import sys
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -1973,3 +1973,115 @@ class TestAmtrakGroundTruthProvider:
         ids = sorted({a.train_id for a in arrivals})
         print(f"ground-truth train ids: {ids}")
         assert ids == ["A63"], f"VIA v45 must be excluded, got {ids}"
+
+
+class TestGtfsrtDuplicateStopUpdates:
+    """A repeated stop_time_update must not become a second GT row (issue #1994).
+
+    The 7 train's ``050700_7..N`` at S726 appeared twice in the Subway feed on
+    five daily reports. Each copy became a ground-truth row; one paired with
+    TrackRat's same trip at Δ0s and the other was reported missing. These
+    tests drive the real ``_fetch_gtfsrt_ground_truth`` with the real Subway
+    model and train-id generator; only the feed client is replaced, since the
+    live MTA feed cannot be made to repeat a trip on demand.
+    """
+
+    TRIP_ID = "050700_7..N"
+
+    @staticmethod
+    def _arrival(trip_id: str, station: str, minutes: int):
+        from trackrat.collectors.subway.client import SubwayArrival
+
+        when = datetime.now(UTC) + timedelta(minutes=minutes)
+        return SubwayArrival(
+            station_code=station,
+            gtfs_stop_id=f"{station[1:]}N",
+            trip_id=trip_id,
+            route_id="7",
+            direction_id=1,
+            headsign="Flushing-Main St",
+            arrival_time=when,
+            departure_time=when,
+            delay_seconds=0,
+            track=None,
+            nyct_train_id=None,
+            is_assigned=True,
+        )
+
+    def _fetch(self, feed: list):
+        from trackrat.collectors.subway.collector import (
+            _generate_train_id as subway_train_id,
+        )
+
+        class FeedClient:
+            async def __aenter__(self):
+                return self
+
+            async def __aexit__(self, *exc):
+                return False
+
+            async def get_all_arrivals(self):
+                return feed, {"7"}
+
+        rows = gtv._fetch_gtfsrt_ground_truth(FeedClient, subway_train_id)
+        for row in rows:
+            print(
+                f"GT row: {row.train_id} {row.station_code} -> {row.destination_code}"
+            )
+        return rows
+
+    def test_repeated_stop_update_yields_one_row(self):
+        feed = [
+            self._arrival(self.TRIP_ID, "S726", 10),
+            self._arrival(self.TRIP_ID, "S726", 10),
+            self._arrival(self.TRIP_ID, "S701", 50),
+        ]
+        rows = self._fetch(feed)
+        at_s726 = [r for r in rows if r.station_code == "S726"]
+        assert len(at_s726) == 1, f"expected one S726 row, got {len(at_s726)}"
+        assert at_s726[0].destination_code == "S701"
+
+    def test_deduplicated_row_pairs_and_nothing_is_left_missing(self):
+        """The reported symptom, end to end: no unpaired GT row remains."""
+        feed = [
+            self._arrival(self.TRIP_ID, "S726", 10),
+            self._arrival(self.TRIP_ID, "S726", 10),
+            self._arrival(self.TRIP_ID, "S701", 50),
+        ]
+        gt = [r for r in self._fetch(feed) if r.station_code == "S726"]
+        tr = [
+            TrackRatDeparture(
+                train_id=gt[0].train_id,
+                destination_code="S701",
+                destination_name="Flushing-Main St",
+                departure_time=gt[0].expected_time,
+                line_code="7",
+                line_color="#B933AD",
+                observation_type="OBSERVED",
+            )
+        ]
+        pairs = pair_by_train_id(gt, tr, 120)
+        print(f"pairs={pairs}")
+        assert pairs == {0: 0}
+        assert len(pairs) == len(gt), "every GT row must pair; none reported missing"
+
+    def test_same_trip_at_different_stations_is_kept(self):
+        """Dedup keys on (trip, station), so a trip's other stops survive."""
+        feed = [
+            self._arrival(self.TRIP_ID, "S726", 10),
+            self._arrival(self.TRIP_ID, "S725", 12),
+            self._arrival(self.TRIP_ID, "S701", 50),
+        ]
+        stations = sorted(r.station_code for r in self._fetch(feed))
+        assert stations == ["S701", "S725", "S726"]
+
+    def test_distinct_trips_at_one_station_are_kept(self):
+        feed = [
+            self._arrival(self.TRIP_ID, "S726", 10),
+            self._arrival("051200_7..N", "S726", 15),
+            self._arrival(self.TRIP_ID, "S701", 50),
+            self._arrival("051200_7..N", "S701", 55),
+        ]
+        at_s726 = [r for r in self._fetch(feed) if r.station_code == "S726"]
+        assert len(at_s726) == 2
+        assert len({r.train_id for r in at_s726}) == 2

@@ -30,6 +30,8 @@ from trackrat.config.route_topology import (
     models_directions_separately,
 )
 from trackrat.config.stations import STATION_NAMES
+from trackrat.config.stations.lirr import LIRR_ROUTES
+from trackrat.config.stations.mnr import MNR_ROUTES
 
 E2E_SCRIPT = Path(__file__).resolve().parents[3] / "scripts" / "e2e-api-test.sh"
 
@@ -41,11 +43,11 @@ FIELD_NAMES = ("label", "from", "to", "data_source", "ml_station", "flags", "lin
 # so a typo here would quietly stop skipping a route it meant to skip.
 VALID_FLAGS = set("ws")
 
-# e2e-api-test.sh:359-365: sources that can never produce a `planned_work`
-# service-alert row. A `lines` value on one of these can never match the
-# planned-work index, so it is dead weight that reads as though the row were
-# excusable. Only these two sources may carry `lines`.
-SOURCES_THAT_CAN_EMIT_PLANNED_WORK = {"NJT", "SUBWAY"}
+# The ROUTES `lines` notes in e2e-api-test.sh: sources that can produce a
+# `planned_work` service-alert row. A `lines` value on any other source can never
+# match the planned-work index, so it is dead weight that reads as though the
+# row were excusable. Only these sources may carry `lines`.
+SOURCES_THAT_CAN_EMIT_PLANNED_WORK = {"NJT", "SUBWAY", "LIRR", "MNR"}
 
 
 def _parse_routes() -> list[tuple[int, str]]:
@@ -433,12 +435,16 @@ def _legs_note(tmp_path: Path, rows: list[tuple[str, str, str, str]], *args: str
     (tmp_path / "planned_work.tsv").write_text(
         "".join("\t".join(r) + "\n" for r in rows)
     )
-    njt_re = re.search(r"^NJT_CLOSURE_RE=.*$", E2E_SCRIPT.read_text(), re.MULTILINE)
-    assert njt_re, "NJT_CLOSURE_RE assignment not found"
+    text = E2E_SCRIPT.read_text()
+    gate = [
+        re.search(rf"^{name}=.*$", text, re.MULTILINE)
+        for name in ("CLOSURE_GATED_SOURCES", "CLOSURE_HEADLINE_RE")
+    ]
+    assert all(gate), "closure-gate assignments not found"
     program = "\n".join(
         [
             f"TMPDIR='{tmp_path}'",
-            njt_re.group(0),
+            *(m.group(0) for m in gate),
             _shell_function("planned_work_note"),
             _shell_function("required_legs_note"),
             '"$@"',
@@ -657,3 +663,102 @@ def test_path_hoboken_wtc_trip_search_is_weekday_only_in_the_real_script(
             tmp_path, real_routes, f'is_weekday_only_pair "{args[1]}" "{args[2]}"'
         )
         assert rc == 0, f"{args[0]} would still be searched on weekends"
+
+
+# ── LIRR / MNR `lines` use MTA's numeric alert route ids (issue #1994) ──────
+
+MTA_RAILROAD_ROUTES = {"LIRR": LIRR_ROUTES, "MNR": MNR_ROUTES}
+# e2e-api-test.sh MAX_ALERT_LINES: a pair served by more routes is a trunk.
+MAX_ALERT_LINES = 3
+
+
+def _alert_route_ids_serving(source: str, origin: str, dest: str) -> list[str]:
+    """GTFS route ids of every topology route stopping at both stations."""
+    by_line_code = {
+        code: rid for rid, (code, _, _) in MTA_RAILROAD_ROUTES[source].items()
+    }
+    ids = set()
+    for route in get_routes_for_data_source(source):
+        if origin in route.stations and dest in route.stations:
+            for code in route.line_codes:
+                assert code in by_line_code, (
+                    f"{route.id} line code {code} has no GTFS route id in "
+                    f"{source}_ROUTES, so its alerts cannot be keyed"
+                )
+                ids.add(by_line_code[code])
+    return sorted(ids, key=int)
+
+
+MTA_RAILROAD_ROUTE_ROWS = [
+    (no, e) for no, e in ROUTES if _fields(e)["data_source"] in MTA_RAILROAD_ROUTES
+]
+
+
+@pytest.mark.parametrize(
+    "line_no,entry", MTA_RAILROAD_ROUTE_ROWS, ids=_ids(MTA_RAILROAD_ROUTE_ROWS)
+)
+def test_mta_railroad_lines_list_every_serving_route_id(
+    line_no: int, entry: str
+) -> None:
+    """`lines` must be exactly the alert ids of every route serving the pair.
+
+    planned_work_note excuses an empty board only when EVERY listed line has
+    planned work, so a missing route id would excuse the pair while another
+    branch still serves it, and a stray one would make it inexcusable. Trunks
+    served by more than MAX_ALERT_LINES routes stay empty.
+    """
+    fields = _fields(entry)
+    expected = _alert_route_ids_serving(
+        fields["data_source"], fields["from"], fields["to"]
+    )
+    if len(expected) > MAX_ALERT_LINES:
+        expected = []
+    actual = fields["lines"].split(",") if fields["lines"] else []
+    print(f"{fields['label']}: lines={actual} serving route ids={expected}")
+    assert actual == expected, (
+        f"e2e-api-test.sh:{line_no}: {fields['label']} lists lines={actual}; the "
+        f"routes serving {fields['from']}->{fields['to']} have alert ids {expected}"
+    )
+
+
+def test_every_mta_railroad_row_is_checked() -> None:
+    assert len(MTA_RAILROAD_ROUTE_ROWS) >= 10, MTA_RAILROAD_ROUTE_ROWS
+
+
+# Headlines from production /api/v2/alerts/service (2026-11-22).
+LIRR_SYSTEM_NOTICE = "Alcohol is not allowed on LIRR trains or at stations"
+LIRR_BUS_SUBSTITUTION = "Buses replace trains between Great Neck and Port Washington"
+
+
+def test_lirr_bus_substitution_excuses_its_branch(tmp_path: Path) -> None:
+    """The #1960/#1961 case: Port Washington under a bus substitution."""
+    rc, out = _legs_note(
+        tmp_path,
+        [("LIRR", "9", LIRR_BUS_SUBSTITUTION, "0")],
+        "planned_work_note",
+        "LIRR",
+        "9",
+    )
+    assert (rc, out) == (0, LIRR_BUS_SUBSTITUTION)
+
+
+def test_lirr_system_wide_notice_never_excuses(tmp_path: Path) -> None:
+    """MTA lists every route id on system notices; none is a closure."""
+    rows = [("LIRR", rid, LIRR_SYSTEM_NOTICE, "0") for rid in LIRR_ROUTES]
+    for lines in ("9", "1,5", "4,13"):
+        rc, _ = _legs_note(tmp_path, rows, "planned_work_note", "LIRR", lines)
+        assert rc == 1, f"system notice excused LIRR lines {lines}"
+
+
+def test_mnr_bus_substitution_on_one_route_does_not_excuse_another(
+    tmp_path: Path,
+) -> None:
+    rows = [("MNR", "6", "Buses replace trains between Bridgeport and Waterbury", "0")]
+    assert _legs_note(tmp_path, rows, "planned_work_note", "MNR", "6")[0] == 0
+    assert _legs_note(tmp_path, rows, "planned_work_note", "MNR", "3")[0] == 1
+
+
+def test_subway_planned_work_is_not_closure_gated(tmp_path: Path) -> None:
+    """The gate is source-scoped; subway keeps the any-planned-work rule."""
+    rows = [("SUBWAY", "4", "[4] runs local between 125 St and Grand Central", "0")]
+    assert _legs_note(tmp_path, rows, "planned_work_note", "SUBWAY", "4")[0] == 0

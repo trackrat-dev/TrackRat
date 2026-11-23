@@ -26,8 +26,17 @@ def su():
     return module
 
 
-def _entry(path, ua, *, status=200, duration_ms=50.0, ip="1.1.1.1", query="",
-           method="GET", train_id=None):
+def _entry(
+    path,
+    ua,
+    *,
+    status=200,
+    duration_ms=50.0,
+    ip="1.1.1.1",
+    query="",
+    method="GET",
+    train_id=None,
+):
     """Build a cos_containers ``http_request`` entry as the backend logs it.
 
     ``path`` is the matched route template, or None when no route matched.
@@ -82,15 +91,25 @@ def test_analyze_request_entries_splits_ios_web_and_other(su):
     station_names = {"NY": "New York Penn", "TR": "Trenton", "NP": "Newark Penn"}
     entries = [
         # iOS user A searches NY -> TR twice (same device / IP).
-        _entry("/api/v2/trains/departures", _IOS_UA, ip="10.0.0.1", query="from=NY&to=TR"),
-        _entry("/api/v2/trains/departures", _IOS_UA, ip="10.0.0.1", query="from=NY&to=TR"),
+        _entry(
+            "/api/v2/trains/departures", _IOS_UA, ip="10.0.0.1", query="from=NY&to=TR"
+        ),
+        _entry(
+            "/api/v2/trains/departures", _IOS_UA, ip="10.0.0.1", query="from=NY&to=TR"
+        ),
         # iOS user B searches NP -> NY once.
-        _entry("/api/v2/trains/departures", _IOS_UA, ip="10.0.0.2", query="from=NP&to=NY"),
+        _entry(
+            "/api/v2/trains/departures", _IOS_UA, ip="10.0.0.2", query="from=NP&to=NY"
+        ),
         # Web user C searches NY -> TR and views a train detail.
-        _entry("/api/v2/trains/departures", _WEB_UA, ip="10.0.0.3", query="from=NY&to=TR"),
+        _entry(
+            "/api/v2/trains/departures", _WEB_UA, ip="10.0.0.3", query="from=NY&to=TR"
+        ),
         _entry("/api/v2/trains/{train_id}", _WEB_UA, ip="10.0.0.3", train_id="1234"),
         # Other: a curl departures call from D.
-        _entry("/api/v2/trains/departures", _CURL_UA, ip="10.0.0.4", query="from=NY&to=TR"),
+        _entry(
+            "/api/v2/trains/departures", _CURL_UA, ip="10.0.0.4", query="from=NY&to=TR"
+        ),
         # Noise: a scanner probe, which matched no route (must not count as API).
         _entry(None, "Go-http-client/1.1", ip="10.0.0.9", status=404),
     ]
@@ -131,17 +150,31 @@ def test_trip_searches_count_as_route_searches(su):
     """
     station_names = {"SD35": "Times Sq-42 St", "SD43": "Grand Central-42 St"}
     entries = [
-        _entry("/api/v2/trips/search", _IOS_UA, ip="10.0.0.1",
-               query="from=SD35&to=SD43&limit=50&hide_departed=true"),
-        _entry("/api/v2/trips/search", _WEB_UA, ip="10.0.0.2",
-               query="from=SD35&to=SD43&limit=50"),
-        _entry("/api/v2/trains/departures", _IOS_UA, ip="10.0.0.1",
-               query="from=SD35&to=SD43"),
+        _entry(
+            "/api/v2/trips/search",
+            _IOS_UA,
+            ip="10.0.0.1",
+            query="from=SD35&to=SD43&limit=50&hide_departed=true",
+        ),
+        _entry(
+            "/api/v2/trips/search",
+            _WEB_UA,
+            ip="10.0.0.2",
+            query="from=SD35&to=SD43&limit=50",
+        ),
+        _entry(
+            "/api/v2/trains/departures",
+            _IOS_UA,
+            ip="10.0.0.1",
+            query="from=SD35&to=SD43",
+        ),
     ]
 
     result = su.analyze_request_entries(entries, station_names)
-    print(f"endpoint_counts={dict(result['endpoint_counts'])} "
-          f"route_searches={dict(result['route_searches'])}")
+    print(
+        f"endpoint_counts={dict(result['endpoint_counts'])} "
+        f"route_searches={dict(result['route_searches'])}"
+    )
 
     assert result["total_api"] == 3
     assert result["total_non_api"] == 0
@@ -170,8 +203,10 @@ def test_only_unmatched_requests_count_as_scanners(su):
     ]
 
     result = su.analyze_request_entries(entries, {})
-    print(f"scanner={result['scanner_count']} non_api={result['total_non_api']} "
-          f"api={result['total_api']} lookups={dict(result['train_lookups'])}")
+    print(
+        f"scanner={result['scanner_count']} non_api={result['total_non_api']} "
+        f"api={result['total_api']} lookups={dict(result['train_lookups'])}"
+    )
 
     assert result["scanner_count"] == 2
     assert result["total_non_api"] == 2
@@ -182,9 +217,16 @@ def test_only_unmatched_requests_count_as_scanners(su):
 def test_latency_and_status_come_from_the_request_event(su):
     """duration_ms is reported in seconds, and status codes are kept per request."""
     entries = [
-        _entry("/api/v2/trips/search", _IOS_UA, duration_ms=1250.0, query="from=A&to=B"),
-        _entry("/api/v2/trips/search", _IOS_UA, duration_ms=250.0, status=500,
-               query="from=A&to=B"),
+        _entry(
+            "/api/v2/trips/search", _IOS_UA, duration_ms=1250.0, query="from=A&to=B"
+        ),
+        _entry(
+            "/api/v2/trips/search",
+            _IOS_UA,
+            duration_ms=250.0,
+            status=500,
+            query="from=A&to=B",
+        ),
     ]
 
     result = su.analyze_request_entries(entries, {})
@@ -231,8 +273,12 @@ def test_json_report_includes_client_breakdown(su):
     """build_json_report surfaces the iOS/web/other split as plain dicts."""
     station_names = {"NY": "New York Penn", "TR": "Trenton"}
     entries = [
-        _entry("/api/v2/trains/departures", _IOS_UA, ip="10.0.0.1", query="from=NY&to=TR"),
-        _entry("/api/v2/trains/departures", _WEB_UA, ip="10.0.0.3", query="from=NY&to=TR"),
+        _entry(
+            "/api/v2/trains/departures", _IOS_UA, ip="10.0.0.1", query="from=NY&to=TR"
+        ),
+        _entry(
+            "/api/v2/trains/departures", _WEB_UA, ip="10.0.0.3", query="from=NY&to=TR"
+        ),
     ]
     analysis = su.analyze_request_entries(entries, station_names)
     app_analysis = su.analyze_app_logs([], [], [])
@@ -300,11 +346,18 @@ def test_json_report_carries_the_traffic_warning(su):
 def test_json_report_omits_the_warning_on_a_complete_window(su):
     """A production report with traffic reports no warning at all."""
     entries = [_entry("/api/v2/trains/departures", _IOS_UA, query="from=NY&to=TR")]
-    analysis = su.analyze_request_entries(entries, {"NY": "New York Penn", "TR": "Trenton"})
+    analysis = su.analyze_request_entries(
+        entries, {"NY": "New York Penn", "TR": "Trenton"}
+    )
     app_analysis = su.analyze_app_logs([], [], [])
 
     report = su.build_json_report(
-        "production", 1, {}, {}, analysis, app_analysis,
+        "production",
+        1,
+        {},
+        {},
+        analysis,
+        app_analysis,
         traffic_note=su.traffic_source_note(len(entries), False),
     )
 
@@ -319,7 +372,13 @@ def test_text_report_prints_the_warning_above_the_counts(su):
     note = su.traffic_source_note(0, False)
 
     text = su.format_report(
-        "production", 24, {}, {}, analysis, app_analysis, use_color=False,
+        "production",
+        24,
+        {},
+        {},
+        analysis,
+        app_analysis,
+        use_color=False,
         traffic_note=note,
     )
 
@@ -334,11 +393,19 @@ def test_text_report_prints_the_warning_above_the_counts(su):
 def test_text_report_unchanged_when_traffic_is_real(su):
     """No caveat leaks into an ordinary report with traffic."""
     entries = [_entry("/api/v2/trains/departures", _IOS_UA, query="from=NY&to=TR")]
-    analysis = su.analyze_request_entries(entries, {"NY": "New York Penn", "TR": "Trenton"})
+    analysis = su.analyze_request_entries(
+        entries, {"NY": "New York Penn", "TR": "Trenton"}
+    )
     app_analysis = su.analyze_app_logs([], [], [])
 
     text = su.format_report(
-        "production", 1, {}, {}, analysis, app_analysis, use_color=False,
+        "production",
+        1,
+        {},
+        {},
+        analysis,
+        app_analysis,
+        use_color=False,
         traffic_note=su.traffic_source_note(len(entries), False),
     )
 
@@ -394,11 +461,56 @@ def test_station_names_cover_every_system_exactly(su):
 
     missing = {c: n for c, n in expected.items() if c not in parsed}
     extra = {c: n for c, n in parsed.items() if c not in expected}
-    wrong = {c: (parsed[c], n) for c, n in expected.items() if c in parsed and parsed[c] != n}
-    print(f"parsed={len(parsed)} expected={len(expected)} "
-          f"missing={list(missing)[:5]} extra={list(extra)[:5]} wrong={list(wrong.items())[:3]}")
-    assert not missing, f"{len(missing)} codes not parsed, e.g. {list(missing.items())[:5]}"
-    assert not extra, f"{len(extra)} codes parsed from outside a names dict, e.g. {list(extra.items())[:5]}"
-    assert not wrong, f"{len(wrong)} codes resolved differently, e.g. {list(wrong.items())[:5]}"
+    wrong = {
+        c: (parsed[c], n) for c, n in expected.items() if c in parsed and parsed[c] != n
+    }
+    print(
+        f"parsed={len(parsed)} expected={len(expected)} "
+        f"missing={list(missing)[:5]} extra={list(extra)[:5]} wrong={list(wrong.items())[:3]}"
+    )
+    assert (
+        not missing
+    ), f"{len(missing)} codes not parsed, e.g. {list(missing.items())[:5]}"
+    assert (
+        not extra
+    ), f"{len(extra)} codes parsed from outside a names dict, e.g. {list(extra.items())[:5]}"
+    assert (
+        not wrong
+    ), f"{len(wrong)} codes resolved differently, e.g. {list(wrong.items())[:5]}"
     assert parsed["SEPR90404"] == "Airport Terminal A"
     assert parsed["SEPM30866"] == "10th St & Main St"
+
+
+def test_discover_instance_id_uses_gcp_logs_discovery(su, monkeypatch):
+    """server-usage.py reuses gcp-logs.py's paged, time-bounded discovery (#1994).
+
+    The Cloud Logging API is replaced by the documented entries:list page
+    shapes: an empty page carrying a continuation token, then the match.
+    """
+    import requests
+
+    pages = [
+        {"nextPageToken": "t1"},
+        {
+            "entries": [
+                {
+                    "timestamp": "2026-11-23T07:59:00Z",
+                    "resource": {"labels": {"instance_id": "650014"}},
+                    "jsonPayload": {"_HOSTNAME": "trackrat-production-b2jw"},
+                }
+            ]
+        },
+    ]
+    bodies = []
+
+    def post(url, json=None, headers=None):
+        bodies.append(json)
+        page = pages.pop(0)
+        return type("Resp", (), {"json": lambda self: page})()
+
+    monkeypatch.setattr(requests, "post", post)
+    result = su.discover_instance_id("tok", "production")
+    print(f"result={result} filters={[b['filter'] for b in bodies]}")
+    assert result == ("650014", "trackrat-production-b2jw")
+    assert len(bodies) == 2
+    assert "timestamp>=" in bodies[0]["filter"]
