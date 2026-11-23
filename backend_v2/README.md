@@ -96,7 +96,7 @@ poetry run uvicorn trackrat.main:app --reload
 - **Every 15 minutes**: Service alerts collection (MTA + SEPTA GTFS-RT feeds, NJT `getStationMSG`, WMATA Rail Incidents)
 - **Hourly**: Validation across key routes (interval job; first run ~10 minutes after startup)
 - **Daily 3:00 AM ET**: GTFS static schedule refresh
-- **Daily 3:30 AM ET**: Data retention cleanup (deletes journeys, discovery runs, validation results, and inactive service alerts older than `TRACKRAT_RETENTION_DAYS`, default 60 days; active service alerts are kept regardless of age)
+- **Daily 3:30 AM ET**: Data retention cleanup (deletes journeys, discovery runs, validation results, and inactive service alerts older than `TRACKRAT_RETENTION_DAYS`, default 60 days; active service alerts are kept regardless of age). SUBWAY journeys use the shorter `TRACKRAT_SUBWAY_RETENTION_DAYS` (default 14). Also deletes subscription-less device registrations not re-registered within `TRACKRAT_DEVICE_REGISTRATION_RETENTION_DAYS` (default 90)
 - Monitor scheduler status at `/scheduler/status` endpoint
 
 **Note**: PATH, LIRR, Metro-North, NYC Subway, BART, MBTA, Metra, WMATA, and SEPTA (Regional Rail + Metro) each use unified collectors that handle both discovery and journey updates in a single pass. LIRR, Metro-North, Subway, BART, MBTA, Metra, and SEPTA use GTFS-RT feeds with shared logic in `mta_common.py` (SEPTA Regional Rail is delay-based; SEPTA Metro is route-filtered and served schedule-first). WMATA uses its REST API. PATCO uses GTFS static schedules only (no real-time API).
@@ -122,6 +122,9 @@ All configuration is done via environment variables. See `.env.example` for avai
 - `TRACKRAT_DISCOVERY_INTERVAL_MINUTES`: How often to discover new trains (default: 30)
 - `TRACKRAT_JOURNEY_UPDATE_INTERVAL_MINUTES`: How often to collect journey data (default: 15)
 - `TRACKRAT_DATA_STALENESS_SECONDS`: When to refresh data on-demand (default: 60)
+- `TRACKRAT_RETENTION_DAYS`: Days to retain journey data (default: 60, min 30)
+- `TRACKRAT_SUBWAY_RETENTION_DAYS`: Days to retain SUBWAY journey data (default: 14, min 1)
+- `TRACKRAT_DEVICE_REGISTRATION_RETENTION_DAYS`: Days unseen before a subscription-less device registration is deleted (default: 90, min 30)
 - `TRACKRAT_ENABLE_METRICS`: Enable Prometheus metrics endpoint (default: true)
 - `TRACKRAT_LOG_LEVEL`: Logging level (DEBUG, INFO, WARNING, ERROR)
 - `TRACKRAT_ENVIRONMENT`: Environment name (development, staging, production)
