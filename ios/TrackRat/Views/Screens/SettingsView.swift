@@ -191,9 +191,69 @@ struct SettingsSection: View {
     @State private var selectedSubscription: RouteAlertSubscription?
     @ObservedObject private var alertService = AlertSubscriptionService.shared
     @ObservedObject private var ratSense = RatSenseService.shared
+    @ObservedObject private var locationService = LocationService.shared
 
     private enum FavoriteStationRole {
         case home, work, other
+    }
+
+    private var locationRow: some View {
+        let access = locationService.access
+        return Button {
+            switch access {
+            case .notAsked:
+                locationService.requestAuthorization()
+            case .granted, .denied:
+                if let settingsURL = URL(string: UIApplication.openSettingsURLString) {
+                    openURL(settingsURL)
+                }
+            case .restricted:
+                return
+            }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } label: {
+            HStack(spacing: 16) {
+                Image(systemName: "location.fill")
+                    .font(.title2)
+                    .foregroundColor(.orange)
+                    .frame(width: 24, height: 24)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Location")
+                        .font(.headline)
+                        .fontWeight(.medium)
+                        .foregroundColor(.white)
+
+                    Text("Shows where you are on the map and the stations nearest you.")
+                        .font(.caption)
+                        .foregroundColor(.white.opacity(0.6))
+                        .multilineTextAlignment(.leading)
+                }
+
+                Spacer()
+
+                Text(Self.locationActionTitle(for: access))
+                    .font(.subheadline)
+                    .foregroundColor(access == .restricted ? .gray : .orange)
+            }
+            .padding()
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.ultraThinMaterial)
+            )
+        }
+        .buttonStyle(.plain)
+        .disabled(access == .restricted)
+    }
+
+    nonisolated static func locationActionTitle(for access: LocationService.Access) -> String {
+        switch access {
+        case .notAsked: return "Enable"
+        case .granted: return "On"
+        case .denied: return "Open Settings"
+        case .restricted: return "Restricted"
+        }
     }
 
     var body: some View {
@@ -584,6 +644,10 @@ struct SettingsSection: View {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(.ultraThinMaterial)
             )
+
+            // Location — the only other place to grant it is onboarding, and a
+            // refusal can only be undone in the iOS Settings app.
+            locationRow
 
             // Report an Issue
             Button {
