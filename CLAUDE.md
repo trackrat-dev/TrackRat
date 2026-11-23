@@ -113,10 +113,13 @@ agency's own headline — rather than FAIL — when **every** line serving that 
 closed for planned work; weekend GO work otherwise makes hardcoded terminal-to-terminal
 pairs fail while the backend is entirely correct (#1771). Requiring *all* the pair's
 lines is deliberate: many lines carry some planned work at any hour, so excusing a pair
-because one of its lines is touched would suppress real outages. The `lines` field is
-left empty for LIRR/MNR (MTA publishes numeric route ids in alerts that don't match
-`route_topology`), for many-line trunks, and for sources that never emit `planned_work`
-alerts — an empty field means the route keeps its original strictness. Codes are
+because one of its lines is touched would suppress real outages. LIRR/MNR rows list MTA's
+numeric GTFS route ids (the alert namespace, e.g. `9` = Port Washington), pinned by
+`test_e2e_route_list.py` to every route serving the pair via `LIRR_ROUTES`/`MNR_ROUTES`;
+NJT, LIRR and MNR rows count only when the headline is closure-shaped, since NJT types every
+advisory as planned work and MTA's railroads tag system-wide notices against every route
+id (#1994). The `lines` field is left empty for many-line trunks and for sources that never
+emit `planned_work` alerts — an empty field means the route keeps its original strictness. Codes are
 restricted to what the alert parser actually emits: `route_topology.line_codes` carries
 pre-2026-03 Title-case database aliases (`Ra`, `Mo`, …) that never appear in an alert,
 and since every listed line must match, including them would silently make a pair

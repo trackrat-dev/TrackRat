@@ -140,29 +140,19 @@ def query_logs(token, log_filter, limit=1000, max_pages=10):
 
 
 def discover_instance_id(token, env):
-    """Find the GCE instance_id for an environment (mirrors gcp-logs.py)."""
-    import requests as req
+    """Find the GCE instance_id for an environment using gcp-logs.py's discovery.
 
-    prefix = HOSTNAME_PREFIX[env]
-    url = "https://logging.googleapis.com/v2/entries:list"
-    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
-    body = {
-        "resourceNames": [f"projects/{PROJECT}"],
-        "filter": f'jsonPayload._HOSTNAME=~"^{prefix}"',
-        "orderBy": "timestamp desc",
-        "pageSize": 1,
-    }
-    resp = req.post(url, json=body, headers=headers)
-    entries = resp.json().get("entries", [])
-    if entries:
-        e = entries[0]
-        hostname = e.get("jsonPayload", {}).get("_HOSTNAME", "")
-        instance_id = (
-            e.get("resource", {}).get("labels", {}).get("instance_id", "")
-        )
-        if hostname and instance_id:
-            return instance_id, hostname
-    return None, None
+    Loaded rather than copied: the copy that used to live here kept the
+    unbounded-scan bug after gcp-logs.py was fixed (issue #1994).
+    """
+    import importlib.util
+
+    path = Path(__file__).resolve().parent.parent / ".claude" / "scripts" / "gcp-logs.py"
+    spec = importlib.util.spec_from_file_location("gcp_logs", path)
+    gcp_logs = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gcp_logs)
+    instance_id, hostname, _ = gcp_logs.discover_instance_id(token, env)
+    return instance_id, hostname
 
 
 # ---------------------------------------------------------------------------

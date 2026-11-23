@@ -34,6 +34,7 @@ Examples:
 import argparse
 import json
 import sys
+from datetime import datetime, timedelta, timezone
 
 SA_KEY_PATH = "/root/.config/gcloud/service-account.json"
 PROJECT = "trackrat-v2"
@@ -42,6 +43,12 @@ HOSTNAME_PREFIX = {
     "staging": "trackrat-staging-",
     "production": "trackrat-production-",
 }
+# Instance discovery searches this far back (Cloud Logging's default retention
+# is 30 days) and follows at most this many result pages.
+DISCOVERY_LOOKBACK_DAYS = 30
+DISCOVERY_MAX_PAGES = 10
+# A newest host entry older than this suggests the instance has stopped.
+DISCOVERY_STALE_AFTER = timedelta(hours=1)
 
 
 def _check_dependencies():
@@ -90,28 +97,60 @@ def get_credentials():
     return credentials.token
 
 
-def discover_instance_id(token, env):
-    """Find the GCE instance_id for an environment via hostname prefix match."""
+def discover_instance_id(token, env, now=None):
+    """Find the newest GCE instance for an environment via hostname prefix match.
+
+    Returns ``(instance_id, hostname, timestamp)`` of the newest matching
+    entry, or ``(None, None, None)`` when no instance of ``env`` has logged
+    within ``DISCOVERY_LOOKBACK_DAYS``.
+
+    Only the journald ``cos_system`` source carries ``_HOSTNAME``;
+    ``cos_containers`` app entries have the instance_id but no hostname or
+    environment, so they cannot stand in for it. Two things made this miss a
+    running instance (issue #1994): the filter had no time bound, and an
+    unbounded regex scan can return a page with no entries but a
+    ``nextPageToken`` — which was read as "no instance". The window bounds the
+    scan and the loop follows the token.
+    """
     import requests
 
+    now = now or datetime.now(timezone.utc)
+    since = (now - timedelta(days=DISCOVERY_LOOKBACK_DAYS)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
     prefix = HOSTNAME_PREFIX[env]
     url = "https://logging.googleapis.com/v2/entries:list"
     headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
     body = {
         "resourceNames": [f"projects/{PROJECT}"],
-        "filter": f'jsonPayload._HOSTNAME=~"^{prefix}"',
+        "filter": f'jsonPayload._HOSTNAME=~"^{prefix}" AND timestamp>="{since}"',
         "orderBy": "timestamp desc",
         "pageSize": 1,
     }
-    resp = requests.post(url, json=body, headers=headers)
-    entries = resp.json().get("entries", [])
-    if entries:
-        e = entries[0]
-        hostname = e.get("jsonPayload", {}).get("_HOSTNAME", "")
-        instance_id = e.get("resource", {}).get("labels", {}).get("instance_id", "")
-        if hostname and instance_id:
-            return instance_id, hostname
-    return None, None
+    for _ in range(DISCOVERY_MAX_PAGES):
+        data = requests.post(url, json=body, headers=headers).json()
+        if "error" in data:
+            print(
+                f"API error: {data['error'].get('message', data['error'])}",
+                file=sys.stderr,
+            )
+            sys.exit(1)
+        for e in data.get("entries", []):
+            hostname = e.get("jsonPayload", {}).get("_HOSTNAME", "")
+            instance_id = e.get("resource", {}).get("labels", {}).get("instance_id", "")
+            if hostname and instance_id:
+                return instance_id, hostname, e.get("timestamp", "")
+        page_token = data.get("nextPageToken")
+        if not page_token:
+            break
+        body["pageToken"] = page_token
+    return None, None, None
+
+
+def is_stale(timestamp, now):
+    """True when a Cloud Logging RFC 3339 timestamp is older than DISCOVERY_STALE_AFTER."""
+    seen = datetime.fromisoformat(timestamp[:19]).replace(tzinfo=timezone.utc)
+    return now - seen > DISCOVERY_STALE_AFTER
 
 
 def query_logs(token, log_filter, limit):
@@ -201,11 +240,23 @@ def main():
     token = get_credentials()
 
     # Discover instance
-    instance_id, hostname = discover_instance_id(token, args.env)
+    instance_id, hostname, last_seen = discover_instance_id(token, args.env)
     if not instance_id:
-        print(f"Could not find a running {args.env} instance.", file=sys.stderr)
+        print(
+            f"No {args.env} instance has logged in the last "
+            f"{DISCOVERY_LOOKBACK_DAYS} days (no cos_system entry with a "
+            f"{HOSTNAME_PREFIX[args.env]}* hostname). The instance is missing "
+            "or stopped; this is not a query failure.",
+            file=sys.stderr,
+        )
         sys.exit(1)
-    print(f"Instance: {hostname} ({instance_id})", file=sys.stderr)
+    print(f"Instance: {hostname} ({instance_id}), newest host entry {last_seen}", file=sys.stderr)
+    if is_stale(last_seen, datetime.now(timezone.utc)):
+        print(
+            f"⚠️  {hostname} has not logged for over {DISCOVERY_STALE_AFTER}; "
+            "it may be stopped. Showing its last logs.",
+            file=sys.stderr,
+        )
 
     # Build filter
     parts = [f'resource.labels.instance_id="{instance_id}"']

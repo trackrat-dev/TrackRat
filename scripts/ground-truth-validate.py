@@ -495,6 +495,27 @@ def fetch_amtrak_ground_truth() -> list[GroundTruthArrival]:
 # --- Fetch ground truth from GTFS-RT (LIRR / Metro-North) ---
 
 
+def dedupe_trip_stop_arrivals(arrivals: list) -> list:
+    """Keep the first arrival per (trip_id, station_code), preserving order.
+
+    GTFS-RT feeds occasionally repeat a trip's stop_time_update (the 7 train's
+    ``050700_7..N`` at S726 did so in five daily reports). Each copy became its
+    own ground-truth row, ``pair_by_train_id`` matched only one of them, and
+    the other was reported as a missing train with a same-trip TrackRat match
+    at Δ0s (issue #1994). One trip departs a station once, so later copies
+    carry no information.
+    """
+    seen: set[tuple[str, str]] = set()
+    unique = []
+    for arr in arrivals:
+        key = (arr.trip_id, arr.station_code)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(arr)
+    return unique
+
+
 def _fetch_gtfsrt_ground_truth(
     client_class: type,
     generate_train_id: Callable[[str, str], str] | None = None,
@@ -516,6 +537,8 @@ def _fetch_gtfsrt_ground_truth(
         # SubwayClient returns (arrivals, succeeded_feeds) tuple
         if isinstance(all_arrivals, tuple):
             all_arrivals = all_arrivals[0]
+
+        all_arrivals = dedupe_trip_stop_arrivals(all_arrivals)
 
         # Group by trip_id to find destination (last stop)
         trips: dict[str, list] = {}

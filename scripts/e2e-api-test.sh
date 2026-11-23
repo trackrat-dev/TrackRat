@@ -238,12 +238,17 @@ echo ""
 # means "advisory", not "closure" — a months-old line-scoped notice (fare
 # change, schedule pamphlet) would otherwise permanently excuse a dark NEC or
 # NJCL board. NJT rows therefore get an extra gate: the headline itself must
-# look closure-shaped. Other sources keep the alert_type contract as designed
-# (MTA's lmm:planned_work: entity ids are genuinely planned service changes).
-# Matches the NJT planned-work sample in the collector's own tests
-# (tests/unit/collectors/test_service_alerts.py: "Service suspended between
-# A and B." — caught by "suspend").
-NJT_CLOSURE_RE='suspend|no (rail |train )?service|bus(es)? (will )?(replace|substitut)|shuttle|not operat|closed|cancel'
+# look closure-shaped. LIRR and MNR rows get the same gate for a related
+# reason: MTA's railroad feeds tag system-wide notices as planned work against
+# every route id at once ("Alcohol is not allowed on LIRR trains…", "LIRR trains
+# run on a weekend schedule on Thanksgiving Day"), which would excuse every LIRR
+# or MNR pair while one was in force (issue #1994). Subway keeps the alert_type
+# contract as designed. Matches the NJT planned-work sample in the collector's
+# own tests (tests/unit/collectors/test_service_alerts.py: "Service suspended
+# between A and B." — caught by "suspend") and MTA's bus-substitution wording
+# ("Buses replace trains between Bridgeport and Waterbury").
+CLOSURE_GATED_SOURCES='^(NJT|LIRR|MNR)$'
+CLOSURE_HEADLINE_RE='suspend|no (rail |train )?service|bus(es)? (will )?(replace|substitut)|shuttle|not operat|closed|cancel'
 
 # Echo a planned-work headline when EVERY line serving a pair has active work.
 # Usage: planned_work_note <data_source> <comma-separated line codes>
@@ -262,9 +267,9 @@ planned_work_note() {
   [[ -z "$lines" || ! -s "$TMPDIR/planned_work.tsv" ]] && return 1
   local IFS=,
   for line in $lines; do
-    note=$(awk -F'\t' -v s="$source" -v l="$line" -v njt_re="$NJT_CLOSURE_RE" \
-      -v susp="$only_suspended" \
-      '$1 == s && $2 == l && (s != "NJT" || tolower($3) ~ njt_re) && (susp == "" || $4 == "1") { print $3; exit }' \
+    note=$(awk -F'\t' -v s="$source" -v l="$line" -v gated="$CLOSURE_GATED_SOURCES" \
+      -v closure_re="$CLOSURE_HEADLINE_RE" -v susp="$only_suspended" \
+      '$1 == s && $2 == l && (s !~ gated || tolower($3) ~ closure_re) && (susp == "" || $4 == "1") { print $3; exit }' \
       "$TMPDIR/planned_work.tsv")
     [[ -z "$note" ]] && return 1
     [[ -z "$first" ]] && first="$note"
@@ -395,12 +400,14 @@ echo ""
 #           which alerts never use. Since every listed code must have an alert,
 #           one stray alias would make the pair permanently inexcusable.
 #
-#           Deliberately empty in three cases, because a wrong or over-broad
+#           LIRR / MNR alerts carry numeric GTFS route ids (`LIRR|9` is the
+#           Port Washington Branch), not route_topology's `LIRR-PW`, so their
+#           rows list those ids: every route serving the pair, translated by
+#           LIRR_ROUTES / MNR_ROUTES. tests/unit/test_e2e_route_list.py pins
+#           each row to exactly that set (issue #1994).
+#
+#           Deliberately empty in two cases, because a wrong or over-broad
 #           value here silently suppresses real outages:
-#             - LIRR / MNR: MTA publishes numeric GTFS route ids in alerts
-#               (`LIRR|10`, `MNR|2`) which do not match route_topology's
-#               `LIRR-BB` / `MNR-HUD` codes. There is no mapping to key on, so
-#               these are left unset rather than guessed.
 #             - Pairs served by many lines (SEPTA RR through Center City runs
 #               13). Planned work on one branch is no reason to excuse the whole
 #               trunk being empty.
@@ -411,6 +418,8 @@ echo ""
 #               disabled in committed config); SEPTA's alert remapper likewise
 #               emits only "elevator"/"alert", so SEPTA_RR / SEPTA_METRO codes
 #               here could never fire.
+#           MNR New Haven (GCT->MSTM) is a trunk of four routes (New Haven plus
+#           the New Canaan, Danbury and Waterbury branches), so it stays empty.
 
 ROUTES=(
   # NJ Transit - high frequency, reliable all-week
@@ -442,18 +451,18 @@ ROUTES=(
   "PATH mid:GRV->WTC|PGR|PWC|PATH||"
   "PATH mid:NPT->33rd|PNP|P33|PATH||"
   # LIRR - high frequency
-  "LIRR Babylon|JAM|BTA|LIRR|JAM|"
-  "LIRR Ronkonkoma|JAM|RON|LIRR|JAM|"
-  "LIRR Port Washington|NY|PWS|LIRR||"
-  "LIRR Long Beach|JAM|LBH|LIRR|JAM|"
+  "LIRR Babylon|JAM|BTA|LIRR|JAM||1,5"
+  "LIRR Ronkonkoma|JAM|RON|LIRR|JAM||4,13"
+  "LIRR Port Washington|NY|PWS|LIRR|||9"
+  "LIRR Long Beach|JAM|LBH|LIRR|JAM||6"
   # LIRR - weekday-only (limited weekend branch service)
-  "LIRR Hempstead|JAM|LHEM|LIRR|JAM|w"
+  "LIRR Hempstead|JAM|LHEM|LIRR|JAM|w|2"
   # Metro-North
-  "MNR Hudson|GCT|MPOK|MNR|GCT|"
-  "MNR Harlem|GCT|MWPL|MNR|GCT|"
+  "MNR Hudson|GCT|MPOK|MNR|GCT||1"
+  "MNR Harlem|GCT|MWPL|MNR|GCT||2"
   "MNR New Haven|GCT|MSTM|MNR|GCT|"
-  "MNR New Haven Main|GCT|MNHV|MNR|GCT|"
-  "MNR Hudson Short|GCT|MCRH|MNR|GCT|"
+  "MNR New Haven Main|GCT|MNHV|MNR|GCT||3"
+  "MNR Hudson Short|GCT|MCRH|MNR|GCT||1"
   # Subway
   "Subway 1|S101|S142|SUBWAY|||1"
   "Subway A|SA55|SA24|SUBWAY|||A,C"
@@ -468,7 +477,7 @@ ROUTES=(
   # SEPTA Regional Rail — Center City pairs (all lines pass 30th St/Suburban).
   # No `lines` values for SEPTA: its alert remapper only ever emits
   # "elevator"/"alert", never "planned_work", so a code here could never match
-  # the index (same no-value-beats-wrong-value treatment as LIRR/MNR).
+  # the index.
   "SEPTA RR Center City|SEPR90004|SEPR90005|SEPTA_RR||"
   "SEPTA RR Trenton Line|SEPR90701|SEPR90004|SEPTA_RR||"
   # SEPTA Metro — NHSL is the real-time-upgraded Metro line (Broad St / MFL are
@@ -522,9 +531,9 @@ ${seed_arg}
 ml = set(sc.get_prediction_enabled_stations())
 is_weekend = datetime.date.today().weekday() >= 5
 # Sources whose route_topology line codes are the same strings the service-alert
-# feed puts in affected_route_ids. LIRR and MNR are excluded on purpose: MTA
-# publishes numeric GTFS route ids for them, so their topology codes would never
-# match and a guessed mapping could wrongly excuse a real outage. SEPTA_RR and
+# feed puts in affected_route_ids. LIRR and MNR are excluded: MTA publishes
+# numeric GTFS route ids for them, so only the fixed table (which translates
+# and test-pins every route serving its pairs) carries their codes. SEPTA_RR and
 # SEPTA_METRO are excluded for a different reason: the SEPTA alert remapper only
 # ever emits 'elevator' or 'alert', never 'planned_work', so a SEPTA code could
 # never match the planned-work index. See the 'lines' notes on the fixed table.
