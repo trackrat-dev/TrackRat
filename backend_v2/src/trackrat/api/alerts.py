@@ -9,7 +9,7 @@ active MTA service alerts (planned work, delays).
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel, model_validator
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import ColumnElement, delete, func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -17,7 +17,12 @@ from sqlalchemy.orm import selectinload
 from structlog import get_logger
 
 from trackrat.db.engine import get_db
-from trackrat.models.database import DeviceToken, RouteAlertSubscription, ServiceAlert
+from trackrat.models.database import (
+    TRAIN_ID_MAX_LENGTH,
+    DeviceToken,
+    RouteAlertSubscription,
+    ServiceAlert,
+)
 
 logger = get_logger(__name__)
 
@@ -45,7 +50,7 @@ class SubscriptionItem(BaseModel):
     line_id: str | None = None
     from_station_code: str | None = None
     to_station_code: str | None = None
-    train_id: str | None = None
+    train_id: str | None = Field(default=None, max_length=TRAIN_ID_MAX_LENGTH)
     direction: str | None = None
     active_days: int = 127  # Bitmask: Mon=1..Sun=64, 127=all
     active_start_minutes: int | None = None  # Minutes from midnight

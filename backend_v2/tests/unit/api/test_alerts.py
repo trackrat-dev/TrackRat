@@ -344,6 +344,44 @@ class TestTrainSubscriptionValidation:
         assert subs[0]["from_station_code"] is None
         print(f"  Train subscription round-tripped: {subs[0]}")
 
+    def test_long_subway_gtfs_train_id_roundtrips(self, e2e_client: TestClient):
+        """A 34-char GTFS-scheduled subway id fits (issue #1928); at varchar(30)
+        it 500'd the whole batch-replace sync, losing every other subscription."""
+        train_id = "S6X-L0S2-6-1091-S01_055500_6..S02R"
+        assert len(train_id) == 34
+        e2e_client.post(
+            "/api/v2/devices/register",
+            json={"device_id": "dev-train-long", "apns_token": "tok-train-long"},
+        )
+        resp = e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-train-long",
+                "subscriptions": [
+                    {"data_source": "SUBWAY", "train_id": train_id},
+                    {"data_source": "NJT", "train_id": "3254"},
+                ],
+            },
+        )
+        print(f"  sync status={resp.status_code} body={resp.text}")
+        assert resp.status_code == 200
+        subs = e2e_client.get("/api/v2/alerts/subscriptions/dev-train-long").json()[
+            "subscriptions"
+        ]
+        assert sorted(s["train_id"] for s in subs) == sorted([train_id, "3254"])
+
+    def test_train_id_over_max_length_is_422(self, e2e_client: TestClient):
+        """An id wider than the column is rejected up front, not a DB 500."""
+        resp = e2e_client.put(
+            "/api/v2/alerts/subscriptions",
+            json={
+                "device_id": "dev-train-too-long",
+                "subscriptions": [{"data_source": "SUBWAY", "train_id": "X" * 65}],
+            },
+        )
+        print(f"  status={resp.status_code} body={resp.text}")
+        assert resp.status_code == 422
+
     def test_active_days_defaults_to_127(self, e2e_client: TestClient):
         """active_days defaults to 127 (all days) when not provided."""
         e2e_client.post(

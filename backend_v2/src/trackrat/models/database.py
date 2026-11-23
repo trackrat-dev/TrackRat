@@ -36,6 +36,10 @@ from trackrat.db.partitioning import (
 
 Base = declarative_base()
 
+# Width of client-supplied train id columns. GTFS-scheduled subway ids are the
+# trip id untruncated and reach 34 chars (issue #1928).
+TRAIN_ID_MAX_LENGTH = 64
+
 
 class TrainJourney(Base):
     """Core train journey table - one record per train per day."""
@@ -384,7 +388,8 @@ class LiveActivityToken(Base):
     id = Column(Integer, primary_key=True, autoincrement=True)
     push_token = Column(String, unique=True, nullable=False)  # APNS token
     activity_id = Column(String, nullable=False)  # iOS Activity ID
-    train_number = Column(String(30), nullable=False)  # PATH IDs are ~21 chars
+    # Subway GTFS ids ("S6X-L0S2-6-1091-S01_055500_6..S02R") reach 34 chars.
+    train_number = Column(String(TRAIN_ID_MAX_LENGTH), nullable=False)
     origin_code = Column(String(10), nullable=False)  # e.g., "NY"
     destination_code = Column(String(10), nullable=False)  # e.g., "WAS"
     # Disambiguates journeys when train_number collides across systems.
@@ -447,7 +452,7 @@ class RouteAlertSubscription(Base):
     line_id = Column(String(30), nullable=True)
     from_station_code = Column(String(10), nullable=True)
     to_station_code = Column(String(10), nullable=True)
-    train_id = Column(String(30), nullable=True)
+    train_id = Column(String(TRAIN_ID_MAX_LENGTH), nullable=True)
     direction = Column(String(10), nullable=True)
     active_days = Column(
         Integer, default=127, nullable=False, server_default="127"

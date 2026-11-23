@@ -8,14 +8,14 @@ from datetime import datetime, timedelta
 from typing import cast
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from sqlalchemy import delete, select
 from sqlalchemy.engine import CursorResult
 from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.db.engine import get_db
-from trackrat.models.database import LiveActivityToken
+from trackrat.models.database import TRAIN_ID_MAX_LENGTH, LiveActivityToken
 from trackrat.services.gtfs import GTFSService
 from trackrat.utils.time import now_et
 
@@ -29,7 +29,7 @@ class RegisterRequest(BaseModel):
 
     push_token: str
     activity_id: str
-    train_number: str
+    train_number: str = Field(max_length=TRAIN_ID_MAX_LENGTH)
     origin_code: str
     destination_code: str
     # Disambiguates journeys when train_number collides across transit systems
