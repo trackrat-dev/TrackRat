@@ -94,8 +94,9 @@ variable "disabled_data_sources" {
 # GCP cannot shrink a persistent disk, and the google provider forces
 # REPLACEMENT rather than erroring when this value goes down — which for
 # google_compute_disk.data means destroying and recreating the Postgres data
-# disk. Nothing else guards it: that resource has no prevent_destroy, and its
-# lifecycle block ignores only `snapshot`.
+# disk. That resource now has prevent_destroy (#1917), which turns such a plan
+# into a failed apply rather than a replacement, but a failed production apply
+# is still an outage of the deploy pipeline, so keep the ratchet.
 #
 # That matters because infra_v2/terraform/ is auto-applied by the
 # trackrat-terraform-production Cloud Build trigger, which has no path filter

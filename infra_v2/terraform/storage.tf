@@ -57,9 +57,16 @@ resource "google_compute_disk" "data" {
   }
 
   # Ignore snapshot attribute - disk may have been created from snapshot
-  # but we don't want Terraform to recreate it
+  # but we don't want Terraform to recreate it.
+  #
+  # prevent_destroy: this root is auto-applied on every push to production, so
+  # any ForceNew diff (a smaller size, a new name/type/zone) would otherwise
+  # destroy and recreate the Postgres data disk unreviewed (#1917). It also
+  # applies to staging, whose clone flow deletes and recreates the disk with
+  # gcloud (cloudbuild-staging.yaml), which this does not block.
   lifecycle {
-    ignore_changes = [snapshot]
+    prevent_destroy = true
+    ignore_changes  = [snapshot]
   }
 
   depends_on = [google_project_service.apis]

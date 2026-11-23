@@ -16,10 +16,10 @@ v5.45.2) with ``terraform plan -refresh=false`` over a state holding
     50 -> 60    # google_compute_disk.data will be updated in-place
     50 -> 50    No changes.
 
-Nothing else stands in the way:
+What stood in the way when this was written:
 
-* ``google_compute_disk.data`` has no ``prevent_destroy``; its ``lifecycle``
-  block ignores only ``snapshot`` (``infra_v2/terraform/storage.tf``);
+* ``google_compute_disk.data`` had no ``prevent_destroy`` (added since by
+  #1917, which turns the replacement into a failed apply; asserted below);
 * ``infra_v2/terraform/`` is auto-applied by the ``trackrat-terraform-production``
   Cloud Build trigger, which has **no path filter**, so it runs on every push to
   the ``production`` branch — not only on infrastructure changes.
@@ -88,8 +88,9 @@ def test_declared_disk_size_matches_the_recorded_provisioned_size():
         50 -> 50   No changes.
 
     So a shrink is not an apply that fails safely — it is a destroy and
-    recreate of the PostgreSQL data disk, on a resource with no
-    prevent_destroy, in a root auto-applied on every push to production.
+    recreate of the PostgreSQL data disk in a root auto-applied on every push
+    to production. prevent_destroy (#1917) now fails that apply instead, but a
+    production deploy that cannot apply is still an outage of the pipeline.
     """
     declared = _declared_disk_size()
     assert declared == _PROVISIONED_DISK_SIZE_GB, (
@@ -159,4 +160,31 @@ def test_data_disk_does_not_ignore_size_changes():
     assert "size" not in ignored, (
         "google_compute_disk.data ignores changes to `size`, which hides disk "
         "drift rather than fixing it and defeats this guard (issue #1828)"
+    )
+
+
+def test_data_disk_has_prevent_destroy():
+    """Issue #1917: `infra_v2/terraform/` is applied with `-auto-approve` on
+    every production push, so prevent_destroy is the only thing between a
+    ForceNew diff (shrink, rename, type/zone change, provider upgrade) and an
+    unreviewed destroy of the PostgreSQL data disk. Comment lines are dropped
+    first so a commented-out `# prevent_destroy = true` cannot satisfy this."""
+    storage = "\n".join(
+        line
+        for line in _STORAGE_TF.read_text().splitlines()
+        if not line.lstrip().startswith("#")
+    )
+    disk = re.search(
+        r'resource\s+"google_compute_disk"\s+"data"\s*\{(.*?)\n\}', storage, re.DOTALL
+    )
+    assert disk, "google_compute_disk.data not found"
+    lifecycle = re.search(r"lifecycle\s*\{(.*?)\}", disk.group(1), re.DOTALL)
+    assert lifecycle, (
+        "google_compute_disk.data has no lifecycle block, so nothing prevents "
+        f"Terraform from destroying it (issue #1917). Block was:\n{disk.group(1)}"
+    )
+    assert re.search(r"^\s*prevent_destroy\s*=\s*true\b", lifecycle.group(1), re.M), (
+        "google_compute_disk.data lifecycle lacks `prevent_destroy = true`; a "
+        "replacement plan would destroy the Postgres data disk on the next "
+        f"auto-applied production push (issue #1917). Lifecycle was:\n{lifecycle.group(1)}"
     )

@@ -19,6 +19,10 @@ def test_health_check(client):
     assert "database" in data["checks"]
     assert "scheduler" in data["checks"]
     assert "data_freshness" in data["checks"]
+    # Postgres runs in Docker on a persistent disk, not Cloud SQL; /health
+    # cannot observe the snapshot schedule, so it must not claim a backup
+    # exists (#1917).
+    assert "backup" not in data["checks"], data["checks"].get("backup")
 
 
 def test_health_reports_data_sources(client):
