@@ -4,7 +4,8 @@ import StoreKit
 
 /// Service that manages prompting users for feedback during their train journey.
 /// Shows a feedback prompt when the train departs from the user's origin station.
-/// Cooldown: 8 days if dismissed, 16 days if negative feedback.
+/// Cooldown: 8 days if dismissed (by the X button or by swiping the sheet away),
+/// 16 days if negative feedback, 365 days if positive feedback.
 @MainActor
 class JourneyFeedbackService: ObservableObject {
     static let shared = JourneyFeedbackService()
@@ -34,6 +35,10 @@ class JourneyFeedbackService: ObservableObject {
 
     private let dismissCooldownDays: Int = 8
     private let negativeFeedbackCooldownDays: Int = 16
+    /// Once a user has rated, StoreKit ignores review requests until a new app version
+    /// more than 365 days later. We can't tell whether "Yes!" led to a rating, so a
+    /// shorter cooldown would re-show a prompt whose "Yes!" does nothing (#1924).
+    private let positiveFeedbackCooldownDays: Int = 365
 
     private init() {
         // Observe app becoming active to show queued prompts
@@ -90,7 +95,7 @@ class JourneyFeedbackService: ObservableObject {
         // Check if app is in foreground
         if UIApplication.shared.applicationState == .active {
             print("📊 Journey feedback: Showing prompt on departure (app active)")
-            shouldShowFeedbackPrompt = true
+            showPrompt()
         } else {
             print("📊 Journey feedback: Queuing prompt for foreground (departure detected)")
             promptQueuedForForeground = true
@@ -101,6 +106,8 @@ class JourneyFeedbackService: ObservableObject {
     func userRespondedPositively() {
         shouldShowFeedbackPrompt = false
         promptQueuedForForeground = false
+
+        recordCooldown(days: positiveFeedbackCooldownDays)
 
         print("📊 Journey feedback: User responded positively, requesting App Store review")
 
@@ -162,11 +169,19 @@ class JourneyFeedbackService: ObservableObject {
         if promptQueuedForForeground && !shouldShowFeedbackPrompt {
             print("📊 Journey feedback: App became active, showing queued prompt")
             promptQueuedForForeground = false
-            shouldShowFeedbackPrompt = true
+            showPrompt()
         }
     }
 
-    private func isInCooldownPeriod() -> Bool {
+    /// Presents the prompt and starts the dismiss cooldown up front, so a prompt the
+    /// user swipes away (which calls none of the response handlers) is not shown
+    /// again on the next ride. Each response then overwrites it with its own cooldown.
+    private func showPrompt() {
+        recordCooldown(days: dismissCooldownDays)
+        shouldShowFeedbackPrompt = true
+    }
+
+    func isInCooldownPeriod() -> Bool {
         guard let lastDismissedDate = UserDefaults.standard.object(forKey: lastPromptDismissedDateKey) as? Date else {
             return false
         }

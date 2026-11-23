@@ -13,6 +13,7 @@
 		A1NOTSVC0000000000000003 /* NotificationPermissionService.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1NOTSVC0000000000000001 /* NotificationPermissionService.swift */; };
 		A1LOCTST0000000000000003 /* LocationServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1LOCTST0000000000000001 /* LocationServiceTests.swift */; };
 		A1NOTTST0000000000000003 /* NotificationPermissionServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1NOTTST0000000000000001 /* NotificationPermissionServiceTests.swift */; };
+		A1JFBTST0000000000000003 /* JourneyFeedbackServiceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1JFBTST0000000000000001 /* JourneyFeedbackServiceTests.swift */; };
 		A1ONBTST0000000000000003 /* OnboardingViewTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1ONBTST0000000000000001 /* OnboardingViewTests.swift */; };
 		1A1A1A1A1A1A1A1A1A1A1A1E /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 1A1A1A1A1A1A1A1A1A1A1A1F /* Assets.xcassets */; };
 		446F271841A8FA59C62FA628 /* TrainSystemTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = BD899D62327DBD0B9C1DDDB6 /* TrainSystemTests.swift */; };
@@ -269,6 +270,7 @@
 		A1NOTSVC0000000000000001 /* NotificationPermissionService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NotificationPermissionService.swift; path = TrackRat/Services/NotificationPermissionService.swift; sourceTree = "<group>"; };
 		A1LOCTST0000000000000001 /* LocationServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LocationServiceTests.swift; path = TrackRatTests/Services/LocationServiceTests.swift; sourceTree = "<group>"; };
 		A1NOTTST0000000000000001 /* NotificationPermissionServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = NotificationPermissionServiceTests.swift; path = TrackRatTests/Services/NotificationPermissionServiceTests.swift; sourceTree = "<group>"; };
+		A1JFBTST0000000000000001 /* JourneyFeedbackServiceTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = JourneyFeedbackServiceTests.swift; path = TrackRatTests/Services/JourneyFeedbackServiceTests.swift; sourceTree = "<group>"; };
 		A1ONBTST0000000000000001 /* OnboardingViewTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = OnboardingViewTests.swift; path = TrackRatTests/Views/OnboardingViewTests.swift; sourceTree = "<group>"; };
 		1A1A1A1A1A1A1A1A1A1A1A10 /* TrackRat.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = TrackRat.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		1A1A1A1A1A1A1A1A1A1A1A1F /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -445,6 +447,7 @@
 				A1NOTSVC0000000000000001 /* NotificationPermissionService.swift */,
 				A1LOCTST0000000000000001 /* LocationServiceTests.swift */,
 				A1NOTTST0000000000000001 /* NotificationPermissionServiceTests.swift */,
+				A1JFBTST0000000000000001 /* JourneyFeedbackServiceTests.swift */,
 				A1ONBTST0000000000000001 /* OnboardingViewTests.swift */,
 				A19899422E8063EA0079E596 /* LiveActivityServiceTests.swift */,
 				A19899432E8063EA0079E596 /* RatSenseServiceTests.swift */,
@@ -921,6 +924,7 @@
 				A1NOTSVC0000000000000003 /* NotificationPermissionService.swift in Sources */,
 				A1LOCTST0000000000000003 /* LocationServiceTests.swift in Sources */,
 				A1NOTTST0000000000000003 /* NotificationPermissionServiceTests.swift in Sources */,
+				A1JFBTST0000000000000003 /* JourneyFeedbackServiceTests.swift in Sources */,
 				A1ONBTST0000000000000003 /* OnboardingViewTests.swift in Sources */,
 				A1BA60EC2DFC73650002FB39 /* BuildTests.swift in Sources */,
 				A1BA60ED2DFC73650002FB39 /* StationsTests.swift in Sources */,
