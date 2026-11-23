@@ -849,7 +849,7 @@ class PathCollector:
         try:
             arrivals = await self.client.get_all_arrivals()
         except Exception as e:
-            logger.error("path_api_failed", error=str(e))
+            logger.error("path_api_failed", error=str(e), error_type=type(e).__name__)
             return {
                 "data_source": "PATH",
                 "error": str(e),

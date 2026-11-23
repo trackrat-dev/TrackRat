@@ -150,7 +150,15 @@ def format_app_entry(entry):
         detail_parts.append(event)
 
     # Include key structured data if present
-    for key in ("task", "duration_ms", "route", "train_id", "error", "params"):
+    for key in (
+        "task",
+        "duration_ms",
+        "route",
+        "train_id",
+        "error",
+        "error_type",
+        "params",
+    ):
         if key in jp and key != "event":
             val = jp[key]
             if isinstance(val, dict):
