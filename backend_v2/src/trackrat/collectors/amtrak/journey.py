@@ -25,6 +25,12 @@ from trackrat.utils.time import normalize_to_et, now_et
 
 logger = get_logger(__name__)
 
+# How far a stop's scheduled departure may drift between two sightings of the
+# same physical run for the prior-day fallback to treat them as one. The same
+# train number's next-day run is ~24h apart at every stop, so any value well
+# under that separates the two (issue #1919).
+PRIOR_DAY_SAME_RUN_TOLERANCE = timedelta(hours=1)
+
 
 def _generate_train_id(train_num: str) -> str:
     """Generate the stable internal train ID for an Amtrak train.
@@ -256,12 +262,52 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                 # duplicate D+1 row shadows the real one. Fall back to the
                 # immediately prior service day for the same train before
                 # creating, so a requeued expired row (or any mid-run
-                # overnight row) is reused, not orphaned. The is_completed
-                # guard avoids capturing a genuinely different prior-day run
-                # of the same daily train number: yesterday's run is
-                # completed by the time today's departs. Overnight service is
+                # overnight row) is reused, not orphaned. Overnight service is
                 # at most one calendar day behind the derived date, so a
                 # single-day back-window suffices.
+                #
+                # The row must also be the same physical run: it must already
+                # hold one of the feed's tracked stops at the same scheduled
+                # time. Any stop, not just the first surviving one: a
+                # pattern-generated SCHEDULED row keeps only the stations
+                # common to every sampled run, so it can lack that stop while
+                # sharing later ones. is_completed alone cannot tell yesterday's run
+                # apart, because a run that drops out of the feed is expired,
+                # never completed — so every daytime run was merged into the
+                # previous day's row, Sunday's runs never existed under a
+                # Sunday journey_date, and the pattern scheduler had no Sunday
+                # history to project from (issue #1919).
+                same_time_stops = []
+                for stop in train_data.stations:
+                    internal_code = AMTRAK_TO_INTERNAL_STATION_MAP.get(stop.code)
+                    if not internal_code:
+                        continue
+                    for column, raw_time in (
+                        (JourneyStop.scheduled_departure, stop.schDep),
+                        (JourneyStop.scheduled_arrival, stop.schArr),
+                    ):
+                        if not raw_time:
+                            continue
+                        feed_time = self._parse_amtrak_time(raw_time)
+                        if feed_time is None:
+                            continue
+                        same_time_stops.append(
+                            and_(
+                                JourneyStop.station_code == internal_code,
+                                column.between(
+                                    feed_time - PRIOR_DAY_SAME_RUN_TOLERANCE,
+                                    feed_time + PRIOR_DAY_SAME_RUN_TOLERANCE,
+                                ),
+                            )
+                        )
+                same_run_stop = (
+                    select(JourneyStop.id)
+                    .where(
+                        JourneyStop.journey_id == TrainJourney.id,
+                        or_(*same_time_stops),
+                    )
+                    .exists()
+                )
                 existing = await session.scalar(
                     select(TrainJourney)
                     .where(
@@ -271,6 +317,7 @@ class AmtrakJourneyCollector(BaseJourneyCollector):
                             == journey_date - timedelta(days=1),
                             TrainJourney.data_source == "AMTRAK",
                             TrainJourney.is_completed.is_(False),
+                            same_run_stop,
                         )
                     )
                     .with_for_update(skip_locked=True)

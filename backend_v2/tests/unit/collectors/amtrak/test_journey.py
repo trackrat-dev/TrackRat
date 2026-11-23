@@ -1416,8 +1416,12 @@ class TestConvertCrossDayMatching:
             ],
         )
 
-    def _day_d_journey(self, day_d, origin_sched, is_completed=False):
-        return TrainJourney(
+    def _day_d_journey(
+        self, day_d, origin_sched, is_completed=False, phl_sched_dep=None
+    ):
+        """Day-D row; ``phl_sched_dep`` adds the PHL stop it already holds
+        from earlier in the run (the stop the trimmed feed now starts at)."""
+        journey = TrainJourney(
             train_id="A2150",
             journey_date=day_d,
             line_code="NEC",
@@ -1434,6 +1438,17 @@ class TestConvertCrossDayMatching:
             update_count=1,
             observation_type="OBSERVED",
         )
+        if phl_sched_dep is not None:
+            journey.stops = [
+                JourneyStop(
+                    station_code="PH",
+                    station_name="Philadelphia",
+                    stop_sequence=3,
+                    scheduled_departure=phl_sched_dep,
+                    has_departed_station=False,
+                )
+            ]
+        return journey
 
     @pytest.mark.asyncio
     async def test_overnight_trimmed_feed_reuses_prior_day_row(
@@ -1443,13 +1458,11 @@ class TestConvertCrossDayMatching:
         the expired row is reused and rescued, not shadowed by a duplicate."""
         # First surviving feed stop departs shortly after midnight "today";
         # the run's origin departed yesterday (day D) before midnight.
-        post_midnight = now_et().replace(
-            hour=0, minute=30, second=0, microsecond=0
-        )
+        post_midnight = now_et().replace(hour=0, minute=30, second=0, microsecond=0)
         day_d = post_midnight.date() - timedelta(days=1)
         origin_sched = post_midnight - timedelta(hours=2)  # 22:30 on day D
 
-        journey = self._day_d_journey(day_d, origin_sched)
+        journey = self._day_d_journey(day_d, origin_sched, phl_sched_dep=post_midnight)
         db_session.add(journey)
         await db_session.flush()
 
@@ -1464,9 +1477,9 @@ class TestConvertCrossDayMatching:
             "the existing day-D row instead of creating a duplicate"
         )
         assert result.journey_date == day_d, "The row keeps its origin date"
-        assert result.is_expired is False, (
-            "The requeue rescue must reach the day-D row and clear its expiry"
-        )
+        assert (
+            result.is_expired is False
+        ), "The requeue rescue must reach the day-D row and clear its expiry"
         assert result.api_error_count == 0
 
         from sqlalchemy import select as sa_select
@@ -1495,9 +1508,7 @@ class TestConvertCrossDayMatching:
         """A COMPLETED prior-day run of the same daily train number is
         finalized history — the fallback must skip it and create a fresh
         row for the new service day."""
-        post_midnight = now_et().replace(
-            hour=0, minute=30, second=0, microsecond=0
-        )
+        post_midnight = now_et().replace(hour=0, minute=30, second=0, microsecond=0)
         day_d = post_midnight.date() - timedelta(days=1)
         origin_sched = post_midnight - timedelta(hours=2)
 
@@ -1517,3 +1528,84 @@ class TestConvertCrossDayMatching:
         )
         assert result.journey_date == post_midnight.date()
         assert finished.is_completed is True, "Finalized history untouched"
+
+    @pytest.mark.asyncio
+    async def test_previous_days_uncompleted_run_is_not_captured(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """Issue #1919: yesterday's run of the same daily train that dropped
+        out of the feed is expired, never completed. Today's run passes PHL at
+        the same clock time, 24h later — it is a different physical run and
+        must get its own row, or today's run is filed under yesterday's date
+        and the pattern scheduler never sees a run on today's weekday."""
+        today_phl = now_et().replace(hour=9, minute=0, second=0, microsecond=0)
+        day_d = today_phl.date() - timedelta(days=1)
+        yesterday_phl = today_phl - timedelta(days=1)
+
+        yesterday = self._day_d_journey(
+            day_d,
+            yesterday_phl - timedelta(hours=1, minutes=30),
+            phl_sched_dep=yesterday_phl,
+        )
+        db_session.add(yesterday)
+        await db_session.flush()
+
+        result = await journey_collector._convert_to_journey(
+            db_session, self._overnight_trimmed_feed(today_phl)
+        )
+        await db_session.flush()
+
+        assert result is not None
+        assert result.id != yesterday.id, (
+            f"Today's run (PHL {today_phl}) was merged into yesterday's "
+            f"expired row (PHL {yesterday_phl}, journey_date {day_d})"
+        )
+        assert result.journey_date == today_phl.date(), (
+            f"Expected today's journey_date {today_phl.date()}, "
+            f"got {result.journey_date}"
+        )
+        assert (
+            yesterday.is_expired is True
+        ), "Yesterday's row must be left alone, not rescued by today's run"
+
+    @pytest.mark.asyncio
+    async def test_scheduled_row_matched_on_later_shared_stop(
+        self, db_session: AsyncSession, journey_collector
+    ):
+        """A pattern-generated SCHEDULED row keeps only the stations common
+        to every sampled run, so it can lack the feed's first surviving stop
+        (PHL). It still holds WAS at the same scheduled arrival — the same
+        physical run — so the fallback must promote it, not create a D+1
+        duplicate beside it."""
+        post_midnight = now_et().replace(hour=0, minute=30, second=0, microsecond=0)
+        day_d = post_midnight.date() - timedelta(days=1)
+        was_sched_arr = post_midnight + timedelta(hours=2)
+
+        scheduled = self._day_d_journey(day_d, post_midnight - timedelta(hours=2))
+        scheduled.observation_type = "SCHEDULED"
+        scheduled.is_expired = False
+        scheduled.stops = [
+            JourneyStop(
+                station_code="WS",
+                station_name="Washington Union",
+                stop_sequence=5,
+                scheduled_arrival=was_sched_arr,
+                has_departed_station=False,
+            )
+        ]
+        db_session.add(scheduled)
+        await db_session.flush()
+
+        result = await journey_collector._convert_to_journey(
+            db_session, self._overnight_trimmed_feed(post_midnight)
+        )
+        await db_session.flush()
+
+        assert result is not None
+        assert result.id == scheduled.id, (
+            f"Expected the day-D SCHEDULED row (holds WS arriving "
+            f"{was_sched_arr}) to be promoted; got a new row dated "
+            f"{result.journey_date}"
+        )
+        assert result.journey_date == day_d
+        assert result.observation_type == "OBSERVED"
