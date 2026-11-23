@@ -11,7 +11,7 @@
 - **Routing**: React Router DOM 7.18
 - **Date Handling**: date-fns 4.4
 - **HTTP Client**: Native `fetch` (no axios)
-- **Maps**: MapLibre GL 6.14 + react-map-gl 8.1 (shared setup in `src/utils/maplibre.ts`)
+- **Maps**: MapLibre GL 6.15 + react-map-gl 8.1 (shared setup in `src/utils/maplibre.ts`)
 - **Deployment**: Cloudflare Workers Static Assets (`scripts/deploy-webpage.sh`, `wrangler.jsonc`)
 
 ## Architecture Patterns
