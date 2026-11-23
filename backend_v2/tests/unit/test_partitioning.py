@@ -28,7 +28,31 @@ from trackrat.db.partitioning import (
     move_default_rows_sql,
     partition_name,
     rolling_window_sql,
+    topup_lock_sql,
 )
+
+
+class TestTopUpLockSql:
+    def test_locks_referenced_table_before_partitioned_tables(self):
+        """Issue #1920: collectors lock train_journeys, then journey_stops.
+        The top-up must take its locks in that same order, all before any
+        DDL, under a lock_timeout so a busy table fails fast. The second wait
+        stays under the 1s default deadlock_timeout so a read-then-write
+        collector is never the deadlock victim."""
+        statements = topup_lock_sql()
+        print("\n".join(statements))
+        assert statements == [
+            "SET LOCAL lock_timeout = '5s'",
+            "LOCK TABLE train_journeys IN SHARE ROW EXCLUSIVE MODE",
+            "SET LOCAL lock_timeout = '500ms'",
+            "LOCK TABLE journey_stops, segment_transit_times IN ACCESS "
+            "EXCLUSIVE MODE",
+        ]
+
+    def test_locks_every_managed_table(self):
+        last = topup_lock_sql()[-1]
+        for pt in PARTITIONED_TABLES:
+            assert pt.name in last, f"{pt.name} missing from {last!r}"
 
 
 class TestMonthArithmetic:
@@ -221,9 +245,7 @@ class TestInitialSetupSql:
             "journey_stops_y2026_m05" in s and "('2026-05-01') TO ('2026-06-01')" in s
             for s in statements
         )
-        assert any(
-            "segment_transit_times_y2026_m05" in s for s in statements
-        )
+        assert any("segment_transit_times_y2026_m05" in s for s in statements)
 
 
 class TestGetPartitionedTable:

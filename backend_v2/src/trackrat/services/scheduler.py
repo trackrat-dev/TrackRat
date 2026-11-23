@@ -32,7 +32,11 @@ from trackrat.collectors.septa_rr.collector import SeptaRailCollector
 from trackrat.collectors.service_alerts import collect_service_alerts
 from trackrat.collectors.subway.collector import SubwayCollector
 from trackrat.collectors.wmata.collector import WMATACollector
-from trackrat.db.engine import _is_postgresql_concurrency_error, get_session
+from trackrat.db.engine import (
+    _is_postgresql_concurrency_error,
+    get_session,
+    retry_on_deadlock,
+)
 from trackrat.db.partitioning import (
     drop_old_partitions,
     ensure_future_partitions,
@@ -89,6 +93,13 @@ ACTIVE_JOURNEY_LOOKBACK_HOURS = 3
 # reports the filesystem that runs out — the same one `/health` and `/metrics`
 # read before #1344 moved them to the data disk.
 BOOT_DISK_PATH = "/"
+
+# Retry budget for the retention partition top-up (issue #1920). Backoff waits
+# 5 + 10 + 20 + 40 = 75s between attempts, longer than the pool's 55s
+# statement_timeout, so any reader holding journey_stops when the first
+# attempt hit its lock_timeout has finished before the last one.
+PARTITION_TOPUP_MAX_ATTEMPTS = 5
+PARTITION_TOPUP_RETRY_BASE_DELAY = 5.0
 
 
 class SchedulerService:
@@ -2954,11 +2965,19 @@ class SchedulerService:
                 # a partition to land in. Idempotent. Isolated: phases 1-5
                 # don't depend on it, so a failure here is re-raised only after
                 # they run — one bad partition must not halt all retention
-                # (issue #1877).
+                # (issue #1877). Retried on a lock timeout or deadlock: the
+                # top-up re-reads its state each pass, and the backoff spans
+                # more than the 55s statement_timeout, so a long reader
+                # holding journey_stops finishes between attempts (#1920).
                 topup_error: Exception | None = None
                 try:
                     async with get_session() as db:
-                        await ensure_future_partitions(db)
+                        await retry_on_deadlock(
+                            db,
+                            lambda: ensure_future_partitions(db),
+                            max_attempts=PARTITION_TOPUP_MAX_ATTEMPTS,
+                            base_delay=PARTITION_TOPUP_RETRY_BASE_DELAY,
+                        )
                 except Exception as e:
                     topup_error = e
                     logger.error(
