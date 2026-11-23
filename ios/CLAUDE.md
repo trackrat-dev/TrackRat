@@ -72,7 +72,7 @@ TrackRatTests/               # Unit tests
 | TripRecordingService | Trip recording |
 | StaticTrackDistributionService | Static track distribution data |
 | ThemeManager | Theme management |
-| LocationService | One-shot location fix to pick a system and rank nearby stations during setup (never leaves the device) |
+| LocationService | One-shot location fix to pick a system and rank nearby stations during setup (never leaves the device); also backs the Settings → Location row, since the same permission lets maps show the rider's position |
 | NotificationPermissionService | Defers the notification prompt until route alerts need it |
 
 ## API Endpoints

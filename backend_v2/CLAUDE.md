@@ -246,7 +246,14 @@ every nightly top-up for 10+ days in October 2026 (issue #1877). The top-up now
 detects that case and moves the rows (detach DEFAULT, create, re-insert,
 re-attach, in one transaction), logging `partition_default_rows_moved`; a
 top-up failure is also isolated so the other retention phases still run before
-the job reports failure (`retention_partition_topup_failed`).
+the job reports failure (`retention_partition_topup_failed`). Creating or
+attaching a partition locks `train_journeys` (via the cloned FK) *after* the
+partitioned table, the reverse of the collectors' order, which deadlocked nightly
+(issue #1920). `topup_lock_sql` now takes every lock up front in collector order
+under a short `lock_timeout` (5s, then 500ms for the partitioned tables — below
+the 1s `deadlock_timeout`, so the top-up yields rather than a collector), and
+`ensure_future_partitions` runs under `retry_on_deadlock` with a backoff spanning
+the 55s `statement_timeout`.
 
 `journey_stops` gained a `journey_date` column (denormalized from
 `train_journeys.journey_date`) because Postgres requires every unique/primary
@@ -885,6 +892,15 @@ The backend is organized into service classes for better maintainability:
 - **BackupService** (`services/backup_service.py`): GCS backup management (optional)
 
 ## Recent Improvements & Known Issues
+
+### Recent Improvements (November 2026)
+- ✅ LIRR/Metro-North GTFS static now downloads from `rrgtfsfeeds.s3.amazonaws.com` (issue #1986). MTA retired the `web.mta.info` bundle URLs, which began redirecting to the mta.info homepage (200 `text/html`) and failed the nightly refresh with a bare `BadZipFile`. `GTFSService` now rejects any non-zip body as a download failure naming the final URL, content type and size (`services/gtfs.py`).
+- ✅ SUBWAY journeys expired after 3 missed snapshots are unexpired when the trip reappears in the feed (issue #1982, `collectors/subway/collector.py`). LIRR/MNR still have the old one-way shape — see `docs/journey-lifecycle.md`.
+- ✅ PATH trains departing just after midnight are served before midnight (issue #1918). PATH `journey_date` is the origin departure's and RidePATH lists trains ~40 min ahead, so from ~23:15 such a train is stored under tomorrow; train details, the departures date filter, the GTFS cutoff, the collector's update window and Live Activity updates now admit `date+1` for PATH only.
+- ✅ Amtrak's cross-day fallback (#1500) only reuses a prior-day row for the same physical run (issue #1919): the row must share a feed stop at the same scheduled time (within 1h). Expired-not-completed runs had absorbed the next day's run, filing Sunday NEC trains under Saturday (`collectors/amtrak/journey.py`).
+- ✅ NJT GTFS block train numbers are unpadded (`"0409"` → `"409"`) to match real time, which reports the bare number; 12% of NJT GTFS trips never matched their real-time train (issue #1921). Migration `1878afd52bd6` unpads stored `gtfs_trips` rows, deletes NJT SCHEDULED journeys materialized under a padded number, and re-keys active Live Activity tokens.
+- ✅ `live_activity_tokens.train_number` and `route_alert_subscriptions.train_id` widened to `varchar(64)` (`TRAIN_ID_MAX_LENGTH`, migration `74985c32620b`) — untruncated subway trip ids reach 34 chars and 500'd Live Activity registration. Both request fields are capped at the same length, so anything wider is a 422 (issue #1928).
+- ✅ Partition top-up no longer deadlocks collectors nightly (issue #1920) — see "Partitioning" above.
 
 ### Recent Improvements (October 2026)
 - ✅ One PATH train is no longer split into two journeys by back-calculated origin times that disagree by ≥2 min (issue #1752). Four compounding errors in `collectors/path/`: `get_cumulative_time` missed every segment for trains running opposite to `PATH_ROUTE_STOPS` order and fell back to the flat 3 min/segment default (up to ~11 min off on NWK-WTC); arrivals were timed from RidePATH's minute-rounded `arrivalTimeMessage` (off by −30s..+60s) instead of `secondsToArrival`, which `ridepath_client.py` now prefers, falling back to the message; `segment_times.py` took one arbitrary GTFS trip per route — often a construction/holiday variant with a hold baked in — and now takes the per-direction median across every trip (borrowing the other direction only when GTFS has no trip running that way); and an empty load was cached for the process lifetime, so it now retries and a PATH GTFS refresh calls `clear_cache`. Measured same-train spread: max 1.95 min, under the 2-minute `SAME_TRAIN_TOLERANCE_MINUTES`.

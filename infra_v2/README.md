@@ -163,7 +163,7 @@ The `production` Worker's custom domains serve `trackrat.net` and `www.trackrat.
 | `region` | us-east4 | GCP region |
 | `zone` | us-east4-a | GCP zone |
 | `machine_type` | t2d-standard-1 | VM machine type, shared by staging and production |
-| `disk_size_gb` | 50 | Persistent data disk size (grown from 40 in issue #1828). Never lower it: a decrease replaces the Postgres data disk. The 20 GB boot disk is fixed in `compute.tf` (issue #1879) |
+| `disk_size_gb` | 50 | Persistent data disk size (grown from 40 in issue #1828). Never lower it: a decrease would replace the Postgres data disk, which `prevent_destroy` (issue #1917) now turns into a failed apply. The 20 GB boot disk is fixed in `compute.tf` (issue #1879) |
 | `snapshot_retention_days` | 7 | Snapshot retention period |
 | `environment` | *(required)* | Workspace environment; validated to `staging` or `production` |
 | `domain` | `""` | Overrides the derived public API hostname when set |
@@ -251,7 +251,9 @@ never matches production.
 **Terraform sequencing:** perform the manual migration to the *exact* target
 (size + type + same name) **before** merging the matching `variables.tf` /
 `storage.tf` change. Otherwise the next `cloudbuild-terraform` apply sees a `size`
-decrease / `type` change and destroys+recreates the live database volume. After the
+decrease / `type` change, which would destroy+recreate the live database volume;
+`google_compute_disk.data` has `prevent_destroy = true` (#1917), so that apply now
+fails instead, blocking the deploy pipeline until the config matches. After the
 manual migration, the merged config matches reality and `terraform plan` is a no-op
 for the disk.
 

@@ -1231,6 +1231,27 @@ class TestConvertMidRunHardening:
     passed stops.
     """
 
+    @staticmethod
+    def _mid_run_base():
+        """Origin departure ~2h ago, kept on the same service day as the
+        first surviving feed stop (PHL, base+65min).
+
+        _convert_to_journey derives journey_date from that first feed stop.
+        Between ~00:55 and 02:00 ET a plain now-2h base falls on the prior
+        day while PHL falls after midnight, so the derived date is D+1 and
+        the prior-day fallback (which needs a shared stop at the same
+        scheduled time) cannot match these rows — a new journey is created
+        and the tests fail on the clock, not on the code. Pull base back to
+        22:50 on the prior day in that window so PHL departs at 23:55.
+        """
+        base = now_et().replace(microsecond=0) - timedelta(hours=2)
+        phl_departure = base + timedelta(hours=1, minutes=5)
+        if phl_departure.date() != base.date():
+            base = phl_departure.replace(hour=0, minute=0, second=0) - timedelta(
+                hours=1, minutes=10
+            )
+        return base
+
     def _mid_run_feed(self, base):
         """Trimmed mid-run feed: origin NYP already dropped; PHL just
         departed (carries an actual departure), WAS ahead."""
@@ -1264,7 +1285,7 @@ class TestConvertMidRunHardening:
         """With the origin trimmed from the feed and journey.actual_departure
         unset, _convert must NOT record a mid-route stop's departure as the
         journey's origin departure."""
-        base = now_et().replace(microsecond=0) - timedelta(hours=2)
+        base = self._mid_run_base()
 
         journey = TrainJourney(
             train_id="A2150",
@@ -1305,7 +1326,7 @@ class TestConvertMidRunHardening:
         """An already-recorded origin departure survives a mid-run _convert
         (write-once), and sequences stay unique with stops_count matching
         the DB."""
-        base = now_et().replace(microsecond=0) - timedelta(hours=2)
+        base = self._mid_run_base()
         recorded_origin_dep = base + timedelta(minutes=4)
 
         journey = TrainJourney(
