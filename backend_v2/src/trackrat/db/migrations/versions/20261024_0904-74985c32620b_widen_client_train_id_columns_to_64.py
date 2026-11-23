@@ -1,7 +1,7 @@
 """widen client train id columns to 64
 
 Revision ID: 74985c32620b
-Revises: 3cb8b7a54aa2
+Revises: 1878afd52bd6
 Create Date: 2026-10-24 09:04:31.739713
 
 Live Activity registration 500'd for GTFS-scheduled subway trains: their
@@ -17,7 +17,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "74985c32620b"
-down_revision = "3cb8b7a54aa2"
+down_revision = "1878afd52bd6"
 branch_labels = None
 depends_on = None
 
