@@ -43,8 +43,8 @@ from trackrat.config.route_topology import get_routes_for_data_source
 
 # GTFS static feed URLs (mirrors services/gtfs.py)
 GTFS_URLS = {
-    "LIRR": "http://web.mta.info/developers/data/lirr/google_transit.zip",
-    "MNR": "http://web.mta.info/developers/data/mnr/google_transit.zip",
+    "LIRR": "https://rrgtfsfeeds.s3.amazonaws.com/gtfslirr.zip",
+    "MNR": "https://rrgtfsfeeds.s3.amazonaws.com/gtfsmnr.zip",
 }
 
 STOP_MAPS = {

@@ -198,7 +198,7 @@ class TestRateLimiting:
         ):
             mock_client = AsyncMock()
             mock_response = MagicMock()
-            mock_response.content = b"mock zip content"
+            mock_response.content = build_gtfs_zip()
             mock_response.raise_for_status = MagicMock()
             mock_client.get = AsyncMock(return_value=mock_response)
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -234,7 +234,7 @@ class TestRateLimiting:
         ):
             mock_client = AsyncMock()
             mock_response = MagicMock()
-            mock_response.content = b"mock zip content"
+            mock_response.content = build_gtfs_zip()
             mock_response.raise_for_status = MagicMock()
             mock_client.get = AsyncMock(return_value=mock_response)
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)
@@ -269,7 +269,7 @@ class TestRateLimiting:
         ):
             mock_client = AsyncMock()
             mock_response = MagicMock()
-            mock_response.content = b"mock zip content"
+            mock_response.content = build_gtfs_zip()
             mock_response.raise_for_status = MagicMock()
             mock_client.get = AsyncMock(return_value=mock_response)
             mock_client.__aenter__ = AsyncMock(return_value=mock_client)

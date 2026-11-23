@@ -81,8 +81,8 @@ GTFS_FEED_URLS = {
     "AMTRAK": "https://content.amtrak.com/content/gtfs/GTFS.zip",
     "PATH": "http://data.trilliumtransit.com/gtfs/path-nj-us/path-nj-us.zip",
     "PATCO": "https://rapid.nationalrtap.org/GTFSFileManagement/UserUploadFiles/13562/PATCO_GTFS.zip",
-    "LIRR": "http://web.mta.info/developers/data/lirr/google_transit.zip",
-    "MNR": "http://web.mta.info/developers/data/mnr/google_transit.zip",
+    "LIRR": "https://rrgtfsfeeds.s3.amazonaws.com/gtfslirr.zip",
+    "MNR": "https://rrgtfsfeeds.s3.amazonaws.com/gtfsmnr.zip",
     "SUBWAY": "https://rrgtfsfeeds.s3.amazonaws.com/gtfs_supplemented.zip",
     "METRA": "https://schedules.metrarail.com/gtfs/schedule.zip",
     "WMATA": "https://api.wmata.com/gtfs/rail-gtfs-static.zip",
@@ -714,6 +714,24 @@ class GTFSService:
                 response = await client.get(url, headers=headers, follow_redirects=True)
                 response.raise_for_status()
                 zip_data = response.content
+
+            # A retired feed URL tends to redirect to an HTML page served 200,
+            # which `raise_for_status` accepts. Reject it as a download failure
+            # naming what actually arrived, instead of an opaque BadZipFile
+            # from the parse (issue #1986: MTA moved the LIRR/MNR bundles and
+            # the old URLs began serving the mta.info homepage).
+            if not zipfile.is_zipfile(io.BytesIO(zip_data)):
+                return await self._record_refresh_failure(
+                    db,
+                    data_source,
+                    "download",
+                    ValueError(
+                        f"GTFS download is not a zip archive: "
+                        f"final_url={response.url} "
+                        f"content_type={response.headers.get('content-type')} "
+                        f"bytes={len(zip_data)}"
+                    ),
+                )
 
             # Update download timestamp
             feed_info.last_downloaded_at = now_et()
