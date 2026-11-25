@@ -1738,21 +1738,31 @@ class TestGtfsMergePassesTimeFrom:
                     # equal to the future time we passed in. The exact value is
                     # carried through ensure_timezone_aware, so compare the
                     # underlying instant.
-                    assert mock_gtfs.get_scheduled_departures.await_count == 1
-                    kwargs = mock_gtfs.get_scheduled_departures.await_args.kwargs
-                    assert "time_from" in kwargs, (
-                        "GTFS merge must pass time_from so the SQL pre-filter "
-                        "prunes trips before the connection window. Without "
-                        "this, the .limit(250) at high-volume stations "
-                        "truncates to overnight-only rows. See issue #1140."
-                    )
-                    passed = kwargs["time_from"]
-                    assert passed is not None
-                    assert passed == future_time_from, (
-                        f"time_from passed to GTFS ({passed}) must match the "
-                        f"caller's time_from ({future_time_from}); a mismatch "
-                        f"means leg-2 queries will still hit the SQL truncation."
-                    )
+                    # One query for today's services and one for the next
+                    # service day's after-midnight trips (issue #1997); both
+                    # need the same SQL floor.
+                    calls = mock_gtfs.get_scheduled_departures.await_args_list
+                    today = now_et().date()
+                    assert [c.kwargs["target_date"] for c in calls] == [
+                        today,
+                        today + timedelta(days=1),
+                    ]
+                    for call in calls:
+                        kwargs = call.kwargs
+                        assert "time_from" in kwargs, (
+                            "GTFS merge must pass time_from so the SQL pre-filter "
+                            "prunes trips before the connection window. Without "
+                            "this, the .limit(250) at high-volume stations "
+                            "truncates to overnight-only rows. See issue #1140."
+                        )
+                        passed = kwargs["time_from"]
+                        assert passed is not None
+                        assert passed == future_time_from, (
+                            f"time_from passed to GTFS ({passed}) for "
+                            f"{kwargs['target_date']} must match the caller's "
+                            f"time_from ({future_time_from}); a mismatch means "
+                            f"leg-2 queries will still hit the SQL truncation."
+                        )
 
     @pytest.mark.asyncio
     async def test_default_time_from_floored_to_now_for_gtfs(self):
@@ -1802,18 +1812,26 @@ class TestGtfsMergePassesTimeFrom:
                             data_sources=["NJT"],
                         )
 
-                        assert mock_gtfs.get_scheduled_departures.await_count == 1
-                        kwargs = mock_gtfs.get_scheduled_departures.await_args.kwargs
-                        passed = kwargs.get("time_from")
-                        assert passed is not None
-                        assert passed.tzinfo is not None
-                        # Floored to now (19:30), NOT the default midnight — else
-                        # the 250-row cap truncates high-frequency schedule-only
-                        # boards to morning-only rows the > now filter then drops.
-                        assert passed == fixed_now, (
-                            f"GTFS time_from ({passed}) must be floored to now "
-                            f"({fixed_now}); passing the default midnight lets "
-                            f"the .limit(250) truncate high-frequency "
-                            f"schedule-only boards to morning-only rows. "
-                            f"See issue #1140."
-                        )
+                        # Today's services plus the next service day's
+                        # after-midnight trips (issue #1997).
+                        calls = mock_gtfs.get_scheduled_departures.await_args_list
+                        assert [c.kwargs["target_date"] for c in calls] == [
+                            fixed_now.date(),
+                            fixed_now.date() + timedelta(days=1),
+                        ]
+                        for call in calls:
+                            passed = call.kwargs.get("time_from")
+                            assert passed is not None
+                            assert passed.tzinfo is not None
+                            # Floored to now (19:30), NOT the default midnight —
+                            # else the 250-row cap truncates high-frequency
+                            # schedule-only boards to morning-only rows the
+                            # > now filter then drops.
+                            assert passed == fixed_now, (
+                                f"GTFS time_from ({passed}) for "
+                                f"{call.kwargs['target_date']} must be floored to "
+                                f"now ({fixed_now}); passing the default midnight "
+                                f"lets the .limit(250) truncate high-frequency "
+                                f"schedule-only boards to morning-only rows. "
+                                f"See issue #1140."
+                            )
