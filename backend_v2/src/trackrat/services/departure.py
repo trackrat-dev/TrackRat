@@ -39,6 +39,7 @@ from trackrat.utils.locks import acquire_njt_journey_lock
 from trackrat.utils.sanitize import sanitize_track
 from trackrat.utils.time import (
     DATETIME_MAX_ET,
+    ET,
     normalize_to_et,
     now_et,
     parse_njt_time,
@@ -81,6 +82,15 @@ PATH_OBSERVED_CUTOFF_BUFFER = timedelta(minutes=2)
 # allows roughly two and a half missed cycles before the feed is treated as
 # stalled and the board degrades to schedule-only.
 PATH_REALTIME_STALE_AFTER = timedelta(minutes=10)
+
+# How far past midnight today's board also reads the *next* GTFS service day
+# (issue #1997). Some agencies file tonight's after-midnight trips under the
+# next date as 00:xx rather than under today as 24:xx — LIRR's eastbound Penn
+# trips do — so a query of today's services alone ends the board at the last
+# pre-midnight train. Two hours matches the end of the default 26-hour window
+# (02:00 tomorrow); stopping there keeps tomorrow's morning service off
+# tonight's board.
+NEXT_SERVICE_DAY_OVERLAP = timedelta(hours=2)
 
 
 def _destination_prefix(destination: str | None) -> str:
@@ -520,8 +530,6 @@ class DepartureService:
         if time_from is None:
             query_date = date or now_et().date()
             # Fix timezone bug: ensure time_from is timezone-aware in ET
-            from trackrat.utils.time import ET
-
             time_from = ET.localize(datetime.combine(query_date, datetime.min.time()))
         else:
             # Ensure provided time_from is timezone-aware
@@ -917,6 +925,33 @@ class DepartureService:
                     line_codes=line_codes,
                     label_matched_stop=label_matched_stop,
                 )
+                gtfs_candidates = list(gtfs_response.departures)
+
+                # Tonight's trips filed under tomorrow's service (issue #1997).
+                next_service_day = target_date + timedelta(days=1)
+                next_day_end = min(
+                    time_to,
+                    ET.localize(datetime.combine(next_service_day, datetime.min.time()))
+                    + NEXT_SERVICE_DAY_OVERLAP,
+                )
+                if gtfs_lower_bound < next_day_end:
+                    next_day_response = await gtfs_service.get_scheduled_departures(
+                        db=db,
+                        from_station=from_station,
+                        to_station=to_station,
+                        target_date=next_service_day,
+                        limit=200,
+                        data_sources=allowed_sources,
+                        time_from=gtfs_lower_bound,
+                        line_codes=line_codes,
+                        label_matched_stop=label_matched_stop,
+                    )
+                    gtfs_candidates.extend(
+                        dep
+                        for dep in next_day_response.departures
+                        if dep.departure.scheduled_time
+                        and dep.departure.scheduled_time < next_day_end
+                    )
 
                 # Filter GTFS departures:
                 # 1. Must be after the explicit time_from window (or current time
@@ -938,7 +973,7 @@ class DepartureService:
                     path_cutoff_time = current_time
                 gtfs_future = [
                     dep
-                    for dep in gtfs_response.departures
+                    for dep in gtfs_candidates
                     if dep.departure.scheduled_time
                     and dep.departure.scheduled_time > gtfs_lower_bound
                     and dep.data_source in allowed_sources
