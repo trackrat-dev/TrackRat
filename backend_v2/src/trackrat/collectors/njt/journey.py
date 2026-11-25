@@ -61,6 +61,7 @@ class JourneyMatchResult(Enum):
     MATCH = "match"
     DEPARTURE_TIME_MISMATCH = "departure_time_mismatch"
     STALE_PRIOR_RUN = "stale_prior_run"
+    PRIOR_RUN_DATA = "prior_run_data"
 
 
 # A first-stop departure-time mismatch larger than this cannot be a real-world
@@ -71,6 +72,37 @@ class JourneyMatchResult(Enum):
 # daily displacement, so it cleanly separates "delayed today" from "yesterday's
 # reused train_id". See JourneyMatchResult.STALE_PRIOR_RUN and issue #1238.
 STALE_PRIOR_RUN_THRESHOLD_SECONDS = 6 * 3600
+
+
+def is_prior_run_response(
+    stored_departure: datetime | None, api_train_data: NJTransitTrainData
+) -> bool:
+    """True when a getTrainStopList response is an earlier service day's run.
+
+    The mirror image of STALE_PRIOR_RUN: getTrainStopList is keyed by train
+    number alone, and shortly after midnight NJT still returns *yesterday's*
+    completed run for it. Applied to today's row, that run's schedule, actuals
+    and DEPARTED flags mark a train that has not left yet as completed
+    (issue #1996). The API's first-stop schedule can never be legitimately
+    more than STALE_PRIOR_RUN_THRESHOLD_SECONDS *earlier* than the row's own
+    scheduled departure: a delay only moves times later, and a row discovered
+    at an intermediate station is at most one trip's running time past the
+    origin. Compared against ``scheduled_departure`` rather than
+    ``journey_date``, because a 23:50 origin discovered after midnight is
+    legitimately dated the next day.
+    """
+    if stored_departure is None or not api_train_data.STOPS:
+        return False
+    first_stop = api_train_data.STOPS[0]
+    dep_time = first_stop.SCHED_DEP_DATE or first_stop.DEP_TIME
+    if not dep_time:
+        return False
+    if stored_departure.tzinfo is None:
+        stored_departure = ET.localize(stored_departure)
+    api_departure = parse_njt_time(dep_time)
+    return (
+        stored_departure - api_departure
+    ).total_seconds() > STALE_PRIOR_RUN_THRESHOLD_SECONDS
 
 
 # Safety cap on the unobserved-train reconciliation sweep. If a single run would
@@ -283,7 +315,9 @@ class JourneyCollector:
         train_id for a later service day (STALE_PRIOR_RUN); a smaller skew may
         be a journey swap or a heavily delayed train (DEPARTURE_TIME_MISMATCH).
         An incomplete journey is accepted as MATCH unchecked: discovery may
-        have recorded the wrong origin or departure time.
+        have recorded the wrong origin or departure time. The one exception,
+        checked first for every row, is an earlier service day's run
+        (PRIOR_RUN_DATA, see ``is_prior_run_response``).
 
         Neither destination nor line code is an identity signal. NJT spells
         the same terminal differently across its APIs ("Newark Penn" vs
@@ -295,6 +329,31 @@ class JourneyCollector:
         catching a different run (issue #1878); update_journey_metadata adopts
         the API's destination instead.
         """
+
+        # Checked before anything is adopted from the response, and for
+        # incomplete rows too: the has_complete_journey gate below is exactly
+        # what let yesterday's run through onto today's row (issue #1996).
+        if is_prior_run_response(stored_journey.scheduled_departure, api_train_data):
+            first_stop = api_train_data.STOPS[0]
+            logger.info(
+                "journey_prior_run_data_detected",
+                journey_id=stored_journey.id,
+                train_id=stored_journey.train_id,
+                stored_departure=(
+                    stored_journey.scheduled_departure.isoformat()
+                    if stored_journey.scheduled_departure
+                    else None
+                ),
+                raw_api_sched_dep_date=first_stop.SCHED_DEP_DATE,
+                raw_api_dep_time=first_stop.DEP_TIME,
+                journey_date=(
+                    stored_journey.journey_date.isoformat()
+                    if stored_journey.journey_date
+                    else None
+                ),
+                has_complete_journey=stored_journey.has_complete_journey,
+            )
+            return JourneyMatchResult.PRIOR_RUN_DATA
 
         # Update line code if API provides a different one (likely more
         # accurate), canonicalized so NJT's own codes ("ML", "BC", ...) don't
@@ -731,6 +790,15 @@ class JourneyCollector:
                 is_expired=journey.is_expired,
             )
 
+            await session.flush()
+            return
+
+        if match_result is JourneyMatchResult.PRIOR_RUN_DATA:
+            # NJT is still serving an earlier service day's run for this
+            # train_id. Our row is fine and its own run is still ahead, so
+            # apply nothing and take no strike — the next poll gets today's
+            # run once NJT rolls over. Stamp so the oldest-first batch moves on.
+            mark_refresh_attempted(journey)
             await session.flush()
             return
 

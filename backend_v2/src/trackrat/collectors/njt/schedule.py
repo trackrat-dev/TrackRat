@@ -14,7 +14,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from structlog import get_logger
 
 from trackrat.collectors.njt.client import NJTransitClient, NJTransitNullDataError
-from trackrat.collectors.njt.journey import STALE_PRIOR_RUN_THRESHOLD_SECONDS
+from trackrat.collectors.njt.journey import (
+    STALE_PRIOR_RUN_THRESHOLD_SECONDS,
+    is_prior_run_response,
+)
 from trackrat.db.engine import get_session
 from trackrat.models.database import JourneyStop, TrainJourney
 from trackrat.utils.locks import acquire_njt_journey_lock
@@ -582,6 +585,25 @@ class NJTScheduleCollector:
             logger.warning(
                 "no_stops_in_api_response",
                 train_id=journey.train_id,
+            )
+            return
+
+        # At the 04:30 run NJT can still serve yesterday's run for a train
+        # number, and for tomorrow's rows it serves today's. Rebuilding stops
+        # from either files a different day's run under this row (issue #1996);
+        # leave the placeholder for discovery or the next night's run instead.
+        if is_prior_run_response(journey.scheduled_departure, train_data):
+            logger.info(
+                "scheduled_journey_prior_run_data_skipped",
+                train_id=journey.train_id,
+                journey_id=journey.id,
+                journey_date=str(journey.journey_date),
+                stored_departure=(
+                    journey.scheduled_departure.isoformat()
+                    if journey.scheduled_departure
+                    else None
+                ),
+                raw_api_sched_dep_date=train_data.STOPS[0].SCHED_DEP_DATE,
             )
             return
 

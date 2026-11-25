@@ -124,6 +124,7 @@ def _make_train_data_with_invalid_stop() -> MagicMock:
     bad_stop.STATIONNAME = None  # journey_stops.station_name is NOT NULL
     bad_stop.SCHED_ARR_DATE = None
     bad_stop.SCHED_DEP_DATE = None
+    bad_stop.DEP_TIME = None  # NJTransitStopData default; never a bare mock
     bad_stop.TRACK = None
 
     train_data = MagicMock()
