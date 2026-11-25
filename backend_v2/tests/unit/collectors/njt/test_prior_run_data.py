@@ -11,12 +11,16 @@ departure-time check for rows without `has_complete_journey`, so nothing caught 
 These tests pin `is_prior_run_response` and both writers that apply a stop
 list: `JourneyCollector.collect_journey_details` and
 `NJTScheduleCollector._update_journey_with_stops`.
+
+Both collectors get a real `NJTransitClient`. Stop lists are supplied through
+`prefetched_train_data` (the batch collector's own path) or passed straight to
+`_update_journey_with_stops`, so no test reaches the NJT API.
 """
 
 from datetime import timedelta
-from unittest.mock import AsyncMock
 
 import pytest
+import pytest_asyncio
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -150,11 +154,14 @@ class TestIsPriorRunResponse:
         assert is_prior_run_response(stored, response) is True
 
 
-class TestJourneyCollectorPriorRun:
-    @pytest.fixture
-    def njt_client(self):
-        return AsyncMock(spec=NJTransitClient)
+@pytest_asyncio.fixture
+async def njt_client():
+    client = NJTransitClient()
+    yield client
+    await client.close()
 
+
+class TestJourneyCollectorPriorRun:
     @pytest.fixture
     def collector(self, njt_client):
         return JourneyCollector(njt_client)
@@ -198,7 +205,7 @@ class TestJourneyCollectorPriorRun:
 
     @pytest.mark.asyncio
     async def test_collect_journey_details_leaves_row_untouched(
-        self, db_session: AsyncSession, collector, njt_client
+        self, db_session: AsyncSession, collector
     ):
         today = _today_at(19, 16)
         journey = _discovery_row("2124", today)
@@ -217,11 +224,13 @@ class TestJourneyCollectorPriorRun:
         )
         await db_session.flush()
 
-        njt_client.get_train_stop_list.return_value = _stop_list(
-            "2124", today - timedelta(days=1), departed=True
+        await collector.collect_journey_details(
+            db_session,
+            journey,
+            prefetched_train_data=_stop_list(
+                "2124", today - timedelta(days=1), departed=True
+            ),
         )
-
-        await collector.collect_journey_details(db_session, journey)
         await db_session.refresh(journey)
         stops = (
             await db_session.scalars(
@@ -246,17 +255,25 @@ class TestJourneyCollectorPriorRun:
 
     @pytest.mark.asyncio
     async def test_collect_journey_details_still_applies_todays_run(
-        self, db_session: AsyncSession, collector, njt_client
+        self, db_session: AsyncSession, collector
     ):
-        """Control: the same row accepts its own day's run."""
+        """Control: the same row accepts its own day's run.
+
+        skip_enhancement keeps the departure-board lookup (a live NJT call when
+        the 19:16 departure is within 15 minutes of the test run) out of a test
+        about the prior-run guard.
+        """
         today = _today_at(19, 16)
         journey = _discovery_row("2125", today)
         db_session.add(journey)
         await db_session.flush()
 
-        njt_client.get_train_stop_list.return_value = _stop_list("2125", today)
-
-        await collector.collect_journey_details(db_session, journey)
+        await collector.collect_journey_details(
+            db_session,
+            journey,
+            skip_enhancement=True,
+            prefetched_train_data=_stop_list("2125", today),
+        )
         await db_session.refresh(journey)
         print(f"has_complete_journey={journey.has_complete_journey}")
 
@@ -266,8 +283,8 @@ class TestJourneyCollectorPriorRun:
 
 class TestScheduleCollectorPriorRun:
     @pytest.fixture
-    def collector(self):
-        return NJTScheduleCollector(AsyncMock(spec=NJTransitClient))
+    def collector(self, njt_client):
+        return NJTScheduleCollector(njt_client)
 
     async def _scheduled_row(self, session: AsyncSession, train_id: str, departure):
         journey = _discovery_row(train_id, departure)
