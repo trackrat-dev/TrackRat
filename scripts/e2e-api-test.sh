@@ -31,11 +31,16 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 API="$BASE/api/v2"
-TODAY=$(date +%Y-%m-%d)
-DOW=$(date +%u)  # 1=Monday .. 7=Sunday
+# Backend schedules run on Eastern time regardless of where this script runs
+# (CI containers are UTC). Day-of-week must be Eastern too: from 19:00 ET the
+# UTC date has already rolled over, so Sunday evening would read as Monday and
+# test weekday-only routes that have no service (issue #1998).
+et_date() { TZ=America/New_York date "$@"; }
+TODAY=$(et_date +%Y-%m-%d)
+DOW=$(et_date +%u)  # 1=Monday .. 7=Sunday
 IS_WEEKEND=false
 [[ "$DOW" -ge 6 ]] && IS_WEEKEND=true
-DOW_NAME=$(date +%A)
+DOW_NAME=$(et_date +%A)
 PASS=0
 FAIL=0
 WARN=0
@@ -63,13 +68,12 @@ SLOW_THRESHOLD=5  # seconds
 # exhausted well before midnight.
 AMTRAK_SCHEDULE_QUIET_FROM_HOUR=20
 
-# Backend schedules run on Eastern time regardless of where this script runs.
 # Sampled at each check site rather than once at startup: a full run makes
 # hundreds of curls and takes 20-40+ minutes, so a start-time snapshot drifts
 # across the very boundaries these checks key on (a 00:35 start reaching the
 # subway trip pairs at 01:10 would FAIL instead of WARNing as overnight; same
 # skew at the 06:00 boundary and the Amtrak evening gate).
-current_et_hour() { TZ=America/New_York date +%-H; }
+current_et_hour() { et_date +%-H; }
 
 pass() { printf "  ${GREEN}PASS${NC} %s\n" "$1"; PASS=$((PASS + 1)); }
 fail() { printf "  ${RED}FAIL${NC} %s\n" "$1"; FAIL=$((FAIL + 1)); }

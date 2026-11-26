@@ -657,3 +657,56 @@ def test_path_hoboken_wtc_trip_search_is_weekday_only_in_the_real_script(
             tmp_path, real_routes, f'is_weekday_only_pair "{args[1]}" "{args[2]}"'
         )
         assert rc == 0, f"{args[0]} would still be searched on weekends"
+
+
+# ── Day of week is Eastern, not the container clock (issue #1998) ───────────
+#
+# CI runs in UTC, where the date rolls over at 19:00/20:00 ET: Sunday evening
+# read as Monday and tested weekday-only routes that have no service. The
+# real date block is run under clocks far east and far west of ET; a
+# container-clock implementation disagrees with ET under at least one of
+# them at every hour (Kiritimati is ET+19h, Pago Pago is ET-6h).
+
+
+def _date_block() -> str:
+    """The script's `et_date` helper through its `DOW_NAME=` line, verbatim."""
+    match = re.search(
+        r"^et_date\(\) \{.*?^DOW_NAME=[^\n]*$",
+        E2E_SCRIPT.read_text(),
+        re.DOTALL | re.MULTILINE,
+    )
+    assert match, f"No et_date() ... DOW_NAME= block in {E2E_SCRIPT.name}"
+    return match.group(0)
+
+
+def _eastern_day() -> tuple[str, str, str]:
+    from trackrat.utils.time import now_et
+
+    now = now_et()
+    return now.strftime("%Y-%m-%d"), str(now.isoweekday()), now.strftime("%A")
+
+
+@pytest.mark.parametrize(
+    "container_tz", ["UTC", "Pacific/Kiritimati", "Pacific/Pago_Pago"]
+)
+def test_today_and_day_of_week_follow_eastern_time(container_tz: str) -> None:
+    program = f'{_date_block()}\necho "$TODAY|$DOW|$DOW_NAME|$IS_WEEKEND"'
+    before = _eastern_day()
+    proc = subprocess.run(
+        ["bash", "-c", program],
+        capture_output=True,
+        text=True,
+        env={"TZ": container_tz, "PATH": "/usr/bin:/bin", "LC_ALL": "C"},
+    )
+    after = _eastern_day()
+    print(f"TZ={container_tz} stdout={proc.stdout!r} stderr={proc.stderr!r}")
+    print(f"Eastern before={before} after={after}")
+
+    assert proc.returncode == 0 and not proc.stderr, proc.stderr
+    today, dow, dow_name, is_weekend = proc.stdout.strip().split("|")
+    # Accept either sample so a run straddling ET midnight can't flake.
+    assert (today, dow, dow_name) in {before, after}, (
+        f"Under container TZ={container_tz} the script computed "
+        f"{(today, dow, dow_name)}, but the Eastern day is {before}"
+    )
+    assert is_weekend == ("true" if int(dow) >= 6 else "false")
