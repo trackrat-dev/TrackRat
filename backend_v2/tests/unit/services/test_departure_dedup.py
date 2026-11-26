@@ -153,9 +153,9 @@ class TestMakeDedupKeys:
 
         # Should have 3 keys: 09:14, 09:15, 09:16
         assert len(fallbacks) == 3
-        assert "NE:NJT:09:14" in fallbacks
-        assert "NE:NJT:09:15" in fallbacks
-        assert "NE:NJT:09:16" in fallbacks
+        assert "NE:NJT:2026-01-20:09:14" in fallbacks
+        assert "NE:NJT:2026-01-20:09:15" in fallbacks
+        assert "NE:NJT:2026-01-20:09:16" in fallbacks
 
     def test_no_primary_key_when_train_id_missing(self):
         """Test no primary key when train_id is empty."""
@@ -168,7 +168,7 @@ class TestMakeDedupKeys:
         primary, fallbacks = self.service._make_dedup_keys(departure)
 
         assert primary is None
-        assert "NE:NJT:09:15" in fallbacks
+        assert "NE:NJT:2026-01-20:09:15" in fallbacks
 
     def test_no_primary_key_when_train_id_unknown(self):
         """Test no primary key when train_id is 'Unknown'."""
@@ -226,8 +226,8 @@ class TestMakeDedupKeys:
         _, fallbacks_utc = self.service._make_dedup_keys(departure_utc)
 
         # Both should produce the same fallback keys (13:02, 13:03, 13:04 in ET)
-        assert "NE:NJT:13:03" in fallbacks_et
-        assert "NE:NJT:13:03" in fallbacks_utc
+        assert "NE:NJT:2026-01-20:13:03" in fallbacks_et
+        assert "NE:NJT:2026-01-20:13:03" in fallbacks_utc
         # The main key should be the same
         assert fallbacks_et == fallbacks_utc
 
@@ -249,9 +249,9 @@ class TestMakeDedupKeys:
         _, fallbacks = self.service._make_dedup_keys(departure)
 
         print(f"fallbacks for 'No': {fallbacks}")
-        assert "NC:NJT:08:46" in fallbacks
-        assert "NE:NJT:08:46" not in fallbacks
-        assert "No:NJT:08:46" not in fallbacks
+        assert "NC:NJT:2026-10-01:08:46" in fallbacks
+        assert "NE:NJT:2026-10-01:08:46" not in fallbacks
+        assert "No:NJT:2026-10-01:08:46" not in fallbacks
 
     def test_njt_line_code_rv_stays_rv(self):
         """Test NJT line code 'RV' is already canonical (no normalization needed)."""
@@ -265,7 +265,7 @@ class TestMakeDedupKeys:
         _, fallbacks = self.service._make_dedup_keys(departure)
 
         # "RV" is already canonical, should appear as-is
-        assert "RV:NJT:09:15" in fallbacks
+        assert "RV:NJT:2026-01-20:09:15" in fallbacks
 
     def test_non_njt_line_codes_not_normalized(self):
         """Test that non-NJT line codes are not affected by normalization."""
@@ -279,7 +279,7 @@ class TestMakeDedupKeys:
         _, fallbacks = self.service._make_dedup_keys(departure)
 
         # AMTRAK "NE" should NOT be normalized (it's a different system)
-        assert "NE:AMTRAK:09:15" in fallbacks
+        assert "NE:AMTRAK:2026-01-20:09:15" in fallbacks
 
     def test_tolerance_minutes_widens_fallback_window(self):
         """Custom tolerance_minutes argument spans 2*tolerance + 1 buckets."""
@@ -295,7 +295,7 @@ class TestMakeDedupKeys:
         # 7 keys: 09:12, 09:13, 09:14, 09:15, 09:16, 09:17, 09:18
         assert len(fallbacks) == 7
         for hh_mm in ("09:12", "09:13", "09:14", "09:15", "09:16", "09:17", "09:18"):
-            assert f"NE:NJT:{hh_mm}" in fallbacks
+            assert f"NE:NJT:2026-01-20:{hh_mm}" in fallbacks
 
     def test_tolerance_minutes_default_is_one(self):
         """Omitting tolerance_minutes preserves the realtime/GTFS-merge window."""
@@ -312,6 +312,51 @@ class TestMakeDedupKeys:
         )
 
         assert default_fallbacks == explicit_fallbacks
+
+    def test_fallback_keys_carry_calendar_date(self):
+        """The same wall-clock minute on consecutive days keys differently.
+
+        The board spans ~26 hours, so a date-less HH:MM key would let a
+        00:24 train today collide with a distinct 00:24 train tomorrow.
+        """
+        today = self._create_departure(
+            train_id="A",
+            line_code="BB",
+            scheduled_time=ET.localize(datetime(2026, 11, 25, 0, 24)),
+            data_source="LIRR",
+        )
+        tomorrow = self._create_departure(
+            train_id="B",
+            line_code="BB",
+            scheduled_time=ET.localize(datetime(2026, 11, 26, 0, 24)),
+            data_source="LIRR",
+        )
+
+        _, today_fallbacks = self.service._make_dedup_keys(today)
+        _, tomorrow_fallbacks = self.service._make_dedup_keys(tomorrow)
+        print(f"today={today_fallbacks} tomorrow={tomorrow_fallbacks}")
+
+        assert "BB:LIRR:2026-11-25:00:24" in today_fallbacks
+        assert "BB:LIRR:2026-11-26:00:24" in tomorrow_fallbacks
+        assert not set(today_fallbacks) & set(tomorrow_fallbacks)
+
+    def test_tolerance_window_crosses_midnight_with_date(self):
+        """A 23:59 departure's +1 min bucket is dated the next day."""
+        departure = self._create_departure(
+            train_id="A",
+            line_code="BB",
+            scheduled_time=ET.localize(datetime(2026, 11, 25, 23, 59)),
+            data_source="LIRR",
+        )
+
+        _, fallbacks = self.service._make_dedup_keys(departure)
+        print(f"fallbacks={fallbacks}")
+
+        assert fallbacks == [
+            "BB:LIRR:2026-11-25:23:58",
+            "BB:LIRR:2026-11-25:23:59",
+            "BB:LIRR:2026-11-26:00:00",
+        ]
 
 
 class TestMergeDepartures:
@@ -485,6 +530,33 @@ class TestMergeDepartures:
 
         # Should NOT deduplicate - 3 minutes is beyond tolerance
         assert len(merged) == 2
+
+    def test_same_minute_next_day_gtfs_train_is_kept(self):
+        """Codex review on #2013: at 00:20 a realtime train departing 00:24
+        today must not suppress tomorrow's distinct 00:24 GTFS train, which
+        the next-service-day merge (issue #1997) now puts in the same
+        26-hour board."""
+        realtime = [
+            self._create_departure(
+                train_id="1234",
+                line_code="BB",
+                scheduled_time=ET.localize(datetime(2026, 11, 25, 0, 24)),
+                data_source="LIRR",
+            )
+        ]
+        gtfs = [
+            self._create_departure(
+                train_id="GTFS_TRIP_99",
+                line_code="BB",
+                scheduled_time=ET.localize(datetime(2026, 11, 26, 0, 24)),
+                data_source="LIRR",
+            )
+        ]
+
+        merged = self.service._merge_departures(realtime, gtfs)
+        print(f"merged={[(d.train_id, d.departure.scheduled_time) for d in merged]}")
+
+        assert [d.train_id for d in merged] == ["1234", "GTFS_TRIP_99"]
 
     def test_gtfs_added_when_no_realtime_match(self):
         """Test GTFS trains are added when no real-time match exists."""
@@ -1186,9 +1258,7 @@ class TestDedupeScheduledObservedCollisions:
     def test_does_not_collapse_across_different_journey_dates(self):
         """The realtime window can span ~26 hours, so an OBSERVED train at
         00:30 today must NOT suppress a distinct SCHEDULED train at the
-        same wall-clock minute on the next service day. The
-        ``_make_dedup_keys`` fallback is date-less ``HH:MM``, so the dedup
-        function has to scope buckets by ``journey_date`` itself."""
+        same wall-clock minute on the next service day."""
         observed_today = self._create_departure(
             train_id="9999",
             line_code="BE",
@@ -1202,14 +1272,6 @@ class TestDedupeScheduledObservedCollisions:
             scheduled_time=ET.localize(datetime(2026, 5, 18, 0, 30)),
             observation_type="SCHEDULED",
             destination="Suffern",
-        )
-
-        # Sanity-check the precondition: bare fallback keys collide.
-        _, today_fallbacks = self.service._make_dedup_keys(observed_today)
-        _, tomorrow_fallbacks = self.service._make_dedup_keys(scheduled_tomorrow)
-        assert set(today_fallbacks) & set(tomorrow_fallbacks), (
-            "Test premise wrong: fallback keys must overlap for the dedup "
-            "function's journey_date scope to matter."
         )
 
         result = self.service._dedupe_scheduled_observed_collisions(

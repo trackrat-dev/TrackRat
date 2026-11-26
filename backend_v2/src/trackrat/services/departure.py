@@ -2157,8 +2157,8 @@ class DepartureService:
         Returns:
             Tuple of (primary_key, fallback_keys) where:
             - primary_key may be None if train_id is missing or unreliable
-            - fallback_keys is a list of HH:MM-bucketed keys spanning the
-              tolerance window in both directions
+            - fallback_keys is a list of date + HH:MM-bucketed keys spanning
+              the tolerance window in both directions
         """
         primary_key = self._primary_dedup_key(
             dep.train_id, dep.journey_date, dep.data_source
@@ -2168,6 +2168,8 @@ class DepartureService:
         # - Normalize line codes to handle NJT API inconsistencies
         # - Generate keys for the tolerance window to handle schedule drift
         # - Normalize to ET to handle timezone differences between data sources
+        # - Include the ET calendar date: the board spans ~26 hours, so a
+        #   00:24 train today must not swallow a distinct 00:24 train tomorrow
         line_code = self._normalize_line_code(dep.line.code, dep.data_source)
         scheduled = dep.departure.scheduled_time
 
@@ -2176,7 +2178,7 @@ class DepartureService:
             fallback_keys = []
             for minute_offset in range(-tolerance_minutes, tolerance_minutes + 1):
                 adj_time = scheduled_et + timedelta(minutes=minute_offset)
-                time_str = adj_time.strftime("%H:%M")
+                time_str = adj_time.strftime("%Y-%m-%d:%H:%M")
                 fallback_keys.append(f"{line_code}:{dep.data_source}:{time_str}")
         else:
             fallback_keys = [f"{line_code}:{dep.data_source}:unknown"]
@@ -2215,10 +2217,10 @@ class DepartureService:
         genuinely different trains. The destination check guards against
         the rare case where two legitimate trains run on the same line
         within ±3 min to different termini. The ``journey_date`` scope
-        keeps an OBSERVED train from suppressing a distinct SCHEDULED
-        train at the same wall-clock minute on a different calendar day
-        (``_make_dedup_keys`` fallback keys are date-less ``HH:MM`` and
-        ``get_departures`` returns a multi-day window).
+        keeps an OBSERVED train from suppressing a SCHEDULED train of a
+        different service day: ``_make_dedup_keys`` fallback keys carry the
+        departure's calendar date, but an after-midnight train filed under
+        yesterday's service shares that date with today's trains.
         """
         if len(departures) < 2:
             return departures
