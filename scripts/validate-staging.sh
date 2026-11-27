@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 # validate-staging.sh - Unified staging validation
 #
-# Runs all three validation steps in order, short-circuiting on failure:
+# Runs every requested validation step, even after one fails, then prints a
+# per-step summary and exits non-zero if any step failed (#2002):
 #   1. Deployment health check (verify-deployment.sh)
 #   2. E2E API tests (e2e-api-test.sh)
 #   3. Backend error log check (gcp-logs.py)
+#   4. Ground truth validation (--ground-truth)
+#   5. Line coverage sweep (--coverage)
+# A failed step is exactly when logs and ground truth are most useful, so only
+# an unreachable deployment (step 1 fails and /health/live does not answer)
+# aborts the run - every later step would only report the same outage.
 #
 # Automatically installs Python dependencies for step 3 if missing.
 #
@@ -14,6 +20,7 @@
 #   --no-random     skip random route generation in step 2
 #   --skip-logs     skip the GCP log check (step 3)
 #   --ground-truth  run ground truth validation against all providers (step 4)
+#   --coverage      run the line coverage sweep (step 5)
 
 set -euo pipefail
 
@@ -46,8 +53,15 @@ GREEN='\033[0;32m'
 RED='\033[0;31m'
 NC='\033[0m'
 
-step_pass() { echo -e "\n${GREEN}✅ Step $1 passed${NC}\n"; }
-step_fail() { echo -e "\n${RED}❌ Step $1 failed${NC}\n"; exit 1; }
+STEP_RESULTS=()
+FAILED_STEPS=0
+
+step_pass() { echo -e "\n${GREEN}✅ Step $1 passed${NC}\n"; STEP_RESULTS+=("✅ $1"); }
+step_fail() {
+  echo -e "\n${RED}❌ Step $1 failed${NC}\n"
+  STEP_RESULTS+=("❌ $1")
+  FAILED_STEPS=$((FAILED_STEPS + 1))
+}
 
 # ---------- Step 1: Deployment health ----------
 
@@ -60,6 +74,11 @@ if bash "$SCRIPT_DIR/verify-deployment.sh" "${verify_args[@]}"; then
   step_pass "1 (health)"
 else
   step_fail "1 (health)"
+  if ! curl -fs --max-time 15 "$BASE_URL/health/live" > /dev/null; then
+    echo -e "${RED}${BOLD}Deployment unreachable at $BASE_URL - remaining steps skipped.${NC}"
+    exit 1
+  fi
+  echo "Deployment is reachable; continuing with the remaining steps."
 fi
 
 # ---------- Step 2: E2E API tests ----------
@@ -137,4 +156,11 @@ fi
 
 # ---------- Summary ----------
 
-echo -e "${GREEN}${BOLD}All staging validation steps passed.${NC}"
+echo -e "${BOLD}===== Summary =====${NC}"
+printf '%s\n' "${STEP_RESULTS[@]}"
+
+if [[ "$FAILED_STEPS" -gt 0 ]]; then
+  echo -e "\n${RED}${BOLD}$FAILED_STEPS staging validation step(s) failed.${NC}"
+  exit 1
+fi
+echo -e "\n${GREEN}${BOLD}All staging validation steps passed.${NC}"
