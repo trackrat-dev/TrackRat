@@ -53,15 +53,21 @@ NC='\033[0m'
 
 FAILED_ROUTES=()
 SLOW_THRESHOLD=5  # seconds
-# Hour (ET) from which an all-OBSERVED Amtrak board stops being suspicious.
-# The 00:45 ET job (scheduler.generate_amtrak_schedules) creates SCHEDULED
+# Hour (ET) from which an all-OBSERVED NJT or Amtrak board stops being
+# suspicious. For Amtrak: the 00:45 ET job (scheduler.generate_amtrak_schedules) creates SCHEDULED
 # rows for both today AND tomorrow, so next-day rows exist in the DB all day —
 # but the departures endpoint serves a 26-hour window from today's midnight
 # ET, so only next-day departures before 02:00 ET can appear, and Amtrak runs
 # none then on these routes. Amtrak's last departures run to roughly 23:30 and
 # are discovered ~an hour ahead, so the day's visible SCHEDULED records are
-# exhausted well before midnight.
-AMTRAK_SCHEDULE_QUIET_FROM_HOUR=20
+# exhausted well before midnight. NJT shares the gate, but only on pairs with
+# no departure before 02:00 ET tomorrow (see the 0-SCHEDULED check, #2003).
+SCHEDULE_QUIET_FROM_HOUR=20
+
+# How far /trains/recent-departures looks back (its maximum) when a route's
+# board is empty: trains that already ran mean the service day is over, not
+# that the route is dark (issue #2003).
+RAN_RECENTLY_WINDOW_MINUTES=240
 
 # Backend schedules run on Eastern time regardless of where this script runs.
 # Sampled at each check site rather than once at startup: a full run makes
@@ -70,6 +76,25 @@ AMTRAK_SCHEDULE_QUIET_FROM_HOUR=20
 # subway trip pairs at 01:10 would FAIL instead of WARNing as overnight; same
 # skew at the 06:00 boundary and the Amtrak evening gate).
 current_et_hour() { TZ=America/New_York date +%-H; }
+
+# Departures in a departures-response FILE that leave on DATE (YYYY-MM-DD)
+# before HOUR:00, both in ET. A next-day board's 24:xx GTFS trips fall on the
+# day after DATE, so they are not counted.
+count_departures_before_et_hour() {
+  python3 -c "
+import json, sys
+from datetime import datetime
+from zoneinfo import ZoneInfo
+path, day, hour = sys.argv[1], sys.argv[2], int(sys.argv[3])
+et = ZoneInfo('America/New_York')
+times = [
+    datetime.fromisoformat(d['departure']['scheduled_time']).astimezone(et)
+    for d in json.load(open(path))['departures']
+    if d['departure'].get('scheduled_time')
+]
+print(sum(1 for t in times if t.date().isoformat() == day and t.hour < hour))
+" "$1" "$2" "$3"
+}
 
 pass() { printf "  ${GREEN}PASS${NC} %s\n" "$1"; PASS=$((PASS + 1)); }
 fail() { printf "  ${RED}FAIL${NC} %s\n" "$1"; FAIL=$((FAIL + 1)); }
@@ -644,8 +669,22 @@ for route in "${ROUTES[@]}"; do
     # service. When every line on this pair has active planned work, 0 trains
     # is the backend correctly reflecting a closure — WARN rather than SKIP,
     # because the run did test it and the headline is worth reading.
+    #
+    # Likewise after the route's last train of the day: the board then holds
+    # nothing until tomorrow. hide_departed=false can't tell that apart — the
+    # departures query drops completed journeys — so ask recent-departures,
+    # which keeps them. Mid-day an outage still leaves GTFS-merged SCHEDULED
+    # rows on the board, so an empty board right after real service is the
+    # end of the day (issue #2003). What this gives up: a route that goes dark
+    # within RAN_RECENTLY_WINDOW_MINUTES of a train *and* has lost its GTFS
+    # timetable is a WARN; /health's lapsed_sources and the coverage sweep
+    # cover a lost timetable.
     if pw_note=$(planned_work_note "$source" "$lines"); then
       warn "Departures: 0 trains — planned work: $pw_note"
+    elif [[ "$(api "$API/trains/recent-departures?from=$from&to=$to&window_minutes=$RAN_RECENTLY_WINDOW_MINUTES&limit=50&data_sources=$source")" == "200" ]] &&
+         ran=$(jq '[.departures[] | select(.is_cancelled != true)] | length' "$TMPDIR/resp.json") &&
+         [[ "$ran" -gt 0 ]]; then
+      warn "Departures: 0 trains left — $ran ran in the last $((RAN_RECENTLY_WINDOW_MINUTES / 60))h (service over for the day)"
     else
       fail "Departures: 0 trains"
       FAILED_ROUTES+=("$label ($from -> $to): 0 trains")
@@ -675,7 +714,7 @@ for route in "${ROUTES[@]}"; do
       fail "No trains (OBSERVED or SCHEDULED)"
       FAILED_ROUTES+=("$label ($from -> $to): 0 trains")
     fi
-  elif [[ "$sched" -eq 0 && "$source" == "AMTRAK" && "$obs" -gt 0 && "$(current_et_hour)" -ge "$AMTRAK_SCHEDULE_QUIET_FROM_HOUR" ]]; then
+  elif [[ "$sched" -eq 0 && "$source" == "AMTRAK" && "$obs" -gt 0 && "$(current_et_hour)" -ge "$SCHEDULE_QUIET_FROM_HOUR" ]]; then
     # Amtrak's SCHEDULED records are upgraded to OBSERVED as each train is
     # discovered, so by late evening today's are all consumed. Tomorrow's do
     # exist — the 00:45 ET job generates today *and* tomorrow
@@ -695,13 +734,31 @@ for route in "${ROUTES[@]}"; do
     # board just after midnight means generation really failed.
     #
     # Three Amtrak routes failed this check at 22:00 ET and passed unchanged at
-    # 10:30 the next morning (issue #1771). NJT is deliberately not exempt: its
-    # 27-hour schedule collection lands post-midnight SCHEDULED trains inside
-    # that same 02:00 cutoff, so the check still holds there.
-    pass "Amtrak: $obs observed, 0 scheduled (after ${AMTRAK_SCHEDULE_QUIET_FROM_HOUR}:00 ET, tomorrow's board is past the 26h query window)"
+    # 10:30 the next morning (issue #1771). NJT is handled below.
+    pass "Amtrak: $obs observed, 0 scheduled (after ${SCHEDULE_QUIET_FROM_HOUR}:00 ET, tomorrow's board is past the 26h query window)"
   elif [[ "$sched" -eq 0 ]]; then
-    fail "No SCHEDULED trains ($obs observed, 0 scheduled)"
-    FAILED_ROUTES+=("$label ($from -> $to): 0 SCHEDULED trains")
+    # NJT's 27-hour schedule collection lands post-midnight SCHEDULED trains
+    # inside the same 02:00 cutoff, but only on pairs that have such trains.
+    # A pair whose service ends before midnight (HB->DV at 22:04, NP->HG at
+    # 23:08) has nothing left to be SCHEDULED once its last trains are
+    # OBSERVED (issue #2003). Trips GTFS files under today's service day as
+    # 24:xx (NY->TR's 01:22) are already on this board via the GTFS merge, so
+    # sched would not be 0 for them; what is left to rule out is a trip filed
+    # under tomorrow's service before 02:00, which tomorrow's GTFS board
+    # shows. When that lookup fails the check stays strict.
+    njt_early=""
+    if [[ "$source" == "NJT" && "$obs" -gt 0 && "$(current_et_hour)" -ge "$SCHEDULE_QUIET_FROM_HOUR" ]]; then
+      tomorrow=$(TZ=America/New_York date -v+1d +%Y-%m-%d 2>/dev/null || TZ=America/New_York date -d tomorrow +%Y-%m-%d)
+      if [[ "$(api "$API/trains/departures?from=$from&to=$to&date=$tomorrow&limit=50&data_sources=NJT")" == "200" ]]; then
+        njt_early=$(count_departures_before_et_hour "$TMPDIR/resp.json" "$tomorrow" 2 2>/dev/null || echo "")
+      fi
+    fi
+    if [[ "$njt_early" == "0" ]]; then
+      pass "NJT: $obs observed, 0 scheduled (after ${SCHEDULE_QUIET_FROM_HOUR}:00 ET, no departure before 02:00 ET tomorrow on this pair)"
+    else
+      fail "No SCHEDULED trains ($obs observed, 0 scheduled)"
+      FAILED_ROUTES+=("$label ($from -> $to): 0 SCHEDULED trains")
+    fi
   elif [[ "$obs" -eq 0 ]]; then
     # Nothing can be OBSERVED before it has run. Only fail if a SCHEDULED
     # train's departure is already in the past (real discovery miss) —

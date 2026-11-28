@@ -130,7 +130,11 @@ leg has **every** line that can serve it under a *suspension* — a `No [X] betw
 local running, reduced frequency and single-station closures never excuse a transfer pair. Amtrak is likewise exempt from the "0 SCHEDULED trains" assertion
 after 20:00 ET when at least one train is OBSERVED: the 00:45 job generates SCHEDULED
 rows for today *and* tomorrow, but the departures query window ends at 02:00 ET
-tomorrow, so an all-OBSERVED evening board is expected.
+tomorrow, so an all-OBSERVED evening board is expected. NJT gets the same exemption only
+on pairs whose GTFS board for tomorrow has no departure before 02:00 ET; pairs with
+post-midnight service stay strict (#2003). An empty board ("0 trains") is a WARN rather
+than a FAIL when `/trains/recent-departures` shows the pair ran in the last 4 hours, since
+the route's service day is then over rather than dark.
 
 **Ground Truth Validation:**
 
