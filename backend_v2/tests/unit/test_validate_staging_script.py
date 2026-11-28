@@ -11,19 +11,24 @@ gcp-logs.py, and ``poetry`` for ground truth/coverage) is a small stand-in that
 appends its name to a run log and exits with a configured code. That keeps the
 step programs out of the test, so what's verified is the orchestration: which
 steps ran, the summary, and the exit status. The step-1 reachability probe
-hits a real local HTTP server (reachable) or a closed port (unreachable).
+hits the application's real ``/health/live`` route, served by uvicorn
+(reachable), or a closed port (unreachable).
 """
 
-import http.server
 import os
 import shutil
 import socket
 import subprocess
 import threading
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+import uvicorn
+from fastapi import FastAPI
+
+from trackrat.api import health
 
 # backend_v2/tests/unit/<this file> -> repo root is parents[3]
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -53,31 +58,30 @@ exit 2
 """
 
 
-class _LiveHandler(http.server.BaseHTTPRequestHandler):
-    def do_GET(self) -> None:  # noqa: N802 - stdlib handler naming
-        if self.path == "/health/live":
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b'{"status":"alive"}')
-        else:
-            self.send_response(404)
-            self.end_headers()
-
-    def log_message(self, format: str, *args: object) -> None:
-        pass
-
-
 @pytest.fixture
 def live_server() -> Iterator[str]:
-    server = http.server.HTTPServer(("127.0.0.1", 0), _LiveHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    """The application's real health router, served over HTTP by uvicorn."""
+    app = FastAPI()
+    app.include_router(health.router)
+    sock = socket.socket()
+    sock.bind(("127.0.0.1", 0))
+    server = uvicorn.Server(uvicorn.Config(app, log_level="warning"))
+    thread = threading.Thread(
+        target=server.run, kwargs={"sockets": [sock]}, daemon=True
+    )
     thread.start()
+    deadline = time.monotonic() + 10
+    while not server.started:
+        assert (
+            thread.is_alive() and time.monotonic() < deadline
+        ), "uvicorn did not start"
+        time.sleep(0.05)
     try:
-        yield f"http://127.0.0.1:{server.server_address[1]}"
+        yield f"http://127.0.0.1:{sock.getsockname()[1]}"
     finally:
-        server.shutdown()
-        server.server_close()
+        server.should_exit = True
         thread.join()
+        sock.close()
 
 
 @pytest.fixture
