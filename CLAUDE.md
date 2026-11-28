@@ -88,6 +88,11 @@ bash scripts/validate-staging.sh --coverage               # Include line-coverag
 bash scripts/validate-staging.sh https://apiv2.trackrat.net
 ```
 
+Every requested step runs even after an earlier one fails (#2002): a failing E2E step is
+exactly when logs and ground truth are most useful. The script ends with a per-step summary
+and exits non-zero if any step failed. The only early exit is an unreachable deployment
+(step 1 fails and `/health/live` does not answer).
+
 The individual steps can still be run separately if needed:
 
 ```bash
