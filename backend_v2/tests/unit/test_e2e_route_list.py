@@ -657,3 +657,81 @@ def test_path_hoboken_wtc_trip_search_is_weekday_only_in_the_real_script(
             tmp_path, real_routes, f'is_weekday_only_pair "{args[1]}" "{args[2]}"'
         )
         assert rc == 0, f"{args[0]} would still be searched on weekends"
+
+
+# --- NJT 0-SCHEDULED evening check (issue #2003) ---------------------------
+#
+# After 20:00 ET an NJT pair with only OBSERVED trains left passes when
+# tomorrow's GTFS board has no departure before 02:00 ET. That decision
+# rests on count_departures_before_et_hour, run here on departures-response
+# JSON shaped like the API's (ET-localized ISO times with offset).
+
+
+def _count_before(tmp_path: Path, times: list[str | None], day: str, hour: int):
+    board = tmp_path / "board.json"
+    board.write_text(
+        json.dumps(
+            {"departures": [{"departure": {"scheduled_time": t}} for t in times]}
+        )
+    )
+    program = "\n".join([_shell_function("count_departures_before_et_hour"), '"$@"'])
+    result = subprocess.run(
+        ["bash", "-c", program, "bash", "count_departures_before_et_hour"]
+        + [str(board), day, str(hour)],
+        capture_output=True,
+        text=True,
+    )
+    print(f"times={times} day={day} hour={hour} -> {result.stdout!r}")
+    assert not result.stderr, f"shell error: {result.stderr}"
+    return int(result.stdout.strip())
+
+
+@pytest.mark.parametrize(
+    "times,expected",
+    [
+        # A pair whose service starts at 05:xx: no post-midnight trains.
+        (["2026-11-24T05:12:00-05:00", "2026-11-24T06:40:00-05:00"], 0),
+        # Post-midnight service: 00:24 and 01:59 count, 02:00 does not.
+        (
+            [
+                "2026-11-24T00:24:00-05:00",
+                "2026-11-24T01:59:00-05:00",
+                "2026-11-24T02:00:00-05:00",
+            ],
+            2,
+        ),
+        # A UTC timestamp is converted: 06:30Z is 01:30 ET (EST).
+        (["2026-11-24T06:30:00+00:00"], 1),
+        # Tomorrow's 24:xx GTFS trips land on the day after; not counted.
+        (["2026-11-25T00:15:00-05:00"], 0),
+        # Rows without a scheduled time are ignored, not a crash.
+        ([None, "2026-11-24T00:05:00-05:00"], 1),
+        # An empty board (no NJT service tomorrow) counts zero.
+        ([], 0),
+    ],
+)
+def test_count_departures_before_et_hour(
+    tmp_path: Path, times: list[str | None], expected: int
+) -> None:
+    assert _count_before(tmp_path, times, "2026-11-24", 2) == expected
+
+
+def test_count_departures_before_et_hour_across_dst(tmp_path: Path) -> None:
+    """In EDT the UTC offset is -4: 05:30Z is 01:30 ET, 06:30Z is 02:30 ET."""
+    times = ["2026-07-15T05:30:00+00:00", "2026-07-15T06:30:00+00:00"]
+    assert _count_before(tmp_path, times, "2026-07-15", 2) == 1
+
+
+def test_count_departures_before_et_hour_matches_the_check_call_site() -> None:
+    """The NJT branch must call the helper on tomorrow's board with hour 2.
+
+    The 02:00 cut mirrors the departures query window (today's midnight + 26
+    h); a different hour here would excuse or fail the wrong trains.
+    """
+    text = E2E_SCRIPT.read_text()
+    call = re.search(
+        r'count_departures_before_et_hour "\$TMPDIR/resp\.json" "\$tomorrow" (\d+)',
+        text,
+    )
+    assert call, "NJT 0-SCHEDULED branch no longer calls the helper"
+    assert call.group(1) == "2", f"hour argument is {call.group(1)}, expected 2"
